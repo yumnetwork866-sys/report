@@ -1,4 +1,5 @@
 const express = require('express');
+const { requirePermission } = require('../lib/session');
 const {
   getTeams,
   createTeam,
@@ -11,6 +12,6 @@ const router = express.Router();
 router.get('/', getTeams);
 router.post('/', createTeam);
 router.put('/:id', updateTeam);
-router.delete('/:id', deleteTeam);
+router.delete('/:id', requirePermission('admin'), deleteTeam);
 
 module.exports = router;

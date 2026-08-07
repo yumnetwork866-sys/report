@@ -176,6 +176,11 @@ const Header = () => {
     { id: 'tiktok', label: 'TikTok' },
     { id: 'facebook', label: 'Facebook' },
   ];
+  const canAccessTopNavItem = (item) => hasPermission(session, item.permission)
+    || (item.alternatePermission && hasPermission(session, item.alternatePermission));
+  const topNavTarget = (item) => hasPermission(session, item.permission)
+    ? item.to
+    : item.fallbackTo || item.to;
   const isTopNavActive = (to) => {
     if (to === '/manage/users') {
       return location.pathname.startsWith('/manage/users')
@@ -336,16 +341,20 @@ const Header = () => {
 
         <nav className="topbar__nav" aria-label="Primary">
           <div className="topbar__tabs">
-            {topNavItems.filter((item) => hasPermission(session, item.permission)).map((item) => (
+            {topNavItems.filter(canAccessTopNavItem).map((item) => {
+              const target = topNavTarget(item);
+              const active = isTopNavActive(target);
+              return (
               <Link
                 key={item.to}
-                to={item.to}
-                className={`topbar__nav-link${isTopNavActive(item.to) ? ' topbar__nav-link--active' : ''}`}
-                aria-current={isTopNavActive(item.to) ? 'page' : undefined}
+                to={target}
+                className={`topbar__nav-link${active ? ' topbar__nav-link--active' : ''}`}
+                aria-current={active ? 'page' : undefined}
               >
                 {navLabels[item.to] || item.label}
               </Link>
-            ))}
+              );
+            })}
           </div>
           <div className="topbar__actions">
             {hasSession ? (

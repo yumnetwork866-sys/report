@@ -1,5 +1,11 @@
 export const topNavItems = [
-  { to: '/manage/shop-analytics', label: 'TikTok', permission: 'tiktok' },
+  {
+    to: '/manage/shop-analytics',
+    label: 'TikTok',
+    permission: 'tiktok',
+    alternatePermission: 'reports',
+    fallbackTo: '/dashboard',
+  },
   { to: '/manage/users', label: 'Admin', permission: 'users' },
 ];
 
@@ -55,7 +61,7 @@ export const sidebarSections = [
     items: [
       { to: '/manage/users', labelKey: 'navigation.users', permission: 'users' },
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'tiktok' },
-      { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'users' },
+      { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin' },
       { to: '/chatbot/chat-setting', labelKey: 'navigation.chatSettings', permission: 'chatbots' },
     ],
   },
@@ -89,7 +95,7 @@ export const protectedRouteCards = [
   {
     path: '/manage/schedules',
     component: 'ScheduleManagement',
-    permission: 'users',
+    permission: 'admin',
     props: {
       heroTitle: 'Schedule management',
       heroSubtitle: 'Manage automated data synchronization jobs.',

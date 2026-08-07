@@ -360,6 +360,44 @@
 }
 
 
+.employee-table__inline-select,
+.employee-table__inline-input {
+  width: 100%;
+  min-width: 130px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.78rem;
+  outline: none;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.employee-table__inline-select {
+  cursor: pointer;
+}
+
+.employee-table__inline-select:hover,
+.employee-table__inline-input:hover {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.employee-table__inline-select:focus,
+.employee-table__inline-input:focus {
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+.employee-table__inline-input {
+  min-width: 180px;
+}
+
 .employee-table__role-cell {
   display: flex;
   flex-wrap: wrap;

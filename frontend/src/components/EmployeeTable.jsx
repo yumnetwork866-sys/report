@@ -16,6 +16,8 @@ import {
   updateUser,
 } from '../lib/api';
 import { useI18n } from '../lib/language';
+import { isAdminSession } from '../lib/session';
+import { useSession } from '../lib/useSession';
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS, PERMISSIONS, permissionLabelKey } from '../lib/permissions';
 import AppAvatar from './AppAvatar';
 import Pagination from './Pagination';
@@ -28,6 +30,8 @@ const initialForm = {
   email: '',
   password: '',
   role: 'member',
+  content_team_id: '',
+  content_hashtags: '',
 };
 
 const fallbackRoles = [
@@ -50,6 +54,8 @@ const createRoleKey = (label) => String(label || '')
 
 const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
   const { t } = useI18n();
+  const session = useSession();
+  const isAdmin = isAdminSession(session);
   const [users, setUsers] = useState([]);
   const [roles, setRoles] = useState(fallbackRoles);
   const [teams, setTeams] = useState([]);
@@ -475,6 +481,8 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
       email: user.email || '',
       password: '',
       role: user.role || 'member',
+      content_team_id: user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : '',
+      content_hashtags: (user.content_attribution?.hashtags || []).join(', '),
     });
     setIsEditorOpen(true);
   };
@@ -494,6 +502,22 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     }));
   };
 
+  const handleAttributionChange = async (user, field, value) => {
+    const payload = field === 'content_team_id'
+      ? { content_team_id: value || null }
+      : { content_hashtags: value };
+    try {
+      setError('');
+      await updateUser(user.id, payload);
+      await loadData();
+      showToast(t('users.updatedToast'));
+    } catch (err) {
+      const message = err.message || t('users.updateError');
+      setError(message);
+      showToast(message, 'error');
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -505,6 +529,8 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
         name: form.name.trim(),
         email: form.email.trim(),
         role: form.role,
+        content_team_id: form.content_team_id || null,
+        content_hashtags: form.content_hashtags.trim(),
       };
 
       if (form.password.trim()) {
@@ -720,10 +746,12 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                     ))}
                   </select>
                 </label>
-                <button className="button button--small button--danger employee-table__bulk-delete" type="button" onClick={confirmBulkDelete} disabled={bulkBusy}>
-                  <Trash2 size={14} aria-hidden="true" />
-                  {t('users.delete')}
-                </button>
+                {isAdmin ? (
+                  <button className="button button--small button--danger employee-table__bulk-delete" type="button" onClick={confirmBulkDelete} disabled={bulkBusy}>
+                    <Trash2 size={14} aria-hidden="true" />
+                    {t('users.delete')}
+                  </button>
+                ) : null}
                 <button className="button button--ghost button--small employee-table__bulk-clear" type="button" onClick={() => setSelectedIds(new Set())} disabled={bulkBusy}>
                   <X size={14} aria-hidden="true" />
                   {t('users.bulkClear')}
@@ -748,13 +776,14 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                 <th>{t('users.account')}</th>
                 <th>{t('users.role')}</th>
                 <th>Team</th>
+                <th>{t('users.hashtags')}</th>
                 <th className="cell-actions">{t('users.actions')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={6}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('users.loading')}</div>
@@ -785,16 +814,28 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                       <span className="chip employee-table__role-chip">{getRoleLabel(user.role)}</span>
                     </td>
                     <td className="employee-table__attribution-cell">
-                      <div className="employee-table__attribution-view">
-                        <span className="employee-table__team-name">
-                          {user.content_attribution?.team?.name || 'Chưa phân team'}
-                        </span>
-                        {(user.content_attribution?.hashtags || []).length ? (
-                          <span className="employee-table__hashtag-list">
-                            {(user.content_attribution?.hashtags || []).join(', ')}
-                          </span>
-                        ) : null}
-                      </div>
+                      <select
+                        className="employee-table__inline-select"
+                        value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
+                        aria-label={`${t('users.team')}: ${user.name}`}
+                        onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
+                      >
+                        <option value="">{t('users.unassignedTeam')}</option>
+                        {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        className="employee-table__inline-input"
+                        defaultValue={(user.content_attribution?.hashtags || []).join(', ')}
+                        aria-label={`${t('users.hashtags')}: ${user.name}`}
+                        placeholder={t('users.hashtagsPlaceholder')}
+                        onBlur={(event) => {
+                          const value = event.target.value.trim();
+                          const current = (user.content_attribution?.hashtags || []).join(', ');
+                          if (value !== current) handleAttributionChange(user, 'content_hashtags', value);
+                        }}
+                      />
                     </td>
                     <td className="cell-actions">
                       <div className="action-menu employee-table__action-menu">
@@ -844,18 +885,20 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                           >
                             {togglingId === user.id ? t('users.saving') : (user.is_active === false ? t('users.enable') : t('users.disable'))}
                           </button>
-                          <button
-                            type="button"
-                            className="action-menu__item action-menu__item--danger"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                              handleDelete(user);
-                            }}
-                            disabled={deletingId === user.id}
-                          >
-                            {deletingId === user.id ? t('users.deleting') : t('users.delete')}
-                          </button>
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              className="action-menu__item action-menu__item--danger"
+                              role="menuitem"
+                              onClick={() => {
+                                setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
+                                handleDelete(user);
+                              }}
+                              disabled={deletingId === user.id}
+                            >
+                              {deletingId === user.id ? t('users.deleting') : t('users.delete')}
+                            </button>
+                          ) : null}
                           </div>
                         ), document.body) : null}
                       </div>
@@ -864,7 +907,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                 ))
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={6}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('users.noMatch')}</div>
                     </div>
@@ -912,7 +955,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                       <span><span className="employee-table__role-name"><strong>{team.name}</strong></span></span>
                       <span>{team.user_count || 0} nhân viên</span>
                     </button>
-                    <button className="button button--ghost button--small button--danger" type="button" onClick={() => handleDeleteTeam(team)}>Xóa</button>
+                    {isAdmin ? <button className="button button--ghost button--small button--danger" type="button" onClick={() => handleDeleteTeam(team)}>Xóa</button> : null}
                   </div>
                 )) : <div className="empty-state empty-state--compact">Chưa có team.</div>}
               </div>
@@ -999,7 +1042,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                         <span className="employee-table__role-lock" title={t('users.systemRoleLocked')} aria-label={t('users.systemRoleLocked')}>
                           <Lock size={14} aria-hidden="true" />
                         </span>
-                      ) : (
+                      ) : isAdmin ? (
                         <button
                           className="employee-table__role-delete"
                           type="button"
@@ -1010,7 +1053,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                         >
                           <Trash2 size={14} aria-hidden="true" />
                         </button>
-                      )}
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -1134,6 +1177,17 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                     <option key={role} value={role}>{getRoleLabel(role)}</option>
                   ))}
                 </select>
+              </div>
+              <div className="field">
+                <label htmlFor="content-team">{t('users.team')}</label>
+                <select id="content-team" name="content_team_id" value={form.content_team_id} onChange={handleChange}>
+                  <option value="">{t('users.unassignedTeam')}</option>
+                  {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="content-hashtags">{t('users.hashtags')}</label>
+                <input id="content-hashtags" name="content_hashtags" value={form.content_hashtags} onChange={handleChange} placeholder={t('users.hashtagsPlaceholder')} />
               </div>
               <div className="actions employee-table__modal-actions">
                 <button className="button button--ghost" type="button" onClick={closeEditor} disabled={saving}>

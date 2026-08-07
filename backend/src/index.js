@@ -83,7 +83,7 @@ const createApp = () => {
   app.use('/api/chatbot', requireAdmin, chatbotRoutes.adminRouter);
   app.use('/api/whatsapp', requireAdmin, whatsappRoutes.adminRouter);
   app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
-  app.use('/api/schedules', requireAdmin, requirePermission('users'), scheduleRoutes);
+  app.use('/api/schedules', requireAdmin, scheduleRoutes);
 
   return app;
 };

@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const { requirePermission } = require('../lib/session');
 const {
   getUsers,
   getUserById,
@@ -21,6 +22,6 @@ router.post('/', createUser);
 router.put('/:id', updateUser);
 
 // DELETE /api/users/:id
-router.delete('/:id', deleteUser);
+router.delete('/:id', requirePermission('admin'), deleteUser);
 
 module.exports = router;

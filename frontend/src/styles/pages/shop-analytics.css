@@ -847,6 +847,10 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.shop-analytics__stats.shop-video-analytics__stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 
 .shop-analytics__stat {
   position: relative;
