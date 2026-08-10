@@ -24,10 +24,16 @@ const dateInputValue = (date) => [
   String(date.getMonth() + 1).padStart(2, '0'),
   String(date.getDate()).padStart(2, '0'),
 ].join('-');
+const shiftDateInputValue = (value, days) => {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
 const defaultCustomRange = () => {
   const end = new Date();
+  end.setDate(end.getDate() - 1);
   const start = new Date(end);
-  start.setDate(start.getDate() - 30);
+  start.setDate(start.getDate() - 29);
   return { start: dateInputValue(start), end: dateInputValue(end) };
 };
 
@@ -556,6 +562,17 @@ const BookingManagement = ({ heroTitle }) => {
   const { formatMoney, currency: selectedCurrency, convertAmount } = useMoneyFormatter(locale);
   const costInputCurrencyRef = useRef(selectedCurrency);
   const currencyLabel = selectedCurrency === 'VND' ? 'VNĐ' : 'RM';
+  const latestCompleteDate = useMemo(() => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return dateInputValue(yesterday);
+  }, []);
+  const earliestCustomStart = customRange.end
+    ? shiftDateInputValue(customRange.end, -179)
+    : undefined;
+  const latestCustomEnd = customRange.start
+    ? [latestCompleteDate, shiftDateInputValue(customRange.start, 179)].sort()[0]
+    : latestCompleteDate;
   const formatDate = (value) => value
     ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value))
     : '—';
@@ -752,6 +769,12 @@ const BookingManagement = ({ heroTitle }) => {
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
+  const incompleteCustomCoverage = performanceWindow === 'CUSTOM'
+    ? bookings
+      .map((booking) => booking.reference_performance_coverage)
+      .filter((coverage) => coverage && !coverage.complete)
+      .sort((left, right) => Number(left.available_days) - Number(right.available_days))[0] || null
+    : null;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -769,7 +792,13 @@ const BookingManagement = ({ heroTitle }) => {
         currency: selectedCurrency,
       });
       setBookings((items) => [created, ...items]);
-      fetchBookings(undefined, { windowType: performanceWindow }).then(setBookings).catch(() => {});
+      fetchBookings(undefined, {
+        windowType: performanceWindow,
+        ...(performanceWindow === 'CUSTOM' ? {
+          startDate: customRange.start,
+          endDate: customRange.end,
+        } : {}),
+      }).then(setBookings).catch(() => {});
       setForm(initialForm);
     } catch (err) {
       setError(err.message || t('booking.errorCreate'));
@@ -899,7 +928,11 @@ const BookingManagement = ({ heroTitle }) => {
       </section>
 
       <section className="section-card">
-        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={activeBookingGroup?.key || ''} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} max={customRange.end || undefined} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={dateInputValue(new Date())} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
+        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={activeBookingGroup?.key || ''} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
+        {incompleteCustomCoverage ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
+          available: incompleteCustomCoverage.available_days,
+          requested: incompleteCustomCoverage.requested_days,
+        })}</p> : null}
         {loading ? <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div> : activeBookingGroup ? <div className="content-performance__groups content-performance__groups--filtered booking-manager-groups">{[activeBookingGroup].map((group) => <article className="content-performance__group booking-manager-group" key={group.key}>
         <div className="content-performance__group-header"><div className="booking-manager-group__identity"><TargetKocAvatar src={group.manager.avatar_url} name={group.manager.name} /><span><h3>{group.manager.name}</h3>{group.manager.email ? <small>{group.manager.email}</small> : null}</span></div></div>
         <div className="content-performance__metrics booking-manager-group__metrics">

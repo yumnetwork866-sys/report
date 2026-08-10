@@ -6,6 +6,7 @@ const {
   ScheduledJobRun,
   TikTokShop,
   TikTokShopAuthorization,
+  TikTokCreatorPerformanceExport,
   TikTokCreatorPerformanceSnapshot,
   sequelize,
 } = require('../models');
@@ -37,6 +38,16 @@ const JOB_KEYS = new Set([
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
+const CREATOR_DAILY_BACKFILL_DAYS = 10;
+const CREATOR_DAILY_HISTORY_DAYS = 180;
+const SHOP_TIMEZONES = {
+  MY: 'Asia/Kuala_Lumpur',
+  VN: 'Asia/Ho_Chi_Minh',
+  SG: 'Asia/Singapore',
+  TH: 'Asia/Bangkok',
+  PH: 'Asia/Manila',
+  ID: 'Asia/Jakarta',
+};
 
 const throwIfAborted = (signal) => {
   if (!signal?.aborted) return;
@@ -164,6 +175,69 @@ const syncCreatorPerformanceWindows = async (shop, windows, signal) => {
     });
   }
   return exports;
+};
+
+const creatorDailyBackfillDates = (endDate, availableDates = [], limit = CREATOR_DAILY_BACKFILL_DAYS) => {
+  const available = new Set(availableDates.map(String));
+  const dates = [];
+  const cursor = new Date(`${endDate}T00:00:00.000Z`);
+  for (let age = 1; age < CREATOR_DAILY_HISTORY_DAYS && dates.length < limit; age += 1) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const date = cursor.toISOString().slice(0, 10);
+    if (!available.has(date)) dates.push(date);
+  }
+  return dates;
+};
+
+const backfillCreatorDailyPerformance = async (shop, effectiveEndDay, signal, now = new Date()) => {
+  const endDate = isoEndDay(effectiveEndDay);
+  const timezone = SHOP_TIMEZONES[String(shop.region || '').toUpperCase()] || 'UTC';
+  const localDate = localScheduleParts(now, timezone).date;
+  const localDayStart = zonedScheduleDate(localDate, '00:00', timezone);
+  const attemptedToday = await TikTokCreatorPerformanceExport.count({
+    where: {
+      shop_id: shop.id,
+      module_type: 'CREATOR',
+      window_type: 'PAST_24H',
+      plan_type: 'ALL',
+      end_date: { [Op.lt]: endDate },
+      created_at: { [Op.gte]: localDayStart },
+    },
+  });
+  const remaining = Math.max(0, CREATOR_DAILY_BACKFILL_DAYS - attemptedToday);
+  if (!remaining) return { attempted: 0, succeeded: 0, failed: [], remaining_today: 0 };
+
+  const historyStart = shiftLocalDate(endDate, -(CREATOR_DAILY_HISTORY_DAYS - 1));
+  const completed = await TikTokCreatorPerformanceExport.findAll({
+    where: {
+      shop_id: shop.id,
+      module_type: 'CREATOR',
+      window_type: 'PAST_24H',
+      plan_type: 'ALL',
+      status: 'SUCCEEDED',
+      start_date: { [Op.gte]: historyStart },
+      end_date: { [Op.lt]: endDate },
+    },
+    attributes: ['end_date'],
+  });
+  const dates = creatorDailyBackfillDates(endDate, completed.map((row) => row.end_date), remaining);
+  const result = { attempted: dates.length, succeeded: 0, failed: [], remaining_today: remaining - dates.length };
+  for (const date of dates) {
+    throwIfAborted(signal);
+    try {
+      const { exportRecord } = await createCreatorPerformanceExportWithFallback(shop, {
+        windowType: 'PAST_24H',
+        endDay: date.replaceAll('-', ''),
+        planType: 'ALL',
+      }, { maxFallbackDays: 0 });
+      if (exportRecord.status === 'PROCESSING') await processCreatorPerformanceExport(shop, exportRecord);
+      result.succeeded += 1;
+    } catch (error) {
+      if (signal?.aborted || error.name === 'AbortError') throw error;
+      result.failed.push({ date, error: error.message });
+    }
+  }
+  return result;
 };
 
 const syncBasePerformanceWindows = async (shop, creatorExports, signal) => {
@@ -452,14 +526,22 @@ const jobHandlers = {
     const exports = await syncCreatorPerformanceWindows(shop, [
       { windowType: 'PAST_30_DAYS', endDay },
       { windowType: 'PAST_7_DAYS', endDay },
+      // Keep one immutable calendar-day snapshot so arbitrary booking ranges
+      // can be aggregated without summing overlapping rolling windows.
+      { windowType: 'PAST_24H', endDay },
     ], signal);
     const baseExports = await syncBasePerformanceWindows(shop, exports, signal);
+    const dailyBackfill = await backfillCreatorDailyPerformance(
+      shop,
+      exports.find((item) => item.window_type === 'PAST_24H').effective_end_day,
+      signal,
+    );
     const sixMonth = await refreshSixMonthPerformanceIfNeeded(
       shop,
       exports[0].effective_end_day,
       signal,
     );
-    return { exports, base_exports: baseExports, six_month: sixMonth };
+    return { exports, base_exports: baseExports, six_month: sixMonth, daily_backfill: dailyBackfill };
   }, signal),
   tiktok_shop_analytics: ({ signal } = {}) => runForShops(async (shop) => {
     const range = scheduledAnalyticsRange(shop);
@@ -659,6 +741,7 @@ module.exports = {
   localScheduleParts,
   latestScheduledSlot,
   sixMonthSnapshotIsFresh,
+  creatorDailyBackfillDates,
   executeScheduledJob,
   enqueueScheduledJob,
   stopScheduledJob,

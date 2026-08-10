@@ -6,7 +6,8 @@
     "tiktok": "TikTok",
     "tiktokShop": "TikTok Shop",
     "facebook": "Facebook",
-    "whatsapp": "WhatsApp"
+    "whatsapp": "WhatsApp",
+    "manage": "Manage"
   },
   "header": {
     "signIn": "Sign in",
@@ -546,6 +547,7 @@
     "startDate": "Start date",
     "endDate": "End date",
     "invalidCustomRange": "The start date must be before or equal to the end date.",
+    "customCoverageIncomplete": "Daily data is incomplete: {{available}}/{{requested}} days are available. Displayed metrics are partial; backfill the missing dates.",
     "period30Days": "30 days",
     "period60Days": "60 days",
     "period90Days": "90 days",

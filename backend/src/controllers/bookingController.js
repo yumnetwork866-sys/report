@@ -43,6 +43,32 @@ const BOOKING_PERFORMANCE_WINDOWS = new Set([
   'PAST_120_DAYS', 'PAST_150_DAYS', 'PAST_180_DAYS', 'CUSTOM',
 ]);
 const AGGREGATE_BOOKING_WINDOW_DAYS = new Set([60, 90, 120, 150]);
+const MAX_CUSTOM_PERFORMANCE_DAYS = 180;
+
+const parseDateOnly = (value) => {
+  const normalized = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return null;
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized
+    ? null
+    : parsed;
+};
+
+const customPerformanceRange = (startValue, endValue, now = new Date()) => {
+  const start = parseDateOnly(startValue);
+  const end = parseDateOnly(endValue);
+  if (!start || !end || start > end) return null;
+  const latestCompleteDay = new Date(now);
+  latestCompleteDay.setUTCHours(0, 0, 0, 0);
+  latestCompleteDay.setUTCDate(latestCompleteDay.getUTCDate() - 1);
+  const requestedDays = Math.floor((end - start) / 86400000) + 1;
+  if (end > latestCompleteDay || requestedDays > MAX_CUSTOM_PERFORMANCE_DAYS) return null;
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10),
+    requestedDays,
+  };
+};
 
 const compactPayload = (payload) => Object.fromEntries(
   Object.entries(payload).filter(([, value]) => value !== undefined),
@@ -449,7 +475,49 @@ const addReferencePerformance = async (bookings, performanceWindow, customRange 
     ],
   })).filter((condition) => Number.isInteger(condition.shop_id) && condition[Op.or].length);
   const aggregateDays = Number(performanceWindow.match(/^PAST_(\d+)_DAYS$/)?.[1]);
-  const isCustomRange = performanceWindow === 'CUSTOM' && customRange.startDate && customRange.endDate;
+  const isCustomRange = performanceWindow === 'CUSTOM'
+    && customRange.startDate
+    && customRange.endDate
+    && customRange.requestedDays;
+  const shopIds = [...new Set(bookings.map((booking) => Number(booking.target_shop_id)).filter(Number.isInteger))];
+  const customCoverageRows = isCustomRange && shopIds.length ? await sequelize.query(`
+    WITH latest_daily_exports AS (
+      SELECT shop_id, start_date,
+        ROW_NUMBER() OVER (
+          PARTITION BY shop_id, start_date
+          ORDER BY created_at DESC, id DESC
+        ) AS version_rank
+      FROM tiktok_creator_performance_exports
+      WHERE shop_id IN (:shopIds)
+        AND module_type = 'CREATOR'
+        AND window_type = 'PAST_24H'
+        AND plan_type = 'ALL'
+        AND status = 'SUCCEEDED'
+        AND start_date = end_date
+        AND start_date BETWEEN :customStartDate AND :customEndDate
+    )
+    SELECT shop_id, COUNT(*)::integer AS available_days
+    FROM latest_daily_exports
+    WHERE version_rank = 1
+    GROUP BY shop_id
+  `, {
+    replacements: {
+      shopIds,
+      customStartDate: customRange.startDate,
+      customEndDate: customRange.endDate,
+    },
+    type: QueryTypes.SELECT,
+  }) : [];
+  const coverageByShop = new Map(customCoverageRows.map((row) => {
+    const availableDays = Number(row.available_days) || 0;
+    return [Number(row.shop_id), {
+      start_date: customRange.startDate,
+      end_date: customRange.endDate,
+      requested_days: customRange.requestedDays,
+      available_days: availableDays,
+      complete: availableDays === customRange.requestedDays,
+    }];
+  }));
   const snapshots = !creatorConditions.length
     ? []
     : AGGREGATE_BOOKING_WINDOW_DAYS.has(aggregateDays) || isCustomRange
@@ -462,10 +530,14 @@ const addReferencePerformance = async (bookings, performanceWindow, customRange 
             ) AS version_rank
           FROM tiktok_creator_performance_exports export_record
           WHERE shop_id IN (:shopIds)
-            AND window_type = 'PAST_30_DAYS'
+            AND module_type = 'CREATOR'
+            AND window_type = :sourceWindow
             AND plan_type = 'ALL'
             AND status = 'SUCCEEDED'
-            ${isCustomRange ? 'AND start_date >= :customStartDate AND end_date <= :customEndDate' : ''}
+            ${isCustomRange ? `
+              AND start_date = end_date
+              AND start_date BETWEEN :customStartDate AND :customEndDate
+            ` : ''}
         ), ranked_periods AS (
           SELECT export_versions.*,
             DENSE_RANK() OVER (
@@ -510,10 +582,14 @@ const addReferencePerformance = async (bookings, performanceWindow, customRange 
         GROUP BY source.shop_id, LOWER(source.username), source.currency
       `, {
         replacements: {
-          shopIds: [...new Set(bookings.map((booking) => Number(booking.target_shop_id)).filter(Number.isInteger))],
+          shopIds,
           performanceWindow,
+          sourceWindow: isCustomRange ? 'PAST_24H' : 'PAST_30_DAYS',
           ...(isCustomRange
-            ? { customStartDate: customRange.startDate, customEndDate: customRange.endDate }
+            ? {
+              customStartDate: customRange.startDate,
+              customEndDate: customRange.endDate,
+            }
             : { periodCount: aggregateDays / 30 }),
         },
         type: QueryTypes.SELECT,
@@ -545,11 +621,28 @@ const addReferencePerformance = async (bookings, performanceWindow, customRange 
       booking.creator_username ? `${shopId}:username:${normalizedUsername(booking.creator_username)}` : null,
     ].filter(Boolean);
     const key = keys.find((candidate) => performanceByCreator.has(candidate));
-    if (!key) return { ...booking, reference_performance: null };
+    const referencePerformanceCoverage = isCustomRange
+      ? coverageByShop.get(shopId) || {
+        start_date: customRange.startDate,
+        end_date: customRange.endDate,
+        requested_days: customRange.requestedDays,
+        available_days: 0,
+        complete: false,
+      }
+      : undefined;
+    if (!key) return {
+      ...booking,
+      reference_performance: null,
+      ...(isCustomRange ? { reference_performance_coverage: referencePerformanceCoverage } : {}),
+    };
     if (!enrichedByCreator.has(key)) {
       enrichedByCreator.set(key, enrichPerformanceViews(performanceByCreator.get(key)));
     }
-    return { ...booking, reference_performance: await enrichedByCreator.get(key) };
+    return {
+      ...booking,
+      reference_performance: await enrichedByCreator.get(key),
+      ...(isCustomRange ? { reference_performance_coverage: referencePerformanceCoverage } : {}),
+    };
   }));
 };
 
@@ -830,10 +923,15 @@ const getBookings = async (req, res) => {
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
-    if (requestedWindow === 'CUSTOM' && (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || startDate > endDate)) {
-      return res.status(400).json({ message: 'A valid custom start_date and end_date are required.' });
+    const customRange = requestedWindow === 'CUSTOM'
+      ? customPerformanceRange(startDate, endDate)
+      : {};
+    if (requestedWindow === 'CUSTOM' && !customRange) {
+      return res.status(400).json({
+        message: `Custom dates must be valid, end no later than yesterday, and span at most ${MAX_CUSTOM_PERFORMANCE_DAYS} days.`,
+      });
     }
-    res.json(await addReferencePerformance(serialized, requestedWindow, { startDate, endDate }));
+    res.json(await addReferencePerformance(serialized, requestedWindow, customRange));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

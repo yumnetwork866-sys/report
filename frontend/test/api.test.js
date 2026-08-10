@@ -186,6 +186,27 @@ test('Booking list helper sends the table reference period', async () => {
   });
 });
 
+test('Booking list helper sends an inclusive custom date range', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchBookings(undefined, {
+      windowType: 'CUSTOM',
+      startDate: '2026-07-01',
+      endDate: '2026-07-31',
+    });
+
+    assert.equal(requestUrl, '/api/bookings?window_type=CUSTOM&start_date=2026-07-01&end_date=2026-07-31');
+  });
+});
+
 test('Creator OAuth helper sends either creator_id or the explicit create_koc intent', async () => {
   await withBrowser(async () => {
     saveStoredSession(createSession('creator-admin'));

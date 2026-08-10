@@ -164,6 +164,7 @@ const Header = () => {
     '/dashboard': t('nav.tiktok'),
     '/chatbot': t('nav.facebook'),
     '/whatsapp': t('nav.whatsapp'),
+    '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
   const connectionOptions = [

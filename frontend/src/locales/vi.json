@@ -6,7 +6,8 @@
     "tiktok": "TikTok",
     "tiktokShop": "TikTok Shop",
     "facebook": "Facebook",
-    "whatsapp": "WhatsApp"
+    "whatsapp": "WhatsApp",
+    "manage": "Quản lý"
   },
   "header": {
     "signIn": "Đăng nhập",
@@ -541,6 +542,7 @@
     "startDate": "Từ ngày",
     "endDate": "Đến ngày",
     "invalidCustomRange": "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.",
+    "customCoverageIncomplete": "Dữ liệu ngày chưa đủ: hiện có {{available}}/{{requested}} ngày. Các số liệu đang hiển thị là dữ liệu một phần; hãy chạy backfill các ngày còn thiếu.",
     "period30Days": "30 ngày",
     "period60Days": "60 ngày",
     "period90Days": "90 ngày",

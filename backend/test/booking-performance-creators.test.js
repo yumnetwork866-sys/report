@@ -181,6 +181,78 @@ test('booking list aggregates intermediate periods from completed 30-day exports
   assert.equal(response[0].reference_performance.affiliate_gmv, '600');
 });
 
+test('booking custom range aggregates only non-overlapping daily exports and reports coverage', async (t) => {
+  const queries = [];
+  const { getBookings } = loadController(t, {
+    Booking: {
+      findAll: async () => [{
+        id: 33,
+        target_shop_id: 4,
+        creator_open_id: 'creator-open-33',
+        creator_username: 'daily.creator',
+        evaluation_snapshot: {},
+      }],
+    },
+    TikTokCreatorPerformanceSnapshot: {},
+    sequelize: {
+      query: async (sql, options) => {
+        queries.push({ sql, options });
+        if (/COUNT\(\*\)::integer AS available_days/.test(sql)) {
+          return [{ shop_id: 4, available_days: 2 }];
+        }
+        return [{
+          shop_id: 4,
+          creator_open_id: 'creator-open-33',
+          username: 'daily.creator',
+          window_type: 'CUSTOM',
+          affiliate_gmv: '125',
+          affiliate_orders: '5',
+          currency: 'MYR',
+        }];
+      },
+    },
+  });
+  let response;
+
+  await getBookings(
+    { query: { window_type: 'CUSTOM', start_date: '2026-07-01', end_date: '2026-07-03' } },
+    { json: (value) => { response = value; }, status: () => ({ json: () => {} }) },
+  );
+
+  assert.equal(queries.length, 2);
+  assert.match(queries[0].sql, /window_type = 'PAST_24H'/);
+  assert.match(queries[1].sql, /window_type = :sourceWindow/);
+  assert.match(queries[1].sql, /start_date = end_date/);
+  assert.equal(queries[1].options.replacements.sourceWindow, 'PAST_24H');
+  assert.equal(queries[1].options.replacements.customStartDate, '2026-07-01');
+  assert.equal(queries[1].options.replacements.customEndDate, '2026-07-03');
+  assert.equal(response[0].reference_performance.affiliate_gmv, '125');
+  assert.deepEqual(response[0].reference_performance_coverage, {
+    start_date: '2026-07-01',
+    end_date: '2026-07-03',
+    requested_days: 3,
+    available_days: 2,
+    complete: false,
+  });
+});
+
+test('booking custom range rejects future and overlong ranges', async (t) => {
+  const { getBookings } = loadController(t, {
+    Booking: { findAll: async () => [] },
+  });
+  const errors = [];
+  const res = {
+    json: () => {},
+    status: (status) => ({ json: (value) => errors.push({ status, value }) }),
+  };
+
+  await getBookings({ query: { window_type: 'CUSTOM', start_date: '2099-01-01', end_date: '2099-01-02' } }, res);
+  await getBookings({ query: { window_type: 'CUSTOM', start_date: '2025-01-01', end_date: '2026-01-01' } }, res);
+
+  assert.equal(errors.length, 2);
+  assert.deepEqual(errors.map((item) => item.status), [400, 400]);
+});
+
 test('KOC search delegates filtering and pagination to the database and returns compact rows', async (t) => {
   let queryOptions;
   const { getTargetKocs } = loadController(t, {
