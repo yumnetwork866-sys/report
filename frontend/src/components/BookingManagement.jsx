@@ -95,13 +95,14 @@ const editableCurrencyAmount = (value, currency) => {
 
 const TargetKocAvatar = ({ src, name }) => <AppAvatar src={src} name={name || 'KOC'} />;
 
-const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, loadingLabel }) => {
+const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, loadingLabel, allLabel, showAll = false }) => {
   const rootRef = useRef(null);
   const searchRef = useRef(null);
   const menuId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const selected = users.find((user) => String(user.id) === String(value)) || null;
+  const isAll = showAll && value === 'all';
 
   useEffect(() => {
     if (!open) return undefined;
@@ -139,7 +140,7 @@ const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, load
     <div className="booking-koc-combobox booking-staff-select" ref={rootRef}>
       <button className="booking-staff-select__trigger" type="button" aria-haspopup="listbox" aria-expanded={open} aria-controls={menuId} disabled={loading} onClick={toggle}>
         <TargetKocAvatar src={selected?.avatar_url} name={selected?.name || 'U'} />
-        <span><strong>{selected?.name || (loading ? loadingLabel : placeholder)}</strong>{selected?.email ? <small>{selected.email}</small> : null}</span>
+        <span><strong>{isAll ? allLabel : selected?.name || (loading ? loadingLabel : placeholder)}</strong>{selected?.email ? <small>{selected.email}</small> : null}</span>
         <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
       </button>
       {open ? (
@@ -148,6 +149,11 @@ const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, load
             <span className="sr-only">Tìm nhân viên</span>
             <input ref={searchRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc email…" />
           </label>
+          {showAll ? <button className={`booking-koc-combobox__option${isAll ? ' booking-koc-combobox__option--active' : ''}`} type="button" role="option" aria-selected={isAll} onClick={() => { onChange('all'); setOpen(false); }}>
+            <TargetKocAvatar name="U" />
+            <span><strong>{allLabel}</strong></span>
+            {isAll ? <span className="booking-staff-select__check" aria-hidden="true">✓</span> : null}
+          </button> : null}
           {filteredUsers.length ? filteredUsers.map((user) => (
             <button className={`booking-koc-combobox__option${String(user.id) === String(value) ? ' booking-koc-combobox__option--active' : ''}`} type="button" role="option" aria-selected={String(user.id) === String(value)} key={user.id} onClick={() => { onChange(String(user.id)); setOpen(false); }}>
               <TargetKocAvatar src={user.avatar_url} name={user.name} />
@@ -784,6 +790,9 @@ const BookingManagement = ({ heroTitle }) => {
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
+  const showAllBookingGroups = canManageUsers && selectedManagerKey === 'all';
+  const bookingGroupsToRender = showAllBookingGroups ? bookingGroups : activeBookingGroup ? [activeBookingGroup] : [];
+  const bookingManagerFilterValue = showAllBookingGroups ? 'all' : activeBookingGroup?.key || '';
   const incompleteCustomCoverage = performanceWindow === 'CUSTOM'
     ? bookings
       .map((booking) => booking.reference_performance_coverage)
@@ -943,12 +952,12 @@ const BookingManagement = ({ heroTitle }) => {
       </section>
 
       <section className="section-card">
-        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={activeBookingGroup?.key || ''} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
+        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
         {incompleteCustomCoverage ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
           requested: incompleteCustomCoverage.requested_days,
         })}</p> : null}
-        {loading ? <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div> : activeBookingGroup ? <div className="content-performance__groups content-performance__groups--filtered booking-manager-groups">{[activeBookingGroup].map((group) => <article className="content-performance__group booking-manager-group" key={group.key}>
+        {loading ? <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div> : bookingGroupsToRender.length ? <div className="content-performance__groups content-performance__groups--filtered booking-manager-groups">{bookingGroupsToRender.map((group) => <article className="content-performance__group booking-manager-group" key={group.key}>
         <div className="content-performance__group-header"><div className="booking-manager-group__identity"><TargetKocAvatar src={group.manager.avatar_url} name={group.manager.name} /><span><h3>{group.manager.name}</h3>{group.manager.email ? <small>{group.manager.email}</small> : null}</span></div></div>
         <div className="content-performance__metrics booking-manager-group__metrics">
           <span><small>{t('booking.evaluations')}</small><strong>{formatNumber(group.bookings.length)}</strong></span>

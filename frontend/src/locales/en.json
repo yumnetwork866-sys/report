@@ -634,6 +634,7 @@
     "createBooking": "Create booking",
     "createBookingMeta": "Choose staff, KOC, booking cost, deadline, and select videos that have already been loaded.",
     "bookingStaff": "Booking staff",
+    "allStaff": "All staff",
     "selectStaff": "Select staff",
     "enterStaff": "Enter staff name",
     "selectKoc": "Select KOC",

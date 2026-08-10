@@ -634,6 +634,7 @@
     "createBooking": "Tạo booking",
     "createBookingMeta": "Chọn staff, KOC, chi phí book, deadline và chọn các video đã có dữ liệu.",
     "bookingStaff": "Nhân sự booking",
+    "allStaff": "Tất cả nhân sự",
     "selectStaff": "Chọn nhân sự",
     "enterStaff": "Nhập tên nhân sự",
     "selectKoc": "Chọn KOC",
