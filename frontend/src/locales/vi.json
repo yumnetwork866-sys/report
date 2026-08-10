@@ -520,7 +520,7 @@
     "period7Days": "7 ngày",
     "period180Days": "180 ngày (6 tháng)",
     "validUntil": "Hiệu lực đến",
-    "noSyncedCollaboration": "Chưa có KOC phù hợp từ Target Collaboration hoặc Creator Performance.",
+    "noSyncedCollaboration": "Chưa có creator phù hợp",
     "evaluationList": "Danh sách KOC",
     "evaluationsCount": "{{count}} đánh giá",
     "unassigned": "Chưa phân công",

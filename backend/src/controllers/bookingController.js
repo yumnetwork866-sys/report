@@ -954,9 +954,14 @@ const createBooking = async (req, res) => {
   try {
     const cost = Number(req.body.total_cost ?? req.body.booking_cost);
     if (!Number.isFinite(cost) || cost < 0) return res.status(400).json({ message: 'Total cost must be zero or greater.' });
-    const requestedStaffId = req.body.staff_id === undefined || req.body.staff_id === null || req.body.staff_id === ''
-      ? null
-      : Number(req.body.staff_id);
+    const canManageUsers = !req.session
+      || req.session.role === 'admin'
+      || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+    const requestedStaffId = canManageUsers
+      ? (req.body.staff_id === undefined || req.body.staff_id === null || req.body.staff_id === ''
+        ? null
+        : Number(req.body.staff_id))
+      : req.session ? req.session.sub : null;
     if (requestedStaffId !== null && !Number.isInteger(requestedStaffId)) {
       return res.status(400).json({ message: 'Select a valid managing user.' });
     }

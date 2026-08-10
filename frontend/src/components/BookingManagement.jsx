@@ -14,6 +14,8 @@ import {
 } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
+import { hasPermission } from '../lib/session';
+import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import DatePickerInput from './DatePickerInput';
 
@@ -521,6 +523,8 @@ const TargetKocCombobox = ({
 
 const BookingManagement = ({ heroTitle }) => {
   const { t, language } = useI18n();
+  const session = useSession();
+  const canManageUsers = hasPermission(session, 'users');
   const [bookings, setBookings] = useState([]);
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
@@ -638,6 +642,14 @@ const BookingManagement = ({ heroTitle }) => {
   };
 
   useEffect(() => {
+    if (!canManageUsers) {
+      const currentUser = session?.user;
+      setUsers(currentUser?.id ? [currentUser] : []);
+      setUsersLoading(false);
+      setForm((current) => ({ ...current, staff_id: currentUser?.id ? String(currentUser.id) : '' }));
+      return undefined;
+    }
+
     const controller = new AbortController();
     setUsersLoading(true);
     fetchUsers(controller.signal)
@@ -645,7 +657,7 @@ const BookingManagement = ({ heroTitle }) => {
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setUsersLoading(false); });
     return () => controller.abort();
-  }, [t]);
+  }, [canManageUsers, session, t]);
 
   useEffect(() => {
     if (performanceWindow === 'CUSTOM' && (!customRange.start || !customRange.end || customRange.start > customRange.end)) {
@@ -783,7 +795,7 @@ const BookingManagement = ({ heroTitle }) => {
       setSaving(true);
       setError('');
       const created = await createBooking({
-        staff_id: Number(form.staff_id),
+        staff_id: Number(canManageUsers ? form.staff_id : session?.user?.id),
         target_shop_id: selectedKoc.shop_id,
         target_collaboration_id: selectedKoc.collaboration_id || null,
         creator_open_id: selectedKoc.creator_open_id,
@@ -799,7 +811,7 @@ const BookingManagement = ({ heroTitle }) => {
           endDate: customRange.end,
         } : {}),
       }).then(setBookings).catch(() => {});
-      setForm(initialForm);
+      setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
     } catch (err) {
       setError(err.message || t('booking.errorCreate'));
     } finally {
@@ -921,7 +933,7 @@ const BookingManagement = ({ heroTitle }) => {
         <div className="section-card__header"><div><h2 className="section-card__title">{t('booking.createEvaluation')}</h2></div></div>
         <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
           <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
-          <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div>
+          {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
           <div className="field"><label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label><input id="total_cost" type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} inputMode="decimal" value={form.total_cost} onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))} required /></div>
           <div className="actions"><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></div>
         </form>
