@@ -11,8 +11,6 @@ import {
 } from 'recharts';
 import { UserRound, UsersRound } from 'lucide-react';
 import { fetchDashboard } from '../lib/api';
-import { hasPermission } from '../lib/session';
-import { useSession } from '../lib/useSession';
 import { useI18n } from '../lib/language';
 import VideoTable, { ChannelPicker } from './VideoTable';
 import DatePickerInput from './DatePickerInput';
@@ -57,11 +55,11 @@ const UserAvatar = ({ user, className, fallbackClassName }) => {
   );
 };
 
-const UserPicker = ({ id, users, value, onChange, allLabel, disabled, showAll = true }) => {
+const UserPicker = ({ id, users, value, onChange, allLabel, disabled }) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const selectedUser = users.find((user) => String(user.id) === String(value)) || null;
-  const isAll = showAll && value === 'all';
+  const isAll = value === 'all';
 
   useEffect(() => {
     if (!open) return undefined;
@@ -100,7 +98,7 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled, showAll = 
 
       {open ? (
         <div className="channel-picker__menu" role="listbox">
-          {showAll ? <button
+          <button
             className={`channel-picker__option ${isAll ? 'channel-picker__option--active' : ''}`}
             type="button"
             role="option"
@@ -109,7 +107,7 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled, showAll = 
           >
             <span className="channel-picker__option-avatar channel-picker__option-avatar--empty" aria-hidden="true"><UsersRound size={16} /></span>
             <span className="channel-picker__option-meta"><span className="channel-picker__option-title">{allLabel}</span></span>
-          </button> : null}
+          </button>
           {users.map((user) => {
             const active = String(user.id) === String(value);
             return (
@@ -156,8 +154,6 @@ const DashboardChartTooltip = ({ active, payload, formatNumber, metric, t }) => 
 
 const Dashboard = ({ heroTitle }) => {
   const { t, language } = useI18n();
-  const session = useSession();
-  const canManageUsers = hasPermission(session, 'users');
   const [videos, setVideos] = useState([]);
   const [channels, setChannels] = useState([]);
   const [users, setUsers] = useState([]);
@@ -187,12 +183,6 @@ const Dashboard = ({ heroTitle }) => {
   const [error, setError] = useState('');
 
   const formatNumber = (value) => Number(value || 0).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US');
-  const pickerUsers = useMemo(() => {
-    if (canManageUsers) return users;
-    const currentUser = session?.user;
-    if (!currentUser?.id) return [];
-    return [users.find((user) => String(user.id) === String(currentUser.id)) || currentUser];
-  }, [canManageUsers, session, users]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -243,12 +233,6 @@ const Dashboard = ({ heroTitle }) => {
 
     return () => controller.abort();
   }, [chartMetric, endDate, selectedChannelId, selectedUserId, startDate, t, videoPage]);
-
-  useEffect(() => {
-    if (!canManageUsers && session?.user?.id) {
-      setSelectedUserId(String(session.user.id));
-    }
-  }, [canManageUsers, session]);
 
   useEffect(() => {
     if (periodPreset === 'custom') return;
@@ -360,12 +344,11 @@ const Dashboard = ({ heroTitle }) => {
               <label htmlFor="dashboard-user">{t('dashboard.user')}</label>
               <UserPicker
                 id="dashboard-user"
-                users={pickerUsers}
+                users={users}
                 value={selectedUserId}
                 onChange={setSelectedUserId}
                 allLabel={t('dashboard.allUsers')}
-                showAll={canManageUsers}
-                disabled={loading && !pickerUsers.length}
+                disabled={loading && !users.length}
               />
             </div>
             <div className="field dashboard-metric-filter">

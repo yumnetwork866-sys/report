@@ -743,7 +743,10 @@ const BookingManagement = ({ heroTitle }) => {
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
-    for (const booking of bookings) {
+    const visibleBookings = canManageUsers
+      ? bookings
+      : bookings.filter((booking) => String(booking.staff_id || '') === String(session?.user?.id || ''));
+    for (const booking of visibleBookings) {
       const staffId = booking.staff_id ? String(booking.staff_id) : '';
       const staffName = String(booking.staff_name || booking.staff?.name || '').trim();
       const key = staffId ? `id:${staffId}` : staffName ? `name:${staffName.toLocaleLowerCase()}` : 'unassigned';
@@ -777,7 +780,7 @@ const BookingManagement = ({ heroTitle }) => {
       if (right.key === 'unassigned') return -1;
       return left.manager.name.localeCompare(right.manager.name, locale);
     });
-  }, [bookings, convertAmount, locale, t, users]);
+  }, [bookings, canManageUsers, convertAmount, locale, session, t, users]);
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
