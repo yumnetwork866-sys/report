@@ -12,6 +12,7 @@ import {
 import { fetchChannelReport, fetchChannelReportMemberDetail } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
+import { formatDateOnly } from '../lib/date';
 import DatePickerInput from './DatePickerInput';
 
 const chartTick = { fill: 'var(--color-muted)', fontSize: 12 };
@@ -47,7 +48,6 @@ const formatMonth = (value) => {
   const [year, month] = String(value || '').split('-');
   return year && month ? `${month}/${year}` : '';
 };
-
 
 const compactProductName = (value) => {
   const name = String(value || '').trim();
@@ -289,7 +289,7 @@ const ChannelReport = () => {
   const kpis = report?.kpis || {};
   const periodLabel = periodMode === 'month'
     ? formatMonth(selectedMonth)
-    : `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    : `${formatDateOnly(startDate)} - ${formatDateOnly(endDate)}`;
 
   const changePeriodMode = (event) => {
     const nextMode = event.target.value;
@@ -398,7 +398,7 @@ const ChannelReport = () => {
                   {video.video_url
                     ? <a href={video.video_url} target="_blank" rel="noreferrer">{video.title || `Video ${video.platform_video_id}`}</a>
                     : <strong>{video.title || `Video ${video.platform_video_id}`}</strong>}
-                  <small>{video.channel?.display_name || video.channel?.username || 'TikTok'} · {video.published_at ? formatDate(String(video.published_at).slice(0, 10)) : '—'}</small>
+                  <small>{video.channel?.display_name || video.channel?.username || 'TikTok'} · {formatDateOnly(video.published_at, '—')}</small>
                   <div className="member-detail__product-tags">
                     {(video.products || []).slice(0, 2).map((product) => <span key={product.id} title={product.name}>{compactProductName(product.name)}</span>)}
                     {video.products?.length > 2 ? <span>+{video.products.length - 2}</span> : null}

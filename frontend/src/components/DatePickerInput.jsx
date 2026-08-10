@@ -1,10 +1,6 @@
 import React, { useRef } from 'react';
 import { CalendarDays } from 'lucide-react';
-
-const formatDate = (value) => {
-  const [year, month, day] = String(value || '').split('-');
-  return year && month && day ? `${day}/${month}/${year}` : '';
-};
+import { formatDateOnly } from '../lib/date';
 
 const DatePickerInput = ({ id, value, onChange, min, max, label = 'Choose date', required = false, invalid = false }) => {
   const inputRef = useRef(null);
@@ -16,7 +12,7 @@ const DatePickerInput = ({ id, value, onChange, min, max, label = 'Choose date',
   return (
     <span className="channel-report-date-picker">
       <button className="channel-report-date-picker__value" type="button" onClick={openPicker} aria-label={label}>
-        <span>{formatDate(value) || 'dd/mm/yyyy'}</span>
+        <span>{formatDateOnly(value, 'dd/mm/yyyy')}</span>
         <CalendarDays className="channel-report-date-picker__icon" size={16} strokeWidth={2} aria-hidden="true" />
       </button>
       <input

@@ -22,6 +22,7 @@ import {
   syncTikTokShopAnalytics,
 } from '../lib/api';
 import { useI18n } from '../lib/language';
+import { formatDateOnly, parseDateOnly } from '../lib/date';
 import { useMoneyFormatter } from '../lib/currency';
 import ShopDropdown from './ShopDropdown';
 import Pagination from './Pagination';
@@ -424,16 +425,6 @@ const numericValue = (value) => {
 const moneyValue = (value) => numericValue(value?.amount ?? value);
 const padDatePart = (value) => String(value).padStart(2, '0');
 
-const dateParts = (value) => {
-  const match = String(value || '').slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? { year: match[1], month: match[2], day: match[3] } : null;
-};
-
-const formatDisplayDate = (value, fallback) => {
-  const parts = dateParts(value);
-  return parts ? `${parts.day}/${parts.month}/${parts.year}` : fallback;
-};
-
 const formatDisplayDateTime = (value, fallback) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallback;
@@ -526,7 +517,7 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
   const formatPercent = (value) => `${numericValue(value).toLocaleString(locale, {
     maximumFractionDigits: 1,
   })}%`;
-  const formatDate = (value) => formatDisplayDate(value, t('common.noData'));
+  const formatDate = (value) => formatDateOnly(value, t('common.noData'));
   const formatDateTime = (value) => formatDisplayDateTime(value, t('common.noData'));
 
   const loadInventory = useCallback(async (signal) => {
@@ -1380,7 +1371,7 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
                             minTickGap={26}
                             tick={CHART_TICK}
                             tickFormatter={(value) => {
-                              const parts = dateParts(value);
+                              const parts = parseDateOnly(value);
                               return parts ? `${parts.day}/${parts.month}` : value;
                             }}
                           />
