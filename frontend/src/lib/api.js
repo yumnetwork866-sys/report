@@ -347,7 +347,7 @@ export async function fetchVideos(signalOrFilters) {
 }
 
 export function fetchChannelReport({
-  month, startDate, endDate, teamId, userId, channelId, page = 1, pageSize = 20, signal,
+  month, startDate, endDate, teamId, userId, channelId, metric, page = 1, pageSize = 20, signal,
 } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -362,6 +362,7 @@ export function fetchChannelReport({
   if (teamId && teamId !== 'all') params.set('team_id', teamId);
   if (userId && userId !== 'all') params.set('user_id', userId);
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
+  if (metric) params.set('metric', metric);
   return apiRequest(`/reports/channel?${params.toString()}`, { signal });
 }
 

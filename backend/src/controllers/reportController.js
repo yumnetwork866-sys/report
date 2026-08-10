@@ -113,6 +113,7 @@ const channelReportOptions = (query = {}) => {
     error.status = 400;
     throw error;
   }
+  const metric = query.metric === 'revenue' ? 'revenue' : 'content';
   const rawChannelIds = String(query.channel_ids || '').trim();
   let channelIds = null;
   if (rawChannelIds && rawChannelIds !== 'all') {
@@ -135,6 +136,7 @@ const channelReportOptions = (query = {}) => {
     teamId,
     userId,
     channelIds,
+    metric,
     page: positiveInteger(query.page, 1),
     pageSize: positiveInteger(query.page_size, 20, 100),
   };
@@ -193,11 +195,14 @@ const channelReportBaseSql = `
     LEFT JOIN tiktok_channels channel ON channel.id = video.channel_id
     LEFT JOIN platform_revenue revenue
       ON revenue.platform_video_id = video.platform_video_id
-    WHERE video.published_at >= (
-      CAST(:startDate AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
-    )
-      AND video.published_at < (
-        CAST(:endDateExclusive AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
+    WHERE :metric = 'revenue'
+      OR (
+        video.published_at >= (
+          CAST(:startDate AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
+        )
+        AND video.published_at < (
+          CAST(:endDateExclusive AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
+        )
       )
   ),
   video_hashtags AS MATERIALIZED (
@@ -269,6 +274,7 @@ const getChannelReport = async (req, res) => {
       teamId,
       userId,
       channelIds,
+      metric,
       page,
       pageSize,
     } = channelReportOptions(req.query);
@@ -289,6 +295,7 @@ const getChannelReport = async (req, res) => {
         currency: row.currency,
       }))),
     };
+    replacements.metric = metric;
     const [aggregateRows, teamRows, videoRows] = await Promise.all([
       sequelize.query(`${channelReportBaseSql}
         /* channel-report-summary */
@@ -621,6 +628,7 @@ const getChannelReportMemberDetail = async (req, res) => {
         currency: row.currency,
       }))),
     };
+    replacements.metric = 'content';
     const [videoRows, productRows] = await Promise.all([
       sequelize.query(`${channelReportBaseSql}
         /* channel-report-member-videos */

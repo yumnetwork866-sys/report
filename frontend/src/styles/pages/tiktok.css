@@ -1762,6 +1762,23 @@
     width: 100%;
   }
 
+  .channel-report-tabs {
+    display: inline-flex;
+    width: max-content;
+    max-width: 100%;
+    justify-self: start;
+    gap: 3px;
+    padding: 3px;
+    overflow-x: auto;
+  }
+
+  .channel-report-tabs button {
+    flex: 0 0 auto;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
   .team-comparison {
     padding-inline: 8px;
   }

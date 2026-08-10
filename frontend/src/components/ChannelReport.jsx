@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+
 import {
   Bar,
   BarChart,
@@ -226,8 +227,9 @@ const ChannelReport = () => {
           ? { month: previousMonthValue(selectedMonth) }
           : previousCustomRange(startDate, endDate);
         const requestOptions = {
-          teamId: activeReportTab === 'comparison' ? 'all' : selectedTeamId,
+          teamId: activeReportTab === 'comparison' || activeReportTab === 'revenue' ? 'all' : selectedTeamId,
           channelId: selectedChannelId,
+          metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
           page: 1,
           pageSize: 20,
         };
@@ -292,7 +294,9 @@ const ChannelReport = () => {
   const resolvedSelectedTeamId = teams.some((team) => String(team.id) === selectedTeamId)
     ? selectedTeamId
     : teams[0] ? String(teams[0].id) : '';
-  const visibleGroups = groups.filter((group) => group.key === resolvedSelectedTeamId);
+  const visibleGroups = activeReportTab === 'revenue'
+    ? groups
+    : groups.filter((group) => group.key === resolvedSelectedTeamId);
   const selectedTeam = teams.find((team) => String(team.id) === resolvedSelectedTeamId);
   const topGroup = [...visibleGroups].sort((a, b) => b.views - a.views)[0];
   const comparisonData = groups.map((group) => ({
@@ -496,7 +500,7 @@ const ChannelReport = () => {
             className={activeReportTab === 'teams' ? 'is-active' : ''}
             onClick={() => setActiveReportTab('teams')}
           >
-            Theo team
+            Video và lượt xem
           </button>
           <button
             id="channel-report-comparison-tab"
@@ -510,6 +514,18 @@ const ChannelReport = () => {
           >
             Thống kê
           </button>
+          <button
+            id="channel-report-revenue-tab"
+            type="button"
+            role="tab"
+            aria-selected={activeReportTab === 'revenue'}
+            aria-controls="channel-report-revenue-panel"
+            tabIndex={activeReportTab === 'revenue' ? 0 : -1}
+            className={activeReportTab === 'revenue' ? 'is-active' : ''}
+            onClick={() => setActiveReportTab('revenue')}
+          >
+            Doanh thu
+          </button>
         </div>
       </section>
 
@@ -519,11 +535,13 @@ const ChannelReport = () => {
         <div className="section-card__header">
           <div>
             <h2 className="section-card__title">
-              {activeReportTab === 'comparison' ? 'Thống kê' : 'Hiệu suất theo team'}
+              {activeReportTab === 'comparison' ? 'Thống kê' : activeReportTab === 'revenue' ? 'Doanh thu' : 'Video và lượt xem'}
             </h2>
             <p className="section-card__meta">
               {activeReportTab === 'comparison'
                 ? `${comparisonMetricLabel} giữa các team trong ${periodLabel}.`
+                : activeReportTab === 'revenue'
+                ? `Doanh thu phát sinh trong ${periodLabel}.`
                 : selectedTeam
                 ? `${formatNumber(topGroup?.videos || 0)} video đã nhận diện của ${selectedTeam.name} trong ${periodLabel}.`
                 : `${formatNumber(kpis.videos)} video trong ${periodLabel} từ ${formatNumber(kpis.channels)} kênh.`}
@@ -586,7 +604,7 @@ const ChannelReport = () => {
                 </div>
               </>
             )}
-            <Link className="button button--ghost" to="/manage/users">Quản lý nhân viên</Link>
+
           </div>
         </div>
 
@@ -638,11 +656,11 @@ const ChannelReport = () => {
                 </div>
               </section>
             ) : null}
-            {activeReportTab === 'teams' ? <div
-              id="channel-report-teams-panel"
+            {activeReportTab === 'teams' || activeReportTab === 'revenue' ? <div
+              id={activeReportTab === 'revenue' ? 'channel-report-revenue-panel' : 'channel-report-teams-panel'}
               className="content-performance__groups content-performance__groups--filtered"
               role="tabpanel"
-              aria-labelledby="channel-report-teams-tab"
+              aria-labelledby={activeReportTab === 'revenue' ? 'channel-report-revenue-tab' : 'channel-report-teams-tab'}
             >
               {visibleGroups.map((group) => {
                 const previousGroup = previousGroups.find((item) => item.key === group.key);
@@ -652,11 +670,15 @@ const ChannelReport = () => {
                     <span>{formatNumber(group.members.length)} thành viên</span>
                   </div>
                   <div className="content-performance__metrics">
-                    <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
-                    <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
-                    <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
+                    {activeReportTab === 'revenue' ? (
+                      <span><small>Doanh thu phát sinh</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
+                    ) : <>
+                      <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
+                      <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
+                      <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
+                    </>}
                   </div>
-                  {group.members.length ? (
+                  {activeReportTab !== 'revenue' && group.members.length ? (
                     <div className="table-wrap">
                       <table className="data-table data-table--compact">
                         <thead>

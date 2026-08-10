@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { fetchExchangeRates } from './api.js';
+import { getStoredSession } from './session.js';
 
 const CURRENCY_STORAGE_KEY = 'content_report_currency';
 const DEFAULT_CURRENCY = 'MYR';
@@ -8,14 +9,29 @@ let exchangeRatesSnapshot = null;
 let exchangeRatesRequested = false;
 const exchangeRateListeners = new Set();
 
+function preferenceKey() {
+  const session = getStoredSession();
+  const userKey = session?.user?.id || session?.user?.email || session?.id || session?.email;
+  return userKey ? `${CURRENCY_STORAGE_KEY}:${userKey}` : CURRENCY_STORAGE_KEY;
+}
+
 function isSupportedCurrency(value) {
   return SUPPORTED_CURRENCIES.has(value);
 }
 
 export function getStoredCurrency() {
   try {
-    const stored = localStorage.getItem(CURRENCY_STORAGE_KEY);
-    return isSupportedCurrency(stored) ? stored : DEFAULT_CURRENCY;
+    const scopedKey = preferenceKey();
+    const stored = localStorage.getItem(scopedKey);
+    if (isSupportedCurrency(stored)) return stored;
+    if (scopedKey !== CURRENCY_STORAGE_KEY) {
+      const legacy = localStorage.getItem(CURRENCY_STORAGE_KEY);
+      if (isSupportedCurrency(legacy)) {
+        localStorage.setItem(scopedKey, legacy);
+        return legacy;
+      }
+    }
+    return DEFAULT_CURRENCY;
   } catch {
     return DEFAULT_CURRENCY;
   }
@@ -25,7 +41,7 @@ export function setStoredCurrency(currency) {
   const nextCurrency = isSupportedCurrency(currency) ? currency : DEFAULT_CURRENCY;
 
   try {
-    localStorage.setItem(CURRENCY_STORAGE_KEY, nextCurrency);
+    localStorage.setItem(preferenceKey(), nextCurrency);
   } catch {
     // Ignore storage failures and keep the in-memory event flow working.
   }
@@ -38,10 +54,12 @@ function subscribe(callback) {
 
   window.addEventListener('storage', handler);
   window.addEventListener('content-report-currency-change', handler);
+  window.addEventListener('content-report-session-change', handler);
 
   return () => {
     window.removeEventListener('storage', handler);
     window.removeEventListener('content-report-currency-change', handler);
+    window.removeEventListener('content-report-session-change', handler);
   };
 }
 

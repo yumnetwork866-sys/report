@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import { getStoredSession } from './session';
 import vi from '../locales/vi.json';
 import en from '../locales/en.json';
 
@@ -6,14 +7,29 @@ const LANGUAGE_STORAGE_KEY = 'content_report_language';
 const DEFAULT_LANGUAGE = 'vi';
 const messages = { vi, en };
 
+function preferenceKey() {
+  const session = getStoredSession();
+  const userKey = session?.user?.id || session?.user?.email || session?.id || session?.email;
+  return userKey ? `${LANGUAGE_STORAGE_KEY}:${userKey}` : LANGUAGE_STORAGE_KEY;
+}
+
 function isSupportedLanguage(value) {
   return Object.prototype.hasOwnProperty.call(messages, value);
 }
 
 export function getStoredLanguage() {
   try {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return isSupportedLanguage(stored) ? stored : DEFAULT_LANGUAGE;
+    const scopedKey = preferenceKey();
+    const stored = localStorage.getItem(scopedKey);
+    if (isSupportedLanguage(stored)) return stored;
+    if (scopedKey !== LANGUAGE_STORAGE_KEY) {
+      const legacy = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      if (isSupportedLanguage(legacy)) {
+        localStorage.setItem(scopedKey, legacy);
+        return legacy;
+      }
+    }
+    return DEFAULT_LANGUAGE;
   } catch {
     return DEFAULT_LANGUAGE;
   }
@@ -23,7 +39,7 @@ export function setStoredLanguage(language) {
   const nextLanguage = isSupportedLanguage(language) ? language : DEFAULT_LANGUAGE;
 
   try {
-    localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    localStorage.setItem(preferenceKey(), nextLanguage);
   } catch {
     // Ignore storage failures and keep the in-memory event flow working.
   }
@@ -36,10 +52,12 @@ function subscribe(callback) {
 
   window.addEventListener('storage', handler);
   window.addEventListener('content-report-language-change', handler);
+  window.addEventListener('content-report-session-change', handler);
 
   return () => {
     window.removeEventListener('storage', handler);
     window.removeEventListener('content-report-language-change', handler);
+      window.removeEventListener('content-report-session-change', handler);
   };
 }
 
