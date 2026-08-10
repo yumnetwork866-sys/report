@@ -49,6 +49,24 @@ const formatMonth = (value) => {
   return year && month ? `${month}/${year}` : '';
 };
 
+const previousMonthValue = (value) => {
+  const [year, month] = String(value || '').split('-').map(Number);
+  if (!year || !month) return value;
+  const previous = new Date(year, month - 2, 1);
+  return `${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const previousCustomRange = (startDate, endDate) => {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const days = Math.round((end - start) / 86400000) + 1;
+  const previousEnd = new Date(start);
+  previousEnd.setDate(previousEnd.getDate() - 1);
+  const previousStart = new Date(previousEnd);
+  previousStart.setDate(previousStart.getDate() - days + 1);
+  return { startDate: dateOnly(previousStart), endDate: dateOnly(previousEnd) };
+};
+
 const compactProductName = (value) => {
   const name = String(value || '').trim();
   if (!name) return 'Chưa xác định sản phẩm';
@@ -170,6 +188,7 @@ const TeamComparisonTooltip = ({ active, payload, formatNumber, formatRevenue })
 const ChannelReport = () => {
   const { language } = useI18n();
   const [report, setReport] = useState(null);
+  const [previousReport, setPreviousReport] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue);
   const [periodMode, setPeriodMode] = useState('month');
   const initialRange = monthRange(currentMonthValue());
@@ -200,17 +219,24 @@ const ChannelReport = () => {
       try {
         setLoading(true);
         setError('');
-        const payload = await fetchChannelReport({
-          ...(periodMode === 'month'
-            ? { month: selectedMonth }
-            : { startDate, endDate }),
+        const period = periodMode === 'month'
+          ? { month: selectedMonth }
+          : { startDate, endDate };
+        const previousPeriod = periodMode === 'month'
+          ? { month: previousMonthValue(selectedMonth) }
+          : previousCustomRange(startDate, endDate);
+        const requestOptions = {
           teamId: activeReportTab === 'comparison' ? 'all' : selectedTeamId,
           channelId: selectedChannelId,
           page: 1,
           pageSize: 20,
-          signal: controller.signal,
-        });
+        };
+        const [payload, previousPayload] = await Promise.all([
+          fetchChannelReport({ ...period, ...requestOptions, signal: controller.signal }),
+          fetchChannelReport({ ...previousPeriod, ...requestOptions, signal: controller.signal }),
+        ]);
         setReport(payload);
+        setPreviousReport(previousPayload);
       } catch (loadError) {
         if (loadError.name !== 'AbortError') setError(loadError.message || 'Không tải được báo cáo.');
       } finally {
@@ -287,6 +313,19 @@ const ChannelReport = () => {
     maximumFractionDigits: 1,
   }).format(Number(value || 0));
   const kpis = report?.kpis || {};
+  const previousGroups = previousReport?.revenue?.teams || [];
+  const changePercent = (current, previous) => {
+    const currentValue = Number(current || 0);
+    const previousValue = Number(previous || 0);
+    if (!previousValue) return null;
+    return (currentValue - previousValue) / Math.abs(previousValue) * 100;
+  };
+  const renderMetricChange = (current, previous, available = true) => {
+    const change = available ? changePercent(current, previous) : null;
+    if (change === null) return <small className="channel-report-metric-change channel-report-metric-change--neutral">— so với kỳ trước</small>;
+    const direction = change > 0 ? 'up' : change < 0 ? 'down' : 'neutral';
+    return <small className={`channel-report-metric-change channel-report-metric-change--${direction}`}>{change > 0 ? '↑' : change < 0 ? '↓' : '→'} {Math.abs(change).toLocaleString(locale, { maximumFractionDigits: 1 })}% so với kỳ trước</small>;
+  };
   const periodLabel = periodMode === 'month'
     ? formatMonth(selectedMonth)
     : `${formatDateOnly(startDate)} - ${formatDateOnly(endDate)}`;
@@ -605,16 +644,17 @@ const ChannelReport = () => {
               role="tabpanel"
               aria-labelledby="channel-report-teams-tab"
             >
-              {visibleGroups.map((group) => (
-                <article className="content-performance__group" key={group.key}>
+              {visibleGroups.map((group) => {
+                const previousGroup = previousGroups.find((item) => item.key === group.key);
+                return <article className="content-performance__group" key={group.key}>
                   <div className="content-performance__group-header">
                     <h3>{group.label}</h3>
                     <span>{formatNumber(group.members.length)} thành viên</span>
                   </div>
                   <div className="content-performance__metrics">
-                    <span><small>Video</small><strong>{formatNumber(group.videos)}</strong></span>
-                    <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong></span>
-                    <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong></span>
+                    <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
+                    <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
+                    <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
                   </div>
                   {group.members.length ? (
                     <div className="table-wrap">
@@ -659,8 +699,8 @@ const ChannelReport = () => {
                       <Link to="/manage/users">Quản lý nhân viên →</Link>
                     </div>
                   )}
-                </article>
-              ))}
+                </article>;
+              })}
             </div> : null}
           </>
         )}

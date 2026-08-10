@@ -1682,6 +1682,23 @@
   text-overflow: ellipsis;
 }
 
+.channel-report-metric-change {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.channel-report-metric-change--up {
+  color: var(--color-success);
+}
+
+.channel-report-metric-change--down {
+  color: var(--color-danger);
+}
+
+.channel-report-metric-change--neutral {
+  color: var(--color-muted);
+}
+
 
 .content-performance__group .table-wrap {
   margin-top: 14px;

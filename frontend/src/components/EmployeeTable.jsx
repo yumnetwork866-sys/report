@@ -384,7 +384,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
   const handleDeleteTeam = (team) => {
     setConfirm({
       title: 'Xóa team?',
-      message: `Xóa team ${team.name}? Nhân viên trong team sẽ chuyển về Chưa phân team.`,
+      message: `Xóa team ${team.name}? Nhân viên trong team sẽ chuyển về Chưa có team.`,
       confirmLabel: t('users.delete'),
       onConfirm: async () => {
         try {
@@ -698,7 +698,7 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
               onChange={(event) => setTeamFilter(event.target.value)}
             >
               <option value="all">Tất cả team</option>
-              <option value="unassigned">Chưa phân team</option>
+              <option value="unassigned">Chưa có team</option>
               {teams.map((team) => (
                 <option key={team.id} value={String(team.id)}>{team.name}</option>
               ))}
