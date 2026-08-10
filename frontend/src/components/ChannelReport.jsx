@@ -13,7 +13,7 @@ import {
 import { fetchChannelReport, fetchChannelReportMemberDetail } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
-import { formatDateOnly } from '../lib/date';
+
 import DatePickerInput from './DatePickerInput';
 
 const chartTick = { fill: 'var(--color-muted)', fontSize: 12 };
@@ -208,6 +208,9 @@ const ChannelReport = () => {
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatNumber = (value) => Number(value || 0).toLocaleString(locale);
+  const formatDateTime = (value) => value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
+    : '—';
   const { formatMoney: formatRevenue } = useMoneyFormatter(locale);
   useEffect(() => {
     if (periodMode === 'custom' && (!startDate || !endDate || startDate > endDate)) {
@@ -227,7 +230,7 @@ const ChannelReport = () => {
           ? { month: previousMonthValue(selectedMonth) }
           : previousCustomRange(startDate, endDate);
         const requestOptions = {
-          teamId: activeReportTab === 'comparison' || activeReportTab === 'revenue' ? 'all' : selectedTeamId,
+          teamId: activeReportTab === 'comparison' ? 'all' : selectedTeamId,
           channelId: selectedChannelId,
           metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
           page: 1,
@@ -294,11 +297,8 @@ const ChannelReport = () => {
   const resolvedSelectedTeamId = teams.some((team) => String(team.id) === selectedTeamId)
     ? selectedTeamId
     : teams[0] ? String(teams[0].id) : '';
-  const visibleGroups = activeReportTab === 'revenue'
-    ? groups
-    : groups.filter((group) => group.key === resolvedSelectedTeamId);
-  const selectedTeam = teams.find((team) => String(team.id) === resolvedSelectedTeamId);
-  const topGroup = [...visibleGroups].sort((a, b) => b.views - a.views)[0];
+  const visibleGroups = groups.filter((group) => group.key === resolvedSelectedTeamId);
+
   const comparisonData = groups.map((group) => ({
     name: group.label,
     videos: Number(group.videos || 0),
@@ -316,7 +316,7 @@ const ChannelReport = () => {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(Number(value || 0));
-  const kpis = report?.kpis || {};
+
   const previousGroups = previousReport?.revenue?.teams || [];
   const changePercent = (current, previous) => {
     const currentValue = Number(current || 0);
@@ -330,9 +330,6 @@ const ChannelReport = () => {
     const direction = change > 0 ? 'up' : change < 0 ? 'down' : 'neutral';
     return <small className={`channel-report-metric-change channel-report-metric-change--${direction}`}>{change > 0 ? '↑' : change < 0 ? '↓' : '→'} {Math.abs(change).toLocaleString(locale, { maximumFractionDigits: 1 })}% so với kỳ trước</small>;
   };
-  const periodLabel = periodMode === 'month'
-    ? formatMonth(selectedMonth)
-    : `${formatDateOnly(startDate)} - ${formatDateOnly(endDate)}`;
 
   const changePeriodMode = (event) => {
     const nextMode = event.target.value;
@@ -441,12 +438,16 @@ const ChannelReport = () => {
                   {video.video_url
                     ? <a href={video.video_url} target="_blank" rel="noreferrer">{video.title || `Video ${video.platform_video_id}`}</a>
                     : <strong>{video.title || `Video ${video.platform_video_id}`}</strong>}
-                  <small>{video.channel?.display_name || video.channel?.username || 'TikTok'} · {formatDateOnly(video.published_at, '—')}</small>
+                  <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
                   <div className="member-detail__product-tags">
                     {(video.products || []).slice(0, 2).map((product) => <span key={product.id} title={product.name}>{compactProductName(product.name)}</span>)}
                     {video.products?.length > 2 ? <span>+{video.products.length - 2}</span> : null}
                     {!video.products?.length ? <span>Chưa xác định sản phẩm</span> : null}
                   </div>
+                </div>
+                <div className="member-detail__video-posted">
+                  <small>Thời gian đăng</small>
+                  <strong>{formatDateTime(video.published_at)}</strong>
                 </div>
                 <div className="member-detail__video-metrics">
                   <span><small>Lượt xem</small><strong>{formatNumber(video.views)}</strong></span>
@@ -503,18 +504,6 @@ const ChannelReport = () => {
             Video và lượt xem
           </button>
           <button
-            id="channel-report-comparison-tab"
-            type="button"
-            role="tab"
-            aria-selected={activeReportTab === 'comparison'}
-            aria-controls="channel-report-comparison-panel"
-            tabIndex={activeReportTab === 'comparison' ? 0 : -1}
-            className={activeReportTab === 'comparison' ? 'is-active' : ''}
-            onClick={() => setActiveReportTab('comparison')}
-          >
-            Thống kê
-          </button>
-          <button
             id="channel-report-revenue-tab"
             type="button"
             role="tab"
@@ -525,6 +514,18 @@ const ChannelReport = () => {
             onClick={() => setActiveReportTab('revenue')}
           >
             Doanh thu
+          </button>
+          <button
+            id="channel-report-comparison-tab"
+            type="button"
+            role="tab"
+            aria-selected={activeReportTab === 'comparison'}
+            aria-controls="channel-report-comparison-panel"
+            tabIndex={activeReportTab === 'comparison' ? 0 : -1}
+            className={activeReportTab === 'comparison' ? 'is-active' : ''}
+            onClick={() => setActiveReportTab('comparison')}
+          >
+            Thống kê
           </button>
         </div>
       </section>
@@ -537,18 +538,10 @@ const ChannelReport = () => {
             <h2 className="section-card__title">
               {activeReportTab === 'comparison' ? 'Thống kê' : activeReportTab === 'revenue' ? 'Doanh thu' : 'Video và lượt xem'}
             </h2>
-            <p className="section-card__meta">
-              {activeReportTab === 'comparison'
-                ? `${comparisonMetricLabel} giữa các team trong ${periodLabel}.`
-                : activeReportTab === 'revenue'
-                ? `Doanh thu phát sinh trong ${periodLabel}.`
-                : selectedTeam
-                ? `${formatNumber(topGroup?.videos || 0)} video đã nhận diện của ${selectedTeam.name} trong ${periodLabel}.`
-                : `${formatNumber(kpis.videos)} video trong ${periodLabel} từ ${formatNumber(kpis.channels)} kênh.`}
-            </p>
+
           </div>
           <div className="channel-report-filters">
-            {activeReportTab === 'teams' ? <div className="field channel-report-team">
+            {activeReportTab !== 'comparison' ? <div className="field channel-report-team">
               <label htmlFor="channel-report-team">Team</label>
               <select
                 id="channel-report-team"
@@ -625,7 +618,6 @@ const ChannelReport = () => {
                 <div className="team-comparison__header">
                   <div>
                     <h3 id="team-comparison-title">Thống kê các team</h3>
-                    <p>{comparisonMetricLabel} trong {periodLabel}</p>
                   </div>
                   <div className="field team-comparison__metric">
                     <label htmlFor="team-comparison-metric">Chỉ số</label>
@@ -678,17 +670,19 @@ const ChannelReport = () => {
                       <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
                     </>}
                   </div>
-                  {activeReportTab !== 'revenue' && group.members.length ? (
+                  {group.members.length ? (
                     <div className="table-wrap">
                       <table className="data-table data-table--compact">
                         <thead>
                           <tr>
                             <th>Thành viên</th>
-                            <th className="cell-number">Video</th>
-                            <th className="cell-number">Lượt xem</th>
-                            <th className="cell-number">TB lượt xem/video</th>
-                            <th className="cell-number">Doanh số</th>
-                            <th className="cell-number">TB doanh số/video</th>
+                            {activeReportTab === 'revenue' ? <th className="cell-number">Doanh thu</th> : <>
+                              <th className="cell-number">Video</th>
+                              <th className="cell-number">Lượt xem</th>
+                              <th className="cell-number">TB lượt xem/video</th>
+                              <th className="cell-number">Doanh số</th>
+                              <th className="cell-number">TB doanh số/video</th>
+                            </>}
                           </tr>
                         </thead>
                         <tbody>{group.members.map((member) => {
@@ -702,13 +696,15 @@ const ChannelReport = () => {
                                     <strong>{member.name}</strong>
                                   </button>
                                 </td>
-                                <td className="cell-number">{formatNumber(member.videos)}</td>
-                                <td className="cell-number">{formatNumber(member.views)}</td>
-                                <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
-                                <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td>
-                                <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue / member.videos, member.currency) : '—'}</td>
+                                {activeReportTab === 'revenue' ? <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td> : <>
+                                  <td className="cell-number">{formatNumber(member.videos)}</td>
+                                  <td className="cell-number">{formatNumber(member.views)}</td>
+                                  <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
+                                  <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td>
+                                  <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue / member.videos, member.currency) : '—'}</td>
+                                </>}
                               </tr>
-                              {expanded ? <tr className="member-detail-row"><td colSpan="6">{renderMemberDetail(member)}</td></tr> : null}
+                              {expanded && activeReportTab !== 'revenue' ? <tr className="member-detail-row"><td colSpan="6">{renderMemberDetail(member)}</td></tr> : null}
                             </React.Fragment>
                           );
                         })}</tbody>
