@@ -291,6 +291,8 @@ test('channel report member detail returns videos and product rollups lazily', a
 
   assert.equal(response.statusCode, 200);
   assert.equal(calls.length, 2);
+  const videoCall = calls.find((call) => call.sql.includes('channel-report-member-videos'));
+  assert.match(videoCall.sql, /ORDER BY video\.revenue IS NULL ASC, video\.published_at DESC, video\.id DESC/);
   calls.forEach((call) => {
     assert.equal(call.replacements.userId, 9);
     assert.equal(call.replacements.teamId, 4);

@@ -664,7 +664,7 @@ const getChannelReportMemberDetail = async (req, res) => {
           ), '[]'::jsonb) AS products,
           COUNT(*) OVER()::bigint AS total_count
         FROM filtered_videos video
-        ORDER BY video.published_at DESC, video.id DESC
+        ORDER BY video.revenue IS NULL ASC, video.published_at DESC, video.id DESC
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {
