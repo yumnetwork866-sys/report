@@ -19,7 +19,6 @@ import {
   SellerAffiliatePanel,
   ShopAnalytics,
   TermsPage,
-  WhatsAppManagement,
 } from './lazyRouteComponents';
 import { protectedRouteCards, redirectRoutes } from './navigation';
 
@@ -35,7 +34,6 @@ const componentMap = {
   ChannelReport,
   ChatbotManagement,
   CreatorChatPage,
-  WhatsAppManagement,
 };
 
 export const publicRouteConfig = [

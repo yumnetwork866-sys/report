@@ -65,6 +65,7 @@ const defaultMigrationNames = [
   '056_add_users_is_active',
   '057_add_role_permissions',
   '058_remove_chatbots_permission',
+  '059_remove_whatsapp',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

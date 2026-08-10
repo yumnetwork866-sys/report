@@ -163,7 +163,6 @@ const Header = () => {
   const navLabels = {
     '/dashboard': t('nav.tiktok'),
     '/chatbot': t('nav.facebook'),
-    '/whatsapp': t('nav.whatsapp'),
     '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
@@ -192,9 +191,7 @@ const Header = () => {
     if (to === '/chatbot') {
       return location.pathname.startsWith('/chatbot') && !location.pathname.startsWith('/chatbot/chat-setting');
     }
-    if (to === '/whatsapp') {
-      return location.pathname.startsWith('/whatsapp');
-    }
+
     if (to === '/dashboard') {
       return [
         '/dashboard',

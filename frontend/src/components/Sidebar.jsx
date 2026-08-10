@@ -108,9 +108,7 @@ const routeIconMap = {
   '/chatbot/chat': 'chat',
   '/chatbot/chat-setting': 'settings',
   '/chatbot/orders': 'orders',
-  '/whatsapp/dashboard': 'dashboard',
-  '/whatsapp/chat': 'chat',
-  '/whatsapp/orders': 'orders',
+
 };
 
 const SidebarIcon = ({ name }) => {
@@ -140,11 +138,6 @@ const PlatformIcon = ({ type }) => (
       </>
     ) : type === 'facebook' ? (
       <path d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.6 1.7-1.6h1.8V3.8c-.3 0-1.4-.1-2.6-.1-2.6 0-4.4 1.6-4.4 4.5V10H7.6v3h2.9v8H14Z" />
-    ) : type === 'whatsapp' ? (
-      <>
-        <path d="M20 11.6a8 8 0 0 1-11.8 7L4 20l1.4-4A8 8 0 1 1 20 11.6Z" />
-        <path d="M9 8.3c.4 2.4 2 4 4.5 4.8l1.1-1.2 2 .9c-.2 1.3-1.1 2-2.4 2-3.8-.2-7-3.2-7.2-7 0-1.2.7-2 2-2.3l1 2-1 1Z" />
-      </>
     ) : (
       <>
         <path d="M13.2 3v10.1a3.2 3.2 0 1 1-2.5-3.1v3a1.3 1.3 0 1 0 .6 1.1V3h1.9Z" />
@@ -163,7 +156,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
     || location.pathname.startsWith('/manage/schedules')
     || location.pathname.startsWith('/chatbot/chat-setting');
   const isFacebookArea = location.pathname.startsWith('/chatbot');
-  const isWhatsAppArea = location.pathname.startsWith('/whatsapp');
+
   const isTikTokShopArea = [
     '/manage/affiliate',
     '/manage/koc-performance',
@@ -173,7 +166,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
     '/reports',
   ].some((prefix) => location.pathname.startsWith(prefix));
   const can = (permission) => hasPermission(session, permission);
-  const activeSectionTitle = isAdminArea ? 'Admin' : isFacebookArea ? 'Facebook' : isWhatsAppArea ? 'WhatsApp' : 'TikTok';
+  const activeSectionTitle = isAdminArea ? 'Admin' : isFacebookArea ? 'Facebook' : 'TikTok';
   const visibleSections = sidebarSections.filter((section) => section.title === activeSectionTitle);
   const activeTikTokGroup = isTikTokShopArea ? 'tiktok-shop' : 'tiktok-channel';
   const [openGroups, setOpenGroups] = useState({ [activeTikTokGroup]: true });
@@ -197,7 +190,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       <div className="sidebar__header">
         {!isCollapsed ? (
           <span className="sidebar__header-label">
-            <PlatformIcon type={isAdminArea ? 'admin' : isFacebookArea ? 'facebook' : isWhatsAppArea ? 'whatsapp' : 'tiktok'} />
+            <PlatformIcon type={isAdminArea ? 'admin' : isFacebookArea ? 'facebook' : 'tiktok'} />
             {activeSectionTitle}
           </span>
         ) : null}

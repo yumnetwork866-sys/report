@@ -25,7 +25,7 @@ const importRoutes = require('./routes/importRoutes');
 const authRoutes = require('./routes/authRoutes');
 const assistantRoutes = require('./routes/assistantRoutes');
 const chatbotRoutes = require('./routes/chatbotRoutes');
-const whatsappRoutes = require('./routes/whatsappRoutes');
+
 const tiktokPartnerPublicRoutes = require('./routes/tiktokPartnerPublicRoutes');
 const tiktokShopRoutes = require('./routes/tiktokShopRoutes');
 const scheduleRoutes = require('./routes/scheduleRoutes');
@@ -59,7 +59,7 @@ const createApp = () => {
     maxAge: '7d',
   }));
   app.use(chatbotRoutes.publicRouter);
-  app.use(whatsappRoutes.publicRouter);
+
   app.use('/api/bookings/tiktok-partner', tiktokPartnerPublicRoutes);
   app.use('/api/public/reports', publicReportRoutes);
 
@@ -79,9 +79,8 @@ const createApp = () => {
   app.use('/api/import', requireAdmin, requirePermission('tiktok'), importRoutes);
   app.use('/api/auth', authRoutes);
   app.use('/api/assistant', requireAdmin, requirePermission('reports'), assistantRoutes);
-  // Messenger (chatbot) & WhatsApp are admin-only since the 'chatbots' permission was removed.
+  // Messenger (chatbot) is admin-only since the 'chatbots' permission was removed.
   app.use('/api/chatbot', requireAdmin, chatbotRoutes.adminRouter);
-  app.use('/api/whatsapp', requireAdmin, whatsappRoutes.adminRouter);
   app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
   app.use('/api/schedules', requireAdmin, scheduleRoutes);
 

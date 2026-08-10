@@ -48,14 +48,7 @@ export const sidebarSections = [
       { to: '/chatbot/orders', labelKey: 'navigation.orders', permission: 'chatbots' },
     ],
   },
-  {
-    title: 'WhatsApp',
-    items: [
-      { to: '/whatsapp/dashboard', labelKey: 'navigation.dashboard', permission: 'chatbots' },
-      { to: '/whatsapp/chat', labelKey: 'navigation.chat', permission: 'chatbots' },
-      { to: '/whatsapp/orders', labelKey: 'navigation.orders', permission: 'chatbots' },
-    ],
-  },
+
   {
     title: 'Admin',
     items: [
@@ -173,24 +166,7 @@ export const protectedRouteCards = [
       heroSubtitle: '',
     },
   },
-  {
-    path: '/whatsapp/dashboard',
-    component: 'WhatsAppManagement',
-    permission: 'chatbots',
-    props: {},
-  },
-  {
-    path: '/whatsapp/chat',
-    component: 'WhatsAppManagement',
-    permission: 'chatbots',
-    props: {},
-  },
-  {
-    path: '/whatsapp/orders',
-    component: 'WhatsAppManagement',
-    permission: 'chatbots',
-    props: {},
-  },
+
   {
     path: '/chatbot/chat',
     component: 'ChatbotManagement',
@@ -224,6 +200,5 @@ export const redirectRoutes = [
   { path: '/manage', to: '/manage/users' },
   { path: '/manage/koc', to: '/manage/koc-performance' },
   { path: '/chatbot', to: '/chatbot/dashboard' },
-  { path: '/whatsapp', to: '/whatsapp/dashboard' },
   { path: '/chatbot/rag', to: '/chatbot/chat-setting' },
 ];

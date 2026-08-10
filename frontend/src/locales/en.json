@@ -6,7 +6,6 @@
     "tiktok": "TikTok",
     "tiktokShop": "TikTok Shop",
     "facebook": "Facebook",
-    "whatsapp": "WhatsApp",
     "manage": "Manage"
   },
   "header": {
@@ -468,37 +467,7 @@
     "revokeConfirm": "Revoke Facebook account “{{name}}” from the app? This will disconnect every connected Page for this user and remove the session.",
     "disconnectConfirm": "Disconnect Page “{{name}}”? The bot will stop replying on this Page."
   },
-  "whatsapp": {
-    "dashboardTitle": "WhatsApp management",
-    "connection": "WhatsApp connection",
-    "connected": "Configured",
-    "notConfigured": "Not configured",
-    "configureHint": "Add Cloud API credentials to the backend .env",
-    "openInbox": "Open inbox",
-    "viewOrders": "View orders",
-    "inbox": "WhatsApp inbox",
-    "conversations": "Conversations",
-    "messages": "Messages",
-    "today": "Messages today",
-    "newOrders": "New orders",
-    "orders": "WhatsApp orders",
-    "noConversations": "No WhatsApp conversations yet.",
-    "selectConversation": "Select a conversation",
-    "noMessages": "No messages yet.",
-    "replyPlaceholder": "Type a WhatsApp message...",
-    "send": "Send",
-    "sending": "Sending...",
-    "customer": "Customer",
-    "content": "Content",
-    "phone": "Phone number",
-    "status": "Status",
-    "time": "Time",
-    "noOrders": "No WhatsApp orders yet.",
-    "loading": "Loading WhatsApp data...",
-    "loadError": "Failed to load WhatsApp data",
-    "sendError": "Failed to send WhatsApp message",
-    "updateOrderError": "Failed to update WhatsApp order"
-  },
+
   "dashboard": {
     "heroTitle": "Dashboard",
     "heroSubtitle": "Track TikTok video performance from OAuth, import, or crawler data.",

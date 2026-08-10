@@ -66,6 +66,7 @@ const migrations = [
   require('./056_add_users_is_active'),
   require('./057_add_role_permissions'),
   require('./058_remove_chatbots_permission'),
+  require('./059_remove_whatsapp'),
 ];
 
 const createMigrationRunner = ({

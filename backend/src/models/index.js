@@ -1171,29 +1171,6 @@ const ChatbotOrder = sequelize.define('ChatbotOrder', {
   timestamps: false,
 });
 
-const WhatsAppMessage = sequelize.define('WhatsAppMessage', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  sender_id: { type: DataTypes.STRING, allowNull: false },
-  phone_number_id: { type: DataTypes.STRING, allowNull: false },
-  display_name: { type: DataTypes.STRING, allowNull: true },
-  direction: { type: DataTypes.STRING, allowNull: false, validate: { isIn: [['in', 'out']] } },
-  text: { type: DataTypes.TEXT, allowNull: false },
-  via: { type: DataTypes.STRING, allowNull: false, defaultValue: 'system' },
-  external_message_id: { type: DataTypes.STRING, allowNull: true, unique: true },
-  created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-}, { tableName: 'whatsapp_messages', timestamps: false });
-
-const WhatsAppOrder = sequelize.define('WhatsAppOrder', {
-  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  sender_id: { type: DataTypes.STRING, allowNull: false },
-  phone_number_id: { type: DataTypes.STRING, allowNull: false },
-  raw: { type: DataTypes.TEXT, allowNull: false },
-  name: { type: DataTypes.STRING, allowNull: true },
-  phone: { type: DataTypes.STRING, allowNull: true },
-  address: { type: DataTypes.TEXT, allowNull: true },
-  status: { type: DataTypes.STRING, allowNull: false, defaultValue: 'new', validate: { isIn: [['new', 'confirmed', 'done', 'cancelled']] } },
-  created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
-}, { tableName: 'whatsapp_orders', timestamps: false });
 
 const ChatbotKnowledgeDoc = sequelize.define('ChatbotKnowledgeDoc', {
   id: {
@@ -1378,8 +1355,7 @@ module.exports = {
   FacebookUserSession,
   ChatbotMessage,
   ChatbotOrder,
-  WhatsAppMessage,
-  WhatsAppOrder,
+
   ChatbotKnowledgeDoc,
   ChatbotSetting,
   Report: WeeklyReport,

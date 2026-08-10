@@ -748,27 +748,3 @@ export function updateChatbotSettings(payload) {
     body: payload,
   });
 }
-
-export function fetchWhatsAppOverview(signal) {
-  return apiRequest('/whatsapp/overview', { signal });
-}
-
-export function fetchWhatsAppConversations(signal) {
-  return apiRequest('/whatsapp/conversations', { signal });
-}
-
-export function fetchWhatsAppMessages(senderId, signal) {
-  return apiRequest(`/whatsapp/messages?${new URLSearchParams({ senderId }).toString()}`, { signal });
-}
-
-export function sendWhatsAppMessage(payload) {
-  return apiRequest('/whatsapp/send', { method: 'POST', body: payload });
-}
-
-export function fetchWhatsAppOrders(signal) {
-  return apiRequest('/whatsapp/orders', { signal });
-}
-
-export function updateWhatsAppOrder(orderId, payload) {
-  return apiRequest(`/whatsapp/orders/${orderId}`, { method: 'PATCH', body: payload });
-}

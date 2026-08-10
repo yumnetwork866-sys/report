@@ -6,7 +6,6 @@
     "tiktok": "TikTok",
     "tiktokShop": "TikTok Shop",
     "facebook": "Facebook",
-    "whatsapp": "WhatsApp",
     "manage": "Quản lý"
   },
   "header": {
@@ -463,37 +462,7 @@
     "revokeConfirm": "Thu hồi tài khoản Facebook “{{name}}” khỏi ứng dụng? Tất cả Trang đã kết nối của người dùng này sẽ bị ngắt kết nối và phiên đăng nhập sẽ bị xóa.",
     "disconnectConfirm": "Ngắt kết nối Trang “{{name}}”? Bot sẽ ngừng trả lời trên Trang này."
   },
-  "whatsapp": {
-    "dashboardTitle": "Quản lý WhatsApp",
-    "connection": "Kết nối WhatsApp",
-    "connected": "Đã cấu hình",
-    "notConfigured": "Chưa cấu hình",
-    "configureHint": "Thêm thông tin Cloud API trong backend .env",
-    "openInbox": "Mở hộp thư",
-    "viewOrders": "Xem đơn hàng",
-    "inbox": "Hộp thư WhatsApp",
-    "conversations": "Hội thoại",
-    "messages": "Tin nhắn",
-    "today": "Tin nhắn hôm nay",
-    "newOrders": "Đơn hàng mới",
-    "orders": "Đơn hàng WhatsApp",
-    "noConversations": "Chưa có hội thoại WhatsApp.",
-    "selectConversation": "Chọn một hội thoại",
-    "noMessages": "Chưa có tin nhắn.",
-    "replyPlaceholder": "Nhập tin nhắn WhatsApp...",
-    "send": "Gửi",
-    "sending": "Đang gửi...",
-    "customer": "Khách hàng",
-    "content": "Nội dung",
-    "phone": "Số điện thoại",
-    "status": "Trạng thái",
-    "time": "Thời gian",
-    "noOrders": "Chưa có đơn hàng WhatsApp.",
-    "loading": "Đang tải dữ liệu WhatsApp...",
-    "loadError": "Không tải được dữ liệu WhatsApp",
-    "sendError": "Không gửi được tin nhắn WhatsApp",
-    "updateOrderError": "Không cập nhật được đơn hàng WhatsApp"
-  },
+
   "dashboard": {
     "heroTitle": "Bảng tổng quan",
     "heroSubtitle": "Theo dõi hiệu suất video TikTok từ dữ liệu OAuth, import hoặc crawler.",
