@@ -1687,15 +1687,15 @@
   font-weight: 700;
 }
 
-.channel-report-metric-change--up {
+.content-performance__metrics small.channel-report-metric-change--up {
   color: var(--color-success);
 }
 
-.channel-report-metric-change--down {
+.content-performance__metrics small.channel-report-metric-change--down {
   color: var(--color-danger);
 }
 
-.channel-report-metric-change--neutral {
+.content-performance__metrics small.channel-report-metric-change--neutral {
   color: var(--color-muted);
 }
 
