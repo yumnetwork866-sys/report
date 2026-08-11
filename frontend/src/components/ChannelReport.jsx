@@ -201,10 +201,10 @@ const ChannelReport = () => {
   const [selectedChannelId, setSelectedChannelId] = useState('all');
   const [activeReportTab, setActiveReportTab] = useState('teams');
   const [comparisonMetric, setComparisonMetric] = useState('views');
-  const [expandedMemberId, setExpandedMemberId] = useState(null);
+  const [expandedMemberIds, setExpandedMemberIds] = useState(() => new Set());
   const [memberDetails, setMemberDetails] = useState({});
   const [memberTabs, setMemberTabs] = useState({});
-  const memberRequestRef = useRef(null);
+  const memberRequestRef = useRef(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -275,8 +275,9 @@ const ChannelReport = () => {
   }, [report, selectedChannelId]);
 
   useEffect(() => {
-    memberRequestRef.current?.abort();
-    setExpandedMemberId(null);
+    memberRequestRef.current.forEach((controller) => controller.abort());
+    memberRequestRef.current.clear();
+    setExpandedMemberIds(new Set());
     setMemberDetails({});
     setMemberTabs({});
   }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamId, startDate]);
@@ -349,9 +350,9 @@ const ChannelReport = () => {
   };
 
   const loadMemberDetail = async (memberId, page = 1, append = false) => {
-    memberRequestRef.current?.abort();
+    memberRequestRef.current.get(memberId)?.abort();
     const controller = new AbortController();
-    memberRequestRef.current = controller;
+    memberRequestRef.current.set(memberId, controller);
     setMemberDetails((current) => ({
       ...current,
       [memberId]: { ...current[memberId], loading: true, error: '' },
@@ -397,12 +398,17 @@ const ChannelReport = () => {
 
   const toggleMember = (member) => {
     const memberId = String(member.key);
-    if (expandedMemberId === memberId) {
-      memberRequestRef.current?.abort();
-      setExpandedMemberId(null);
+    const isExpanded = expandedMemberIds.has(memberId);
+    if (isExpanded) {
+      memberRequestRef.current.get(memberId)?.abort();
+      setExpandedMemberIds((current) => {
+        const next = new Set(current);
+        next.delete(memberId);
+        return next;
+      });
       return;
     }
-    setExpandedMemberId(memberId);
+    setExpandedMemberIds((current) => new Set(current).add(memberId));
     setMemberTabs((current) => ({ ...current, [memberId]: current[memberId] || 'videos' }));
     if (!memberDetails[memberId]?.data) loadMemberDetail(memberId);
   };
@@ -689,7 +695,7 @@ const ChannelReport = () => {
                           </tr>
                         </thead>
                         <tbody>{group.members.map((member) => {
-                          const expanded = expandedMemberId === String(member.key);
+                          const expanded = expandedMemberIds.has(String(member.key));
                           const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
                           const displayMember = activeReportTab === 'revenue' ? { ...member, revenue: revenueMember.revenue, revenueAvailable: revenueMember.revenueAvailable, currency: revenueMember.currency } : member;
                           return (
