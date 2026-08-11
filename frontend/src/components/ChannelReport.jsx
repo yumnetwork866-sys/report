@@ -189,7 +189,9 @@ const TeamComparisonTooltip = ({ active, payload, formatNumber, formatRevenue })
 const ChannelReport = () => {
   const { language } = useI18n();
   const [report, setReport] = useState(null);
+  const [revenueReport, setRevenueReport] = useState(null);
   const [previousReport, setPreviousReport] = useState(null);
+  const [previousRevenueReport, setPreviousRevenueReport] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthValue);
   const [periodMode, setPeriodMode] = useState('month');
   const initialRange = monthRange(currentMonthValue());
@@ -232,16 +234,19 @@ const ChannelReport = () => {
         const requestOptions = {
           teamId: activeReportTab === 'comparison' ? 'all' : selectedTeamId,
           channelId: selectedChannelId,
-          metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
           page: 1,
           pageSize: 20,
         };
-        const [payload, previousPayload] = await Promise.all([
-          fetchChannelReport({ ...period, ...requestOptions, signal: controller.signal }),
-          fetchChannelReport({ ...previousPeriod, ...requestOptions, signal: controller.signal }),
+        const [contentPayload, revenuePayload, previousContentPayload, previousRevenuePayload] = await Promise.all([
+          fetchChannelReport({ ...period, ...requestOptions, metric: 'content', signal: controller.signal }),
+          fetchChannelReport({ ...period, ...requestOptions, metric: 'revenue', signal: controller.signal }),
+          fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'content', signal: controller.signal }),
+          fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'revenue', signal: controller.signal }),
         ]);
-        setReport(payload);
-        setPreviousReport(previousPayload);
+        setReport(contentPayload);
+        setRevenueReport(revenuePayload);
+        setPreviousReport(previousContentPayload);
+        setPreviousRevenueReport(previousRevenuePayload);
       } catch (loadError) {
         if (loadError.name !== 'AbortError') setError(loadError.message || 'Không tải được báo cáo.');
       } finally {
@@ -294,6 +299,7 @@ const ChannelReport = () => {
   const teams = report?.filters?.teams || [];
   const channels = report?.filters?.channels || [];
   const groups = report?.revenue?.teams || [];
+  const revenueGroups = revenueReport?.revenue?.teams || [];
   const resolvedSelectedTeamId = teams.some((team) => String(team.id) === selectedTeamId)
     ? selectedTeamId
     : teams[0] ? String(teams[0].id) : '';
@@ -318,6 +324,7 @@ const ChannelReport = () => {
   }).format(Number(value || 0));
 
   const previousGroups = previousReport?.revenue?.teams || [];
+  const previousRevenueGroups = previousRevenueReport?.revenue?.teams || [];
   const changePercent = (current, previous) => {
     const currentValue = Number(current || 0);
     const previousValue = Number(previous || 0);
@@ -655,20 +662,18 @@ const ChannelReport = () => {
               aria-labelledby={activeReportTab === 'revenue' ? 'channel-report-revenue-tab' : 'channel-report-teams-tab'}
             >
               {visibleGroups.map((group) => {
+                const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
                 const previousGroup = previousGroups.find((item) => item.key === group.key);
+                const previousRevenueGroup = previousRevenueGroups.find((item) => item.key === group.key) || {};
                 return <article className="content-performance__group" key={group.key}>
                   <div className="content-performance__group-header">
                     <h3>{group.label}</h3>
                     <span>{formatNumber(group.members.length)} thành viên</span>
                   </div>
                   <div className="content-performance__metrics">
-                    {activeReportTab === 'revenue' ? (
-                      <span><small>Doanh thu phát sinh</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
-                    ) : <>
-                      <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
-                      <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
-                      <span><small>Doanh số</small><strong>{group.revenueAvailable ? formatRevenue(group.revenue, group.currency) : '—'}</strong>{renderMetricChange(group.revenue, previousGroup?.revenue, group.revenueAvailable && previousGroup?.revenueAvailable)}</span>
-                    </>}
+                    <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
+                    <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
+                    <span><small>Doanh số</small><strong>{(activeReportTab === 'revenue' ? revenueGroup : group).revenueAvailable ? formatRevenue((activeReportTab === 'revenue' ? revenueGroup : group).revenue, (activeReportTab === 'revenue' ? revenueGroup : group).currency) : '—'}</strong>{renderMetricChange((activeReportTab === 'revenue' ? revenueGroup : group).revenue, activeReportTab === 'revenue' ? previousRevenueGroup.revenue : previousGroup?.revenue, (activeReportTab === 'revenue' ? revenueGroup : group).revenueAvailable && (activeReportTab === 'revenue' ? previousRevenueGroup : previousGroup)?.revenueAvailable)}</span>
                   </div>
                   {group.members.length ? (
                     <div className="table-wrap">
@@ -676,35 +681,39 @@ const ChannelReport = () => {
                         <thead>
                           <tr>
                             <th>Thành viên</th>
-                            {activeReportTab === 'revenue' ? <th className="cell-number">Doanh thu</th> : <>
-                              <th className="cell-number">Video</th>
-                              <th className="cell-number">Lượt xem</th>
-                              <th className="cell-number">TB lượt xem/video</th>
-                              <th className="cell-number">Doanh số</th>
-                              <th className="cell-number">TB doanh số/video</th>
-                            </>}
+                            <th className="cell-number">Video</th>
+                            <th className="cell-number">Lượt xem</th>
+                            <th className="cell-number">TB lượt xem/video</th>
+                            <th className="cell-number">Doanh số</th>
+                            <th className="cell-number">TB doanh số/video</th>
                           </tr>
                         </thead>
                         <tbody>{group.members.map((member) => {
                           const expanded = expandedMemberId === String(member.key);
+                          const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
+                          const displayMember = activeReportTab === 'revenue' ? { ...member, revenue: revenueMember.revenue, revenueAvailable: revenueMember.revenueAvailable, currency: revenueMember.currency } : member;
                           return (
                             <React.Fragment key={member.key}>
-                              <tr className={expanded ? 'member-row member-row--expanded' : 'member-row'}>
+                              <tr
+                                className={expanded ? 'member-row member-row--expanded' : 'member-row'}
+                                onClick={(event) => {
+                                  if (event.target.closest('button, a, input, select, textarea')) return;
+                                  toggleMember(member);
+                                }}
+                              >
                                 <td>
                                   <button className="member-row__trigger" type="button" aria-expanded={expanded} onClick={() => toggleMember(member)}>
                                     <span className={`sidebar__chevron${expanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
                                     <strong>{member.name}</strong>
                                   </button>
                                 </td>
-                                {activeReportTab === 'revenue' ? <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td> : <>
-                                  <td className="cell-number">{formatNumber(member.videos)}</td>
-                                  <td className="cell-number">{formatNumber(member.views)}</td>
-                                  <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
-                                  <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td>
-                                  <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue / member.videos, member.currency) : '—'}</td>
-                                </>}
+                                <td className="cell-number">{formatNumber(displayMember.videos)}</td>
+                                <td className="cell-number">{formatNumber(displayMember.views)}</td>
+                                <td className="cell-number">{formatNumber(Math.round(displayMember.views / Math.max(displayMember.videos, 1)))}</td>
+                                <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue, displayMember.currency) : '—'}</td>
+                                <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue / displayMember.videos, displayMember.currency) : '—'}</td>
                               </tr>
-                              {expanded && activeReportTab !== 'revenue' ? <tr className="member-detail-row"><td colSpan="6">{renderMemberDetail(member)}</td></tr> : null}
+                              {expanded ? <tr className="member-detail-row"><td colSpan="6">{renderMemberDetail(member)}</td></tr> : null}
                             </React.Fragment>
                           );
                         })}</tbody>

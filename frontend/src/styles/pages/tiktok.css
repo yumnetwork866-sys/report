@@ -1165,6 +1165,10 @@
   object-fit: cover;
 }
 
+.member-row {
+  cursor: pointer;
+}
+
 .member-row__trigger {
   display: inline-flex;
   align-items: center;
