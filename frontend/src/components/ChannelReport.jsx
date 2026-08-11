@@ -210,8 +210,11 @@ const ChannelReport = () => {
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatNumber = (value) => Number(value || 0).toLocaleString(locale);
-  const formatDateTime = (value) => value
-    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'medium' }).format(new Date(value))
+  const formatPublishedDate = (value) => value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value))
+    : '—';
+  const formatPublishedTime = (value) => value
+    ? new Intl.DateTimeFormat(locale, { timeStyle: 'medium' }).format(new Date(value))
     : '—';
   const { formatMoney: formatRevenue } = useMoneyFormatter(locale);
   useEffect(() => {
@@ -460,7 +463,10 @@ const ChannelReport = () => {
                 </div>
                 <div className="member-detail__video-posted">
                   <small>Thời gian đăng</small>
-                  <strong>{formatDateTime(video.published_at)}</strong>
+                  <strong>
+                    <span>{formatPublishedDate(video.published_at)}</span>
+                    <span>{formatPublishedTime(video.published_at)}</span>
+                  </strong>
                 </div>
                 <div className="member-detail__video-metrics">
                   <span><small>Lượt xem</small><strong>{formatNumber(video.views)}</strong></span>

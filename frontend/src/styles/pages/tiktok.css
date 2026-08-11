@@ -1331,7 +1331,14 @@
 }
 
 .member-detail__video-posted strong {
+  display: grid;
+  gap: 1px;
   font-size: 0.78rem;
+  white-space: normal;
+}
+
+.member-detail__video-posted strong span {
+  white-space: nowrap;
 }
 
 .member-detail__video-metrics {
