@@ -39,6 +39,7 @@ const {
   sendAffiliateMessage,
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
+  summarizeAffiliateOrders,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,
   summarizeSampleFulfillments,
@@ -529,6 +530,30 @@ test('affiliate orders are enriched with product and collaboration metadata', ()
     { id: 'open-1', type: 'OPEN' },
     { id: 'target-1', name: 'Creator invitation', type: 'TARGET' },
   ]);
+});
+
+test('affiliate order statistics filter by creator and product category', () => {
+  const orders = [
+    { id: 'order-1', skus: [
+      { product_id: 'product-1', product_name: 'Serum', creator_username: 'koc.one', quantity: 2 },
+      { product_id: 'product-2', product_name: 'Toner', creator_username: 'koc.two', quantity: 1 },
+    ] },
+    { id: 'order-2', skus: [
+      { product_id: 'product-1', product_name: 'Serum', creator_username: 'koc.one', quantity: 3 },
+    ] },
+  ];
+  const result = summarizeAffiliateOrders(orders, {
+    categoryItems: [{ product_id: 'product-1', category_id: 7, title: 'Saved serum', image_url: 'serum.webp' }],
+    creatorUsername: '@KOC.ONE',
+    categoryId: '7',
+  });
+
+  assert.deepEqual(result.rows, [{
+    product_id: 'product-1', product_name: 'Serum', image_url: 'serum.webp', category_id: 7,
+    quantity: 5, order_count: 2, creator_count: 1,
+  }]);
+  assert.deepEqual(result.creators, [{ username: 'koc.one' }, { username: 'koc.two' }]);
+  assert.deepEqual(result.totals, { quantity: 5, products: 1, orders: 2 });
 });
 
 test('search Seller sample applications uses the existing Seller Affiliate read scope', async (t) => {

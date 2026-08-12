@@ -24,6 +24,7 @@ export const sidebarSections = [
            { to: '/manage/video-analytics', labelKey: 'navigation.videoAnalytics', permission: 'tiktok' },
            { to: '/manage/affiliate', labelKey: 'navigation.affiliate', permission: 'tiktok' },
            { to: '/manage/creator-chat', labelKey: 'navigation.creatorChat', permission: 'tiktok' },
+           { to: '/orders', labelKey: 'navigation.orders', permission: 'tiktok' },
            { to: '/bookings', labelKey: 'navigation.bookings', permission: 'tiktok' },
          ],
       },
@@ -147,6 +148,12 @@ export const protectedRouteCards = [
       heroTitle: 'Booking management',
       heroSubtitle: '',
     },
+  },
+  {
+    path: '/orders',
+    component: 'SellerAffiliatePanel',
+    permission: 'tiktok',
+    props: { initialSection: 'orders', ordersOnly: true },
   },
   {
     path: '/manage/channels',

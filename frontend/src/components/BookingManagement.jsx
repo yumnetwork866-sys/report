@@ -967,7 +967,7 @@ const BookingManagement = ({ heroTitle }) => {
         </div>
         <div className="table-wrap"><table className="data-table booking-evaluation-table">
           <thead>
-            <tr><th className="booking-koc-column">{t('booking.kocColumn')}</th><th className="booking-creator-performance-column">{t('booking.creatorPerformance')}</th><th className="cell-number booking-total-cost-column">{t('booking.totalCost')}</th><th className="booking-video-column">{t('booking.matchedVideo')}</th><th className="cell-number booking-refunds-column">{t('booking.refunds')}</th><th className="cell-number">{t('booking.products')}</th><th className="cell-number booking-samples-column">{t('booking.samplesShipped')}</th><th className="cell-number">{t('booking.estimatedCommission')}</th><th className="cell-actions">{t('booking.actionsColumn')}</th></tr>
+            <tr><th className="booking-koc-column">{t('booking.kocColumn')}</th><th className="booking-creator-performance-column">{t('booking.gmvColumn')}</th><th className="cell-number booking-total-cost-column">{t('booking.totalCost')}</th><th className="booking-video-column">{t('booking.matchedVideo')}</th><th className="cell-number booking-refunds-column">{t('booking.refunds')}</th><th className="cell-number">{t('booking.products')}</th><th className="cell-number booking-samples-column">{t('booking.samplesShipped')}</th><th className="cell-number">{t('booking.estimatedCommission')}</th><th className="cell-actions">{t('booking.actionsColumn')}</th></tr>
           </thead>
           <tbody>
             {group.bookings.map((booking) => {

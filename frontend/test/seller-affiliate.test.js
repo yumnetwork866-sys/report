@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   getAffiliateOrderProductIds,
   getAffiliateOrderProgramIds,
+  getAffiliateOrderVideos,
   getCreatorVideoEngagementRate,
   normalizeEngagementPercentage,
 } from '../src/lib/sellerAffiliate.js';
@@ -18,6 +19,23 @@ test('affiliate order fields are collected from every SKU and deduplicated', () 
 
   assert.deepEqual(getAffiliateOrderProductIds(order), ['product-1', 'product-2']);
   assert.deepEqual(getAffiliateOrderProgramIds(order), ['open-1', 'target-1']);
+});
+
+test('affiliate order videos are collected from VIDEO SKUs and deduplicated', () => {
+  const order = {
+    skus: [
+      { content_type: 'VIDEO', content_id: 'video-1', creator_username: 'creator.one', video_title: 'Serum buổi tối' },
+      { content_type: 'LIVE', content_id: 'live-1', creator_username: 'creator.one' },
+      { content_type: 'video', content_id: 'video-1', creator_username: 'creator.one' },
+      { video_id: 'video-2', video_url: 'https://www.tiktok.com/video-2' },
+    ],
+  };
+
+  assert.deepEqual(getAffiliateOrderVideos(order), [
+    { id: 'video-1', username: 'creator.one', url: null, thumbnail: null, title: 'Serum buổi tối' },
+    { id: 'video-2', username: null, url: 'https://www.tiktok.com/video-2', thumbnail: null, title: null },
+  ]);
+  assert.deepEqual(getAffiliateOrderVideos(), []);
 });
 
 test('affiliate order fields retain support for legacy top-level values', () => {

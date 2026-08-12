@@ -1,5 +1,6 @@
 const express = require('express');
 const controller = require('../controllers/tiktokShopController');
+const orderProductCategoryController = require('../controllers/orderProductCategoryController');
 
 const adminRouter = express.Router();
 adminRouter.get('/exchange-rates', controller.getExchangeRates);
@@ -18,6 +19,12 @@ adminRouter.get('/shops/:shopId/video-thumbnails/:videoId', controller.getShopVi
 adminRouter.get('/shops/:shopId/affiliate/open-collaborations', controller.listOpenCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/target-collaborations', controller.listTargetCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/orders', controller.listAffiliateOrders);
+adminRouter.get('/shops/:shopId/affiliate/order-statistics', controller.listAffiliateOrderStatistics);
+adminRouter.get('/shops/:shopId/order-management/categories', orderProductCategoryController.listCategories);
+adminRouter.post('/shops/:shopId/order-management/categories', orderProductCategoryController.createCategory);
+adminRouter.delete('/shops/:shopId/order-management/categories/:categoryId', orderProductCategoryController.deleteCategory);
+adminRouter.put('/shops/:shopId/order-management/products/:productId/category', orderProductCategoryController.assignProduct);
+adminRouter.delete('/shops/:shopId/order-management/products/:productId/category', orderProductCategoryController.unassignProduct);
 adminRouter.get('/shops/:shopId/affiliate/creators', controller.listAffiliateCreators);
 adminRouter.get('/shops/:shopId/affiliate/creators/:applicationId/fulfillments', controller.showAffiliateCreatorFulfillments);
 adminRouter.get('/shops/:shopId/affiliate/marketplace-creators', controller.listMarketplaceCreators);

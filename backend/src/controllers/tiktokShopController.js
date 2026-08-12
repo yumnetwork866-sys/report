@@ -7,6 +7,7 @@ const {
   TikTokBasePerformanceSnapshot, TikTokMarketplaceCreator,
   TikTokMarketplaceCreatorDetail, TikTokMarketplaceDiscoveryState,
   TikTokTargetCollaborationSnapshot,
+  OrderProductCategory, OrderProductCategoryItem,
 } = require('../models');
 const {
   buildShopAuthorizationUrl,
@@ -24,6 +25,7 @@ const {
   sendAffiliateMessage,
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
+  summarizeAffiliateOrders,
   getOpenCollaborationSettings,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,
@@ -425,6 +427,7 @@ const getShopVideoThumbnail = async (req, res) => {
       if (!response.ok) throw new Error(`TikTok thumbnail request failed with status ${response.status}.`);
       return {
         thumbnail_url: payload?.thumbnail_url || null,
+        title: payload?.title || null,
         width: Number(payload?.thumbnail_width) || null,
         height: Number(payload?.thumbnail_height) || null,
       };
@@ -476,7 +479,7 @@ const affiliateResponse = (namespace, operation) => async (req, res) => {
   } catch (error) {
     const permissionError = /grant seller\.(affiliate_collaboration|creator_marketplace)\.read/i.test(error.message);
     const rateLimited = Number(error.tiktokCode) === 36009002;
-    res.status(permissionError ? 403 : rateLimited ? 429 : 502).json({
+    res.status(error.statusCode || (permissionError ? 403 : rateLimited ? 429 : 502)).json({
       message: error.message,
       ...(error.tiktokCode !== undefined && error.tiktokCode !== null ? { tiktok_code: Number(error.tiktokCode) } : {}),
       ...(error.requestId ? { request_id: error.requestId } : {}),
@@ -677,6 +680,60 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       ...payload.data,
       orders: attachAffiliateOrderMetadata(orders, { openCollaborations, targetCollaborations }),
     },
+  };
+});
+
+const listAffiliateOrderStatistics = affiliateResponse('order-statistics', async (shop, req) => {
+  const startTime = unixTimeValue(req.query.create_time_ge);
+  const endTime = unixTimeValue(req.query.create_time_lt);
+  if (!startTime || !endTime || endTime <= startTime) {
+    const error = new Error('A valid order statistics date range is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  const [categoryItems, categories] = await Promise.all([
+    OrderProductCategoryItem.findAll({ where: { shop_id: shop.id } }),
+    OrderProductCategory.findAll({ where: { shop_id: shop.id }, order: [['name', 'ASC']] }),
+  ]);
+  const orders = [];
+  let pageToken;
+  let truncated = false;
+  for (let page = 0; page < 100; page += 1) {
+    const payload = await searchAffiliateOrders({
+      authorization: shop.authorization,
+      shopCipher: shop.cipher,
+      pageToken,
+      pageSize: 100,
+      startTime,
+      endTime,
+    });
+    orders.push(...(Array.isArray(payload.data?.orders) ? payload.data.orders : []));
+    const nextPageToken = payload.data?.next_page_token;
+    if (!nextPageToken || nextPageToken === pageToken) {
+      pageToken = null;
+      break;
+    }
+    pageToken = nextPageToken;
+    truncated = page === 99;
+  }
+  const summary = summarizeAffiliateOrders(orders, {
+    categoryItems,
+    creatorUsername: req.query.creator_username,
+    categoryId: req.query.category_id,
+  });
+  const categoryNames = new Map(categories.map((category) => [String(category.id), category.name]));
+  return {
+    data: {
+      ...summary,
+      rows: summary.rows.map((row) => ({
+        ...row,
+        category_name: row.category_id ? categoryNames.get(String(row.category_id)) || null : null,
+      })),
+      categories: categories.map((category) => ({ id: category.id, name: category.name })),
+      range: { start_time: startTime, end_time: endTime },
+      truncated,
+    },
+    request_id: null,
   };
 });
 
@@ -1718,7 +1775,7 @@ module.exports = {
   startShopOauth, handleShopOauthCallback, listShopConnections, listShops,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, getShopVideoThumbnail,
-  listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, showOpenCollaborationSettings,
+  listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderStatistics, showOpenCollaborationSettings,
   listAffiliateCreators, showAffiliateCreatorFulfillments, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
   getMarketplaceCreatorConversation, sendMarketplaceCreatorMessage,

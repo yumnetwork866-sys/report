@@ -233,8 +233,51 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
     program_id: `${DEMO_PREFIX}program_${index % 3 + 1}`,
     products: [products[index % products.length]],
     programs: [{ id: `${DEMO_PREFIX}program_${index % 3 + 1}`, name: `Demo Program ${index % 3 + 1}`, type: 'TARGET' }],
+    skus: [{
+      product_id: products[index % products.length].id,
+      product_name: products[index % products.length].title,
+      quantity: index % 3 + 1,
+      target_collaboration_id: `${DEMO_PREFIX}program_${index % 3 + 1}`,
+      content_type: 'VIDEO',
+      content_id: `76000000000000000${String(index + 1).padStart(2, '0')}`,
+      creator_username: `demo.creator${index % 4 + 1}`,
+    }],
     create_time: Math.floor(Date.now() / 1000) - index * 21600,
   }));
+  if (namespace === 'order-statistics') {
+    const creatorUsername = String(query.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+    const categoryId = String(query.category_id || 'all');
+    const matchingOrders = orders.filter((order) => !creatorUsername
+      || order.skus.some((sku) => sku.creator_username.toLowerCase() === creatorUsername));
+    const rows = categoryId !== 'all' && categoryId !== 'uncategorized' ? [] : products.map((product) => {
+      const matchingSkus = matchingOrders.flatMap((order) => order.skus.map((sku) => ({ order, sku })))
+        .filter(({ sku }) => sku.product_id === product.id);
+      return {
+        product_id: product.id,
+        product_name: product.title,
+        image_url: product.main_image_url,
+        category_id: null,
+        category_name: null,
+        quantity: matchingSkus.reduce((sum, { sku }) => sum + sku.quantity, 0),
+        order_count: matchingSkus.length,
+        creator_count: new Set(matchingSkus.map(({ sku }) => sku.creator_username)).size,
+      };
+    }).filter((row) => row.quantity > 0).sort((left, right) => right.quantity - left.quantity);
+    return {
+      data: {
+        rows,
+        creators: [...new Set(orders.flatMap((order) => order.skus.map((sku) => sku.creator_username)))].map((username) => ({ username })),
+        categories: [],
+        totals: {
+          quantity: rows.reduce((sum, row) => sum + row.quantity, 0),
+          products: rows.length,
+          orders: new Set(matchingOrders.map((order) => order.order_id)).size,
+        },
+        truncated: false,
+      },
+      request_id: requestId,
+    };
+  }
   return {
     data: { total_count: orders.length, next_page_token: null, orders },
     request_id: requestId,

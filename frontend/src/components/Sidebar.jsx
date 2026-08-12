@@ -101,6 +101,7 @@ const routeIconMap = {
   '/manage/shop-analytics': 'shopAnalytics',
   '/manage/video-analytics': 'videos',
   '/bookings': 'bookings',
+  '/orders': 'orders',
   '/manage/channels': 'channels',
   '/videos': 'videos',
   '/reports': 'reports',
@@ -163,6 +164,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
     '/manage/shop-analytics',
     '/manage/video-analytics',
     '/bookings',
+    '/orders',
     '/reports',
   ].some((prefix) => location.pathname.startsWith(prefix));
   const can = (permission) => hasPermission(session, permission);

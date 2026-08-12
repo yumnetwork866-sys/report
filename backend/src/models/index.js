@@ -338,6 +338,24 @@ const TikTokShop = sequelize.define('TikTokShop', {
   last_sync_error: { type: DataTypes.TEXT, allowNull: true },
 }, { tableName: 'tiktok_shops', timestamps: false });
 
+const OrderProductCategory = sequelize.define('OrderProductCategory', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  name: { type: DataTypes.STRING(120), allowNull: false },
+  created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+}, { tableName: 'order_product_categories', timestamps: false });
+
+const OrderProductCategoryItem = sequelize.define('OrderProductCategoryItem', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  category_id: { type: DataTypes.INTEGER, allowNull: false },
+  product_id: { type: DataTypes.STRING(128), allowNull: false },
+  title: { type: DataTypes.TEXT, allowNull: true },
+  image_url: { type: DataTypes.TEXT, allowNull: true },
+  updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+}, { tableName: 'order_product_category_items', timestamps: false });
+
 const TikTokShopAnalyticsSnapshot = sequelize.define('TikTokShopAnalyticsSnapshot', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   shop_id: { type: DataTypes.INTEGER, allowNull: false },
@@ -1242,6 +1260,10 @@ TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'authorization_id', as
 TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'authorization_id', as: 'authorization' });
 TikTokShop.hasMany(TikTokShopAnalyticsSnapshot, { foreignKey: 'shop_id', as: 'analytics_snapshots' });
 TikTokShopAnalyticsSnapshot.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+TikTokShop.hasMany(OrderProductCategory, { foreignKey: 'shop_id', as: 'order_product_categories' });
+OrderProductCategory.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+OrderProductCategory.hasMany(OrderProductCategoryItem, { foreignKey: 'category_id', as: 'products' });
+OrderProductCategoryItem.belongsTo(OrderProductCategory, { foreignKey: 'category_id', as: 'category' });
 TikTokShop.hasMany(ShopVideo, { foreignKey: 'shop_id', as: 'shop_videos' });
 ShopVideo.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 ShopVideo.hasMany(ShopVideoPerformanceSnapshot, { foreignKey: 'shop_video_id', as: 'performance_snapshots' });
@@ -1327,6 +1349,8 @@ module.exports = {
   TikTokPartnerAuthorization,
   TikTokShopAuthorization,
   TikTokShop,
+  OrderProductCategory,
+  OrderProductCategoryItem,
   TikTokShopAnalyticsSnapshot,
   TikTokCreatorPerformanceExport,
   TikTokCreatorPerformanceSnapshot,

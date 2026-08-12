@@ -16,6 +16,33 @@ export const getAffiliateOrderProgramIds = (order = {}) => uniqueValues([
     : []),
 ]);
 
+export const getAffiliateOrderVideos = (order = {}) => {
+  const sources = [...(Array.isArray(order.skus) ? order.skus : []), order];
+  const videos = [];
+  const seen = new Set();
+
+  for (const source of sources) {
+    const contentType = String(source?.content_type || source?.content?.type || '').toUpperCase();
+    const id = source?.video_id || source?.content_id || source?.content?.id;
+    if (!id || (contentType && contentType !== 'VIDEO')) continue;
+
+    const normalizedId = String(id);
+    if (seen.has(normalizedId)) continue;
+    seen.add(normalizedId);
+    videos.push({
+      id: normalizedId,
+      username: source?.creator_username || source?.username || order.creator_username || order.username || null,
+      url: source?.video_url || source?.content_url || source?.share_url || null,
+      thumbnail: source?.thumbnail_url || source?.cover_image_url || source?.cover_url
+        || source?.content?.thumbnail_url || order.thumbnail_url || null,
+      title: source?.video_title || source?.content_title || source?.content?.title
+        || order.video_title || order.content_title || null,
+    });
+  }
+
+  return videos;
+};
+
 const metricSources = (creator = {}) => [
   creator,
   creator.content_performance,

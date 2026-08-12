@@ -403,6 +403,73 @@ const attachAffiliateOrderMetadata = (orders = [], { openCollaborations = [], ta
   });
 };
 
+const summarizeAffiliateOrders = (orders = [], { categoryItems = [], creatorUsername, categoryId } = {}) => {
+  const normalizedCreator = String(creatorUsername || '').trim().replace(/^@+/, '').toLowerCase();
+  const normalizedCategory = String(categoryId || 'all');
+  const categoryByProduct = new Map(categoryItems.map((item) => {
+    const value = item?.toJSON ? item.toJSON() : item;
+    return [String(value.product_id), value];
+  }));
+  const creators = new Set();
+  const products = new Map();
+  const matchedOrders = new Set();
+
+  for (const order of orders) {
+    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
+      const username = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '');
+      if (username) creators.add(username);
+      if (normalizedCreator && username.toLowerCase() !== normalizedCreator) continue;
+      const productId = String(sku?.product_id || '').trim();
+      if (!productId) continue;
+      const categoryItem = categoryByProduct.get(productId);
+      const itemCategoryId = categoryItem ? String(categoryItem.category_id) : '';
+      const matchesCategory = normalizedCategory === 'all'
+        || (normalizedCategory === 'uncategorized' ? !itemCategoryId : itemCategoryId === normalizedCategory);
+      if (!matchesCategory) continue;
+
+      const orderId = String(order?.id || order?.order_id || '');
+      const quantity = Math.max(0, Number(sku?.quantity) || 0);
+      const current = products.get(productId) || {
+        product_id: productId,
+        product_name: sku?.product_name || categoryItem?.title || productId,
+        image_url: categoryItem?.image_url || null,
+        category_id: categoryItem?.category_id || null,
+        quantity: 0,
+        order_ids: new Set(),
+        creators: new Set(),
+      };
+      current.quantity += quantity;
+      if (orderId) {
+        current.order_ids.add(orderId);
+        matchedOrders.add(orderId);
+      }
+      if (username) current.creators.add(username);
+      products.set(productId, current);
+    }
+  }
+
+  const rows = [...products.values()]
+    .map((product) => ({
+      product_id: product.product_id,
+      product_name: product.product_name,
+      image_url: product.image_url,
+      category_id: product.category_id,
+      quantity: product.quantity,
+      order_count: product.order_ids.size,
+      creator_count: product.creators.size,
+    }))
+    .sort((left, right) => right.quantity - left.quantity || left.product_name.localeCompare(right.product_name));
+  return {
+    rows,
+    creators: [...creators].sort((left, right) => left.localeCompare(right)).map((username) => ({ username })),
+    totals: {
+      quantity: rows.reduce((sum, product) => sum + product.quantity, 0),
+      products: rows.length,
+      orders: matchedOrders.size,
+    },
+  };
+};
+
 const getOpenCollaborationSettings = ({ authorization, shopCipher } = {}, fetchImpl) => sellerAffiliateRequest({
   authorization,
   shopCipher,
@@ -737,6 +804,7 @@ module.exports = {
   sendAffiliateMessage,
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
+  summarizeAffiliateOrders,
   getOpenCollaborationSettings,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,
