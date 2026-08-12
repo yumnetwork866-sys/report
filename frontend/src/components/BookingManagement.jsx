@@ -7,6 +7,7 @@ import {
   fetchBookingTargetKocs,
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
+  fetchTikTokSellerAffiliateOrders,
   fetchTikTokShopVideoThumbnail,
   fetchUsers,
   matchBookingVideo,
@@ -50,6 +51,77 @@ const performanceOf = (booking) => Object.prototype.hasOwnProperty.call(booking 
   ? booking.reference_performance
   : snapshotOf(booking).performance || null;
 const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
+const bookingProductsOf = (booking) => {
+  const snapshot = snapshotOf(booking);
+  const products = Array.isArray(snapshot.products) ? snapshot.products : [];
+  const byId = new Map(products.map((product) => [String(product.id || product.product_id), product]));
+  for (const value of Array.isArray(snapshot.product_ids) ? snapshot.product_ids : []) {
+    const id = String(value || '').trim();
+    if (id && !byId.has(id)) byId.set(id, { id, name: id, image_url: null });
+  }
+  return [...byId.values()].filter((product) => String(product.id || product.product_id || '').trim());
+};
+
+const orderRangeForWindow = (windowType, customRange) => {
+  const end = windowType === 'CUSTOM'
+    ? customRange.end
+    : shiftDateInputValue(dateInputValue(new Date()), -1);
+  const days = Number(String(windowType).match(/^PAST_(\d+)_DAYS$/)?.[1]) || 30;
+  const start = windowType === 'CUSTOM' ? customRange.start : shiftDateInputValue(end, -(days - 1));
+  const malaysiaMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00+08:00`).getTime() / 1000);
+  return {
+    startTime: malaysiaMidnightUnix(start),
+    endTime: malaysiaMidnightUnix(shiftDateInputValue(end, 1)),
+  };
+};
+
+const bookingProductOrderPerformance = (booking, orders = []) => {
+  const selectedProducts = bookingProductsOf(booking);
+  const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
+  const creatorUsername = String(booking.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const orderIds = new Set();
+  let affiliateGmv = 0;
+  let refundedGmv = 0;
+  let itemsSold = 0;
+  let itemsRefunded = 0;
+  let estimatedCommission = 0;
+  let currency = booking.currency || 'MYR';
+
+  for (const order of orders) {
+    const orderId = String(order?.id || order?.order_id || '').trim();
+    let matchedOrder = false;
+    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
+      const productId = String(sku?.product_id || '').trim();
+      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+      if (!selectedIds.has(productId) || (creatorUsername && skuCreator !== creatorUsername)) continue;
+      const quantity = Math.max(0, finiteNumber(sku?.quantity));
+      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity)));
+      const price = Math.max(0, finiteNumber(sku?.price?.amount ?? sku?.price_amount));
+      const commissionRate = Math.max(0, finiteNumber(sku?.creator_commission_rate));
+      currency = sku?.price?.currency || sku?.currency || currency;
+      itemsSold += quantity;
+      itemsRefunded += refundedQuantity;
+      affiliateGmv += price * quantity;
+      refundedGmv += price * refundedQuantity;
+      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate / 10000;
+      matchedOrder = true;
+    }
+    if (matchedOrder && orderId) orderIds.add(orderId);
+  }
+
+  return {
+    source: 'AFFILIATE_ORDERS',
+    has_products: selectedProducts.length > 0,
+    currency,
+    affiliate_gmv: affiliateGmv,
+    affiliate_orders: orderIds.size,
+    items_sold: itemsSold,
+    items_refunded: itemsRefunded,
+    refunded_gmv: refundedGmv,
+    estimated_commission: estimatedCommission,
+    selected_products: selectedProducts,
+  };
+};
 const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots || [])]
   .sort((left, right) => (
     String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
@@ -538,6 +610,9 @@ const BookingManagement = ({ heroTitle }) => {
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
   const [bookingTab, setBookingTab] = useState('video');
+  const [productOrdersByShop, setProductOrdersByShop] = useState({});
+  const [productOrdersLoading, setProductOrdersLoading] = useState(false);
+  const [productOrdersError, setProductOrdersError] = useState('');
   const [selectedManagerKey, setSelectedManagerKey] = useState('');
   const [customRange, setCustomRange] = useState(defaultCustomRange);
   const [targetKocPage, setTargetKocPage] = useState(1);
@@ -559,6 +634,10 @@ const BookingManagement = ({ heroTitle }) => {
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [detailCost, setDetailCost] = useState('');
+  const [detailProductIds, setDetailProductIds] = useState([]);
+  const [detailProducts, setDetailProducts] = useState([]);
+  const [detailProductsLoading, setDetailProductsLoading] = useState(false);
+  const [detailProductPickerOpen, setDetailProductPickerOpen] = useState(false);
   const [error, setError] = useState('');
   const [openActions, setOpenActions] = useState({
     id: null,
@@ -631,6 +710,42 @@ const BookingManagement = ({ heroTitle }) => {
       document.removeEventListener('keydown', closeOnEscape);
     };
   }, [isCreateBookingOpen, saving]);
+
+  useEffect(() => {
+    if (!selectedBooking?.target_shop_id) {
+      setDetailProducts([]);
+      setDetailProductsLoading(false);
+      setDetailProductPickerOpen(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const selectedProducts = bookingProductsOf(selectedBooking);
+    setDetailProductsLoading(true);
+    fetchTikTokSellerOpenCollaborations(selectedBooking.target_shop_id, {
+      signal: controller.signal,
+      pageSize: 100,
+    }).then((payload) => {
+      const byId = new Map();
+      for (const product of [
+        ...(payload?.open_collaborations || []).map((item) => item.product),
+        ...selectedProducts,
+      ]) {
+        const id = String(product?.id || product?.product_id || '').trim();
+        if (!id) continue;
+        byId.set(id, {
+          id,
+          name: product?.title || product?.name || product?.product_name || id,
+          imageUrl: product?.main_image_url || product?.imageUrl || product?.image_url || product?.thumbnail_url || '',
+        });
+      }
+      if (!controller.signal.aborted) setDetailProducts([...byId.values()]);
+    }).catch((err) => {
+      if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad'));
+    }).finally(() => {
+      if (!controller.signal.aborted) setDetailProductsLoading(false);
+    });
+    return () => controller.abort();
+  }, [selectedBooking, t]);
 
   useEffect(() => {
     const closeActions = (event) => {
@@ -808,17 +923,68 @@ const BookingManagement = ({ heroTitle }) => {
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
   }, [form.creator_key, selectedKocSummary, t]);
+  useEffect(() => {
+    if (bookingTab !== 'product') return undefined;
+    const shopIds = [...new Set(bookings
+      .filter((booking) => bookingProductsOf(booking).length)
+      .map((booking) => String(booking.target_shop_id || ''))
+      .filter(Boolean))];
+    if (!shopIds.length) {
+      setProductOrdersByShop({});
+      setProductOrdersError('');
+      setProductOrdersLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const range = orderRangeForWindow(performanceWindow, customRange);
+    setProductOrdersLoading(true);
+    setProductOrdersError('');
+    Promise.all(shopIds.map(async (shopId) => {
+      const orders = [];
+      let pageToken = '';
+      for (let page = 0; page < 100; page += 1) {
+        const payload = await fetchTikTokSellerAffiliateOrders(shopId, {
+          signal: controller.signal,
+          pageSize: 100,
+          pageToken,
+          startTime: range.startTime,
+          endTime: range.endTime,
+        });
+        orders.push(...(payload?.orders || payload?.affiliate_orders || []));
+        const nextPageToken = String(payload?.next_page_token || '');
+        if (!nextPageToken || nextPageToken === pageToken) break;
+        pageToken = nextPageToken;
+      }
+      return [shopId, orders];
+    })).then((entries) => {
+      if (!controller.signal.aborted) setProductOrdersByShop(Object.fromEntries(entries));
+    }).catch((err) => {
+      if (err.name !== 'AbortError') setProductOrdersError(err.message || t('booking.productOrdersError'));
+    }).finally(() => {
+      if (!controller.signal.aborted) setProductOrdersLoading(false);
+    });
+    return () => controller.abort();
+  }, [bookingTab, bookings, customRange, performanceWindow, t]);
+  const productPerformanceByBooking = useMemo(() => new Map(bookings.map((booking) => [
+    String(booking.id),
+    bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || []),
+  ])), [bookings, productOrdersByShop]);
   const stats = useMemo(() => bookings.reduce((result, booking) => {
     const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
     const convertedCost = convertAmount(rawCost, booking.currency);
-    const rawRevenue = finiteNumber(booking.actual_performance?.gross_gmv);
-    const convertedRevenue = convertAmount(rawRevenue, booking.actual_performance?.currency);
+    const tabPerformance = bookingTab === 'product'
+      ? productPerformanceByBooking.get(String(booking.id))
+      : booking.actual_performance;
+    const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
+    const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency);
     result.total += 1;
     result.totalCost += convertedCost ?? rawCost;
     result.totalRevenue += convertedRevenue ?? rawRevenue;
-    result.videoCount += bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
+    result.videoCount += bookingTab === 'product'
+      ? finiteNumber(tabPerformance?.affiliate_orders)
+      : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
     return result;
-  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 }), [bookings, convertAmount]);
+  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking]);
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
@@ -847,19 +1013,24 @@ const BookingManagement = ({ heroTitle }) => {
       const group = groups.get(key);
       const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
       const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
-      const rawRevenue = finiteNumber(booking.actual_performance?.gross_gmv);
-      const convertedRevenue = convertAmount(rawRevenue, booking.actual_performance?.currency) ?? rawRevenue;
+      const tabPerformance = bookingTab === 'product'
+        ? productPerformanceByBooking.get(String(booking.id))
+        : booking.actual_performance;
+      const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
+      const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
       group.bookings.push(booking);
       group.totalCost += convertedCost;
       group.totalRevenue += convertedRevenue;
-      group.videoCount += bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
+      group.videoCount += bookingTab === 'product'
+        ? finiteNumber(tabPerformance?.affiliate_orders)
+        : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
     }
     return [...groups.values()].sort((left, right) => {
       if (left.key === 'unassigned') return 1;
       if (right.key === 'unassigned') return -1;
       return left.manager.name.localeCompare(right.manager.name, locale);
     });
-  }, [bookings, canManageUsers, convertAmount, locale, session, t, users]);
+  }, [bookingTab, bookings, canManageUsers, convertAmount, locale, productPerformanceByBooking, session, t, users]);
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
@@ -976,6 +1147,8 @@ const BookingManagement = ({ heroTitle }) => {
       const updated = await updateBooking(selectedBooking.id, {
         total_cost: Number(detailCost),
         currency: selectedCurrency,
+        product_ids: detailProductIds,
+        products: detailProducts.filter((product) => detailProductIds.includes(product.id)),
       });
       replaceBooking(updated);
     } catch (err) {
@@ -987,12 +1160,18 @@ const BookingManagement = ({ heroTitle }) => {
 
   const renderPerformance = (performance) => {
     if (!performance) return <span className="chip">{t('booking.noPerformance')}</span>;
+    if (performance.source === 'AFFILIATE_ORDERS' && !performance.has_products) {
+      return <span className="chip">{t('booking.noAttachedProducts')}</span>;
+    }
     const gmv = optionalNumber(performance.affiliate_gmv);
-    const views = optionalNumber(performance.video_views);
+    const secondaryValue = performance.source === 'AFFILIATE_ORDERS'
+      ? optionalNumber(performance.affiliate_orders)
+      : optionalNumber(performance.video_views);
+    const secondaryLabel = performance.source === 'AFFILIATE_ORDERS' ? t('booking.orders') : t('booking.views');
     return (
       <div className="booking-performance-cell">
         <strong>{gmv === null ? '—' : formatMoney(gmv, performance.currency)}</strong>
-        <small>{views === null ? '—' : formatNumber(views)} {t('booking.views')}</small>
+        <small>{secondaryValue === null ? '—' : formatNumber(secondaryValue)} {secondaryLabel}</small>
       </div>
     );
   };
@@ -1009,7 +1188,7 @@ const BookingManagement = ({ heroTitle }) => {
         <div><h1 className="page__title">{t('booking.heroTitle') || heroTitle}</h1></div>
         <div className="page__stats booking-stats booking-stats--evaluation">
           <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{stats.total}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{stats.totalRevenue > 0 ? formatRate(stats.totalCost / stats.totalRevenue) : '—'}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('booking.totalCost')}</p><p className="stat-card__value">{formatMoney(stats.totalCost, selectedCurrency)}</p></article>
         </div>
@@ -1019,8 +1198,8 @@ const BookingManagement = ({ heroTitle }) => {
 
       <section className="booking-create-action">
         <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
-          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
-          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('product')}>{t('booking.productTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => { setBookingTab('video'); setExpandedBookingId(null); }}>{t('booking.videoTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { setBookingTab('product'); setExpandedBookingId(null); }}>{t('booking.productTab')}</button>
         </div>
         <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
       </section>
@@ -1041,25 +1220,28 @@ const BookingManagement = ({ heroTitle }) => {
       ) : null}
       <section className="section-card" id="booking-list-panel" role="tabpanel">
         <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
-        {incompleteCustomCoverage ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
+        {productOrdersError ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
+        {incompleteCustomCoverage && bookingTab === 'video' ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
           requested: incompleteCustomCoverage.requested_days,
         })}</p> : null}
-        {loading ? <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div> : bookingGroupsToRender.length ? <div className="content-performance__groups content-performance__groups--filtered booking-manager-groups">{bookingGroupsToRender.map((group) => <article className="content-performance__group booking-manager-group" key={group.key}>
+        {loading || (bookingTab === 'product' && productOrdersLoading) ? <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div> : bookingGroupsToRender.length ? <div className="content-performance__groups content-performance__groups--filtered booking-manager-groups">{bookingGroupsToRender.map((group) => <article className="content-performance__group booking-manager-group" key={group.key}>
         <div className="content-performance__group-header"><div className="booking-manager-group__identity"><TargetKocAvatar src={group.manager.avatar_url} name={group.manager.name} /><span><h3>{group.manager.name}</h3>{group.manager.email ? <small>{group.manager.email}</small> : null}</span></div></div>
         <div className="content-performance__metrics booking-manager-group__metrics">
           <span><small>{t('booking.evaluations')}</small><strong>{formatNumber(group.bookings.length)}</strong></span>
-          <span><small>{t('booking.matchedVideo')}</small><strong>{formatNumber(group.videoCount)}</strong></span>
+          <span><small>{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</small><strong>{formatNumber(group.videoCount)}</strong></span>
           <span><small>{t('booking.costRevenueRatio')}</small><strong>{group.totalRevenue > 0 ? formatRate(group.totalCost / group.totalRevenue) : '—'}</strong></span>
           <span><small>{t('booking.totalCost')}</small><strong>{formatMoney(group.totalCost, selectedCurrency)}</strong></span>
         </div>
         <div className="table-wrap"><table className="data-table booking-evaluation-table">
           <thead>
-            <tr><th className="booking-koc-column">{t('booking.kocColumn')}</th><th className="booking-creator-performance-column">{t('booking.gmvColumn')}</th><th className="cell-number booking-total-cost-column">{t('booking.totalCost')}</th><th className="booking-video-column">{t('booking.matchedVideo')}</th><th className="cell-number booking-refunds-column">{t('booking.refunds')}</th><th className="cell-number">{t('booking.products')}</th><th className="cell-number booking-samples-column">{t('booking.samplesShipped')}</th><th className="cell-number">{t('booking.estimatedCommission')}</th><th className="cell-actions">{t('booking.actionsColumn')}</th></tr>
+            <tr><th className="booking-koc-column">{t('booking.kocColumn')}</th><th className="booking-creator-performance-column">{t('booking.gmvColumn')}</th><th className="cell-number booking-total-cost-column">{t('booking.totalCost')}</th><th className="booking-video-column">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</th><th className="cell-number booking-refunds-column">{t('booking.refunds')}</th><th className="cell-number">{t('booking.products')}</th><th className="cell-number booking-samples-column">{t('booking.samplesShipped')}</th><th className="cell-number">{t('booking.estimatedCommission')}</th><th className="cell-actions">{t('booking.actionsColumn')}</th></tr>
           </thead>
           <tbody>
             {group.bookings.map((booking) => {
-              const performance = performanceOf(booking);
+              const performance = bookingTab === 'product'
+                ? productPerformanceByBooking.get(String(booking.id))
+                : performanceOf(booking);
               const bookingVideos = bookingVideosOf(booking);
               const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
               const expanded = String(expandedBookingId) === String(booking.id);
@@ -1068,10 +1250,10 @@ const BookingManagement = ({ heroTitle }) => {
                 <td className="booking-koc-column"><div className="booking-koc-identity"><TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} /><span><strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong><small>@{booking.creator_username}</small></span></div></td>
                 <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
                 <td className="cell-number booking-total-cost-column"><strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong></td>
-                <td className="booking-video-column"><span className="booking-video-count"><strong>{t('booking.videosCount', { count: videoCount })}</strong></span></td>
+                <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videosCount', { count: videoCount })}</strong></span></td>
                 <td className="cell-number booking-refunds-column">{creatorMetric(performance, 'refunded_gmv', { money: true })}</td>
                 <td className="cell-number"><div className="booking-product-summary"><strong>{creatorMetric(performance, 'items_sold')} <span>{t('booking.itemsSold')}</span></strong><small>{creatorMetric(performance, 'items_refunded')} {t('booking.refundedShort')}</small></div></td>
-                <td className="cell-number booking-samples-column">{creatorMetric(performance, 'samples_shipped')}</td>
+                <td className="cell-number booking-samples-column">{bookingTab === 'product' ? '—' : creatorMetric(performance, 'samples_shipped')}</td>
                 <td className="cell-number">{creatorMetric(performance, 'estimated_commission', { money: true })}</td>
                 <td className="cell-actions">
                   <div className="action-menu booking-action-menu">
@@ -1103,6 +1285,8 @@ const BookingManagement = ({ heroTitle }) => {
                         onClick={() => {
                           setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
                           setSelectedBooking(booking);
+                          setDetailProductIds(bookingProductsOf(booking).map((product) => String(product.id || product.product_id)));
+                          setDetailProductPickerOpen(false);
                           const rawCost = booking.total_cost ?? booking.booking_cost;
                           setDetailCost(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
                         }}
@@ -1188,7 +1372,14 @@ const BookingManagement = ({ heroTitle }) => {
             <div className="koc-drawer__body">
               <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
               <form className="booking-detail-form" onSubmit={saveCost}>
-                <div className="booking-detail-form__cost-row"><label className="field"><span>{t('booking.totalCost')} ({currencyLabel})</span><input type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} value={detailCost} onChange={(event) => setDetailCost(event.target.value)} required /></label><button className="button" type="submit" disabled={updatingId === selectedBooking.id}>{updatingId === selectedBooking.id ? t('common.loading') : t('booking.saveCost')}</button></div>
+                <div className="field booking-product-picker-field booking-detail-product-picker-field">
+                  <span>{t('booking.selectedProducts')}</span>
+                  <div className="booking-product-picker">
+                    <button className="booking-product-picker__trigger" type="button" aria-expanded={detailProductPickerOpen} disabled={detailProductsLoading} onClick={() => setDetailProductPickerOpen((current) => !current)}><span>{detailProductIds.length ? t('booking.productsSelected', { count: detailProductIds.length }) : (detailProductsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}</span><span className="sidebar__chevron" aria-hidden="true" /></button>
+                    {detailProductPickerOpen ? <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox" aria-label={t('booking.selectedProducts')}>{detailProducts.length ? detailProducts.map((product) => <label className="booking-product-picker__option" key={product.id}><input type="checkbox" checked={detailProductIds.includes(product.id)} onChange={() => setDetailProductIds((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} /><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}<span><strong>{product.name}</strong><small>{product.id}</small></span></span></label>) : <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>}</div> : null}
+                  </div>
+                </div>
+                <div className="booking-detail-form__cost-row"><label className="field"><span>{t('booking.totalCost')} ({currencyLabel})</span><input type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} value={detailCost} onChange={(event) => setDetailCost(event.target.value)} required /></label><button className="button" type="submit" disabled={updatingId === selectedBooking.id}>{updatingId === selectedBooking.id ? t('common.loading') : t('booking.saveChanges')}</button></div>
               </form>
             </div>
           </aside>

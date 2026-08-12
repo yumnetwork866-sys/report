@@ -3162,6 +3162,14 @@
 .booking-detail-form__cost-row input { padding-block: 10px; }
 .booking-detail-form__cost-row .button { min-height: 42px; padding: 10px 14px; }
 
+.booking-detail-product-picker-field { min-width: 0; }
+.booking-detail-product-picker__menu {
+  position: static;
+  max-height: 300px;
+  margin-top: 6px;
+  box-shadow: var(--shadow-sm);
+}
+
 @media (max-width: 900px) {
   .booking-evaluation-form {
     grid-template-columns: minmax(0, 1fr) minmax(160px, .5fr);

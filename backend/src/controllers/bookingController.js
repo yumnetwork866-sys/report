@@ -74,6 +74,26 @@ const compactPayload = (payload) => Object.fromEntries(
   Object.entries(payload).filter(([, value]) => value !== undefined),
 );
 
+const normalizeBookingProducts = (products, productIds = []) => {
+  const suppliedProducts = Array.isArray(products) ? products : [];
+  const suppliedIds = Array.isArray(productIds) ? productIds : [];
+  const byId = new Map();
+  for (const product of suppliedProducts) {
+    const id = String(product?.id || product?.product_id || '').trim();
+    if (!id) continue;
+    byId.set(id, {
+      id,
+      name: String(product?.name || product?.title || product?.product_name || id),
+      image_url: String(product?.imageUrl || product?.image_url || product?.main_image_url || product?.thumbnail_url || '') || null,
+    });
+  }
+  for (const value of suppliedIds) {
+    const id = String(value || '').trim();
+    if (id && !byId.has(id)) byId.set(id, { id, name: id, image_url: null });
+  }
+  return [...byId.values()];
+};
+
 const affiliateProductsOfSnapshot = (snapshot) => {
   const list = snapshot?.raw_metrics?.list || {};
   const breakdowns = snapshot?.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.breakdowns || [];
@@ -976,8 +996,11 @@ const createBooking = async (req, res) => {
     );
     if (!targetCreator) return res.status(400).json({ message: 'Select a KOC from synced Target Collaboration or Creator Performance data.' });
     const { shopId, collaboration, raw, profile, performance } = targetCreator;
+    const selectedProducts = normalizeBookingProducts(req.body.products, req.body.product_ids);
     const evaluationSnapshot = {
       recorded_at: new Date().toISOString(),
+      products: selectedProducts,
+      product_ids: selectedProducts.map((product) => product.id),
       collaboration: collaboration ? {
         id: collaboration.collaboration_id,
         name: collaboration.name,
@@ -1040,6 +1063,19 @@ const updateBooking = async (req, res) => {
       return res.status(400).json({ message: 'Invalid booking status' });
     }
 
+    let updatedEvaluationSnapshot;
+    if (req.body.products !== undefined || req.body.product_ids !== undefined) {
+      const currentBooking = await Booking.findByPk(req.params.id);
+      if (!currentBooking) return res.status(404).json({ message: 'Booking not found' });
+      const current = currentBooking.toJSON ? currentBooking.toJSON() : currentBooking;
+      const selectedProducts = normalizeBookingProducts(req.body.products, req.body.product_ids);
+      updatedEvaluationSnapshot = {
+        ...(current.evaluation_snapshot || {}),
+        products: selectedProducts,
+        product_ids: selectedProducts.map((product) => product.id),
+      };
+    }
+
     const payload = compactPayload({
       staff_id: req.body.staff_id,
       staff_name: req.body.staff_name === undefined ? undefined : String(req.body.staff_name || '').trim(),
@@ -1054,6 +1090,7 @@ const updateBooking = async (req, res) => {
       video_platform_id: req.body.video_platform_id,
       video_url: normalizeBookingVideoUrl(req.body.video_url),
       posted_at: req.body.posted_at,
+      evaluation_snapshot: updatedEvaluationSnapshot,
       updated_at: new Date(),
     });
 

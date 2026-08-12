@@ -509,6 +509,8 @@ test('booking can be created from Creator Performance using username only', asyn
         staff_id: 7,
         booking_cost: 80,
         performance_window_type: 'PAST_30_DAYS',
+        product_ids: ['product-1'],
+        products: [{ id: 'product-1', name: 'Serum', imageUrl: 'https://example.com/serum.jpg' }],
       },
     },
     {
@@ -527,6 +529,12 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(createdPayload.deadline, null);
   assert.equal(createdPayload.evaluation_snapshot.collaboration, null);
   assert.deepEqual(createdPayload.evaluation_snapshot.performance, performanceData);
+  assert.deepEqual(createdPayload.evaluation_snapshot.product_ids, ['product-1']);
+  assert.deepEqual(createdPayload.evaluation_snapshot.products, [{
+    id: 'product-1',
+    name: 'Serum',
+    image_url: 'https://example.com/serum.jpg',
+  }]);
   assert.equal(performanceQueries.length, 2);
   assert.equal(performanceQueries[1].where.window_type, 'PAST_30_DAYS');
   assert.equal(autoLinkedBooking.id, 12);
