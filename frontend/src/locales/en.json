@@ -580,6 +580,11 @@
     "ofHistoricalGmv": "of period GMV",
     "noEvaluations": "No booking evaluations yet.",
     "products": "Products",
+    "productsSelected": "{{count}} products selected",
+    "selectProducts": "Select products",
+    "selectKocFirst": "Select a KOC first",
+    "loadingProducts": "Loading products...",
+    "noProducts": "No products are available in this channel",
     "performancePeriodDisclaimer": "Table metrics use the selected performance period. This is the creator's aggregate performance and is for reference only.",
     "performanceWindows": {
       "PAST_180_DAYS": "Benchmark period: 180 days (6 months)",

@@ -19,7 +19,7 @@ import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import DatePickerInput from './DatePickerInput';
 
-const initialForm = { creator_key: '', staff_id: '', total_cost: '' };
+const initialForm = { creator_key: '', staff_id: '', total_cost: '', product_ids: [] };
 const DEFAULT_PERFORMANCE_WINDOW = 'PAST_30_DAYS';
 const dateInputValue = (date) => [
   date.getFullYear(),
@@ -544,6 +544,9 @@ const BookingManagement = ({ heroTitle }) => {
   const [targetKocsLoading, setTargetKocsLoading] = useState(false);
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
   const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(false);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const [channelProducts, setChannelProducts] = useState([]);
+  const [channelProductsLoading, setChannelProductsLoading] = useState(false);
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -718,6 +721,57 @@ const BookingManagement = ({ heroTitle }) => {
     [form.creator_key, targetKocs],
   );
   const selectedKoc = selectedKocDetail?.key === form.creator_key ? selectedKocDetail.creator : null;
+  const channelShopId = selectedKocSummary?.shop_id || targetKocs[0]?.shop_id || '';
+  const bookingProducts = useMemo(() => {
+    const byId = new Map();
+    channelProducts.forEach((product) => {
+      const id = String(product?.id || product?.product_id || '').trim();
+      if (!id) return;
+      byId.set(id, {
+        id,
+        name: product.title || product.name || product.product_name || id,
+        imageUrl: product.main_image_url || product.image_url || product.thumbnail_url || '',
+      });
+    });
+    return [...byId.values()];
+  }, [channelProducts]);
+
+  useEffect(() => {
+    if (!isCreateBookingOpen || !channelShopId) {
+      setChannelProducts([]);
+      setChannelProductsLoading(false);
+      return undefined;
+    }
+    const controller = new AbortController();
+    setChannelProductsLoading(true);
+    fetchTikTokSellerOpenCollaborations(channelShopId, { signal: controller.signal, pageSize: 100 })
+      .then((payload) => {
+        const products = (payload?.open_collaborations || [])
+          .map((item) => item.product)
+          .filter((product) => product?.id);
+        if (!controller.signal.aborted) setChannelProducts(products);
+      })
+      .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
+      .finally(() => { if (!controller.signal.aborted) setChannelProductsLoading(false); });
+    return () => controller.abort();
+  }, [channelShopId, isCreateBookingOpen, t]);
+
+  useEffect(() => {
+    setProductPickerOpen(false);
+    setForm((current) => ({
+      ...current,
+      product_ids: current.product_ids.filter((id) => bookingProducts.some((product) => product.id === id)),
+    }));
+  }, [bookingProducts]);
+
+  const toggleBookingProduct = (productId) => {
+    setForm((current) => ({
+      ...current,
+      product_ids: current.product_ids.includes(productId)
+        ? current.product_ids.filter((id) => id !== productId)
+        : [...current.product_ids, productId],
+    }));
+  };
 
   useEffect(() => {
     if (!selectedKocSummary || !form.creator_key) {
@@ -815,6 +869,8 @@ const BookingManagement = ({ heroTitle }) => {
         creator_username: selectedKoc.username,
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
+        product_ids: form.product_ids,
+        products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
       });
       setBookings((items) => [created, ...items]);
       fetchBookings(undefined, {
@@ -952,6 +1008,7 @@ const BookingManagement = ({ heroTitle }) => {
             <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
               <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
               {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
+              <div className="field booking-product-picker-field"><label>{t('booking.products')}</label><div className="booking-product-picker"><button className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}><span>{form.product_ids.length ? t('booking.productsSelected', { count: form.product_ids.length }) : (channelProductsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}</span><span className="sidebar__chevron" aria-hidden="true" /></button>{productPickerOpen ? <div className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>{channelProductsLoading ? <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div> : bookingProducts.length ? bookingProducts.map((product) => <label className="booking-product-picker__option" key={product.id}><input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} /><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}<span><strong>{product.name}</strong><small>{product.id}</small></span></span></label>) : null}</div> : null}</div></div>
               <div className="field"><label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label><input id="total_cost" type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} inputMode="decimal" value={form.total_cost} onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))} required /></div>
               <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={() => setIsCreateBookingOpen(false)}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
             </form>

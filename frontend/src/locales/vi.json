@@ -575,6 +575,11 @@
     "ofHistoricalGmv": "trên GMV kỳ",
     "noEvaluations": "Chưa có đánh giá booking nào.",
     "products": "Sản phẩm",
+    "productsSelected": "Đã chọn {{count}} sản phẩm",
+    "selectProducts": "Chọn sản phẩm",
+    "selectKocFirst": "Chọn KOC trước",
+    "loadingProducts": "Đang tải sản phẩm...",
+    "noProducts": "Chưa có sản phẩm trong kênh này",
     "performancePeriodDisclaimer": "Số liệu trong bảng dùng kỳ hiệu suất đang chọn. Đây là hiệu suất tổng của creator, chỉ dùng để tham khảo.",
     "performanceWindows": {
       "PAST_180_DAYS": "Kỳ benchmark: 180 ngày (6 tháng)",
