@@ -418,7 +418,6 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedProductIds, setSelectedProductIds] = useState([]);
-  const [isDraggingProduct, setIsDraggingProduct] = useState(false);
   const [draggedProductId, setDraggedProductId] = useState('');
   const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
   const [bulkCategoryId, setBulkCategoryId] = useState('');
@@ -560,7 +559,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
         && current.range.end === range.end) return current;
       return { range, creator: statisticsCreator, category: statisticsCategory };
     });
-  }, [statisticsCategory, statisticsCreator, statisticsPeriod, statisticsRange.end, statisticsRange.start]);
+  }, [statisticsCategory, statisticsCreator, statisticsPeriod, statisticsRange]);
 
   useEffect(() => {
     if (!ordersOnly || orderMode !== 'statistics' || !shopId) return undefined;
@@ -1314,11 +1313,9 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   const startProductDrag = (event, product) => {
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('text/product-id', String(product.id));
-    setIsDraggingProduct(true);
     setDraggedProductId(String(product.id));
   };
   const clearProductDragState = () => {
-    setIsDraggingProduct(false);
     setDraggedProductId('');
     setDragOverCategoryId(null);
   };

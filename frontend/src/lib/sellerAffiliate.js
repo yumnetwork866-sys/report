@@ -48,7 +48,13 @@ export const getAffiliateOrderSources = (order = {}) => {
 
 export const getAffiliateOrderVideos = (order = {}) => getAffiliateOrderSources(order)
   .filter((content) => content.type === 'VIDEO' && content.id)
-  .map(({ type, ...video }) => video);
+  .map((content) => ({
+    id: content.id,
+    username: content.username,
+    url: content.url,
+    thumbnail: content.thumbnail,
+    title: content.title,
+  }));
 
 const metricSources = (creator = {}) => [
   creator,
