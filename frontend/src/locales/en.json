@@ -505,6 +505,7 @@
     "heroTitle": "Booking management",
     "evaluationSubtitle": "Evaluate booking cost with synced Target Collaboration and Creator Performance data.",
     "evaluations": "KOC",
+    "addBooking": "Add booking",
     "createEvaluation": "Create booking evaluation",
     "createEvaluationMeta": "Choose a KOC from Target Collaboration or Creator Performance and enter the proposed cost.",
     "targetCreator": "Choose or search for a KOC",

@@ -500,6 +500,7 @@
     "heroTitle": "Quản lý booking",
     "evaluationSubtitle": "Đánh giá chi phí booking bằng dữ liệu Target Collaboration và Creator Performance đã đồng bộ.",
     "evaluations": "KOC",
+    "addBooking": "Thêm booking",
     "createEvaluation": "Tạo đánh giá booking",
     "createEvaluationMeta": "Chọn KOC từ Target Collaboration hoặc Creator Performance và nhập chi phí dự kiến.",
     "targetCreator": "Chọn hoặc tìm kiếm KOC",
