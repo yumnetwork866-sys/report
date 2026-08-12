@@ -16,21 +16,24 @@ export const getAffiliateOrderProgramIds = (order = {}) => uniqueValues([
     : []),
 ]);
 
-export const getAffiliateOrderVideos = (order = {}) => {
+export const getAffiliateOrderSources = (order = {}) => {
   const sources = [...(Array.isArray(order.skus) ? order.skus : []), order];
-  const videos = [];
+  const contents = [];
   const seen = new Set();
 
   for (const source of sources) {
     const contentType = String(source?.content_type || source?.content?.type || '').toUpperCase();
     const id = source?.video_id || source?.content_id || source?.content?.id;
-    if (!id || (contentType && contentType !== 'VIDEO')) continue;
+    if (!id && !contentType) continue;
 
-    const normalizedId = String(id);
-    if (seen.has(normalizedId)) continue;
-    seen.add(normalizedId);
-    videos.push({
+    const normalizedType = contentType || (source?.video_id ? 'VIDEO' : 'UNKNOWN');
+    const normalizedId = id ? String(id) : '';
+    const key = `${normalizedType}:${normalizedId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    contents.push({
       id: normalizedId,
+      type: normalizedType,
       username: source?.creator_username || source?.username || order.creator_username || order.username || null,
       url: source?.video_url || source?.content_url || source?.share_url || null,
       thumbnail: source?.thumbnail_url || source?.cover_image_url || source?.cover_url
@@ -40,8 +43,12 @@ export const getAffiliateOrderVideos = (order = {}) => {
     });
   }
 
-  return videos;
+  return contents;
 };
+
+export const getAffiliateOrderVideos = (order = {}) => getAffiliateOrderSources(order)
+  .filter((content) => content.type === 'VIDEO' && content.id)
+  .map(({ type, ...video }) => video);
 
 const metricSources = (creator = {}) => [
   creator,

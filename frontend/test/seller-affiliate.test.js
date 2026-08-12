@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   getAffiliateOrderProductIds,
   getAffiliateOrderProgramIds,
+  getAffiliateOrderSources,
   getAffiliateOrderVideos,
   getCreatorVideoEngagementRate,
   normalizeEngagementPercentage,
@@ -36,6 +37,21 @@ test('affiliate order videos are collected from VIDEO SKUs and deduplicated', ()
     { id: 'video-2', username: null, url: 'https://www.tiktok.com/video-2', thumbnail: null, title: null },
   ]);
   assert.deepEqual(getAffiliateOrderVideos(), []);
+});
+
+test('affiliate order sources include non-video attribution and deduplicate by type and id', () => {
+  const order = { skus: [
+    { content_type: 'LIVE', content_id: 'content-1', creator_username: 'creator.one' },
+    { content_type: 'VIDEO', content_id: 'content-1', creator_username: 'creator.one' },
+    { content_type: 'SHOP' },
+    { content_type: 'SHOP' },
+  ] };
+
+  assert.deepEqual(getAffiliateOrderSources(order).map(({ type, id }) => ({ type, id })), [
+    { type: 'LIVE', id: 'content-1' },
+    { type: 'VIDEO', id: 'content-1' },
+    { type: 'SHOP', id: '' },
+  ]);
 });
 
 test('affiliate order fields retain support for legacy top-level values', () => {

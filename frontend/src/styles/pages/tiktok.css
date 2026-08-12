@@ -3880,7 +3880,12 @@
 }
 
 .seller-affiliate__order-products .seller-affiliate__product {
-  min-width: 280px;
+  min-width: 0;
+}
+
+.seller-affiliate__order-products .seller-affiliate__product img {
+  width: 64px;
+  height: 64px;
 }
 
 .seller-affiliate__creator-actions {

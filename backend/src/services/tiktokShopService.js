@@ -365,7 +365,7 @@ const sendAffiliateMessage = ({
   },
 }, fetchImpl);
 
-const searchAffiliateOrders = ({ authorization, shopCipher, pageToken, pageSize = 20, startTime, endTime, programId } = {}, fetchImpl) => sellerAffiliateRequest({
+const searchAffiliateOrders = ({ authorization, shopCipher, pageToken, pageSize = 20, startTime, endTime, programId, orderId } = {}, fetchImpl) => sellerAffiliateRequest({
   authorization,
   shopCipher,
   path: AFFILIATE_ORDERS_PATH,
@@ -374,6 +374,7 @@ const searchAffiliateOrders = ({ authorization, shopCipher, pageToken, pageSize 
     ...(startTime ? { create_time_ge: startTime } : {}),
     ...(endTime ? { create_time_lt: endTime } : {}),
     ...(programId ? { program_id: String(programId) } : {}),
+    ...(orderId ? { order_id: String(orderId) } : {}),
   },
 }, fetchImpl);
 
@@ -400,7 +401,8 @@ const attachAffiliateOrderMetadata = (orders = [], { openCollaborations = [], ta
       products: productIds.map((id) => productsById.get(id) || { id }),
       programs: programIds.map((id) => targetProgramsById.get(id) || openProgramsById.get(id) || { id }),
     };
-  });
+});
+
 };
 
 const summarizeAffiliateOrders = (orders = [], { categoryItems = [], creatorUsername, categoryId } = {}) => {

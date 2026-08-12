@@ -240,6 +240,7 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
   if (filters.startTime) params.set('create_time_ge', filters.startTime);
   if (filters.endTime) params.set('create_time_lt', filters.endTime);
   if (filters.programId) params.set('program_id', filters.programId);
+  if (filters.orderId) params.set('order_id', filters.orderId);
   if (filters.productId) params.set('product_id', filters.productId);
   if (filters.creatorUsername) params.set('creator_username', filters.creatorUsername);
   if (filters.categoryId) params.set('category_id', filters.categoryId);

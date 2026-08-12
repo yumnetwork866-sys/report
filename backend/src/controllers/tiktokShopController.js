@@ -649,15 +649,41 @@ const loadTargetCollaborationSummaries = async (shop, targetIds) => {
 };
 
 const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
-  const payload = await searchAffiliateOrders({
+  const orderId = String(req.query.order_id || '').trim();
+  const orderSearchOptions = {
     authorization: shop.authorization,
     shopCipher: shop.cipher,
-    pageToken: req.query.page_token,
-    pageSize: pageSizeValue(req.query.page_size),
     startTime: unixTimeValue(req.query.create_time_ge),
     endTime: unixTimeValue(req.query.create_time_lt),
     programId: req.query.program_id,
-  });
+  };
+  let payload;
+  if (orderId) {
+    let pageToken = req.query.page_token;
+    let lastPayload = { data: {} };
+    let matchedOrders = [];
+    for (let page = 0; page < 100; page += 1) {
+      lastPayload = await searchAffiliateOrders({
+        ...orderSearchOptions,
+        pageToken,
+        pageSize: 100,
+      });
+      const pageOrders = Array.isArray(lastPayload.data?.orders) ? lastPayload.data.orders : [];
+      matchedOrders = pageOrders.filter((order) => String(order?.id || order?.order_id || '') === orderId);
+      if (matchedOrders.length || !lastPayload.data?.next_page_token) break;
+      pageToken = lastPayload.data.next_page_token;
+    }
+    payload = {
+      ...lastPayload,
+      data: { ...lastPayload.data, orders: matchedOrders, next_page_token: '' },
+    };
+  } else {
+    payload = await searchAffiliateOrders({
+      ...orderSearchOptions,
+      pageToken: req.query.page_token,
+      pageSize: pageSizeValue(req.query.page_size),
+    });
+  }
   const orders = Array.isArray(payload.data?.orders) ? payload.data.orders : [];
   const skus = orders.flatMap((order) => Array.isArray(order.skus) ? order.skus : []);
   const targetIds = new Set(skus.map((sku) => sku?.target_collaboration_id).filter(Boolean).map(String));
