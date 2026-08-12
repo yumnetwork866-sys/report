@@ -948,6 +948,7 @@
     "deleteCategoryConfirm": "Delete “{{name}}”? Products in this category will become uncategorized.",
     "categoryCount": "{{count}} categories",
     "productCount": "{{count}} products",
+    "productsInCategory": "{{count}} products in category",
     "productCategory": "Category for {{product}}",
     "uncategorized": "Uncategorized",
     "removeCategory": "Remove category",
