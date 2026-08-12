@@ -2458,7 +2458,10 @@
 }
 .booking-create-modal .booking-evaluation-form > .field { min-width: 0; }
 .booking-create-modal .booking-koc-combobox { min-width: 0; }
-.booking-create-modal .booking-koc-combobox__menu,
+.booking-create-modal .booking-koc-combobox__menu {
+  z-index: 1300;
+  max-height: min(360px, 42vh);
+}
 .booking-create-modal .booking-product-picker__menu {
   z-index: 1200;
   max-height: min(360px, 42vh);
