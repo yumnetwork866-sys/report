@@ -537,6 +537,7 @@ const BookingManagement = ({ heroTitle }) => {
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
+  const [bookingTab, setBookingTab] = useState('video');
   const [selectedManagerKey, setSelectedManagerKey] = useState('');
   const [customRange, setCustomRange] = useState(defaultCustomRange);
   const [targetKocPage, setTargetKocPage] = useState(1);
@@ -1016,7 +1017,13 @@ const BookingManagement = ({ heroTitle }) => {
 
       {error ? <section className="section-card empty-state empty-state--compact" role="alert">{error}</section> : null}
 
-      <section className="booking-create-action" aria-label={t('booking.addBooking')}><button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button></section>
+      <section className="booking-create-action">
+        <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
+          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('product')}>{t('booking.productTab')}</button>
+        </div>
+        <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
+      </section>
 
       {isCreateBookingOpen ? createPortal(
         <div className="booking-create-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setIsCreateBookingOpen(false); }}>
@@ -1032,7 +1039,7 @@ const BookingManagement = ({ heroTitle }) => {
           </section>
         </div>, document.body,
       ) : null}
-      <section className="section-card">
+      <section className="section-card" id="booking-list-panel" role="tabpanel">
         <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
         {incompleteCustomCoverage ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
