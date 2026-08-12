@@ -423,6 +423,9 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   const [productSearch, setProductSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [selectedProductIds, setSelectedProductIds] = useState([]);
+  const [isDraggingProduct, setIsDraggingProduct] = useState(false);
+  const [draggedProductId, setDraggedProductId] = useState('');
+  const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
   const [bulkCategoryId, setBulkCategoryId] = useState('');
   const [categoryLoading, setCategoryLoading] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -1235,15 +1238,14 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
       setCategoryLoading(false);
     }
   };
-  const assignSelectedProducts = async () => {
-    const selectedProducts = orderProducts.filter((product) => selectedProductIds.includes(String(product.id)));
-    if (!selectedProducts.length) return;
+  const assignProductsToCategory = async (products, categoryId) => {
+    if (!products.length || !shopId) return;
     setCategoryLoading(true);
     setCategoryError('');
     try {
-      await Promise.all(selectedProducts.map((product) => bulkCategoryId
+      await Promise.all(products.map((product) => categoryId
         ? assignOrderProductCategory(shopId, product.id, {
-          category_id: Number(bulkCategoryId),
+          category_id: Number(categoryId),
           title: product.title || null,
           image_url: product.main_image_url || null,
         })
@@ -1257,6 +1259,32 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     } finally {
       setCategoryLoading(false);
     }
+  };
+  const assignSelectedProducts = async () => {
+    const selectedProducts = orderProducts.filter((product) => selectedProductIds.includes(String(product.id)));
+    await assignProductsToCategory(selectedProducts, bulkCategoryId);
+  };
+  const startProductDrag = (event, product) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/product-id', String(product.id));
+    setIsDraggingProduct(true);
+    setDraggedProductId(String(product.id));
+  };
+  const clearProductDragState = () => {
+    setIsDraggingProduct(false);
+    setDraggedProductId('');
+    setDragOverCategoryId(null);
+  };
+  const dropProductsOnCategory = async (event, categoryId) => {
+    event.preventDefault();
+    const draggedId = event.dataTransfer.getData('text/product-id');
+    const draggedProduct = orderProducts.find((product) => String(product.id) === draggedId);
+    if (!draggedProduct) {
+      clearProductDragState();
+      return;
+    }
+    await assignProductsToCategory([draggedProduct], categoryId);
+    clearProductDragState();
   };
   const toggleSelectedProduct = (productId) => {
     const id = String(productId);
@@ -1282,7 +1310,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
           {['open', 'target', 'discover', 'performance', 'creators', 'orders'].map((value) => <button className={section === value ? 'is-active' : ''} type="button" role="tab" aria-selected={section === value} onClick={() => changeSection(value)} key={value}>{t(`sellerAffiliate.${value}Tab`)}</button>)}
         </div>
       ) : null}
-      <section className="section-card seller-affiliate__controls">
+      <section className={`section-card seller-affiliate__controls${ordersOnly && orderMode === 'management' ? ' seller-affiliate__controls--management' : ''}`}>
         <div className="seller-affiliate__filter-grid">
           <div className="field"><label htmlFor="affiliate-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="affiliate-shop" shops={shops} value={shopId} onChange={(nextShopId) => { resetMarketplaceSearch(); setShopId(nextShopId); setPageTokens([]); setData({}); }} disabled={loading || !shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
           {(!ordersOnly || orderMode === 'orders') ? <form className="seller-affiliate__search" onSubmit={submitSearch}>
@@ -1299,6 +1327,10 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
           </form> : null}
           {section === 'target' || section === 'creators' ? <div className="field"><label htmlFor="affiliate-status">{t('sellerAffiliate.status')}</label><select id="affiliate-status" value={status} onChange={(event) => { setStatus(event.target.value); setPageTokens([]); }}>{section === 'creators' ? <option value="">{t('sellerAffiliate.allStatuses')}</option> : null}{(section === 'target' ? ['ONGOING', 'EXPIRING', 'VALID', 'CANCELING', 'COMPLETED'] : ['PENDING', 'AWAITING_SHIPMENT', 'SHIPPED', 'CONTENT_PENDING', 'COMPLETED', 'REJECT_CANCELLED']).map((value) => <option value={value} key={value}>{value}</option>)}</select></div> : null}
           {section === 'performance' ? <div className="field"><label htmlFor="creator-performance-window">{t('sellerAffiliate.performanceWindow')}</label><select id="creator-performance-window" value={performanceWindow} onChange={(event) => { setPerformanceWindow(event.target.value); setPageTokens([]); }}><option value="PAST_24H">{t('sellerAffiliate.past24h')}</option><option value="PAST_7_DAYS">{t('sellerAffiliate.past7Days')}</option><option value="PAST_30_DAYS">{t('sellerAffiliate.past30Days')}</option><option value="PAST_180_DAYS">{t('sellerAffiliate.past180Days')}</option></select></div> : null}
+          {ordersOnly && orderMode === 'management' ? <div className="seller-affiliate__management-filters">
+            <div className="order-product-management__search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg><input type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={t('sellerAffiliate.searchProducts')} aria-label={t('sellerAffiliate.searchProducts')} /></div>
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label={t('sellerAffiliate.filterCategory')}><option value="all">{t('sellerAffiliate.allCategories')}</option><option value="uncategorized">{t('sellerAffiliate.uncategorized')}</option>{orderCategories.map((category) => <option value={String(category.id)} key={category.id}>{category.name}</option>)}</select>
+          </div> : null}
         </div>
       </section>
 
@@ -1336,31 +1368,19 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
         </section> : null}
         {ordersOnly && orderMode === 'management' ? <section className="section-card order-product-management">
           <div className="section-card__header"><div><h2 className="section-card__title">{t('sellerAffiliate.orderManagementTitle')}</h2></div><div className="order-product-management__summary"><span className="chip">{t('sellerAffiliate.categoryCount', { count: orderCategories.length })}</span><span className="chip">{t('sellerAffiliate.productCount', { count: orderProducts.length })}</span></div></div>
-          <div className="order-product-management__toolbar">
-            <div className="order-product-management__toolbar-title"><strong>{t('sellerAffiliate.productList')}</strong></div>
-            <div className="order-product-management__filters">
-              <div className="order-product-management__search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg><input type="search" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={t('sellerAffiliate.searchProducts')} aria-label={t('sellerAffiliate.searchProducts')} /></div>
-              <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} aria-label={t('sellerAffiliate.filterCategory')}><option value="all">{t('sellerAffiliate.allCategories')}</option><option value="uncategorized">{t('sellerAffiliate.uncategorized')}</option>{orderCategories.map((category) => <option value={String(category.id)} key={category.id}>{category.name}</option>)}</select>
-            </div>
-          </div>
+
           {categoryError ? <div className="empty-state empty-state--compact" role="alert">{categoryError}</div> : null}
           {(categoryLoading || catalogLoading) && !orderCategories.length && !orderProducts.length ? <div className="empty-state"><span className="loading-dot" />{t('common.loading')}</div> : <>
-            <div className="order-product-management__workspace">
-              <aside className="order-product-management__category-panel">
-                <div className="order-product-management__category-heading"><div><span className="order-product-management__category-icon" aria-hidden="true">▦</span><strong>{t('sellerAffiliate.categories')}</strong></div><small>{t('sellerAffiliate.selectCategoryHint')}</small></div>
-                <form className="order-product-management__create" onSubmit={submitOrderCategory}><label className="sr-only" htmlFor="order-category-name">{t('sellerAffiliate.categoryName')}</label><input id="order-category-name" value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder={t('sellerAffiliate.categoryNamePlaceholder')} /><button type="submit" disabled={categoryLoading || !categoryName.trim()} aria-label={t('sellerAffiliate.createCategory')} title={t('sellerAffiliate.createCategory')}>＋</button></form>
-                <div className={`order-product-category order-product-category--uncategorized${categoryFilter === 'uncategorized' ? ' is-filter-active' : ''}`}><button type="button" onClick={() => setCategoryFilter((current) => current === 'uncategorized' ? 'all' : 'uncategorized')}><strong>{t('sellerAffiliate.uncategorized')}</strong><span>{orderProducts.filter((product) => !orderProductCategoryMap.has(String(product.id))).length}</span></button></div>
-                <div className="order-product-management__categories">
-                  {orderCategories.map((category) => <div className={`order-product-category${categoryFilter === String(category.id) ? ' is-filter-active' : ''}`} key={category.id}><button type="button" onClick={() => setCategoryFilter((current) => current === String(category.id) ? 'all' : String(category.id))}><strong>{category.name}</strong><span>{(category.products || []).length}</span></button><button className="order-product-category__delete" type="button" disabled={categoryLoading} aria-label={`${t('sellerAffiliate.deleteCategory')}: ${category.name}`} title={t('sellerAffiliate.deleteCategory')} onClick={() => removeOrderCategory(category)}>×</button></div>)}
-                  {!orderCategories.length ? <div className="empty-state empty-state--compact">{t('sellerAffiliate.noCategories')}</div> : null}
-                </div>
-              </aside>
-              <div className="order-product-management__products">
+            <div className="order-product-management__workspace order-product-management__workspace--grouping">
+              <section className="order-product-management__products" aria-labelledby="all-products-title">
+                <div className="order-product-management__column-heading"><div><span className="order-product-management__eyebrow">{t('sellerAffiliate.allProducts')}</span><strong id="all-products-title">{formatNumber(filteredOrderProducts.length)} / {formatNumber(orderProducts.length)}</strong></div></div>
                 {selectedProductIds.length ? <div className="order-product-management__bulk" role="region" aria-label={t('sellerAffiliate.bulkActions')}><strong>{t('sellerAffiliate.productsSelected', { count: selectedProductIds.length })}</strong><select value={bulkCategoryId} onChange={(event) => setBulkCategoryId(event.target.value)} aria-label={t('sellerAffiliate.category')}><option value="">{t('sellerAffiliate.uncategorized')}</option>{orderCategories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select><button className="button button--small" type="button" disabled={categoryLoading} onClick={assignSelectedProducts}>{t('sellerAffiliate.apply')}</button><button className="button button--small button--ghost" type="button" onClick={() => setSelectedProductIds([])}>{t('common.close')}</button></div> : null}
-                <div className="table-wrap order-product-management__table-wrap"><table className="data-table order-product-management__table"><thead><tr><th className="order-product-management__select"><input type="checkbox" checked={allVisibleProductsSelected} onChange={() => setSelectedProductIds((current) => allVisibleProductsSelected ? current.filter((id) => !visibleProductIds.includes(id)) : [...new Set([...current, ...visibleProductIds])])} aria-label={t('sellerAffiliate.selectVisibleProducts')} /></th><th>{t('sellerAffiliate.product')}</th></tr></thead><tbody>
-                  {filteredOrderProducts.length ? filteredOrderProducts.map((product) => { const categoryId = orderProductCategoryMap.get(String(product.id)); return <tr className={selectedProductIds.includes(String(product.id)) ? 'is-selected' : ''} key={product.id}><td className="order-product-management__select"><input type="checkbox" checked={selectedProductIds.includes(String(product.id))} onChange={() => toggleSelectedProduct(product.id)} aria-label={t('sellerAffiliate.selectProduct', { product: product.title || product.id })} /></td><td><div className="seller-affiliate__product order-product-management__product-info">{product.main_image_url ? <img src={product.main_image_url} alt="" loading="lazy" /> : null}<div><strong>{product.title || product.id}</strong>{product.title ? <span>{product.id}</span> : null}<span className={`order-product-management__category-tag${categoryId ? '' : ' is-uncategorized'}`}>{categoryId ? orderCategoryNameMap.get(categoryId) : t('sellerAffiliate.uncategorized')}</span></div></div></td></tr>; }) : <tr><td colSpan={2}><div className="empty-state">{orderProducts.length ? t('sellerAffiliate.noProductMatches') : t('sellerAffiliate.noOrderProducts')}</div></td></tr>}
-                </tbody></table></div>
-              </div>
+                <div className="order-product-management__product-list">
+                  <div className="order-product-management__list-select"><label><input type="checkbox" checked={allVisibleProductsSelected} onChange={() => setSelectedProductIds((current) => allVisibleProductsSelected ? current.filter((id) => !visibleProductIds.includes(id)) : [...new Set([...current, ...visibleProductIds])])} aria-label={t('sellerAffiliate.selectVisibleProducts')} /> {t('sellerAffiliate.selectVisibleProducts')}</label></div>
+                  {filteredOrderProducts.length ? filteredOrderProducts.map((product) => { const categoryId = orderProductCategoryMap.get(String(product.id)); return <div className={`order-product-management__product-card${selectedProductIds.includes(String(product.id)) ? ' is-selected' : ''}${draggedProductId === String(product.id) ? ' is-dragging' : ''}`} draggable="true" tabIndex="0" role="button" aria-pressed={selectedProductIds.includes(String(product.id))} onClick={(event) => { if (event.target.closest('input')) return; toggleSelectedProduct(product.id); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSelectedProduct(product.id); } }} onDragStart={(event) => startProductDrag(event, product)} onDragEnd={clearProductDragState} key={product.id}><input type="checkbox" checked={selectedProductIds.includes(String(product.id))} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelectedProduct(product.id)} aria-label={t('sellerAffiliate.selectProduct', { product: product.title || product.id })} /><div className="seller-affiliate__product order-product-management__product-info">{product.main_image_url ? <img src={product.main_image_url} alt="" loading="lazy" /> : <span className="order-product-management__product-placeholder">P</span>}<div><strong>{product.title || product.id}</strong>{product.title ? <span>{product.id}</span> : null}<span className={`order-product-management__category-tag${categoryId ? '' : ' is-uncategorized'}`}>{categoryId ? orderCategoryNameMap.get(categoryId) : t('sellerAffiliate.uncategorized')}</span></div></div></div>; }) : <div className="empty-state">{orderProducts.length ? t('sellerAffiliate.noProductMatches') : t('sellerAffiliate.noOrderProducts')}</div>}
+                </div>
+              </section>
+              <section className="order-product-management__groups" aria-labelledby="groups-title"><div className="order-product-management__column-heading"><div><span className="order-product-management__eyebrow" id="groups-title">{t('sellerAffiliate.groups')}</span></div><form className="order-product-management__create" onSubmit={submitOrderCategory}><label className="sr-only" htmlFor="order-category-name">{t('sellerAffiliate.categoryName')}</label><input id="order-category-name" value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder={t('sellerAffiliate.categoryNamePlaceholder')} /><button type="submit" disabled={categoryLoading || !categoryName.trim()} aria-label={t('sellerAffiliate.createCategory')} title={t('sellerAffiliate.createCategory')}>＋</button></form></div><div className="order-product-management__group-list">{orderCategories.map((category) => { const groupProducts = orderProducts.filter((product) => orderProductCategoryMap.get(String(product.id)) === String(category.id)); return <div className={`order-product-group${categoryFilter === String(category.id) ? ' is-filter-active' : ''}${dragOverCategoryId === String(category.id) ? ' is-drag-over' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverCategoryId(String(category.id)); }} onDragLeave={() => setDragOverCategoryId(null)} onDrop={(event) => dropProductsOnCategory(event, category.id)} key={category.id}><div className="order-product-group__header"><strong>{category.name}</strong><span>{groupProducts.length}</span><button className="order-product-category__delete" type="button" disabled={categoryLoading} aria-label={`${t('sellerAffiliate.deleteCategory')}: ${category.name}`} title={t('sellerAffiliate.deleteCategory')} onClick={() => removeOrderCategory(category)}>×</button></div><div className="order-product-group__products">{groupProducts.map((product) => <div className="order-product-group__product" key={product.id}>{product.main_image_url ? <img src={product.main_image_url} alt="" /> : <span className="order-product-management__product-placeholder">P</span>}<span title={product.title || product.id}>{product.title || product.id}</span></div>)}</div></div>; })}{!orderCategories.length ? <div className="empty-state empty-state--compact">{t('sellerAffiliate.noCategories')}</div> : null}<div className={`order-product-group order-product-group--uncategorized${categoryFilter === 'uncategorized' ? ' is-filter-active' : ''}${dragOverCategoryId === '' ? ' is-drag-over' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverCategoryId(''); }} onDragLeave={() => setDragOverCategoryId(null)} onDrop={(event) => dropProductsOnCategory(event, '')}><div className="order-product-group__header"><span className="order-product-group__trash-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7l1-3h4l1 3" /></svg></span><strong>{t('sellerAffiliate.removeCategory')}</strong></div></div></div></section>
             </div>
           </>}
         </section> : null}
