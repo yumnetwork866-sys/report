@@ -615,6 +615,23 @@ const BookingManagement = ({ heroTitle }) => {
   }, [convertAmount, selectedCurrency]);
 
   useEffect(() => {
+    if (!isCreateBookingOpen) {
+      setProductPickerOpen(false);
+      return undefined;
+    }
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape' && !saving) setIsCreateBookingOpen(false);
+    };
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isCreateBookingOpen, saving]);
+
+  useEffect(() => {
     const closeActions = (event) => {
       if (event.type === 'keydown' && event.key !== 'Escape') return;
       if (event.type === 'click' && event.target.closest('.booking-action-menu')) return;
