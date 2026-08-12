@@ -3819,6 +3819,15 @@
   gap: 10px;
 }
 
+.seller-affiliate__order-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.seller-affiliate__order-id {
+  overflow-wrap: anywhere;
+}
+
 .seller-affiliate__order-videos {
   min-width: 150px;
 }
