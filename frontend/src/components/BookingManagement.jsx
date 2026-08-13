@@ -23,6 +23,46 @@ import DatePickerInput from './DatePickerInput';
 const initialForm = { creator_key: '', staff_id: '', total_cost: '', product_ids: [] };
 const DEFAULT_PERFORMANCE_WINDOW = 'PAST_30_DAYS';
 const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const BOOKING_UI_SESSION_KEY = 'booking-management-ui';
+const PRODUCT_ORDERS_CACHE_SESSION_KEY = 'booking-product-orders-cache';
+const bookingResourceCache = new Map();
+const cachedBookingResource = (key, load) => {
+  const cached = bookingResourceCache.get(key);
+  if (cached && Date.now() - cached.createdAt < PRODUCT_ORDERS_CACHE_TTL_MS) return cached.promise;
+  const promise = Promise.resolve().then(load).catch((error) => {
+    bookingResourceCache.delete(key);
+    throw error;
+  });
+  bookingResourceCache.set(key, { createdAt: Date.now(), promise });
+  return promise;
+};
+const bookingUiSession = () => {
+  if (typeof window === 'undefined') return {};
+  try {
+    return JSON.parse(window.sessionStorage.getItem(BOOKING_UI_SESSION_KEY) || '{}');
+  } catch {
+    return {};
+  }
+};
+const productOrdersCacheSession = () => {
+  if (typeof window === 'undefined') return new Map();
+  try {
+    const now = Date.now();
+    const entries = JSON.parse(window.sessionStorage.getItem(PRODUCT_ORDERS_CACHE_SESSION_KEY) || '[]');
+    return new Map(entries.filter(([, cached]) => (
+      cached?.ordersByShop && now - Number(cached.fetchedAt) < PRODUCT_ORDERS_CACHE_TTL_MS
+    )));
+  } catch {
+    return new Map();
+  }
+};
+const persistProductOrdersCache = (cache) => {
+  try {
+    window.sessionStorage.setItem(PRODUCT_ORDERS_CACHE_SESSION_KEY, JSON.stringify([...cache]));
+  } catch {
+    // Keep the in-memory cache when session storage is unavailable or full.
+  }
+};
 const dateInputValue = (date) => [
   date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'),
@@ -295,11 +335,14 @@ const BookingVideoThumbnail = ({ shopId, video, snapshot, index }) => {
     setThumbnail(directThumbnail);
     setFailed(false);
     if (directThumbnail || !shopId || !video?.platform_video_id || !video?.creator_username) return undefined;
-    const controller = new AbortController();
-    fetchTikTokShopVideoThumbnail(shopId, video.platform_video_id, video.creator_username, controller.signal)
-      .then((payload) => setThumbnail(payload?.thumbnail_url || null))
-      .catch((error) => { if (error.name !== 'AbortError') setFailed(true); });
-    return () => controller.abort();
+    let active = true;
+    const cacheKey = `thumbnail:${shopId}:${video.platform_video_id}:${video.creator_username}`;
+    cachedBookingResource(cacheKey, () => (
+      fetchTikTokShopVideoThumbnail(shopId, video.platform_video_id, video.creator_username)
+    ))
+      .then((payload) => { if (active) setThumbnail(payload?.thumbnail_url || null); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
   }, [directThumbnail, shopId, video?.creator_username, video?.platform_video_id]);
 
   const content = thumbnail && !failed
@@ -464,14 +507,12 @@ const BookingDetailProducts = ({ shopId, videos, label, formatNumber }) => {
     if (!shopId || !sourceProducts.length) return undefined;
     const missing = sourceProducts.filter((product) => !product.name || !product.thumbnailUrl);
     if (!missing.length) return undefined;
-    const controller = new AbortController();
+    let active = true;
     Promise.all(missing.map(async (product) => {
       try {
-        const payload = await fetchTikTokSellerOpenCollaborations(shopId, {
-          signal: controller.signal,
-          pageSize: 20,
-          keyword: product.id,
-        });
+        const payload = await cachedBookingResource(`video-product:${shopId}:${product.id}`, () => (
+          fetchTikTokSellerOpenCollaborations(shopId, { pageSize: 20, keyword: product.id })
+        ));
         const row = (payload?.open_collaborations || []).find((item) => String(item?.product?.id) === product.id);
         return row?.product ? {
           id: product.id,
@@ -482,9 +523,9 @@ const BookingDetailProducts = ({ shopId, videos, label, formatNumber }) => {
         return product;
       }
     })).then((resolved) => {
-      if (!controller.signal.aborted) setProducts(resolved);
+      if (active) setProducts(resolved);
     });
-    return () => controller.abort();
+    return () => { active = false; };
   }, [shopId, sourceProducts]);
 
   return (
@@ -528,14 +569,12 @@ const BookingVideoProducts = ({ shopId, video, snapshot, label }) => {
     if (!shopId || !sourceProducts.length) return undefined;
     const missing = sourceProducts.filter((product) => !product.name || !product.thumbnailUrl);
     if (!missing.length) return undefined;
-    const controller = new AbortController();
+    let active = true;
     Promise.all(missing.map(async (product) => {
       try {
-        const payload = await fetchTikTokSellerOpenCollaborations(shopId, {
-          signal: controller.signal,
-          pageSize: 20,
-          keyword: product.id,
-        });
+        const payload = await cachedBookingResource(`video-product:${shopId}:${product.id}`, () => (
+          fetchTikTokSellerOpenCollaborations(shopId, { pageSize: 20, keyword: product.id })
+        ));
         const row = (payload?.open_collaborations || []).find((item) => String(item?.product?.id) === product.id);
         return row?.product ? {
           id: product.id,
@@ -546,9 +585,9 @@ const BookingVideoProducts = ({ shopId, video, snapshot, label }) => {
         return product;
       }
     })).then((loaded) => {
-      if (!controller.signal.aborted) setProducts(loaded);
+      if (active) setProducts(loaded);
     });
-    return () => controller.abort();
+    return () => { active = false; };
   }, [shopId, sourceProducts]);
 
   return (
@@ -669,12 +708,15 @@ const BookingManagement = ({ heroTitle }) => {
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
-  const [bookingTab, setBookingTab] = useState('video');
+  const [bookingTab, setBookingTab] = useState(() => (
+    bookingUiSession().bookingTab === 'product' ? 'product' : 'video'
+  ));
   const [productOrdersByShop, setProductOrdersByShop] = useState({});
-  const productOrdersCacheRef = useRef(new Map());
+  const productOrdersCacheRef = useRef(null);
+  if (productOrdersCacheRef.current === null) productOrdersCacheRef.current = productOrdersCacheSession();
   const [productOrdersLoading, setProductOrdersLoading] = useState(false);
   const [productOrdersError, setProductOrdersError] = useState('');
-  const [selectedManagerKey, setSelectedManagerKey] = useState('');
+  const [selectedManagerKey, setSelectedManagerKey] = useState(() => bookingUiSession().selectedManagerKey || '');
   const [customRange, setCustomRange] = useState(defaultCustomRange);
   const [targetKocPage, setTargetKocPage] = useState(1);
   const [targetKocPagination, setTargetKocPagination] = useState({ page: 1, total_pages: 1 });
@@ -691,7 +733,7 @@ const BookingManagement = ({ heroTitle }) => {
   const [updatingId, setUpdatingId] = useState(null);
   const [matchingVideoId, setMatchingVideoId] = useState(null);
   const [videoMatchDialog, setVideoMatchDialog] = useState(null);
-  const [expandedBookingId, setExpandedBookingId] = useState(null);
+  const [expandedBookingId, setExpandedBookingId] = useState(() => bookingUiSession().expandedBookingId ?? null);
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [detailCost, setDetailCost] = useState('');
@@ -711,6 +753,18 @@ const BookingManagement = ({ heroTitle }) => {
     if (event.target.closest('button, a, input, select, textarea, label')) return;
     setExpandedBookingId((current) => String(current) === String(bookingId) ? null : bookingId);
   };
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(BOOKING_UI_SESSION_KEY, JSON.stringify({
+        bookingTab,
+        selectedManagerKey,
+        expandedBookingId,
+      }));
+    } catch {
+      // The page still works when session storage is unavailable.
+    }
+  }, [bookingTab, expandedBookingId, selectedManagerKey]);
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatNumber = (value, options) => finiteNumber(value).toLocaleString(locale, options);
@@ -1028,6 +1082,7 @@ const BookingManagement = ({ heroTitle }) => {
       if (!controller.signal.aborted) {
         const ordersByShop = Object.fromEntries(entries);
         productOrdersCacheRef.current.set(cacheKey, { ordersByShop, fetchedAt: Date.now() });
+        persistProductOrdersCache(productOrdersCacheRef.current);
         setProductOrdersByShop(ordersByShop);
       }
     }).catch((err) => {
