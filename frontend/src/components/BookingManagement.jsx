@@ -22,6 +22,7 @@ import DatePickerInput from './DatePickerInput';
 
 const initialForm = { creator_key: '', staff_id: '', total_cost: '', product_ids: [] };
 const DEFAULT_PERFORMANCE_WINDOW = 'PAST_30_DAYS';
+const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const dateInputValue = (date) => [
   date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'),
@@ -121,6 +122,43 @@ const bookingProductOrderPerformance = (booking, orders = []) => {
     estimated_commission: estimatedCommission,
     selected_products: selectedProducts,
   };
+};
+const bookingProductOrderBreakdown = (booking, orders = []) => {
+  const selectedProducts = bookingProductsOf(booking);
+  const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
+  const creatorUsername = String(booking.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const rowsById = new Map(selectedProducts.map((product) => {
+    const id = String(product.id || product.product_id);
+    return [id, {
+      id,
+      name: product.name || product.title || product.product_name || id,
+      thumbnailUrl: product.main_image_url || product.thumbnail_url || product.thumbnailUrl || product.image_url || null,
+      orderIds: new Set(),
+      quantity: 0,
+    }];
+  }));
+
+  orders.forEach((order, orderIndex) => {
+    const orderKey = String(order?.id || order?.order_id || `order:${orderIndex}`);
+    const orderProducts = new Map((Array.isArray(order?.products) ? order.products : [])
+      .map((product) => [String(product?.id || product?.product_id || ''), product]));
+    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
+      const productId = String(sku?.product_id || '').trim();
+      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+      if (!selectedIds.has(productId) || (creatorUsername && skuCreator !== creatorUsername)) continue;
+
+      const product = orderProducts.get(productId) || {};
+      const row = rowsById.get(productId);
+      row.name = sku?.product_name || product?.title || product?.name || product?.product_name || row.name;
+      row.thumbnailUrl = product?.main_image_url || product?.thumbnail_url || product?.thumbnailUrl || product?.image_url || row.thumbnailUrl;
+      row.orderIds.add(orderKey);
+      row.quantity += Math.max(0, finiteNumber(sku?.quantity));
+    }
+  });
+
+  return [...rowsById.values()]
+    .map(({ orderIds, ...product }) => ({ ...product, orderCount: orderIds.size }))
+    .sort((left, right) => right.orderCount - left.orderCount || right.quantity - left.quantity || left.name.localeCompare(right.name));
 };
 const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots || [])]
   .sort((left, right) => (
@@ -459,6 +497,28 @@ const BookingDetailProducts = ({ shopId, videos, label, formatNumber }) => {
   );
 };
 
+const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
+  const products = useMemo(
+    () => bookingProductOrderBreakdown(booking, orders),
+    [booking, orders],
+  );
+  return (
+    <div className="booking-product-order-expansion">
+      <div className="booking-product-order-expansion__heading">
+        <strong>{t('booking.productOrderBreakdown')}</strong>
+      </div>
+      {products.length ? <div className="booking-product-order-expansion__list">
+        {products.map((product) => <article className="booking-product-order-expansion__item" key={product.id}>
+          <BookingDetailProduct product={product} />
+          <div className="booking-product-order-expansion__metrics">
+            <strong>{t('booking.ordersCount', { count: formatNumber(product.orderCount) })}</strong>
+          </div>
+        </article>)}
+      </div> : <div className="empty-state empty-state--compact">{t('booking.noAttachedProducts')}</div>}
+    </div>
+  );
+};
+
 const BookingVideoProducts = ({ shopId, video, snapshot, label }) => {
   const sourceProducts = useMemo(() => productsOfBookingVideo(video, snapshot), [snapshot, video]);
   const [products, setProducts] = useState(sourceProducts);
@@ -611,6 +671,7 @@ const BookingManagement = ({ heroTitle }) => {
   const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
   const [bookingTab, setBookingTab] = useState('video');
   const [productOrdersByShop, setProductOrdersByShop] = useState({});
+  const productOrdersCacheRef = useRef(new Map());
   const [productOrdersLoading, setProductOrdersLoading] = useState(false);
   const [productOrdersError, setProductOrdersError] = useState('');
   const [selectedManagerKey, setSelectedManagerKey] = useState('');
@@ -924,11 +985,10 @@ const BookingManagement = ({ heroTitle }) => {
     return () => controller.abort();
   }, [form.creator_key, selectedKocSummary, t]);
   useEffect(() => {
-    if (bookingTab !== 'product') return undefined;
     const shopIds = [...new Set(bookings
       .filter((booking) => bookingProductsOf(booking).length)
       .map((booking) => String(booking.target_shop_id || ''))
-      .filter(Boolean))];
+      .filter(Boolean))].sort();
     if (!shopIds.length) {
       setProductOrdersByShop({});
       setProductOrdersError('');
@@ -937,6 +997,14 @@ const BookingManagement = ({ heroTitle }) => {
     }
     const controller = new AbortController();
     const range = orderRangeForWindow(performanceWindow, customRange);
+    const cacheKey = `${range.startTime}:${range.endTime}:${shopIds.join(',')}`;
+    const cached = productOrdersCacheRef.current.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < PRODUCT_ORDERS_CACHE_TTL_MS) {
+      setProductOrdersByShop(cached.ordersByShop);
+      setProductOrdersError('');
+      setProductOrdersLoading(false);
+      return undefined;
+    }
     setProductOrdersLoading(true);
     setProductOrdersError('');
     Promise.all(shopIds.map(async (shopId) => {
@@ -957,14 +1025,18 @@ const BookingManagement = ({ heroTitle }) => {
       }
       return [shopId, orders];
     })).then((entries) => {
-      if (!controller.signal.aborted) setProductOrdersByShop(Object.fromEntries(entries));
+      if (!controller.signal.aborted) {
+        const ordersByShop = Object.fromEntries(entries);
+        productOrdersCacheRef.current.set(cacheKey, { ordersByShop, fetchedAt: Date.now() });
+        setProductOrdersByShop(ordersByShop);
+      }
     }).catch((err) => {
       if (err.name !== 'AbortError') setProductOrdersError(err.message || t('booking.productOrdersError'));
     }).finally(() => {
       if (!controller.signal.aborted) setProductOrdersLoading(false);
     });
     return () => controller.abort();
-  }, [bookingTab, bookings, customRange, performanceWindow, t]);
+  }, [bookings, customRange, performanceWindow, t]);
   const productPerformanceByBooking = useMemo(() => new Map(bookings.map((booking) => [
     String(booking.id),
     bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || []),
@@ -1165,13 +1237,14 @@ const BookingManagement = ({ heroTitle }) => {
     }
     const gmv = optionalNumber(performance.affiliate_gmv);
     const secondaryValue = performance.source === 'AFFILIATE_ORDERS'
-      ? optionalNumber(performance.affiliate_orders)
+      ? null
       : optionalNumber(performance.video_views);
-    const secondaryLabel = performance.source === 'AFFILIATE_ORDERS' ? t('booking.orders') : t('booking.views');
     return (
       <div className="booking-performance-cell">
         <strong>{gmv === null ? '—' : formatMoney(gmv, performance.currency)}</strong>
-        <small>{secondaryValue === null ? '—' : formatNumber(secondaryValue)} {secondaryLabel}</small>
+        {performance.source !== 'AFFILIATE_ORDERS'
+          ? <small>{secondaryValue === null ? '—' : formatNumber(secondaryValue)} {t('booking.views')}</small>
+          : null}
       </div>
     );
   };
@@ -1198,8 +1271,8 @@ const BookingManagement = ({ heroTitle }) => {
 
       <section className="booking-create-action">
         <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
-          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => { setBookingTab('video'); setExpandedBookingId(null); }}>{t('booking.videoTab')}</button>
-          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { setBookingTab('product'); setExpandedBookingId(null); }}>{t('booking.productTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('product')}>{t('booking.productTab')}</button>
         </div>
         <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
       </section>
@@ -1220,7 +1293,7 @@ const BookingManagement = ({ heroTitle }) => {
       ) : null}
       <section className="section-card" id="booking-list-panel" role="tabpanel">
         <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
-        {productOrdersError ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
+        {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
         {incompleteCustomCoverage && bookingTab === 'video' ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
           requested: incompleteCustomCoverage.requested_days,
@@ -1312,7 +1385,9 @@ const BookingManagement = ({ heroTitle }) => {
                   </div>
                 </td>
               </tr>
-              {expanded ? <tr className="booking-video-detail-row"><td colSpan={9}><div className="booking-video-expansion">
+              {expanded ? <tr className="booking-video-detail-row"><td colSpan={9}>{bookingTab === 'product'
+                ? <BookingProductOrderExpansion booking={booking} orders={productOrdersByShop[String(booking.target_shop_id)] || []} t={t} formatNumber={formatNumber} />
+                : <div className="booking-video-expansion">
                 {bookingVideos.length ? <div className="booking-video-expansion__list">{bookingVideos.map((video, videoIndex) => {
                   const latest = latestBookingVideoSnapshot(video);
                   const social = bookingVideoSocialMetrics(latest);
@@ -1341,7 +1416,7 @@ const BookingManagement = ({ heroTitle }) => {
                     {video.last_sync_error ? <p className="booking-video-expansion__error">{video.last_sync_error}</p> : null}
                   </article>;
                 })}</div> : <div className="empty-state empty-state--compact">{t('booking.awaitingVideo')}</div>}
-              </div></td></tr> : null}
+              </div>}</td></tr> : null}
               </React.Fragment>;
             })}
           </tbody>
