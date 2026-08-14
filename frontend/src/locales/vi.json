@@ -1445,6 +1445,10 @@
         "name": "Danh mục video TikTok Shop",
         "description": ""
       },
+      "tiktok_channel_report_revenue": {
+        "name": "Đồng bộ GMV Báo cáo",
+        "description": ""
+      },
       "tiktok_affiliate_video_performance": {
         "name": "Hiệu suất video Affiliate",
         "description": ""

@@ -27,6 +27,7 @@ const { targetCollaborationSyncService } = require('./tiktokTargetCollaborationS
 const { syncActiveBookingVideos } = require('./bookingVideoPerformanceService');
 const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
 const { syncVideoPerformanceApi } = require('./tiktokVideoPerformanceService');
+const { syncChannelReportRevenue } = require('./channelReportRevenueSyncService');
 
 const JOB_KEYS = new Set([
   'tiktok_creator_performance',
@@ -35,10 +36,11 @@ const JOB_KEYS = new Set([
   'booking_video_performance',
   'tiktok_shop_video_catalog',
   'tiktok_affiliate_video_performance',
+  'tiktok_channel_report_revenue',
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
-const CREATOR_DAILY_BACKFILL_DAYS = 10;
+const CREATOR_DAILY_BACKFILL_DAYS = 5;
 const CREATOR_DAILY_HISTORY_DAYS = 180;
 const SHOP_TIMEZONES = {
   MY: 'Asia/Kuala_Lumpur',
@@ -566,6 +568,10 @@ const jobHandlers = {
     (shop) => syncShopVideoCatalog(shop, { signal }),
     signal,
   ),
+  tiktok_channel_report_revenue: ({ signal } = {}) => runForShops(
+    (shop) => syncChannelReportRevenue(shop, { signal }),
+    signal,
+  ),
   tiktok_affiliate_video_performance: ({ signal } = {}) => runForShops(async (shop) => {
     const { endDate } = scheduledAnalyticsRange(shop);
     const windows = [];
@@ -593,6 +599,12 @@ const processScheduledJobRun = async (job, run) => {
   } catch (error) {
     await run.reload();
     if (run.status !== 'PROCESSING' || controller.signal.aborted || error.name === 'AbortError') return run;
+    console.error('[Schedule Manager] Job failed\n%s', JSON.stringify({
+      jobKey: job.job_key,
+      runId: String(run.id),
+      message: String(error.message || error),
+      summary: error.summary || null,
+    }, null, 2));
     await run.update({
       status: 'FAILED',
       summary: error.summary || null,

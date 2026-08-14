@@ -587,7 +587,7 @@ const getChannelReport = async (req, res) => {
           })),
       },
       revenue_sync: {
-        source: 'tiktok_shop_monthly',
+        source: 'tiktok_shop_daily_sync',
         partial: monthlyRevenue.errors.length > 0,
         errors: monthlyRevenue.errors,
       },

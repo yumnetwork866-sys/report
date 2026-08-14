@@ -1446,6 +1446,10 @@
         "name": "TikTok Shop Video Catalog",
         "description": ""
       },
+      "tiktok_channel_report_revenue": {
+        "name": "Channel Report GMV Sync",
+        "description": "Sync daily video-attributed GMV so the Channel Report reads stored data."
+      },
       "tiktok_affiliate_video_performance": {
         "name": "Affiliate Video Performance",
         "description": "Sync the latest seven-day and thirty-day periods from Affiliate Center > Analytics > All videos."

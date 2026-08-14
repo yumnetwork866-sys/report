@@ -68,6 +68,7 @@ const migrations = [
   require('./058_remove_chatbots_permission'),
   require('./059_remove_whatsapp'),
   require('./060_create_order_product_categories'),
+  require('./061_create_channel_report_revenue_daily'),
 ];
 
 const createMigrationRunner = ({

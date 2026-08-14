@@ -11,7 +11,7 @@ const {
   catchUpScheduledJobs,
 } = require('../src/services/scheduledJobService');
 
-test('creator daily backfill selects at most ten newest missing historical dates', () => {
+test('creator daily backfill selects at most five newest missing historical dates', () => {
   const dates = creatorDailyBackfillDates('2026-08-07', [
     '2026-08-06',
     '2026-08-04',
@@ -23,11 +23,6 @@ test('creator daily backfill selects at most ten newest missing historical dates
     '2026-08-02',
     '2026-08-01',
     '2026-07-31',
-    '2026-07-30',
-    '2026-07-29',
-    '2026-07-28',
-    '2026-07-27',
-    '2026-07-26',
   ]);
 });
 

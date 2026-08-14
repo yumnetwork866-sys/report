@@ -283,6 +283,34 @@ const ShopVideoPerformanceSnapshot = sequelize.define('ShopVideoPerformanceSnaps
   indexes: [{ unique: true, fields: ['shop_video_id', 'snapshot_date'] }],
 });
 
+const ChannelReportVideoRevenueDaily = sequelize.define('ChannelReportVideoRevenueDaily', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  platform_video_id: { type: DataTypes.STRING(64), allowNull: false },
+  metric_date: { type: DataTypes.DATEONLY, allowNull: false },
+  account_type: { type: DataTypes.STRING(32), allowNull: false },
+  revenue: { type: DataTypes.DECIMAL(20, 4), allowNull: false, defaultValue: 0 },
+  currency: DataTypes.STRING(16),
+  raw_metrics: DataTypes.JSONB,
+  synced_at: DataTypes.DATE,
+}, {
+  tableName: 'channel_report_video_revenue_daily',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'platform_video_id', 'metric_date'] }],
+});
+
+const ChannelReportRevenueSyncDay = sequelize.define('ChannelReportRevenueSyncDay', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  metric_date: { type: DataTypes.DATEONLY, allowNull: false },
+  video_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  synced_at: DataTypes.DATE,
+}, {
+  tableName: 'channel_report_revenue_sync_days',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'metric_date'] }],
+});
+
 const TikTokPartnerAuthorization = sequelize.define('TikTokPartnerAuthorization', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   creator_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
@@ -1268,6 +1296,10 @@ TikTokShop.hasMany(ShopVideo, { foreignKey: 'shop_id', as: 'shop_videos' });
 ShopVideo.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 ShopVideo.hasMany(ShopVideoPerformanceSnapshot, { foreignKey: 'shop_video_id', as: 'performance_snapshots' });
 ShopVideoPerformanceSnapshot.belongsTo(ShopVideo, { foreignKey: 'shop_video_id', as: 'shop_video' });
+TikTokShop.hasMany(ChannelReportVideoRevenueDaily, { foreignKey: 'shop_id', as: 'channel_report_video_revenue_daily' });
+ChannelReportVideoRevenueDaily.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+TikTokShop.hasMany(ChannelReportRevenueSyncDay, { foreignKey: 'shop_id', as: 'channel_report_revenue_sync_days' });
+ChannelReportRevenueSyncDay.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(TikTokCreatorPerformanceExport, { foreignKey: 'shop_id', as: 'creator_performance_exports' });
 TikTokCreatorPerformanceExport.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(TikTokCreatorPerformanceSnapshot, { foreignKey: 'shop_id', as: 'creator_performance_snapshots' });
@@ -1346,6 +1378,8 @@ module.exports = {
   BookingVideoPerformanceSnapshot,
   ShopVideo,
   ShopVideoPerformanceSnapshot,
+  ChannelReportVideoRevenueDaily,
+  ChannelReportRevenueSyncDay,
   TikTokPartnerAuthorization,
   TikTokShopAuthorization,
   TikTokShop,
