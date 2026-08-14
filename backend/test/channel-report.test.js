@@ -6,7 +6,7 @@ const { mockModule } = require('./helpers/mockModule');
 const loadController = (t, query, revenueLoader = async () => ({
   rows: [{ platform_video_id: 'video-88', revenue: 12.5, currency: 'MYR' }],
   errors: [],
-})) => {
+}), dailyRevenueLoader = async () => ({ days: [] })) => {
   const modelsPath = require.resolve('../src/models');
   const controllerPath = require.resolve('../src/controllers/reportController');
   const revenueServicePath = require.resolve('../src/services/channelReportRevenueService');
@@ -20,6 +20,7 @@ const loadController = (t, query, revenueLoader = async () => ({
   });
   const restoreRevenueService = mockModule(revenueServicePath, {
     loadMonthlyShopVideoRevenue: revenueLoader,
+    loadVideoDailyRevenue: dailyRevenueLoader,
   });
   delete require.cache[controllerPath];
   t.after(() => {
@@ -286,16 +287,17 @@ test('channel report member detail returns videos and product rollups lazily', a
 
   await getChannelReportMemberDetail({
     params: { userId: '9' },
-    query: { month: '2026-07', team_id: '4', channel_ids: '3', page: '1', page_size: '10' },
+    query: { month: '2026-07', team_id: '4', channel_ids: '3', metric: 'revenue', page: '1', page_size: '10' },
   }, response);
 
   assert.equal(response.statusCode, 200);
   assert.equal(calls.length, 2);
   const videoCall = calls.find((call) => call.sql.includes('channel-report-member-videos'));
-  assert.match(videoCall.sql, /ORDER BY video\.revenue IS NULL ASC, video\.published_at DESC, video\.id DESC/);
+  assert.match(videoCall.sql, /ORDER BY video\.revenue DESC NULLS LAST, video\.published_at DESC, video\.id DESC/);
   calls.forEach((call) => {
     assert.equal(call.replacements.userId, 9);
     assert.equal(call.replacements.teamId, 4);
+    assert.equal(call.replacements.metric, 'revenue');
     assert.deepEqual(JSON.parse(call.replacements.channelIds), [3]);
   });
   assert.equal(response.body.videos.items[0].products[0].name, 'Actiscar');
@@ -330,6 +332,47 @@ test('channel report accepts an inclusive custom date range', async (t) => {
   assert.deepEqual(response.body.period, {
     mode: 'custom', month: null, start: '2026-07-05', end: '2026-07-12',
   });
+});
+
+test('channel report returns daily revenue for one video in the selected range', async (t) => {
+  let dailyOptions;
+  const { getChannelReportVideoDailyRevenue } = loadController(
+    t,
+    async () => [],
+    undefined,
+    async (options) => {
+      dailyOptions = options;
+      return {
+        platform_video_id: options.platformVideoId,
+        start_date: options.startDate,
+        end_date: options.endDate,
+        revenue: 15,
+        currency: 'MYR',
+        revenue_days: 1,
+        synced_days: 2,
+        days: [
+          { date: '2026-07-05', revenue: 15, currency: 'MYR', revenue_available: true },
+          { date: '2026-07-06', revenue: 0, currency: 'MYR', revenue_available: true },
+        ],
+      };
+    },
+  );
+  const response = makeResponse();
+
+  await getChannelReportVideoDailyRevenue({
+    params: { platformVideoId: 'video-88' },
+    query: { start_date: '2026-07-05', end_date: '2026-07-06' },
+  }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.deepEqual(dailyOptions, {
+    platformVideoId: 'video-88',
+    startDate: '2026-07-05',
+    endDate: '2026-07-07',
+  });
+  assert.equal(response.body.end_date, '2026-07-06');
+  assert.equal(response.body.revenue, 15);
+  assert.equal(response.body.days.length, 2);
 });
 
 test('channel report rejects incomplete and reversed custom ranges', async (t) => {

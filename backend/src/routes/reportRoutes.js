@@ -11,6 +11,7 @@ const {
   getKocDetail,
   getChannelReport,
   getChannelReportMemberDetail,
+  getChannelReportVideoDailyRevenue,
   generateWeeklyReport
 } = require('../controllers/reportController');
 const { getDashboard } = require('../controllers/dashboardController');
@@ -19,6 +20,7 @@ const { getDashboard } = require('../controllers/dashboardController');
 router.get('/dashboard', getDashboard);
 router.get('/kpis', getKpis);
 router.get('/channel', getChannelReport);
+router.get('/channel/videos/:platformVideoId/revenue-daily', getChannelReportVideoDailyRevenue);
 router.get('/channel/members/:userId', getChannelReportMemberDetail);
 router.get('/koc/:creatorId/detail', getKocDetail);
 

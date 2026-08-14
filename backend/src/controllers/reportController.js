@@ -9,7 +9,10 @@ const {
   sequelize,
 } = require('../models');
 const { serializeBookingWithActual } = require('../services/bookingVideoPerformanceService');
-const { loadMonthlyShopVideoRevenue } = require('../services/channelReportRevenueService');
+const {
+  loadMonthlyShopVideoRevenue,
+  loadVideoDailyRevenue,
+} = require('../services/channelReportRevenueService');
 
 const toDateOnly = (date) => date.toISOString().slice(0, 10);
 const REPORT_OLLAMA_HOST = String(
@@ -608,6 +611,7 @@ const getChannelReportMemberDetail = async (req, res) => {
       teamId,
       userId,
       channelIds,
+      metric,
       page,
       pageSize,
     } = channelReportOptions({ ...req.query, user_id: req.params.userId });
@@ -628,7 +632,7 @@ const getChannelReportMemberDetail = async (req, res) => {
         currency: row.currency,
       }))),
     };
-    replacements.metric = 'content';
+    replacements.metric = metric;
     const [videoRows, productRows] = await Promise.all([
       sequelize.query(`${channelReportBaseSql}
         /* channel-report-member-videos */
@@ -672,7 +676,7 @@ const getChannelReportMemberDetail = async (req, res) => {
           ), '[]'::jsonb) AS products,
           COUNT(*) OVER()::bigint AS total_count
         FROM filtered_videos video
-        ORDER BY video.revenue IS NULL ASC, video.published_at DESC, video.id DESC
+        ORDER BY video.revenue DESC NULLS LAST, video.published_at DESC, video.id DESC
         LIMIT :limit OFFSET :offset
       `, {
         replacements: {
@@ -781,6 +785,24 @@ const getChannelReportMemberDetail = async (req, res) => {
     });
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message });
+  }
+};
+
+const getChannelReportVideoDailyRevenue = async (req, res) => {
+  try {
+    const platformVideoId = String(req.params.platformVideoId || '').trim();
+    if (!platformVideoId || platformVideoId.length > 64) {
+      return res.status(400).json({ message: 'Video báo cáo không hợp lệ.' });
+    }
+    const { startDate, endDate, endDateExclusive } = channelReportOptions(req.query);
+    const result = await loadVideoDailyRevenue({
+      platformVideoId,
+      startDate,
+      endDate: endDateExclusive,
+    });
+    return res.json({ ...result, end_date: endDate });
+  } catch (error) {
+    return res.status(error.status || 500).json({ message: error.message });
   }
 };
 
@@ -1529,6 +1551,7 @@ module.exports = {
   getKocDetail,
   getChannelReport,
   getChannelReportMemberDetail,
+  getChannelReportVideoDailyRevenue,
   generateWeeklyReport,
   __test: {
     buildKocReportSnapshot,

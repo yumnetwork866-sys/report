@@ -392,7 +392,7 @@ export function fetchChannelReport({
 }
 
 export function fetchChannelReportMemberDetail(userId, {
-  month, startDate, endDate, teamId, channelId, page = 1, pageSize = 20, signal,
+  month, startDate, endDate, teamId, channelId, metric, page = 1, pageSize = 20, signal,
 } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -406,7 +406,21 @@ export function fetchChannelReportMemberDetail(userId, {
   }
   if (teamId && teamId !== 'all') params.set('team_id', teamId);
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
+  if (metric) params.set('metric', metric);
   return apiRequest(`/reports/channel/members/${encodeURIComponent(userId)}?${params.toString()}`, { signal });
+}
+
+export function fetchChannelReportVideoDailyRevenue(platformVideoId, {
+  month, startDate, endDate, signal,
+} = {}) {
+  const params = new URLSearchParams();
+  if (startDate || endDate) {
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+  } else if (month) {
+    params.set('month', month);
+  }
+  return apiRequest(`/reports/channel/videos/${encodeURIComponent(platformVideoId)}/revenue-daily?${params.toString()}`, { signal });
 }
 
 export function fetchVideoOptions(signal) {

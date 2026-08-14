@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 
 import {
@@ -10,7 +11,11 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { fetchChannelReport, fetchChannelReportMemberDetail } from '../lib/api';
+import {
+  fetchChannelReport,
+  fetchChannelReportMemberDetail,
+  fetchChannelReportVideoDailyRevenue,
+} from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 
@@ -205,6 +210,8 @@ const ChannelReport = () => {
   const [memberDetails, setMemberDetails] = useState({});
   const [memberTabs, setMemberTabs] = useState({});
   const memberRequestRef = useRef(new Map());
+  const videoRevenueRequestRef = useRef(null);
+  const [videoRevenueDetail, setVideoRevenueDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -215,6 +222,9 @@ const ChannelReport = () => {
     : '—';
   const formatPublishedTime = (value) => value
     ? new Intl.DateTimeFormat(locale, { timeStyle: 'medium' }).format(new Date(value))
+    : '—';
+  const formatDailyDate = (value) => value
+    ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(`${value}T00:00:00`))
     : '—';
   const { formatMoney: formatRevenue } = useMoneyFormatter(locale);
   useEffect(() => {
@@ -283,7 +293,23 @@ const ChannelReport = () => {
     setExpandedMemberIds(new Set());
     setMemberDetails({});
     setMemberTabs({});
+    videoRevenueRequestRef.current?.abort();
+    setVideoRevenueDetail(null);
   }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamId, startDate]);
+
+  useEffect(() => () => videoRevenueRequestRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!videoRevenueDetail) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') {
+        videoRevenueRequestRef.current?.abort();
+        setVideoRevenueDetail(null);
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [videoRevenueDetail]);
 
   const monthOptions = useMemo(() => {
     const selectedIndex = monthIndex(selectedMonth);
@@ -365,6 +391,7 @@ const ChannelReport = () => {
         ...(periodMode === 'month' ? { month: selectedMonth } : { startDate, endDate }),
         teamId: selectedTeamId,
         channelId: selectedChannelId,
+        metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
         page,
         pageSize: 10,
         signal: controller.signal,
@@ -416,6 +443,40 @@ const ChannelReport = () => {
     if (!memberDetails[memberId]?.data) loadMemberDetail(memberId);
   };
 
+  const closeVideoRevenueDetail = () => {
+    videoRevenueRequestRef.current?.abort();
+    videoRevenueRequestRef.current = null;
+    setVideoRevenueDetail(null);
+  };
+
+  const openVideoRevenueDetail = async (video) => {
+    if (!video.platform_video_id) return;
+    videoRevenueRequestRef.current?.abort();
+    const controller = new AbortController();
+    videoRevenueRequestRef.current = controller;
+    setVideoRevenueDetail({ video, loading: true, error: '', data: null });
+    try {
+      const data = await fetchChannelReportVideoDailyRevenue(video.platform_video_id, {
+        ...(periodMode === 'month' ? { month: selectedMonth } : { startDate, endDate }),
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) {
+        setVideoRevenueDetail({ video, loading: false, error: '', data });
+      }
+    } catch (loadError) {
+      if (loadError.name !== 'AbortError') {
+        setVideoRevenueDetail({
+          video,
+          loading: false,
+          error: loadError.message || 'Không tải được doanh thu theo ngày.',
+          data: null,
+        });
+      }
+    } finally {
+      if (videoRevenueRequestRef.current === controller) videoRevenueRequestRef.current = null;
+    }
+  };
+
   const renderMemberDetail = (member) => {
     const memberId = String(member.key);
     const detail = memberDetails[memberId] || {};
@@ -448,7 +509,22 @@ const ChannelReport = () => {
         {activeTab === 'videos' ? (
           <div className="member-detail__videos">
             {videos.map((video) => (
-              <article className="member-detail__video" key={video.id}>
+              <article
+                className={`member-detail__video${activeReportTab === 'revenue' ? ' member-detail__video--revenue-clickable' : ''}`}
+                key={video.id}
+                role={activeReportTab === 'revenue' ? 'button' : undefined}
+                tabIndex={activeReportTab === 'revenue' ? 0 : undefined}
+                title={activeReportTab === 'revenue' ? 'Xem doanh thu video theo ngày' : undefined}
+                onClick={(event) => {
+                  if (activeReportTab !== 'revenue' || event.target.closest('a, button')) return;
+                  openVideoRevenueDetail(video);
+                }}
+                onKeyDown={(event) => {
+                  if (activeReportTab !== 'revenue' || !['Enter', ' '].includes(event.key)) return;
+                  event.preventDefault();
+                  openVideoRevenueDetail(video);
+                }}
+              >
                 {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" loading="lazy" /> : <div className="member-detail__video-placeholder">Video</div>}
                 <div className="member-detail__video-copy">
                   {video.video_url
@@ -744,6 +820,63 @@ const ChannelReport = () => {
           </>
         )}
       </section>
+
+      {videoRevenueDetail ? createPortal(
+        <div className="modal-backdrop channel-report-revenue-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeVideoRevenueDetail(); }}>
+          <section className="modal-card channel-report-revenue-modal" role="dialog" aria-modal="true" aria-labelledby="channel-report-revenue-modal-title">
+            <header className="channel-report-revenue-modal__header">
+              <div>
+                <h2 id="channel-report-revenue-modal-title">Doanh thu video theo ngày</h2>
+                <p title={videoRevenueDetail.video.title}>{videoRevenueDetail.video.title || `Video ${videoRevenueDetail.video.platform_video_id}`}</p>
+              </div>
+              <button className="button button--ghost" type="button" aria-label="Đóng" onClick={closeVideoRevenueDetail}>×</button>
+            </header>
+            {videoRevenueDetail.loading ? (
+              <div className="member-detail__state"><span className="loading-dot" />Đang tải doanh thu theo ngày</div>
+            ) : videoRevenueDetail.error ? (
+              <div className="member-detail__state member-detail__state--error">
+                <span>{videoRevenueDetail.error}</span>
+                <button className="button button--small button--ghost" type="button" onClick={() => openVideoRevenueDetail(videoRevenueDetail.video)}>Thử lại</button>
+              </div>
+            ) : (
+              <div className="channel-report-revenue-modal__body">
+                <div className="channel-report-revenue-modal__summary">
+                  <span><small>Tổng GMV</small><strong>{formatRevenue(videoRevenueDetail.data.revenue, videoRevenueDetail.data.currency)}</strong></span>
+                  <span><small>Ngày phát sinh GMV</small><strong>{formatNumber(videoRevenueDetail.data.revenue_days)}</strong></span>
+                  <span><small>TB mỗi ngày</small><strong>{formatRevenue(videoRevenueDetail.data.revenue / Math.max(videoRevenueDetail.data.days.length, 1), videoRevenueDetail.data.currency)}</strong></span>
+                </div>
+                <div className="channel-report-revenue-modal__chart">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={videoRevenueDetail.data.days} barSize={18} margin={{ top: 12, right: 8, bottom: 4, left: 8 }}>
+                      <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
+                      <XAxis dataKey="date" tickLine={false} axisLine={false} tick={chartTick} minTickGap={20} tickFormatter={(value) => {
+                        const [, month, day] = String(value).split('-');
+                        return day && month ? `${day}/${month}` : value;
+                      }} />
+                      <YAxis width={58} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={compactNumber} />
+                      <Tooltip
+                        cursor={{ fill: 'var(--color-accent-soft)' }}
+                        labelFormatter={formatDailyDate}
+                        formatter={(value) => [formatRevenue(value, videoRevenueDetail.data.currency), 'GMV']}
+                      />
+                      <Bar dataKey="revenue" name="GMV" fill="var(--color-primary)" radius={[5, 5, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="table-wrap channel-report-revenue-modal__table">
+                  <table className="data-table data-table--compact">
+                    <thead><tr><th>Ngày</th><th className="cell-number">GMV</th></tr></thead>
+                    <tbody>{[...videoRevenueDetail.data.days].reverse().map((day) => (
+                      <tr key={day.date}><td>{formatDailyDate(day.date)}</td><td className="cell-number">{formatRevenue(day.revenue, day.currency || videoRevenueDetail.data.currency)}</td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </section>
+        </div>,
+        document.body,
+      ) : null}
 
     </div>
   );

@@ -1252,6 +1252,112 @@
   background: var(--color-surface);
 }
 
+.member-detail__video--revenue-clickable {
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.member-detail__video--revenue-clickable:hover,
+.member-detail__video--revenue-clickable:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 9%);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.channel-report-revenue-modal {
+  display: grid;
+  width: min(820px, 100%);
+  max-height: min(820px, calc(100vh - 40px));
+  overflow: hidden;
+  padding: 0;
+}
+
+.channel-report-revenue-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.channel-report-revenue-modal__header h2,
+.channel-report-revenue-modal__header p {
+  margin: 0;
+}
+
+.channel-report-revenue-modal__header h2 {
+  font-size: 1.1rem;
+}
+
+.channel-report-revenue-modal__header p {
+  max-width: 650px;
+  margin-top: 5px;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-report-revenue-modal__header .button {
+  min-width: 38px;
+  padding-inline: 10px;
+  font-size: 1.2rem;
+}
+
+.channel-report-revenue-modal__body {
+  display: grid;
+  gap: 16px;
+  padding: 18px 22px 22px;
+  overflow-y: auto;
+}
+
+.channel-report-revenue-modal__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.channel-report-revenue-modal__summary > span {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-soft);
+}
+
+.channel-report-revenue-modal__summary small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.channel-report-revenue-modal__summary strong {
+  font-size: 1rem;
+}
+
+.channel-report-revenue-modal__chart {
+  height: 270px;
+  padding: 8px 4px 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.channel-report-revenue-modal__table {
+  max-height: 260px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.channel-report-revenue-modal__table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+}
+
 .member-detail__video > img,
 .member-detail__video-placeholder {
   width: 64px;
@@ -1411,6 +1517,14 @@
   .member-detail__video-metrics {
     grid-column: 1 / -1;
     justify-self: end;
+  }
+
+  .channel-report-revenue-modal__summary {
+    grid-template-columns: 1fr;
+  }
+
+  .channel-report-revenue-modal__chart {
+    height: 230px;
   }
 }
 
