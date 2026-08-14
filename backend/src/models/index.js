@@ -418,6 +418,20 @@ const TikTokShop = sequelize.define('TikTokShop', {
   last_sync_error: { type: DataTypes.TEXT, allowNull: true },
 }, { tableName: 'tiktok_shops', timestamps: false });
 
+const TikTokShopProduct = sequelize.define('TikTokShopProduct', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  product_id: { type: DataTypes.STRING(128), allowNull: false },
+  title: DataTypes.TEXT,
+  image_url: DataTypes.TEXT,
+  raw_data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+}, {
+  tableName: 'tiktok_shop_products',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'product_id'] }],
+});
+
 const OrderProductCategory = sequelize.define('OrderProductCategory', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   shop_id: { type: DataTypes.INTEGER, allowNull: false },
@@ -1341,6 +1355,8 @@ TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'authorization_id', 
 TikTokShop.hasMany(TikTokShopAnalyticsSnapshot, { foreignKey: 'shop_id', as: 'analytics_snapshots' });
 TikTokShopAnalyticsSnapshot.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(OrderProductCategory, { foreignKey: 'shop_id', as: 'order_product_categories' });
+TikTokShop.hasMany(TikTokShopProduct, { foreignKey: 'shop_id', as: 'products' });
+TikTokShopProduct.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 OrderProductCategory.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 OrderProductCategory.hasMany(OrderProductCategoryItem, { foreignKey: 'category_id', as: 'products' });
 OrderProductCategoryItem.belongsTo(OrderProductCategory, { foreignKey: 'category_id', as: 'category' });
@@ -1446,6 +1462,7 @@ module.exports = {
   TikTokPartnerAuthorization,
   TikTokShopAuthorization,
   TikTokShop,
+  TikTokShopProduct,
   OrderProductCategory,
   OrderProductCategoryItem,
   TikTokShopAnalyticsSnapshot,

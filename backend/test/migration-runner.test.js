@@ -72,6 +72,7 @@ const defaultMigrationNames = [
   '063_rename_affiliate_order_job',
   '064_rename_tiktok_channel_metrics_job',
   '065_rename_tiktok_shop_video_catalog_job',
+  '066_create_tiktok_shop_products',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

@@ -4,6 +4,7 @@ const {
   ShopVideoPerformanceSnapshot,
 } = require('../models');
 const { getShopVideoPerformance } = require('./tiktokShopService');
+const { upsertShopProducts } = require('./shopProductCatalogService');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../lib/tiktokDemoFixtures');
 
 const SHOP_VIDEO_ACCOUNT_TYPES = [
@@ -127,6 +128,9 @@ const persistPage = async (shopId, videos, {
       'last_seen_at', 'raw_data', 'updated_at',
     ],
   });
+  await upsertShopProducts(shopId, rows.flatMap((row) => (
+    Array.isArray(row.catalog.raw_data?.products) ? row.catalog.raw_data.products : []
+  )));
   const ids = rows.map((row) => row.catalog.platform_video_id);
   const stored = await ShopVideo.findAll({
     where: { shop_id: shopId, platform_video_id: { [Op.in]: ids } },

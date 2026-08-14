@@ -10,6 +10,7 @@ const {
   getShopVideoPerformanceDetails,
 } = require('./tiktokShopService');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../lib/tiktokDemoFixtures');
+const { upsertShopProducts } = require('./shopProductCatalogService');
 
 const VIDEO_API_MODULE_TYPE = 'VIDEO_API';
 const VIDEO_API_PLAN_TYPE = 'AFFILIATE_ACCOUNTS';
@@ -243,6 +244,11 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
     }
     await sequelize.transaction(async (transaction) => {
       if (rows.length) await TikTokVideoPerformanceSnapshot.bulkCreate(rows, { transaction });
+      await upsertShopProducts(shop.id, rows.flatMap((row) => {
+        const raw = row.raw_metrics || {};
+        const breakdowns = raw?.detail?.performance?.intervals?.flatMap((interval) => interval?.sales?.breakdowns || []) || [];
+        return [...(raw?.list?.products || []), ...breakdowns];
+      }), { transaction });
       await exportRecord.update({
         status: 'SUCCEEDED',
         row_count: rows.length,

@@ -73,6 +73,7 @@ const migrations = [
   require('./063_rename_affiliate_order_job'),
   require('./064_rename_tiktok_channel_metrics_job'),
   require('./065_rename_tiktok_shop_video_catalog_job'),
+  require('./066_create_tiktok_shop_products'),
 ];
 
 const createMigrationRunner = ({

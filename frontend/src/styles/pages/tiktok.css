@@ -2570,7 +2570,28 @@
 }
 
 .booking-stats--evaluation {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+@media (min-width: 1101px) {
+  .app-shell__content .booking-page-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell__content .booking-page-hero > .page__title,
+  .app-shell__content .booking-page-hero > .booking-stats--evaluation {
+    grid-column: 1;
+  }
+
+  .app-shell__content .booking-page-hero > .booking-stats--evaluation {
+    grid-row: auto;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .booking-manager-group__metrics {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }
 
 .booking-create-action {
@@ -2856,7 +2877,7 @@
 .booking-manager-group__identity small { color: var(--color-text-soft); font-size: .72rem; }
 
 .booking-manager-group__metrics {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 0;
 }
 

@@ -35,6 +35,7 @@ const {
   syncBookingVideo,
 } = require('../services/bookingVideoPerformanceService');
 const { handleShopOauthCallback } = require('./tiktokShopController');
+const { loadShopProducts, upsertShopProducts } = require('../services/shopProductCatalogService');
 const {
   creatorCollaborationsFixture,
   creatorOverviewFixture,
@@ -146,6 +147,29 @@ const hydrateBookingVideoProducts = async (bookings) => {
   for (const booking of bookings) {
     for (const video of booking.booking_videos || []) {
       video.affiliate_products = productsByVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`) || [];
+    }
+  }
+  const productIds = [...new Set(bookings.flatMap((booking) => (
+    (booking.booking_videos || []).flatMap((video) => [...productIdsOfVideo(video)])
+  )))];
+  const catalogRows = await loadShopProducts(shopIds, productIds);
+  const catalogByShopAndProduct = new Map(catalogRows.map((product) => [
+    `${product.shop_id}:${product.product_id}`,
+    product,
+  ]));
+  for (const booking of bookings) {
+    for (const video of booking.booking_videos || []) {
+      const existingById = new Map((video.affiliate_products || []).map((product) => [String(product.id), product]));
+      video.affiliate_products = [...productIdsOfVideo(video)].flatMap((productId) => {
+        const existing = existingById.get(productId);
+        const stored = catalogByShopAndProduct.get(`${booking.target_shop_id}:${productId}`);
+        if (!existing && !stored) return [];
+        return [{
+          id: productId,
+          name: stored?.title || existing?.name || null,
+          thumbnail_url: stored?.image_url || existing?.thumbnail_url || null,
+        }];
+      });
     }
   }
   return bookings;
@@ -1141,6 +1165,9 @@ const createBooking = async (req, res) => {
     }
 
     const booking = await Booking.create(payload);
+    await upsertShopProducts(shopId, selectedProducts).catch((error) => {
+      console.warn(`Unable to cache product thumbnails for booking ${booking.id}: ${error.message}`);
+    });
     try {
       await autoLinkBookingVideos(booking);
     } catch (error) {
@@ -1167,11 +1194,13 @@ const updateBooking = async (req, res) => {
     }
 
     let updatedEvaluationSnapshot;
+    let updatedProducts = null;
     if (req.body.products !== undefined || req.body.product_ids !== undefined) {
       const currentBooking = await Booking.findByPk(req.params.id);
       if (!currentBooking) return res.status(404).json({ message: 'Booking not found' });
       const current = currentBooking.toJSON ? currentBooking.toJSON() : currentBooking;
       const selectedProducts = normalizeBookingProducts(req.body.products, req.body.product_ids);
+      updatedProducts = selectedProducts;
       updatedEvaluationSnapshot = {
         ...(current.evaluation_snapshot || {}),
         products: selectedProducts,
@@ -1208,6 +1237,11 @@ const updateBooking = async (req, res) => {
     }
 
     const booking = await Booking.findByPk(req.params.id, { include: bookingInclude });
+    if (updatedProducts) {
+      await upsertShopProducts(booking.target_shop_id, updatedProducts).catch((error) => {
+        console.warn(`Unable to cache product thumbnails for booking ${booking.id}: ${error.message}`);
+      });
+    }
     const [serialized] = await serializeBookingsWithFreshCreatorAvatars([booking]);
     res.json(serialized);
   } catch (error) {

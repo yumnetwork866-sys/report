@@ -63,6 +63,7 @@ const {
 } = require('../services/tiktokCreatorContactHistoryService');
 const { saveTargetCollaborationSnapshots } = require('../services/tiktokTargetCollaborationSnapshotService');
 const { targetCollaborationSyncService } = require('../services/tiktokTargetCollaborationSyncService');
+const { upsertShopProducts } = require('../services/shopProductCatalogService');
 
 const affiliateCacheTtlValue = Number(process.env.TIKTOK_SELLER_AFFILIATE_CACHE_TTL_MS ?? 120000);
 const affiliateCacheTtlMs = affiliateCacheTtlValue === 0
@@ -525,13 +526,17 @@ const getTargetCollaborationWithRetry = async (shop, collaborationId) => {
   throw lastError;
 };
 
-const listOpenCollaborations = affiliateResponse('open-collaborations', (shop, req) => searchOpenCollaborations({
-  authorization: shop.authorization,
-  shopCipher: shop.cipher,
-  pageToken: req.query.page_token,
-  pageSize: pageSizeValue(req.query.page_size),
-  keyword: req.query.keyword,
-}));
+const listOpenCollaborations = affiliateResponse('open-collaborations', async (shop, req) => {
+  const payload = await searchOpenCollaborations({
+    authorization: shop.authorization,
+    shopCipher: shop.cipher,
+    pageToken: req.query.page_token,
+    pageSize: pageSizeValue(req.query.page_size),
+    keyword: req.query.keyword,
+  });
+  await upsertShopProducts(shop.id, (payload.data?.open_collaborations || []).map((row) => row?.product));
+  return payload;
+});
 
 const loadTargetCollaborationsFromTikTok = async (shop, req) => {
   const payload = await searchTargetCollaborations({

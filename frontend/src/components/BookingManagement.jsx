@@ -202,6 +202,10 @@ const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots 
     String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
     || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
   ))[0] || null;
+const bookingVideosByRevenue = (videos = []) => videos
+  .map((video, index) => ({ video, index, revenue: finiteNumber(latestBookingVideoSnapshot(video)?.gross_gmv) }))
+  .sort((left, right) => right.revenue - left.revenue || left.index - right.index)
+  .map(({ video }) => video);
 const BOOKING_VIDEO_ICON_PATHS = {
   views: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
   likes: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6a5.5 5.5 0 0 0 1-8.8Z'],
@@ -1155,6 +1159,20 @@ const BookingManagement = ({ heroTitle }) => {
         ? finiteNumber(tabPerformance?.affiliate_orders)
         : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
     }
+    for (const group of groups.values()) {
+      group.bookings.sort((left, right) => {
+        const performanceOfBooking = (booking) => bookingTab === 'product'
+          ? productPerformanceByBooking.get(String(booking.id))
+          : booking.actual_performance;
+        const revenueOfBooking = (booking) => {
+          const performance = performanceOfBooking(booking);
+          const revenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
+          return convertAmount(revenue, performance?.currency) ?? revenue;
+        };
+        return revenueOfBooking(right) - revenueOfBooking(left)
+          || Number(right.id || 0) - Number(left.id || 0);
+      });
+    }
     return [...groups.values()].sort((left, right) => {
       if (left.key === 'unassigned') return 1;
       if (right.key === 'unassigned') return -1;
@@ -1320,8 +1338,9 @@ const BookingManagement = ({ heroTitle }) => {
         <div className="page__stats booking-stats booking-stats--evaluation">
           <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{stats.total}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{stats.totalRevenue > 0 ? formatRate(stats.totalCost / stats.totalRevenue) : '—'}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('booking.totalCost')}</p><p className="stat-card__value">{formatMoney(stats.totalCost, selectedCurrency)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('booking.totalRevenue')}</p><p className="stat-card__value">{formatMoney(stats.totalRevenue, selectedCurrency)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{stats.totalRevenue > 0 ? formatRate(stats.totalCost / stats.totalRevenue) : '—'}</p></article>
         </div>
       </section>
 
@@ -1361,8 +1380,9 @@ const BookingManagement = ({ heroTitle }) => {
         <div className="content-performance__metrics booking-manager-group__metrics">
           <span><small>{t('booking.evaluations')}</small><strong>{formatNumber(group.bookings.length)}</strong></span>
           <span><small>{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</small><strong>{formatNumber(group.videoCount)}</strong></span>
-          <span><small>{t('booking.costRevenueRatio')}</small><strong>{group.totalRevenue > 0 ? formatRate(group.totalCost / group.totalRevenue) : '—'}</strong></span>
           <span><small>{t('booking.totalCost')}</small><strong>{formatMoney(group.totalCost, selectedCurrency)}</strong></span>
+          <span><small>{t('booking.totalRevenue')}</small><strong>{formatMoney(group.totalRevenue, selectedCurrency)}</strong></span>
+          <span><small>{t('booking.costRevenueRatio')}</small><strong>{group.totalRevenue > 0 ? formatRate(group.totalCost / group.totalRevenue) : '—'}</strong></span>
         </div>
         <div className="table-wrap"><table className="data-table booking-evaluation-table">
           <thead>
@@ -1373,7 +1393,7 @@ const BookingManagement = ({ heroTitle }) => {
               const performance = bookingTab === 'product'
                 ? productPerformanceByBooking.get(String(booking.id))
                 : booking.actual_performance;
-              const bookingVideos = bookingVideosOf(booking);
+              const bookingVideos = bookingVideosByRevenue(bookingVideosOf(booking));
               const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
               const expanded = String(expandedBookingId) === String(booking.id);
               return <React.Fragment key={booking.id}>
