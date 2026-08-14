@@ -541,6 +541,8 @@
     "samplesShipped": "SP mẫu",
     "estimatedCommission": "Hoa hồng ước tính",
     "awaitingVideo": "Chờ liên kết video",
+    "noSelectedProductVideo": "Không có video chứa sản phẩm đã chọn",
+    "videoProductDataPending": "Video chưa có dữ liệu sản phẩm",
     "awaitingFirstSync": "Đã liên kết, chờ đồng bộ TikTok",
     "actualStatuses": {
       "AWAITING_VIDEO": "Chờ video",
@@ -560,7 +562,7 @@
     "videoLinked": "Đã liên kết",
     "findVideo": "Tìm video",
     "findingVideo": "Đang tìm",
-    "videoMatchNone": "Không tìm thấy video affiliate phù hợp với KOC trong khoảng thời gian booking.",
+    "videoMatchNone": "Không tìm thấy video affiliate của KOC chứa sản phẩm đã chọn.",
     "videoRefreshNone": "Video đã liên kết không còn xuất hiện trong dữ liệu TikTok của khoảng thời gian này.",
     "videoMatchError": "Không thể tìm video cho booking.",
     "videoCandidatesTitle": "Chọn video cho booking",
@@ -1426,7 +1428,7 @@
     },
     "jobs": {
       "tiktok_creator_performance": {
-        "name": "Hiệu suất TikTok Creator",
+        "name": "Creator Performance",
         "description": ""
       },
       "tiktok_shop_analytics": {
@@ -1434,7 +1436,7 @@
         "description": ""
       },
       "tiktok_channel_metrics": {
-        "name": "Chỉ số kênh TikTok",
+        "name": "TikTok Channel",
         "description": ""
       },
       "booking_video_performance": {
@@ -1442,11 +1444,15 @@
         "description": ""
       },
       "tiktok_shop_video_catalog": {
-        "name": "Danh mục video TikTok Shop",
+        "name": "Video TikTok Shop",
         "description": ""
       },
       "tiktok_channel_report_revenue": {
         "name": "Đồng bộ GMV Báo cáo",
+        "description": ""
+      },
+      "tiktok_affiliate_orders": {
+        "name": "Orders",
         "description": ""
       },
       "tiktok_affiliate_video_performance": {

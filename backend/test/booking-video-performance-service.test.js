@@ -3,7 +3,9 @@ const test = require('node:test');
 
 const {
   calculateActualPerformance,
-  __test: { affiliateCandidateFromSnapshot, exportDurationDays, metricOfAffiliateSnapshot },
+  __test: {
+    affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingProducts, metricOfAffiliateSnapshot,
+  },
 } = require('../src/services/bookingVideoPerformanceService');
 
 test('booking maps the 30-day Affiliate Video snapshot metrics', () => {
@@ -53,6 +55,54 @@ test('Affiliate Video snapshot becomes a booking video candidate', () => {
   assert.equal(candidate.product_id, '998877');
   assert.equal(candidate.ctr, 52 / 654);
   assert.equal(candidate.products[0].title, 'Actiscar');
+});
+
+test('booking video must contain at least one product selected by the user', () => {
+  const booking = {
+    evaluation_snapshot: {
+      products: [{ id: 'selected-product' }],
+      product_ids: ['selected-product'],
+    },
+  };
+  assert.equal(matchesBookingProducts(booking, {
+    product_id: 'other-product',
+    products: [{ id: 'selected-product' }],
+  }), true);
+  assert.equal(matchesBookingProducts(booking, {
+    product_id: 'other-product',
+    products: [{ id: 'another-product' }],
+  }), false);
+  assert.equal(matchesBookingProducts({ evaluation_snapshot: {} }, {
+    products: [{ id: 'any-product' }],
+  }), true);
+});
+
+test('booking performance only counts the selected product breakdown', () => {
+  const snapshot = {
+    creator_attributed_gmv: '500',
+    attributed_orders: 9,
+    attributed_items_sold: 10,
+    video_views: 2000,
+    product_impressions: 1000,
+    product_clicks: 100,
+    raw_metrics: {
+      detail: { performance: { intervals: [{ sales: {
+        overall: { gmv: { amount: '500', currency: 'MYR' } },
+        breakdowns: [
+          { product_id: 'selected', gmv: { amount: '125', currency: 'MYR' }, items_sold: 3, sku_orders: 2, product_impressions: 250, product_clicks: 25 },
+          { product_id: 'other', gmv: { amount: '375', currency: 'MYR' }, items_sold: 7, sku_orders: 7, product_impressions: 750, product_clicks: 75 },
+        ],
+      } }] } },
+      list: { products: [{ id: 'selected' }, { id: 'other' }] },
+    },
+  };
+  const result = metricOfAffiliateSnapshot(snapshot, new Set(['selected']));
+  assert.equal(result.gross_gmv, 125);
+  assert.equal(result.orders, 2);
+  assert.equal(result.items_sold, 3);
+  assert.equal(result.ctr, 0.1);
+  assert.equal(result.raw_metrics.metric_scope, 'SELECTED_BOOKING_PRODUCTS');
+  assert.deepEqual(result.raw_metrics.selected_product_ids, ['selected']);
 });
 
 test('actual booking performance uses latest snapshot and does not invent Net GMV', () => {

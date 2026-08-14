@@ -311,6 +311,58 @@ const ChannelReportRevenueSyncDay = sequelize.define('ChannelReportRevenueSyncDa
   indexes: [{ unique: true, fields: ['shop_id', 'metric_date'] }],
 });
 
+const TikTokAffiliateOrder = sequelize.define('TikTokAffiliateOrder', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  order_id: { type: DataTypes.STRING(64), allowNull: false },
+  create_time: { type: DataTypes.DATE, allowNull: false },
+  delivery_time: DataTypes.DATE,
+  raw_data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  synced_at: DataTypes.DATE,
+}, {
+  tableName: 'tiktok_affiliate_orders',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'order_id'] }],
+});
+
+const TikTokAffiliateOrderSku = sequelize.define('TikTokAffiliateOrderSku', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  affiliate_order_id: { type: DataTypes.BIGINT, allowNull: false },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  order_id: { type: DataTypes.STRING(64), allowNull: false },
+  sku_id: { type: DataTypes.STRING(128), allowNull: false },
+  product_id: DataTypes.STRING(128),
+  product_name: DataTypes.TEXT,
+  quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  refunded_quantity: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  content_type: DataTypes.STRING(32),
+  content_id: DataTypes.STRING(128),
+  creator_username: DataTypes.STRING,
+  price: DataTypes.DECIMAL(20, 4),
+  currency: DataTypes.STRING(16),
+  settlement_status: DataTypes.STRING(64),
+  fully_return: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  raw_data: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+  synced_at: DataTypes.DATE,
+}, {
+  tableName: 'tiktok_affiliate_order_skus',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'order_id', 'sku_id'] }],
+});
+
+const TikTokAffiliateOrderSyncDay = sequelize.define('TikTokAffiliateOrderSyncDay', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  metric_date: { type: DataTypes.DATEONLY, allowNull: false },
+  order_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  sku_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  synced_at: DataTypes.DATE,
+}, {
+  tableName: 'tiktok_affiliate_order_sync_days',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'metric_date'] }],
+});
+
 const TikTokPartnerAuthorization = sequelize.define('TikTokPartnerAuthorization', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   creator_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
@@ -1300,6 +1352,14 @@ TikTokShop.hasMany(ChannelReportVideoRevenueDaily, { foreignKey: 'shop_id', as: 
 ChannelReportVideoRevenueDaily.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(ChannelReportRevenueSyncDay, { foreignKey: 'shop_id', as: 'channel_report_revenue_sync_days' });
 ChannelReportRevenueSyncDay.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+TikTokShop.hasMany(TikTokAffiliateOrder, { foreignKey: 'shop_id', as: 'affiliate_orders' });
+TikTokAffiliateOrder.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+TikTokAffiliateOrder.hasMany(TikTokAffiliateOrderSku, { foreignKey: 'affiliate_order_id', as: 'skus' });
+TikTokAffiliateOrderSku.belongsTo(TikTokAffiliateOrder, { foreignKey: 'affiliate_order_id', as: 'order' });
+TikTokShop.hasMany(TikTokAffiliateOrderSku, { foreignKey: 'shop_id', as: 'affiliate_order_skus' });
+TikTokAffiliateOrderSku.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
+TikTokShop.hasMany(TikTokAffiliateOrderSyncDay, { foreignKey: 'shop_id', as: 'affiliate_order_sync_days' });
+TikTokAffiliateOrderSyncDay.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(TikTokCreatorPerformanceExport, { foreignKey: 'shop_id', as: 'creator_performance_exports' });
 TikTokCreatorPerformanceExport.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(TikTokCreatorPerformanceSnapshot, { foreignKey: 'shop_id', as: 'creator_performance_snapshots' });
@@ -1380,6 +1440,9 @@ module.exports = {
   ShopVideoPerformanceSnapshot,
   ChannelReportVideoRevenueDaily,
   ChannelReportRevenueSyncDay,
+  TikTokAffiliateOrder,
+  TikTokAffiliateOrderSku,
+  TikTokAffiliateOrderSyncDay,
   TikTokPartnerAuthorization,
   TikTokShopAuthorization,
   TikTokShop,

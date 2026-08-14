@@ -1316,7 +1316,7 @@
 
 .channel-report-revenue-modal__summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
   gap: 10px;
 }
 
@@ -1351,11 +1351,76 @@
   border-radius: var(--radius-md);
 }
 
+.channel-report-revenue-modal__products {
+  min-width: 190px;
+}
+
+.channel-report-revenue-modal__sync-pending {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
 .channel-report-revenue-modal__table thead {
   position: sticky;
   top: 0;
   z-index: 1;
   background: var(--color-surface);
+}
+
+.channel-report-revenue-modal__day-row {
+  cursor: default;
+}
+
+.channel-report-revenue-modal__day-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.channel-report-revenue-modal__orders-row > td {
+  padding: 0 12px 14px;
+  background: var(--color-bg-soft);
+}
+
+.channel-report-revenue-modal__orders {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.channel-report-revenue-modal__orders-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.channel-report-revenue-modal__orders-heading span,
+.channel-report-revenue-modal__order-id + small {
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.channel-report-revenue-modal__order-id {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.channel-report-revenue-modal__order-products {
+  min-width: 180px;
 }
 
 .member-detail__video > img,

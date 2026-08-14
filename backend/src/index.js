@@ -67,7 +67,7 @@ const createApp = () => {
     res.json({ message: 'Content Performance Reporting API' });
   });
 
-  app.use('/api/users', requireAdmin, requirePermission('users'), userRoutes);
+  app.use('/api/users', requireAdmin, userRoutes);
   app.use('/api/roles', requireAdmin, requirePermission('users'), roleRoutes);
   app.use('/api/content-teams', requireAdmin, requirePermission('users'), contentTeamRoutes);
   app.use('/api/bookings', requireAdmin, requirePermission('tiktok'), bookingRoutes);

@@ -28,6 +28,7 @@ const { syncActiveBookingVideos } = require('./bookingVideoPerformanceService');
 const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
 const { syncVideoPerformanceApi } = require('./tiktokVideoPerformanceService');
 const { syncChannelReportRevenue } = require('./channelReportRevenueSyncService');
+const { syncAffiliateOrders } = require('./affiliateOrderSyncService');
 
 const JOB_KEYS = new Set([
   'tiktok_creator_performance',
@@ -37,6 +38,7 @@ const JOB_KEYS = new Set([
   'tiktok_shop_video_catalog',
   'tiktok_affiliate_video_performance',
   'tiktok_channel_report_revenue',
+  'tiktok_affiliate_orders',
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
@@ -570,6 +572,10 @@ const jobHandlers = {
   ),
   tiktok_channel_report_revenue: ({ signal } = {}) => runForShops(
     (shop) => syncChannelReportRevenue(shop, { signal }),
+    signal,
+  ),
+  tiktok_affiliate_orders: ({ signal } = {}) => runForShops(
+    (shop) => syncAffiliateOrders(shop, { signal }),
     signal,
   ),
   tiktok_affiliate_video_performance: ({ signal } = {}) => runForShops(async (shop) => {

@@ -27,6 +27,9 @@ const loadController = (
     mockModule(require.resolve('../src/services/tiktokShopService'), shopService),
     mockModule(require.resolve('../src/services/bookingVideoPerformanceService'), {
       autoLinkBookingVideos: async () => ({ status: 'no_match' }),
+      calculateActualPerformance: (booking) => booking.actual_performance || {},
+      matchesBookingProducts: () => true,
+      productIdsOfVideo: () => new Set(),
       recordBookingVideoMatch: async () => {},
       serializeBookingWithActual: (booking) => (
         typeof booking?.toJSON === 'function' ? booking.toJSON() : booking

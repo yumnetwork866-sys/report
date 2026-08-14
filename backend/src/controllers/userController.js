@@ -75,11 +75,21 @@ const getUsers = async (req, res) => {
 // Get user by ID
 const getUserById = async (req, res) => {
   try {
+    const targetUserId = Number(req.params.id);
+    const isSelf = Number(req.session?.sub) === targetUserId;
+    const canManageUsers = !req.session
+      || req.session.role === 'admin'
+      || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+
+    if (!isSelf && !canManageUsers) {
+      return res.status(403).json({ message: 'Không có quyền truy cập' });
+    }
+
     const user = await User.findByPk(req.params.id, { include: userInclude });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.json(user);
+    res.json(serializeUser(user));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -98,11 +108,20 @@ const createUser = async (req, res) => {
       return res.status(400).json({ message: 'Invalid role' });
     }
 
+    let avatarUrl = null;
+    if (typeof req.body.avatar_url === 'string' && req.body.avatar_url.trim()) {
+      avatarUrl = req.body.avatar_url.trim();
+      if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(avatarUrl) || avatarUrl.length > 90_000) {
+        return res.status(400).json({ message: 'Avatar image is invalid or too large' });
+      }
+    }
+
     const user = await sequelize.transaction(async (transaction) => {
       const createdUser = await User.create({
         name,
         email,
         role,
+        avatar_url: avatarUrl,
         password_hash: await hashPassword(password),
       }, { transaction });
       if (
@@ -123,6 +142,37 @@ const createUser = async (req, res) => {
 // Update user
 const updateUser = async (req, res) => {
   try {
+    const targetUserId = Number(req.params.id);
+    const isSelf = Number(req.session?.sub) === targetUserId;
+    const canManageUsers = !req.session
+      || req.session.role === 'admin'
+      || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+
+    if (!isSelf && !canManageUsers) {
+      return res.status(403).json({ message: 'Không có quyền truy cập' });
+    }
+
+    const hasAttributionUpdate = Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
+      || Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags');
+
+    if (!canManageUsers) {
+      if (req.body.role !== undefined) {
+        return res.status(403).json({ message: 'Không có quyền thay đổi vai trò' });
+      }
+      if (req.body.is_active !== undefined) {
+        return res.status(403).json({ message: 'Không có quyền thay đổi trạng thái kích hoạt' });
+      }
+      if (req.body.name !== undefined) {
+        return res.status(403).json({ message: 'Không có quyền thay đổi tên người dùng' });
+      }
+      if (req.body.email !== undefined) {
+        return res.status(403).json({ message: 'Không có quyền thay đổi email' });
+      }
+      if (hasAttributionUpdate) {
+        return res.status(403).json({ message: 'Không có quyền thay đổi phân công nhóm nội dung' });
+      }
+    }
+
     if (req.body.role && !(await roleExists(req.body.role))) {
       return res.status(400).json({ message: 'Invalid role' });
     }
@@ -145,12 +195,16 @@ const updateUser = async (req, res) => {
       payload.is_active = req.body.is_active;
     }
 
-    if (typeof req.body.avatar_url === 'string' && req.body.avatar_url.trim()) {
+    if (typeof req.body.avatar_url === 'string') {
       const avatarUrl = req.body.avatar_url.trim();
-      if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(avatarUrl) || avatarUrl.length > 90_000) {
-        return res.status(400).json({ message: 'Avatar image is invalid or too large' });
+      if (avatarUrl) {
+        if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(avatarUrl) || avatarUrl.length > 90_000) {
+          return res.status(400).json({ message: 'Avatar image is invalid or too large' });
+        }
+        payload.avatar_url = avatarUrl;
+      } else {
+        payload.avatar_url = null;
       }
-      payload.avatar_url = avatarUrl;
     }
 
     if (typeof req.body.password === 'string' && req.body.password.trim()) {
@@ -159,9 +213,6 @@ const updateUser = async (req, res) => {
       }
       payload.password_hash = await hashPassword(req.body.password);
     }
-
-    const hasAttributionUpdate = Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
-      || Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags');
 
     if (!Object.keys(payload).length && !hasAttributionUpdate) {
       return res.status(400).json({ message: 'No update fields provided' });

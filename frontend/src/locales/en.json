@@ -546,6 +546,8 @@
     "samplesShipped": "Samples",
     "estimatedCommission": "Estimated commission",
     "awaitingVideo": "Waiting for a linked video",
+    "noSelectedProductVideo": "No video contains the selected products",
+    "videoProductDataPending": "Video product data is not available yet",
     "awaitingFirstSync": "Linked; waiting for TikTok sync",
     "actualStatuses": {
       "AWAITING_VIDEO": "Waiting for video",
@@ -565,7 +567,7 @@
     "videoLinked": "Linked",
     "findVideo": "Find video",
     "findingVideo": "Finding",
-    "videoMatchNone": "No affiliate video matched this KOC within the booking date range.",
+    "videoMatchNone": "No affiliate video from this creator contains the selected products.",
     "videoRefreshNone": "The linked video is no longer present in TikTok data for this date range.",
     "videoMatchError": "Unable to find a video for this booking.",
     "videoCandidatesTitle": "Choose the booking video",
@@ -1427,7 +1429,7 @@
     },
     "jobs": {
       "tiktok_creator_performance": {
-        "name": "TikTok Creator Performance",
+        "name": "Creator Performance",
         "description": ""
       },
       "tiktok_shop_analytics": {
@@ -1435,7 +1437,7 @@
         "description": ""
       },
       "tiktok_channel_metrics": {
-        "name": "TikTok Channel Metrics",
+        "name": "TikTok Channel",
         "description": ""
       },
       "booking_video_performance": {
@@ -1443,12 +1445,16 @@
         "description": ""
       },
       "tiktok_shop_video_catalog": {
-        "name": "TikTok Shop Video Catalog",
+        "name": "Video TikTok Shop",
         "description": ""
       },
       "tiktok_channel_report_revenue": {
         "name": "Channel Report GMV Sync",
         "description": "Sync daily video-attributed GMV so the Channel Report reads stored data."
+      },
+      "tiktok_affiliate_orders": {
+        "name": "Orders",
+        "description": ""
       },
       "tiktok_affiliate_video_performance": {
         "name": "Affiliate Video Performance",

@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { Op, QueryTypes, literal } = require('sequelize');
 const {
   User, Booking, TikTokPartnerAuthorization, TikTokShop,
-  TikTokTargetCollaborationSnapshot, TikTokCreatorPerformanceSnapshot,
+  TikTokTargetCollaborationSnapshot, TikTokCreatorPerformanceExport, TikTokCreatorPerformanceSnapshot,
   TikTokVideoPerformanceSnapshot,
   BookingVideo, BookingVideoPerformanceSnapshot,
   ShopVideo, ShopVideoPerformanceSnapshot, sequelize,
@@ -25,8 +25,13 @@ const {
 const { getShopVideoPerformance } = require('../services/tiktokShopService');
 const {
   autoLinkBookingVideos,
+  calculateActualPerformance,
+  matchesBookingProducts,
+  metricOfAffiliateSnapshot,
+  productIdsOfVideo,
   recordBookingVideoMatch,
   serializeBookingWithActual,
+  selectedProductIdsOfBooking,
   syncBookingVideo,
 } = require('../services/bookingVideoPerformanceService');
 const { handleShopOauthCallback } = require('./tiktokShopController');
@@ -146,6 +151,92 @@ const hydrateBookingVideoProducts = async (bookings) => {
   return bookings;
 };
 
+const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((booking) => {
+  const originalVideos = booking.booking_videos || [];
+  const selectedProductIds = new Set([
+    ...(booking.evaluation_snapshot?.product_ids || []),
+    ...(booking.evaluation_snapshot?.products || []).map((product) => product?.id || product?.product_id),
+  ].map((value) => String(value || '').trim()).filter(Boolean));
+  const matchingVideos = originalVideos.filter((video) => matchesBookingProducts(booking, video));
+  booking.booking_videos = matchingVideos;
+  booking.video_match_status = matchingVideos.length
+    ? 'MATCHED'
+    : !originalVideos.length ? 'NO_VIDEO'
+      : selectedProductIds.size && originalVideos.some((video) => productIdsOfVideo(video).size)
+        ? 'NO_PRODUCT_MATCH' : 'PRODUCT_DATA_PENDING';
+  booking.actual_performance = calculateActualPerformance(booking);
+  return booking;
+});
+
+const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) => {
+  const days = Number(String(performanceWindow || '').match(/^PAST_(7|30)_DAYS$/)?.[1]);
+  if (!days || !bookings.length || !TikTokCreatorPerformanceExport?.findAll || !TikTokVideoPerformanceSnapshot?.findAll) {
+    return bookings;
+  }
+  const shopIds = [...new Set(bookings.map((booking) => Number(booking.target_shop_id)).filter(Number.isInteger))];
+  const exports = await TikTokCreatorPerformanceExport.findAll({
+    where: { shop_id: { [Op.in]: shopIds }, module_type: 'VIDEO_API', status: 'SUCCEEDED' },
+    attributes: ['id', 'shop_id', 'start_date', 'end_date', 'completed_at', 'created_at'],
+    order: [['end_date', 'DESC'], ['completed_at', 'DESC'], ['created_at', 'DESC'], ['id', 'DESC']],
+  });
+  const selectedExportByShop = new Map();
+  for (const record of exports) {
+    const start = Date.parse(`${record.start_date}T00:00:00.000Z`);
+    const end = Date.parse(`${record.end_date}T00:00:00.000Z`);
+    if (Math.round((end - start) / 86400000) !== days || selectedExportByShop.has(Number(record.shop_id))) continue;
+    selectedExportByShop.set(Number(record.shop_id), record);
+  }
+  const exportIds = [...selectedExportByShop.values()].map((record) => record.id);
+  const videoIds = [...new Set(bookings.flatMap((booking) => (
+    (booking.booking_videos || []).map((video) => String(video.platform_video_id))
+  )))];
+  const snapshots = exportIds.length && videoIds.length ? await TikTokVideoPerformanceSnapshot.findAll({
+    where: { export_id: { [Op.in]: exportIds }, video_id: { [Op.in]: videoIds } },
+  }) : [];
+  const snapshotByExportAndVideo = new Map(snapshots.map((snapshot) => [
+    `${snapshot.export_id}:${snapshot.video_id}`,
+    snapshot,
+  ]));
+  for (const booking of bookings) {
+    const exportRecord = selectedExportByShop.get(Number(booking.target_shop_id));
+    const selectedIds = selectedProductIdsOfBooking(booking);
+    for (const video of booking.booking_videos || []) {
+      const snapshot = exportRecord
+        ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
+        : null;
+      video.performance_snapshots = snapshot ? [{
+        snapshot_date: exportRecord.end_date,
+        ...metricOfAffiliateSnapshot(snapshot, selectedIds),
+        synced_at: snapshot.synced_at || exportRecord.completed_at || exportRecord.created_at,
+      }] : exportRecord ? [{
+        snapshot_date: exportRecord.end_date,
+        gross_gmv: 0,
+        refunded_gmv: null,
+        net_gmv: null,
+        orders: 0,
+        items_sold: 0,
+        views: 0,
+        ctr: null,
+        currency: booking.currency || null,
+        raw_metrics: {
+          source: 'AFFILIATE_VIDEO_PERFORMANCE',
+          metric_scope: 'SELECTED_BOOKING_PRODUCTS',
+          selected_product_ids: [...selectedIds],
+          no_activity_in_window: true,
+        },
+        synced_at: exportRecord.completed_at || exportRecord.created_at,
+      }] : [];
+    }
+    booking.actual_performance = {
+      ...calculateActualPerformance(booking),
+      window_type: performanceWindow,
+      start_date: exportRecord?.start_date || null,
+      end_date: exportRecord?.end_date || null,
+    };
+  }
+  return bookings;
+};
+
 const serializeBookingsWithFreshCreatorAvatars = async (bookings = []) => {
   const serialized = bookings.map(serializeBookingWithActual);
   const bookingsByShop = new Map();
@@ -172,7 +263,7 @@ const serializeBookingsWithFreshCreatorAvatars = async (bookings = []) => {
     }
   }));
 
-  return hydrateBookingVideoProducts(serialized);
+  return filterBookingVideosBySelectedProducts(await hydrateBookingVideoProducts(serialized));
 };
 
 const normalizeBookingVideoUrl = (value) => {
@@ -229,6 +320,8 @@ const normalizeVideoCandidate = (video) => {
     orders: Number(video?.sku_orders ?? video?.orders ?? 0),
     items_sold: Number(video?.items_sold ?? video?.units_sold ?? 0),
     ctr: Number(video?.click_through_rate ?? video?.ctr ?? 0),
+    product_id: video?.product_id || null,
+    products: Array.isArray(video?.products) ? video.products : [],
   };
 };
 
@@ -252,6 +345,11 @@ const normalizeCachedVideoCandidate = (videoInstance) => {
     orders: Number(latest.orders || 0),
     items_sold: Number(latest.items_sold || 0),
     ctr: Number(latest.ctr || 0),
+    product_id: latest.raw_metrics?.product_id || video.raw_data?.product_id || null,
+    products: [
+      ...(Array.isArray(video.raw_data?.products) ? video.raw_data.products : []),
+      ...(Array.isArray(latest.raw_metrics?.products) ? latest.raw_metrics.products : []),
+    ],
     cached_catalog: true,
     catalog_synced_at: latest.synced_at || video.last_seen_at || null,
   };
@@ -300,10 +398,6 @@ const findBookingVideoCandidates = async (booking) => {
       where: {
         shop_id: booking.target_shop_id,
         creator_username: { [Op.iLike]: username },
-        posted_at: {
-          [Op.gte]: new Date(`${range.startDate}T00:00:00.000Z`),
-          [Op.lt]: new Date(`${range.endDate}T00:00:00.000Z`),
-        },
       },
       include: [{
         model: ShopVideoPerformanceSnapshot,
@@ -313,11 +407,16 @@ const findBookingVideoCandidates = async (booking) => {
       order: [['posted_at', 'DESC']],
     });
     if (cached.length) {
+      const normalized = cached.map(normalizeCachedVideoCandidate);
+      const candidates = normalized.filter((candidate) => matchesBookingProducts(booking, candidate));
+      const productDataComplete = normalized.every((candidate) => productIdsOfVideo(candidate).size > 0);
+      if (candidates.length || productDataComplete) {
       return {
-        candidates: cached.map(normalizeCachedVideoCandidate),
+        candidates,
         range,
         source: 'SHOP_VIDEO_CATALOG',
       };
+      }
     }
   }
   const videos = [];
@@ -358,6 +457,7 @@ const findBookingVideoCandidates = async (booking) => {
   videos
     .filter((video) => videoUsername(video) === username)
     .map(normalizeVideoCandidate)
+    .filter((video) => matchesBookingProducts(booking, video))
     .filter((video) => video.id)
     .forEach((video) => candidatesById.set(video.id, video));
   return {
@@ -939,7 +1039,6 @@ const getBookings = async (req, res) => {
       include: bookingInclude,
       order: [['deadline', 'ASC'], ['id', 'DESC']],
     });
-    const serialized = await serializeBookingsWithFreshCreatorAvatars(bookings);
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
@@ -951,6 +1050,10 @@ const getBookings = async (req, res) => {
         message: `Custom dates must be valid, end no later than yesterday, and span at most ${MAX_CUSTOM_PERFORMANCE_DAYS} days.`,
       });
     }
+    const serialized = await applyBookingVideoPerformanceWindow(
+      await serializeBookingsWithFreshCreatorAvatars(bookings),
+      requestedWindow,
+    );
     res.json(await addReferencePerformance(serialized, requestedWindow, customRange));
   } catch (error) {
     res.status(500).json({ message: error.message });

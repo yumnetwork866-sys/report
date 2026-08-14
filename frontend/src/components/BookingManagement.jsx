@@ -88,9 +88,6 @@ const targetKocKey = (creator) => {
 };
 const snapshotOf = (booking) => booking?.evaluation_snapshot || {};
 const collaborationOf = (booking) => snapshotOf(booking).collaboration || {};
-const performanceOf = (booking) => Object.prototype.hasOwnProperty.call(booking || {}, 'reference_performance')
-  ? booking.reference_performance
-  : snapshotOf(booking).performance || null;
 const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
 const bookingProductsOf = (booking) => {
   const snapshot = snapshotOf(booking);
@@ -766,6 +763,12 @@ const BookingManagement = ({ heroTitle }) => {
     }
   }, [bookingTab, expandedBookingId, selectedManagerKey]);
 
+  useEffect(() => {
+    if (bookingTab === 'video' && performanceWindow === 'CUSTOM') {
+      setPerformanceWindow('PAST_30_DAYS');
+    }
+  }, [bookingTab, performanceWindow]);
+
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatNumber = (value, options) => finiteNumber(value).toLocaleString(locale, options);
   const { formatMoney, currency: selectedCurrency, convertAmount } = useMoneyFormatter(locale);
@@ -1290,10 +1293,10 @@ const BookingManagement = ({ heroTitle }) => {
     if (performance.source === 'AFFILIATE_ORDERS' && !performance.has_products) {
       return <span className="chip">{t('booking.noAttachedProducts')}</span>;
     }
-    const gmv = optionalNumber(performance.affiliate_gmv);
+    const gmv = optionalNumber(performance.affiliate_gmv ?? performance.gross_gmv);
     const secondaryValue = performance.source === 'AFFILIATE_ORDERS'
       ? null
-      : optionalNumber(performance.video_views);
+      : optionalNumber(performance.video_views ?? performance.views);
     return (
       <div className="booking-performance-cell">
         <strong>{gmv === null ? '—' : formatMoney(gmv, performance.currency)}</strong>
@@ -1347,7 +1350,7 @@ const BookingManagement = ({ heroTitle }) => {
         </div>, document.body,
       ) : null}
       <section className="section-card" id="booking-list-panel" role="tabpanel">
-        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option><option value="CUSTOM">{t('booking.periodCustom')}</option></select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
+        <div className="section-card__header booking-evaluation-list-header"><div><h2 className="section-card__title">{t('booking.evaluationList')}</h2></div><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option>{bookingTab === 'product' ? <option value="CUSTOM">{t('booking.periodCustom')}</option> : null}</select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
         {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
         {incompleteCustomCoverage && bookingTab === 'video' ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
@@ -1369,7 +1372,7 @@ const BookingManagement = ({ heroTitle }) => {
             {group.bookings.map((booking) => {
               const performance = bookingTab === 'product'
                 ? productPerformanceByBooking.get(String(booking.id))
-                : performanceOf(booking);
+                : booking.actual_performance;
               const bookingVideos = bookingVideosOf(booking);
               const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
               const expanded = String(expandedBookingId) === String(booking.id);
@@ -1470,7 +1473,12 @@ const BookingManagement = ({ heroTitle }) => {
                     </div> : <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.awaitingFirstSync')}</span></div>}
                     {video.last_sync_error ? <p className="booking-video-expansion__error">{video.last_sync_error}</p> : null}
                   </article>;
-                })}</div> : <div className="empty-state empty-state--compact">{t('booking.awaitingVideo')}</div>}
+                })}</div> : <div className="empty-state empty-state--compact">{t(
+                  booking.video_match_status === 'NO_PRODUCT_MATCH'
+                    ? 'booking.noSelectedProductVideo'
+                    : booking.video_match_status === 'PRODUCT_DATA_PENDING'
+                      ? 'booking.videoProductDataPending' : 'booking.awaitingVideo',
+                )}</div>}
               </div>}</td></tr> : null}
               </React.Fragment>;
             })}

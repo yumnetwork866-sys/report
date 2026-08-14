@@ -68,6 +68,10 @@ const defaultMigrationNames = [
   '059_remove_whatsapp',
   '060_create_order_product_categories',
   '061_create_channel_report_revenue_daily',
+  '062_create_tiktok_affiliate_order_ledger',
+  '063_rename_affiliate_order_job',
+  '064_rename_tiktok_channel_metrics_job',
+  '065_rename_tiktok_shop_video_catalog_job',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

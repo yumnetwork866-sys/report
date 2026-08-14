@@ -69,6 +69,10 @@ const migrations = [
   require('./059_remove_whatsapp'),
   require('./060_create_order_product_categories'),
   require('./061_create_channel_report_revenue_daily'),
+  require('./062_create_tiktok_affiliate_order_ledger'),
+  require('./063_rename_affiliate_order_job'),
+  require('./064_rename_tiktok_channel_metrics_job'),
+  require('./065_rename_tiktok_shop_video_catalog_job'),
 ];
 
 const createMigrationRunner = ({

@@ -10,13 +10,13 @@ const {
 } = require('../controllers/userController');
 
 // GET /api/users
-router.get('/', getUsers);
+router.get('/', requirePermission('users'), getUsers);
 
 // GET /api/users/:id
 router.get('/:id', getUserById);
 
 // POST /api/users
-router.post('/', createUser);
+router.post('/', requirePermission('users'), createUser);
 
 // PUT /api/users/:id
 router.put('/:id', updateUser);
