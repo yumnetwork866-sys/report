@@ -124,6 +124,15 @@ const signature = ({ path, query, body = '' }) => {
   return crypto.createHmac('sha256', config.appSecret).update(input).digest('hex');
 };
 
+const parseRetryAfterMs = (value, now = Date.now()) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return null;
+  const seconds = Number(normalized);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds * 1000);
+  const retryAt = Date.parse(normalized);
+  return Number.isFinite(retryAt) ? Math.max(0, retryAt - now) : null;
+};
+
 const requestShopApi = async ({
   path, accessToken, method = 'GET', query = {}, body, contentType = 'application/json', fetchImpl = fetch,
 }) => {
@@ -134,22 +143,38 @@ const requestShopApi = async ({
   signed.sign = signature({ path, query: signed, body: bodyString });
   const url = new URL(`${config.apiBaseUrl}${path}`);
   Object.entries(signed).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value)); });
-  const response = await fetchImpl(url, {
-    method,
-    headers: { 'content-type': contentType, 'x-tts-access-token': accessToken },
-    ...(bodyString ? { body: bodyString } : {}),
-    ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(config.requestTimeoutMs) } : {}),
-  });
+  let response;
+  try {
+    response = await fetchImpl(url, {
+      method,
+      headers: { 'content-type': contentType, 'x-tts-access-token': accessToken },
+      ...(bodyString ? { body: bodyString } : {}),
+      ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(config.requestTimeoutMs) } : {}),
+    });
+  } catch (error) {
+    error.endpoint = path;
+    error.httpMethod = method;
+    throw error;
+  }
   const payload = await response.json().catch(() => null);
   if (!response.ok || Number(payload?.code) !== 0) {
+    const retryAfter = response.headers?.get?.('retry-after') || null;
     const details = [
       payload?.message || response.statusText || response.status,
+      response.status ? `http_status=${response.status}` : null,
+      `endpoint=${method} ${path}`,
+      retryAfter ? `retry_after=${retryAfter}` : null,
       payload?.code !== undefined ? `code=${payload.code}` : null,
       payload?.request_id ? `request_id=${payload.request_id}` : null,
     ].filter(Boolean).join(', ');
     const error = new Error(`TikTok Shop API error: ${details}`);
     error.tiktokCode = payload?.code ?? null;
     error.requestId = payload?.request_id || null;
+    error.httpStatus = Number(response.status) || null;
+    error.endpoint = path;
+    error.httpMethod = method;
+    error.retryAfter = retryAfter;
+    error.retryAfterMs = parseRetryAfterMs(retryAfter);
     throw error;
   }
   return payload;
@@ -791,6 +816,8 @@ module.exports = {
   exchangeShopAuthorizationCode,
   shopTokenFields,
   signature,
+  parseRetryAfterMs,
+  requestShopApi,
   getAuthorizedShops,
   getShopPerformance,
   getShopVideoPerformance,

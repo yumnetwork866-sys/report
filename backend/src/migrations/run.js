@@ -74,6 +74,9 @@ const migrations = [
   require('./064_rename_tiktok_channel_metrics_job'),
   require('./065_rename_tiktok_shop_video_catalog_job'),
   require('./066_create_tiktok_shop_products'),
+  require('./067_cleanup_duplicate_unique_indexes'),
+  require('./068_add_creator_performance_backfill_schedule'),
+  require('./069_add_tiktok_api_cooldown_streak'),
 ];
 
 const createMigrationRunner = ({

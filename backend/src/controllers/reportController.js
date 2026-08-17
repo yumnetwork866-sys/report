@@ -175,6 +175,54 @@ const channelReportBaseSql = `
     WHERE attribution.team_id IS NOT NULL
       AND NULLIF(BTRIM(hashtag.value), '') IS NOT NULL
   ),
+  revenue_catalog_videos AS MATERIALIZED (
+    SELECT DISTINCT ON (shop_video.platform_video_id)
+      -shop_video.id AS id,
+      'tiktok'::text AS platform,
+      shop_video.platform_video_id,
+      channel.id AS channel_id,
+      shop_video.title,
+      shop_video.video_url,
+      COALESCE(
+        NULLIF(shop_video.raw_data ->> 'cover_image_url', ''),
+        NULLIF(shop_video.raw_data ->> 'thumbnail_url', '')
+      ) AS thumbnail_url,
+      shop_video.posted_at AS published_at,
+      COALESCE(performance.views, 0) AS views,
+      0::bigint AS likes,
+      0::bigint AS comments,
+      0::bigint AS shares,
+      channel.username AS channel_username,
+      channel.display_name AS channel_name,
+      channel.avatar_url AS channel_avatar_url,
+      revenue.revenue,
+      revenue.currency
+    FROM shop_videos shop_video
+    JOIN platform_revenue revenue
+      ON revenue.platform_video_id = shop_video.platform_video_id
+      AND revenue.revenue > 0
+    JOIN tiktok_channels channel
+      ON LOWER(LTRIM(BTRIM(channel.username), '@'))
+        = LOWER(LTRIM(BTRIM(shop_video.creator_username), '@'))
+    LEFT JOIN LATERAL (
+      SELECT snapshot.views
+      FROM shop_video_performance_snapshots snapshot
+      WHERE snapshot.shop_video_id = shop_video.id
+      ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
+      LIMIT 1
+    ) performance ON TRUE
+    WHERE :metric = 'revenue'
+      AND shop_video.account_type IN ('OFFICIAL_ACCOUNTS', 'MARKETING_ACCOUNTS')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM videos stored_video
+        WHERE stored_video.platform_video_id = shop_video.platform_video_id
+      )
+    ORDER BY
+      shop_video.platform_video_id,
+      shop_video.last_seen_at DESC NULLS LAST,
+      shop_video.id DESC
+  ),
   report_videos AS MATERIALIZED (
     SELECT
       video.id,
@@ -198,15 +246,18 @@ const channelReportBaseSql = `
     LEFT JOIN tiktok_channels channel ON channel.id = video.channel_id
     LEFT JOIN platform_revenue revenue
       ON revenue.platform_video_id = video.platform_video_id
-    WHERE :metric = 'revenue'
-      OR (
+    WHERE (:metric = 'revenue' AND revenue.revenue > 0)
+      OR (:metric <> 'revenue' AND (
         video.published_at >= (
           CAST(:startDate AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
         )
         AND video.published_at < (
           CAST(:endDateExclusive AS date)::timestamp AT TIME ZONE 'Asia/Ho_Chi_Minh'
         )
-      )
+      ))
+    UNION ALL
+    SELECT *
+    FROM revenue_catalog_videos
   ),
   video_hashtags AS MATERIALIZED (
     SELECT DISTINCT

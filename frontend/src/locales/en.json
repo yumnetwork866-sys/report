@@ -1433,6 +1433,10 @@
         "name": "Creator Performance",
         "description": ""
       },
+      "tiktok_creator_performance_backfill": {
+        "name": "Creator Performance Daily Backfill",
+        "description": "Backfill one missing historical Creator Performance day per run."
+      },
       "tiktok_shop_analytics": {
         "name": "TikTok Shop Analytics",
         "description": ""

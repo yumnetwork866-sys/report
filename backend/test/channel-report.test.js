@@ -235,6 +235,34 @@ test('channel report attributes adjacent and multiple hashtags without duplicati
   assert.match(teamSql, /attribution_match\.user_id = app_user\.id/);
 });
 
+test('channel revenue report falls back to connected channel catalog videos with revenue in the selected dates', async (t) => {
+  const calls = [];
+  const { getChannelReport } = loadController(t, async (sql) => {
+    calls.push(sql);
+    return [];
+  }, async () => ({
+    rows: [{ platform_video_id: 'old-channel-video', revenue: 84.99, currency: 'MYR' }],
+    errors: [],
+  }));
+  const response = makeResponse();
+
+  await getChannelReport({
+    query: { month: '2026-08', metric: 'revenue' },
+  }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(calls.length, 3);
+  for (const sql of calls) {
+    assert.match(sql, /revenue_catalog_videos AS MATERIALIZED/);
+    assert.match(sql, /FROM shop_videos shop_video/);
+    assert.match(sql, /shop_video\.account_type IN \('OFFICIAL_ACCOUNTS', 'MARKETING_ACCOUNTS'\)/);
+    assert.match(sql, /LOWER\(LTRIM\(BTRIM\(channel\.username\), '@'\)\)/);
+    assert.match(sql, /NOT EXISTS \(\s*SELECT 1\s*FROM videos stored_video/);
+    assert.match(sql, /WHERE \(:metric = 'revenue' AND revenue\.revenue > 0\)/);
+    assert.match(sql, /UNION ALL\s*SELECT \*\s*FROM revenue_catalog_videos/);
+  }
+});
+
 test('channel report rejects an invalid month before querying', async (t) => {
   let queried = false;
   const { getChannelReport } = loadController(t, async () => {

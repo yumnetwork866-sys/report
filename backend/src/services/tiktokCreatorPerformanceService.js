@@ -39,10 +39,14 @@ const marketplaceProfileCooldowns = new Map();
 const marketplaceShopCooldowns = new Map();
 const creatorProfileRefreshRuns = new Map();
 const MARKETPLACE_PROFILE_COOLDOWN_NAMESPACE = 'creator_marketplace_profile';
+const COMPASS_COOLDOWN_NAMESPACE = 'creator_performance_compass';
 const HOUR_MS = 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
 const DEFAULT_CREATOR_PROFILE_TTL_MS = 24 * HOUR_MS;
 const DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS = 2 * MINUTE_MS;
+const DEFAULT_COMPASS_RATE_LIMIT_COOLDOWN_MS = 15 * MINUTE_MS;
+const DEFAULT_COMPASS_RATE_LIMIT_MAX_COOLDOWN_MS = HOUR_MS;
+const COMPASS_RATE_LIMIT_CODES = new Set([36009002, 36009037]);
 const runCreatorProfileMarketplaceRequest = createMarketplaceRequestGate({
   // The profile worker itself waits two minutes. The shared Marketplace gate
   // leaves a one-minute slot for Discovery between profile requests.
@@ -73,6 +77,127 @@ const configuredCreatorProfileRateLimitCooldownMs = () => {
   return Number.isFinite(value)
     ? Math.max(DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS, value)
     : DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS;
+};
+
+const configuredCompassRateLimitCooldownMs = (consecutiveRateLimits = 1, retryAfterMs = 0) => {
+  const configuredBase = Number(
+    process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_BASE_COOLDOWN_MS
+      ?? process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_COOLDOWN_MS
+      ?? DEFAULT_COMPASS_RATE_LIMIT_COOLDOWN_MS,
+  );
+  const baseMs = Number.isFinite(configuredBase)
+    ? Math.max(MINUTE_MS, configuredBase)
+    : DEFAULT_COMPASS_RATE_LIMIT_COOLDOWN_MS;
+  const configuredMax = Number(
+    process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_MAX_COOLDOWN_MS
+      ?? DEFAULT_COMPASS_RATE_LIMIT_MAX_COOLDOWN_MS,
+  );
+  const maxMs = Number.isFinite(configuredMax)
+    ? Math.max(baseMs, configuredMax)
+    : Math.max(baseMs, DEFAULT_COMPASS_RATE_LIMIT_MAX_COOLDOWN_MS);
+  const streak = Math.max(1, Number(consecutiveRateLimits) || 1);
+  const adaptiveMs = Math.min(maxMs, baseMs * (2 ** Math.min(20, streak - 1)));
+  return Math.max(adaptiveMs, Math.max(0, Number(retryAfterMs) || 0));
+};
+
+const isCompassRateLimitError = (error) => COMPASS_RATE_LIMIT_CODES.has(Number(error?.tiktokCode))
+  || /too many requests|rate limit|quota exceeded/i.test(String(error?.message || ''));
+
+const loadCompassCooldownState = async (shopId, model = TikTokApiCooldown) => {
+  const row = await model.findOne({
+    where: { shop_id: shopId, namespace: COMPASS_COOLDOWN_NAMESPACE },
+  });
+  return {
+    cooldownUntil: row?.cooldown_until ? new Date(row.cooldown_until).getTime() : 0,
+    consecutiveRateLimits: Math.max(0, Number(row?.consecutive_rate_limits) || 0),
+  };
+};
+
+const loadCompassCooldown = async (shopId, model = TikTokApiCooldown) => (
+  (await loadCompassCooldownState(shopId, model)).cooldownUntil
+);
+
+const persistCompassCooldown = async (
+  { shopId, cooldownUntil, reason, consecutiveRateLimits = 0 },
+  model = TikTokApiCooldown,
+) => {
+  await model.upsert({
+    shop_id: shopId,
+    namespace: COMPASS_COOLDOWN_NAMESPACE,
+    cooldown_until: new Date(cooldownUntil),
+    consecutive_rate_limits: Math.max(0, Number(consecutiveRateLimits) || 0),
+    reason: String(reason || '').slice(0, 2000) || null,
+    updated_at: new Date(),
+  });
+};
+
+const clearCompassRateLimitStreak = async (shopId, model = TikTokApiCooldown) => {
+  await model.update({
+    consecutive_rate_limits: 0,
+    updated_at: new Date(),
+  }, {
+    where: { shop_id: shopId, namespace: COMPASS_COOLDOWN_NAMESPACE },
+  });
+};
+
+const runCompassRequest = async (shop, operation, options = {}) => {
+  const customLoadCooldown = typeof options.loadCooldown === 'function';
+  const loadCooldownState = options.loadCooldownState || (customLoadCooldown
+    ? async (shopId) => ({
+      cooldownUntil: await options.loadCooldown(shopId),
+      consecutiveRateLimits: 0,
+    })
+    : loadCompassCooldownState);
+  const persistCooldown = options.persistCooldown || persistCompassCooldown;
+  const clearCooldownStreak = options.clearCooldownStreak || clearCompassRateLimitStreak;
+  const now = options.now || (() => Date.now());
+  const logger = options.logger || console;
+  const state = await loadCooldownState(shop.id);
+  const cooldownUntil = Number(state?.cooldownUntil) || 0;
+  if (cooldownUntil > now()) {
+    const error = new Error(`TikTok Compass is cooling down until ${new Date(cooldownUntil).toISOString()}.`);
+    error.code = 'TIKTOK_COMPASS_COOLDOWN';
+    error.cooldownUntil = cooldownUntil;
+    error.retryAfterMs = cooldownUntil - now();
+    error.consecutiveRateLimits = Math.max(0, Number(state?.consecutiveRateLimits) || 0);
+    throw error;
+  }
+
+  try {
+    const result = await operation();
+    if (Number(state?.consecutiveRateLimits) > 0) {
+      await clearCooldownStreak(shop.id).catch((clearError) => {
+        logger?.warn?.('[Creator Performance] Could not clear Compass rate-limit streak', {
+          shopId: shop.id,
+          message: clearError.message,
+        });
+      });
+    }
+    return result;
+  } catch (error) {
+    if (isCompassRateLimitError(error)) {
+      const consecutiveRateLimits = Math.max(0, Number(state?.consecutiveRateLimits) || 0) + 1;
+      const cooldownMs = options.cooldownMs === undefined
+        ? configuredCompassRateLimitCooldownMs(consecutiveRateLimits, error.retryAfterMs)
+        : Math.max(Number(options.cooldownMs) || 0, Number(error.retryAfterMs) || 0);
+      const nextAttemptAt = now() + cooldownMs;
+      error.cooldownUntil = nextAttemptAt;
+      error.cooldownMs = cooldownMs;
+      error.consecutiveRateLimits = consecutiveRateLimits;
+      await persistCooldown({
+        shopId: shop.id,
+        cooldownUntil: nextAttemptAt,
+        reason: error.message,
+        consecutiveRateLimits,
+      }).catch((persistError) => {
+        logger?.warn?.('[Creator Performance] Could not persist Compass cooldown', {
+          shopId: shop.id,
+          message: persistError.message,
+        });
+      });
+    }
+    throw error;
+  }
 };
 
 const loadPersistedMarketplaceCooldown = async (shopId, model = TikTokApiCooldown) => {
@@ -704,13 +829,15 @@ const createCreatorPerformanceExport = async (shop, {
     order: [['created_at', 'DESC']],
   });
   if (existing) return existing;
-  const payload = await (dependencies.createTask || createCompassExportTask)({
+  const payload = await runCompassRequest(shop, () => (
+    dependencies.createTask || createCompassExportTask
+  )({
     authorization: shop.authorization,
     shopCipher: shop.cipher,
     windowType: normalizedWindow,
     endDay,
     planType: normalizedPlan,
-  });
+  }), dependencies);
   const taskId = payload.data?.task?.id || payload.data?.task_id;
   if (!taskId) throw new Error('TikTok Compass did not return a task id.');
   return TikTokCreatorPerformanceExport.create({
@@ -743,13 +870,15 @@ const createBasePerformanceExport = async (shop, {
     order: [['created_at', 'DESC']],
   });
   if (existing) return existing;
-  const payload = await (dependencies.createTask || createCompassExportTask)({
+  const payload = await runCompassRequest(shop, () => (
+    dependencies.createTask || createCompassExportTask
+  )({
     authorization: shop.authorization,
     shopCipher: shop.cipher,
     moduleType: 'BASE',
     windowType: normalizedWindow,
     endDay,
-  });
+  }), dependencies);
   const taskId = payload.data?.task?.id || payload.data?.task_id;
   if (!taskId) throw new Error('TikTok Compass did not return a BASE task id.');
   return TikTokCreatorPerformanceExport.create({
@@ -767,20 +896,40 @@ const createBasePerformanceExport = async (shop, {
 
 const createCreatorPerformanceExportWithFallback = async (shop, options = {}, {
   maxFallbackDays = 7,
+  fallbackDelayMs = 2000,
   createExport = createCreatorPerformanceExport,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  logger = console,
 } = {}) => {
   const requestedEndDay = Number(options.endDay || yesterdayEndDay(shop.region));
   let endDay = requestedEndDay;
+  let lastError;
+
   for (let fallbackDays = 0; fallbackDays <= maxFallbackDays; fallbackDays += 1) {
     try {
       const exportRecord = await createExport(shop, { ...options, endDay });
       return { exportRecord, requestedEndDay, endDay, fallbackDays };
     } catch (error) {
+      lastError = error;
+      if (isCompassRateLimitError(error) || error.code === 'TIKTOK_COMPASS_COOLDOWN') throw error;
       if (Number(error.tiktokCode) !== 13017003 || fallbackDays === maxFallbackDays) throw error;
+
+      logger?.warn?.('[Creator Performance] End day unavailable; falling back to previous day', {
+        shopId: shop.id,
+        currentEndDay: endDay,
+        nextEndDay: shiftEndDay(endDay, -1),
+        fallbackDays: fallbackDays + 1,
+        reason: error.message,
+      });
+
+      if (fallbackDelayMs > 0) {
+        await sleep(fallbackDelayMs);
+      }
       endDay = shiftEndDay(endDay, -1);
     }
   }
-  throw new Error('TikTok Compass export date is not available.');
+
+  throw lastError || new Error('TikTok Compass export date is not available.');
 };
 
 const createBasePerformanceExportWithFallback = (shop, options = {}, dependencies = {}) => (
@@ -799,14 +948,16 @@ const processCreatorPerformanceExport = async (shop, exportRecord, {
   const startedAt = Date.now();
   try {
     while (Date.now() - startedAt < timeoutMs) {
-      const payload = await listTasks({ authorization: shop.authorization, shopCipher: shop.cipher, pageSize: 100 });
+      const payload = await runCompassRequest(shop, () => listTasks({
+        authorization: shop.authorization, shopCipher: shop.cipher, pageSize: 100,
+      }));
       const task = findTask(payload, exportRecord.task_id);
       const status = String(task?.status || task?.task_status || '').toUpperCase();
       if (FAILED_STATUSES.has(status)) throw new Error(task?.fail_reason || task?.error_message || `TikTok Compass task ${status}.`);
       if (SUCCESS_STATUSES.has(status)) {
-        const filePayload = await downloadFile({
+        const filePayload = await runCompassRequest(shop, () => downloadFile({
           authorization: shop.authorization, shopCipher: shop.cipher, taskId: exportRecord.task_id,
-        });
+        }));
         const base64 = filePayload.data?.file?.base64 || filePayload.data?.base64;
         if (!base64) throw new Error('TikTok Compass did not return the XLSX file.');
         const rows = parseCreatorPerformanceWorkbook(Buffer.from(base64, 'base64'), {
@@ -862,21 +1013,21 @@ const processBasePerformanceExport = async (shop, exportRecord, {
   const startedAt = Date.now();
   try {
     while (Date.now() - startedAt < timeoutMs) {
-      const payload = await listTasks({
+      const payload = await runCompassRequest(shop, () => listTasks({
         authorization: shop.authorization,
         shopCipher: shop.cipher,
         docType: 'BASE',
         pageSize: 100,
-      });
+      }));
       const task = findTask(payload, exportRecord.task_id);
       const status = String(task?.status || task?.task_status || '').toUpperCase();
       if (FAILED_STATUSES.has(status)) throw new Error(task?.fail_reason || task?.error_message || `TikTok Compass BASE task ${status}.`);
       if (SUCCESS_STATUSES.has(status)) {
-        const filePayload = await downloadFile({
+        const filePayload = await runCompassRequest(shop, () => downloadFile({
           authorization: shop.authorization,
           shopCipher: shop.cipher,
           taskId: exportRecord.task_id,
-        });
+        }));
         const base64 = filePayload.data?.file?.base64 || filePayload.data?.base64;
         if (!base64) throw new Error('TikTok Compass did not return the BASE XLSX file.');
         const snapshot = parseBasePerformanceWorkbook(Buffer.from(base64, 'base64'), {
@@ -917,6 +1068,14 @@ module.exports = {
   createBasePerformanceExportWithFallback,
   processCreatorPerformanceExport,
   processBasePerformanceExport,
+  isCompassRateLimitError,
+  COMPASS_COOLDOWN_NAMESPACE,
+  configuredCompassRateLimitCooldownMs,
+  loadCompassCooldown,
+  loadCompassCooldownState,
+  persistCompassCooldown,
+  clearCompassRateLimitStreak,
+  runCompassRequest,
   loadCreatorProfiles,
   loadMarketplaceCreatorProfiles,
   loadPersistedMarketplaceCooldown,

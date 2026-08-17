@@ -24,6 +24,8 @@ const {
   parseShopAuthorizationState,
   exchangeShopAuthorizationCode,
   signature,
+  parseRetryAfterMs,
+  requestShopApi,
   getAuthorizedShops,
   getShopPerformance,
   getShopVideoPerformance,
@@ -135,6 +137,40 @@ test('signature follows TikTok Shop HMAC-SHA256 signing rules', (t) => {
   const message = `shop-app-secret${SHOP_PERFORMANCE_PATH}${parameterString}shop-app-secret`;
   const expected = crypto.createHmac('sha256', 'shop-app-secret').update(message).digest('hex');
   assert.equal(signature({ path: SHOP_PERFORMANCE_PATH, query }), expected);
+});
+
+test('shop API errors retain HTTP and Retry-After diagnostics', async (t) => {
+  configure(t);
+  await assert.rejects(requestShopApi({
+    path: '/affiliate_seller/202603/compass/offline_task',
+    accessToken: 'seller-token',
+    method: 'POST',
+    body: { module_type: 'CREATOR' },
+    fetchImpl: async () => ({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      headers: { get: (name) => (name === 'retry-after' ? '900' : null) },
+      json: async () => ({
+        code: 36009037,
+        message: 'Current user made too many requests.',
+        request_id: 'rate-limit-request-id',
+      }),
+    }),
+  }), (error) => {
+    assert.equal(error.tiktokCode, 36009037);
+    assert.equal(error.requestId, 'rate-limit-request-id');
+    assert.equal(error.httpStatus, 429);
+    assert.equal(error.endpoint, '/affiliate_seller/202603/compass/offline_task');
+    assert.equal(error.httpMethod, 'POST');
+    assert.equal(error.retryAfter, '900');
+    assert.equal(error.retryAfterMs, 15 * 60 * 1000);
+    assert.match(error.message, /http_status=429/);
+    assert.match(error.message, /endpoint=POST \/affiliate_seller\/202603\/compass\/offline_task/);
+    assert.match(error.message, /retry_after=900/);
+    return true;
+  });
+  assert.equal(parseRetryAfterMs('120'), 120000);
 });
 
 test('authorized shops request uses the seller token and returns the shop list', async (t) => {

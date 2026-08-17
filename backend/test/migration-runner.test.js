@@ -73,6 +73,9 @@ const defaultMigrationNames = [
   '064_rename_tiktok_channel_metrics_job',
   '065_rename_tiktok_shop_video_catalog_job',
   '066_create_tiktok_shop_products',
+  '067_cleanup_duplicate_unique_indexes',
+  '068_add_creator_performance_backfill_schedule',
+  '069_add_tiktok_api_cooldown_streak',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

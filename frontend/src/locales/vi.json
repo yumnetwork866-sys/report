@@ -1432,6 +1432,10 @@
         "name": "Creator Performance",
         "description": ""
       },
+      "tiktok_creator_performance_backfill": {
+        "name": "Backfill Creator Performance hằng ngày",
+        "description": "Bổ sung một ngày Creator Performance lịch sử còn thiếu trong mỗi lần chạy."
+      },
       "tiktok_shop_analytics": {
         "name": "TikTok Shop Analytics",
         "description": ""

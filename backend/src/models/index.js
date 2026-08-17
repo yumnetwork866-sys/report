@@ -594,6 +594,7 @@ const TikTokApiCooldown = sequelize.define('TikTokApiCooldown', {
   shop_id: { type: DataTypes.INTEGER, primaryKey: true },
   namespace: { type: DataTypes.STRING(100), primaryKey: true },
   cooldown_until: { type: DataTypes.DATE, allowNull: false },
+  consecutive_rate_limits: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   reason: DataTypes.TEXT,
   updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {

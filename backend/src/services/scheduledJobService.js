@@ -32,6 +32,7 @@ const { syncAffiliateOrders } = require('./affiliateOrderSyncService');
 
 const JOB_KEYS = new Set([
   'tiktok_creator_performance',
+  'tiktok_creator_performance_backfill',
   'tiktok_shop_analytics',
   'tiktok_channel_metrics',
   'booking_video_performance',
@@ -42,7 +43,7 @@ const JOB_KEYS = new Set([
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
-const CREATOR_DAILY_BACKFILL_DAYS = 5;
+const CREATOR_DAILY_BACKFILL_DAYS = 1;
 const CREATOR_DAILY_HISTORY_DAYS = 180;
 const SHOP_TIMEZONES = {
   MY: 'Asia/Kuala_Lumpur',
@@ -179,6 +180,21 @@ const syncCreatorPerformanceWindows = async (shop, windows, signal) => {
     });
   }
   return exports;
+};
+
+const assertRequestedCreatorPerformanceSynced = (exports) => {
+  const fallbackExports = exports.filter((item) => (
+    Number(item.fallback_days) > 0
+      || Number(item.effective_end_day) !== Number(item.requested_end_day)
+  ));
+  if (!fallbackExports.length) return;
+  const periods = fallbackExports.map((item) => (
+    `${item.window_type}: requested ${item.requested_end_day}, used ${item.effective_end_day}`
+  ));
+  const error = new Error(`Creator Performance did not sync the requested end day; fallback data was reused (${periods.join('; ')}).`);
+  error.code = 'CREATOR_PERFORMANCE_FALLBACK';
+  error.fallback_exports = fallbackExports;
+  throw error;
 };
 
 const creatorDailyBackfillDates = (endDate, availableDates = [], limit = CREATOR_DAILY_BACKFILL_DAYS) => {
@@ -534,18 +550,27 @@ const jobHandlers = {
       // can be aggregated without summing overlapping rolling windows.
       { windowType: 'PAST_24H', endDay },
     ], signal);
+    assertRequestedCreatorPerformanceSynced(exports);
     const baseExports = await syncBasePerformanceWindows(shop, exports, signal);
-    const dailyBackfill = await backfillCreatorDailyPerformance(
-      shop,
-      exports.find((item) => item.window_type === 'PAST_24H').effective_end_day,
-      signal,
-    );
     const sixMonth = await refreshSixMonthPerformanceIfNeeded(
       shop,
       exports[0].effective_end_day,
       signal,
     );
-    return { exports, base_exports: baseExports, six_month: sixMonth, daily_backfill: dailyBackfill };
+    return { exports, base_exports: baseExports, six_month: sixMonth };
+  }, signal),
+  tiktok_creator_performance_backfill: ({ signal } = {}) => runForShops(async (shop) => {
+    const dailyBackfill = await backfillCreatorDailyPerformance(
+      shop,
+      yesterdayEndDay(shop.region),
+      signal,
+    );
+    if (dailyBackfill.failed.length) {
+      const error = new Error(`Creator Performance daily backfill failed for ${dailyBackfill.failed[0].date}: ${dailyBackfill.failed[0].error}`);
+      error.daily_backfill = dailyBackfill;
+      throw error;
+    }
+    return { daily_backfill: dailyBackfill };
   }, signal),
   tiktok_shop_analytics: ({ signal } = {}) => runForShops(async (shop) => {
     const range = scheduledAnalyticsRange(shop);
@@ -760,6 +785,7 @@ module.exports = {
   latestScheduledSlot,
   sixMonthSnapshotIsFresh,
   creatorDailyBackfillDates,
+  assertRequestedCreatorPerformanceSynced,
   executeScheduledJob,
   enqueueScheduledJob,
   stopScheduledJob,

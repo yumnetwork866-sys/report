@@ -8,22 +8,42 @@ const {
   latestScheduledSlot,
   sixMonthSnapshotIsFresh,
   creatorDailyBackfillDates,
+  assertRequestedCreatorPerformanceSynced,
   catchUpScheduledJobs,
 } = require('../src/services/scheduledJobService');
 
-test('creator daily backfill selects at most five newest missing historical dates', () => {
+test('creator daily backfill selects only the newest missing historical date', () => {
   const dates = creatorDailyBackfillDates('2026-08-07', [
     '2026-08-06',
     '2026-08-04',
   ]);
 
-  assert.deepEqual(dates, [
-    '2026-08-05',
-    '2026-08-03',
-    '2026-08-02',
-    '2026-08-01',
-    '2026-07-31',
-  ]);
+  assert.deepEqual(dates, ['2026-08-05']);
+});
+
+test('Creator Performance run fails when it reuses fallback data instead of the requested day', () => {
+  const fallbackExport = {
+    window_type: 'PAST_7_DAYS',
+    requested_end_day: 20260816,
+    effective_end_day: 20260809,
+    fallback_days: 7,
+    export_id: 153,
+  };
+  assert.throws(
+    () => assertRequestedCreatorPerformanceSynced([fallbackExport]),
+    (error) => error.code === 'CREATOR_PERFORMANCE_FALLBACK'
+      && error.message.includes('requested 20260816, used 20260809'),
+  );
+});
+
+test('Creator Performance run accepts exports for the requested day', () => {
+  assert.doesNotThrow(() => assertRequestedCreatorPerformanceSynced([{
+    window_type: 'PAST_7_DAYS',
+    requested_end_day: 20260816,
+    effective_end_day: 20260816,
+    fallback_days: 0,
+    export_id: 180,
+  }]));
 });
 
 test('180-day creator aggregate refreshes only after 30 days', () => {

@@ -766,15 +766,25 @@ const ChannelReport = () => {
                 const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
                 const previousGroup = previousGroups.find((item) => item.key === group.key);
                 const previousRevenueGroup = previousRevenueGroups.find((item) => item.key === group.key) || {};
+                const displayGroup = activeReportTab === 'revenue'
+                  ? {
+                    ...group,
+                    videos: revenueGroup.videos || 0,
+                    views: revenueGroup.views || 0,
+                    revenue: revenueGroup.revenue || 0,
+                    revenueAvailable: revenueGroup.revenueAvailable,
+                    currency: revenueGroup.currency,
+                  }
+                  : group;
                 return <article className="content-performance__group" key={group.key}>
                   <div className="content-performance__group-header">
                     <h3>{group.label}</h3>
                     <span>{formatNumber(group.members.length)} thành viên</span>
                   </div>
                   <div className="content-performance__metrics">
-                    <span><small>Video</small><strong>{formatNumber(group.videos)}</strong>{renderMetricChange(group.videos, previousGroup?.videos)}</span>
-                    <span><small>Lượt xem</small><strong>{formatNumber(group.views)}</strong>{renderMetricChange(group.views, previousGroup?.views)}</span>
-                    <span><small>Doanh số</small><strong>{(activeReportTab === 'revenue' ? revenueGroup : group).revenueAvailable ? formatRevenue((activeReportTab === 'revenue' ? revenueGroup : group).revenue, (activeReportTab === 'revenue' ? revenueGroup : group).currency) : '—'}</strong>{renderMetricChange((activeReportTab === 'revenue' ? revenueGroup : group).revenue, activeReportTab === 'revenue' ? previousRevenueGroup.revenue : previousGroup?.revenue, (activeReportTab === 'revenue' ? revenueGroup : group).revenueAvailable && (activeReportTab === 'revenue' ? previousRevenueGroup : previousGroup)?.revenueAvailable)}</span>
+                    <span><small>Video</small><strong>{formatNumber(displayGroup.videos)}</strong>{renderMetricChange(displayGroup.videos, activeReportTab === 'revenue' ? previousRevenueGroup.videos : previousGroup?.videos)}</span>
+                    <span><small>Lượt xem</small><strong>{formatNumber(displayGroup.views)}</strong>{renderMetricChange(displayGroup.views, activeReportTab === 'revenue' ? previousRevenueGroup.views : previousGroup?.views)}</span>
+                    <span><small>Doanh số</small><strong>{displayGroup.revenueAvailable ? formatRevenue(displayGroup.revenue, displayGroup.currency) : '—'}</strong>{renderMetricChange(displayGroup.revenue, activeReportTab === 'revenue' ? previousRevenueGroup.revenue : previousGroup?.revenue, displayGroup.revenueAvailable && (activeReportTab === 'revenue' ? previousRevenueGroup : previousGroup)?.revenueAvailable)}</span>
                   </div>
                   {group.members.length ? (
                     <div className="table-wrap">
@@ -792,7 +802,14 @@ const ChannelReport = () => {
                         <tbody>{group.members.map((member) => {
                           const expanded = expandedMemberIds.has(String(member.key));
                           const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
-                          const displayMember = activeReportTab === 'revenue' ? { ...member, revenue: revenueMember.revenue, revenueAvailable: revenueMember.revenueAvailable, currency: revenueMember.currency } : member;
+                          const displayMember = activeReportTab === 'revenue' ? {
+                            ...member,
+                            videos: revenueMember.videos || 0,
+                            views: revenueMember.views || 0,
+                            revenue: revenueMember.revenue || 0,
+                            revenueAvailable: revenueMember.revenueAvailable,
+                            currency: revenueMember.currency,
+                          } : member;
                           return (
                             <React.Fragment key={member.key}>
                               <tr
