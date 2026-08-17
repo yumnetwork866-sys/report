@@ -1378,6 +1378,8 @@
     "refresh": "Refresh",
     "job": "Job",
     "error": "Error",
+    "expandError": "Show full error",
+    "collapseError": "Collapse error",
     "noLogs": "No runs match the selected filters.",
     "loading": "Loading schedules",
     "enabled": "Enabled",

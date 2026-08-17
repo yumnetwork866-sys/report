@@ -3,6 +3,7 @@ import {
   Activity,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   History,
   LoaderCircle,
@@ -24,6 +25,7 @@ import {
   updateSchedule,
 } from '../lib/api';
 import { useI18n } from '../lib/language';
+import { formatErrorDates, getRunErrorMessages } from '../lib/scheduleErrors';
 
 const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
 const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
@@ -66,6 +68,7 @@ const ScheduleManagement = () => {
   const [stoppingKey, setStoppingKey] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [expandedErrorRuns, setExpandedErrorRuns] = useState(() => new Set());
 
   const load = useCallback(async (signal, quiet = false) => {
     if (!quiet) setLoading(true);
@@ -187,6 +190,13 @@ const ScheduleManagement = () => {
     const succeeded = run.summary.succeeded ?? Math.max(0, total - (run.summary.failed ?? 0));
     return `${succeeded}/${total}`;
   };
+  const toggleRunError = (runId) => setExpandedErrorRuns((current) => {
+    const next = new Set(current);
+    const key = String(runId);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
 
   return (
     <div className="page schedule-page schedule-page--operations">
@@ -335,7 +345,12 @@ const ScheduleManagement = () => {
             <table className="data-table schedule-logs__table">
               <thead><tr><th>{t('schedule.startedAt')}</th><th>{t('schedule.job')}</th><th>{t('schedule.trigger')}</th><th>{t('schedule.status')}</th><th>{t('schedule.duration')}</th><th>{t('schedule.result')}</th><th>{t('schedule.error')}</th></tr></thead>
               <tbody>
-                {filteredRuns.map((run) => <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong></td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td><span className="schedule-log-error" title={run.error || ''}>{run.error || '—'}</span></td></tr>)}
+                {filteredRuns.map((run) => {
+                  const errorMessages = getRunErrorMessages(run).map((message) => formatErrorDates(message));
+                  const errorText = errorMessages.join('\n');
+                  const errorExpanded = expandedErrorRuns.has(String(run.id));
+                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong></td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
+                })}
                 {!filteredRuns.length ? <tr><td colSpan="7"><div className="empty-state empty-state--compact">{t('schedule.noLogs')}</div></td></tr> : null}
               </tbody>
             </table>

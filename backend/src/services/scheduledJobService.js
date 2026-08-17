@@ -508,7 +508,8 @@ const aggregateSixMonthBasePerformance = async (shopId, exports) => {
   `, { replacements: { shopId, exportIds } });
 };
 
-const refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal) => {
+// Retained only for compatibility with historical aggregate data; no active job calls it.
+const _refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal) => {
   const latest = await TikTokCreatorPerformanceSnapshot.findOne({
     where: {
       shop_id: shop.id,
@@ -552,12 +553,7 @@ const jobHandlers = {
     ], signal);
     assertRequestedCreatorPerformanceSynced(exports);
     const baseExports = await syncBasePerformanceWindows(shop, exports, signal);
-    const sixMonth = await refreshSixMonthPerformanceIfNeeded(
-      shop,
-      exports[0].effective_end_day,
-      signal,
-    );
-    return { exports, base_exports: baseExports, six_month: sixMonth };
+    return { exports, base_exports: baseExports };
   }, signal),
   tiktok_creator_performance_backfill: ({ signal } = {}) => runForShops(async (shop) => {
     const dailyBackfill = await backfillCreatorDailyPerformance(

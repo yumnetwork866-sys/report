@@ -1397,7 +1397,7 @@ const listCreatorPerformance = async (req, res) => {
   try {
     const shop = await loadAffiliateShop(req, res);
     if (!shop) return;
-    const options = creatorPerformanceOptions(shop, req.query, { allowAggregate: true });
+    const options = creatorPerformanceOptions(shop, req.query);
     const requestedEndDate = `${String(options.endDay).slice(0, 4)}-${String(options.endDay).slice(4, 6)}-${String(options.endDay).slice(6, 8)}`;
     let exportRecord = null;
     let snapshotExport = null;

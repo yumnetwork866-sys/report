@@ -556,7 +556,7 @@ const mergeCreatorCandidates = (rows) => {
 };
 
 const benchmarkPerformanceOrder = [
-  [literal(`CASE "window_type" WHEN 'PAST_180_DAYS' THEN 0 WHEN 'PAST_30_DAYS' THEN 1 WHEN 'PAST_7_DAYS' THEN 2 ELSE 3 END`), 'ASC'],
+  [literal(`CASE "window_type" WHEN 'PAST_30_DAYS' THEN 0 WHEN 'PAST_7_DAYS' THEN 1 WHEN 'PAST_24H' THEN 2 ELSE 3 END`), 'ASC'],
   ['end_date', 'DESC'],
   ['synced_at', 'DESC'],
   ['id', 'DESC'],
@@ -841,10 +841,11 @@ const getTargetKocs = async (req, res) => {
           ROW_NUMBER() OVER (
             PARTITION BY shop_id, COALESCE(NULLIF(creator_open_id, ''), LOWER(username))
             ORDER BY
-              CASE window_type WHEN 'PAST_180_DAYS' THEN 0 WHEN 'PAST_30_DAYS' THEN 1 WHEN 'PAST_7_DAYS' THEN 2 ELSE 3 END,
+              CASE window_type WHEN 'PAST_30_DAYS' THEN 0 WHEN 'PAST_7_DAYS' THEN 1 WHEN 'PAST_24H' THEN 2 ELSE 3 END,
               end_date DESC, synced_at DESC, id DESC
           ) AS benchmark_rank
         FROM tiktok_creator_performance_snapshots snapshot
+        WHERE snapshot.window_type IN ('PAST_30_DAYS', 'PAST_7_DAYS', 'PAST_24H')
       ),
       candidates AS (
         SELECT * FROM collaboration_creators
@@ -966,7 +967,7 @@ const findTargetCreator = async (
         const performance = await TikTokCreatorPerformanceSnapshot.findOne({
           where: {
             shop_id: normalizedShopId,
-            ...(performanceWindow ? { window_type: performanceWindow } : {}),
+            window_type: performanceWindow || { [Op.in]: ['PAST_30_DAYS', 'PAST_7_DAYS', 'PAST_24H'] },
             [Op.or]: [
               ...(profile.creator_open_id ? [{ creator_open_id: profile.creator_open_id }] : []),
               ...(profile.username ? [{ username: { [Op.iLike]: profile.username } }] : []),
@@ -993,6 +994,7 @@ const findTargetCreator = async (
   const profilePerformance = await TikTokCreatorPerformanceSnapshot.findOne({
     where: {
       shop_id: normalizedShopId,
+      window_type: { [Op.in]: ['PAST_30_DAYS', 'PAST_7_DAYS', 'PAST_24H'] },
       [Op.or]: creatorConditions,
     },
     order: benchmarkPerformanceOrder,

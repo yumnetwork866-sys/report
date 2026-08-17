@@ -1378,6 +1378,8 @@
     "refresh": "Làm mới",
     "job": "Tác vụ",
     "error": "Lỗi",
+    "expandError": "Hiển thị đầy đủ lỗi",
+    "collapseError": "Thu gọn lỗi",
     "noLogs": "Không có lần chạy phù hợp với bộ lọc.",
     "loading": "Đang tải cấu hình lịch chạy",
     "enabled": "Đang bật",

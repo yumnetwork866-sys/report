@@ -1447,7 +1447,25 @@
 
 .schedule-logs__table td > strong { display: block; min-width: 180px; color: #293d5b; font-size: .76rem; }
 
-.schedule-log-error { display: block; max-width: 260px; overflow: hidden; color: #9a3c48; text-overflow: ellipsis; white-space: nowrap; }
+.schedule-log-error { display: grid; width: min(320px, 42vw); max-width: 100%; grid-template-columns: minmax(0, 1fr) 24px; align-items: start; gap: 6px; padding: 4px 6px; border-radius: 7px; background: transparent; color: #9a3c48; }
+
+.schedule-log-error:hover { background: #fff2f4; }
+
+.schedule-log-error pre { min-width: 0; margin: 0; overflow: hidden; color: inherit; font: inherit; text-overflow: ellipsis; user-select: text; white-space: nowrap; cursor: text; }
+
+.schedule-log-error button { display: inline-grid; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+
+.schedule-log-error button:hover { background: #f8dfe3; }
+
+.schedule-log-error svg { width: 15px; height: 15px; transition: transform 160ms ease; }
+
+.schedule-log-error.is-expanded { width: min(560px, 60vw); background: #fff7f8; }
+
+.schedule-log-error.is-expanded pre { overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: pre-wrap; }
+
+.schedule-log-error.is-expanded svg { transform: rotate(180deg); }
+
+.schedule-log-error-empty { color: #8a98aa; }
 
 .is-spinning { animation: schedule-spin 900ms linear infinite; }
 
