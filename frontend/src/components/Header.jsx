@@ -186,6 +186,7 @@ const Header = () => {
       return location.pathname.startsWith('/manage/users')
         || location.pathname.startsWith('/manage/shops')
         || location.pathname.startsWith('/manage/schedules')
+        || location.pathname.startsWith('/manage/queues')
         || location.pathname.startsWith('/chatbot/chat-setting');
     }
     if (to === '/chatbot') {

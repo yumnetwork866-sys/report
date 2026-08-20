@@ -97,6 +97,7 @@ const routeIconMap = {
   '/manage/users': 'users',
   '/manage/shops': 'shop',
   '/manage/schedules': 'schedule',
+  '/manage/queues': 'schedule',
   '/manage/koc-performance': 'koc',
   '/manage/shop-analytics': 'shopAnalytics',
   '/manage/video-analytics': 'videos',
@@ -155,6 +156,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
   const isAdminArea = location.pathname.startsWith('/manage/users')
     || location.pathname.startsWith('/manage/shops')
     || location.pathname.startsWith('/manage/schedules')
+    || location.pathname.startsWith('/manage/queues')
     || location.pathname.startsWith('/chatbot/chat-setting');
   const isFacebookArea = location.pathname.startsWith('/chatbot');
 

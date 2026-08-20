@@ -1,5 +1,10 @@
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
+const { getOrSetCache, delByPattern } = require('../lib/redis');
+
+const DASHBOARD_CACHE_TTL_SECONDS = 180; // 3 minutes
+
+const clearDashboardCache = () => delByPattern('dashboard:*');
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DASHBOARD_METRICS = new Set(['views', 'likes', 'shares', 'date']);
@@ -44,6 +49,7 @@ const dashboardFilters = (query = {}) => {
 
 const getDashboard = async (req, res) => {
   try {
+    const filters = dashboardFilters(req.query);
     const {
       channelId,
       startDate,
@@ -52,8 +58,12 @@ const getDashboard = async (req, res) => {
       metric,
       page,
       pageSize,
-    } = dashboardFilters(req.query);
-    const filterSql = `
+    } = filters;
+
+    const cacheKey = `dashboard:${channelId || 'all'}:${startDate || 'all'}:${endDate || 'all'}:${userId || 'all'}:${metric}:${page}:${pageSize}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async () => {
+      const filterSql = `
       WHERE (:channelId::int IS NULL OR v.channel_id = :channelId)
         AND (:startDate::date IS NULL OR v.published_at::date >= :startDate)
         AND (:endDate::date IS NULL OR v.published_at::date <= :endDate)
@@ -193,7 +203,7 @@ const getDashboard = async (req, res) => {
     );
 
     const totals = withNumbers(totalsRows[0] || {});
-    res.json({
+    return {
       channels: channels.map(withNumbers),
       users,
       totals,
@@ -212,7 +222,13 @@ const getDashboard = async (req, res) => {
         user_id: userId,
         metric,
       },
+    };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -221,4 +237,5 @@ const getDashboard = async (req, res) => {
 module.exports = {
   dashboardFilters,
   getDashboard,
+  clearDashboardCache,
 };

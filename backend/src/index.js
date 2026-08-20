@@ -6,6 +6,8 @@ const {
   CREATOR_AVATAR_STORAGE_ROOT,
   CREATOR_AVATAR_PUBLIC_PREFIX,
 } = require('./services/creatorAvatarStorageService');
+const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 require('dotenv').config();
 
 const PORT = process.env.PORT || 8000;
@@ -29,18 +31,23 @@ const chatbotRoutes = require('./routes/chatbotRoutes');
 const tiktokPartnerPublicRoutes = require('./routes/tiktokPartnerPublicRoutes');
 const tiktokShopRoutes = require('./routes/tiktokShopRoutes');
 const scheduleRoutes = require('./routes/scheduleRoutes');
+const queueRoutes = require('./routes/queueRoutes');
 const { TikTokChannel, User } = require('./models');
 const { encryptToken, isEncryptedToken } = require('./lib/tokenEncryption');
 const { requireAdmin, requirePermission } = require('./lib/session');
 const { getAdminAccount } = require('./lib/adminAccount');
 const { startDatabaseScheduler } = require('./services/scheduledJobService');
+const { serverAdapter, bullBoardAuth } = require('./routes/bullBoardRoutes');
 
 const httpLogFormat = process.env.HTTP_LOG_FORMAT || ':method :url :status :response-time ms';
 
 const createApp = () => {
   const app = express();
 
-  app.use(helmet());
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  }));
   app.use(cors({
     origin: process.env.FRONTEND_URL || true,
     credentials: true,
@@ -82,6 +89,8 @@ const createApp = () => {
   app.use('/api/chatbot', requireAdmin, chatbotRoutes.adminRouter);
   app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
   app.use('/api/schedules', requireAdmin, scheduleRoutes);
+  app.use('/api/queues', requireAdmin, queueRoutes);
+  app.use('/admin/queues', bullBoardAuth, serverAdapter.getRouter());
 
   return app;
 };
@@ -131,10 +140,24 @@ const startServer = async () => {
       });
     }
 
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
     startDatabaseScheduler();
+
+    const gracefulShutdown = async (signal) => {
+      console.log(`[Server] Received ${signal}, shutting down gracefully...`);
+      server.close(async () => {
+        const { closeAllQueuesAndWorkers } = require('./lib/queue');
+        const { closeRedis } = require('./lib/redis');
+        await closeAllQueuesAndWorkers().catch(() => {});
+        await closeRedis().catch(() => {});
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

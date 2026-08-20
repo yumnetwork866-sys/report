@@ -56,6 +56,7 @@ export const sidebarSections = [
       { to: '/manage/users', labelKey: 'navigation.users', permission: 'users' },
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'tiktok' },
       { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin' },
+      { to: '/manage/queues', labelKey: 'navigation.queues', permission: 'admin' },
       { to: '/chatbot/chat-setting', labelKey: 'navigation.chatSettings', permission: 'chatbots' },
     ],
   },
@@ -94,6 +95,12 @@ export const protectedRouteCards = [
       heroTitle: 'Schedule management',
       heroSubtitle: 'Manage automated data synchronization jobs.',
     },
+  },
+  {
+    path: '/manage/queues',
+    component: 'QueueManagement',
+    permission: 'admin',
+    props: {},
   },
   {
     path: '/manage/shops',

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, Copy } from 'lucide-react';
 
-const CHUNK_ERROR_PATTERN = /Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed/i;
+const CHUNK_ERROR_PATTERN = /Loading chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
 
 class AppErrorBoundary extends React.Component {
   constructor(props) {

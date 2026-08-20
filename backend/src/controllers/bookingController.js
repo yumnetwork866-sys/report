@@ -7,6 +7,7 @@ const {
   BookingVideo, BookingVideoPerformanceSnapshot,
   ShopVideo, ShopVideoPerformanceSnapshot, sequelize,
 } = require('../models');
+const { getOrSetCache, delByPattern } = require('../lib/redis');
 const {
   loadCreatorProfiles,
   normalizeCreatorProfile,
@@ -1060,11 +1061,6 @@ const getTargetKocDetail = async (req, res) => {
 
 const getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.findAll({
-      where: { evaluation_snapshot: { [Op.not]: null } },
-      include: bookingInclude,
-      order: [['deadline', 'ASC'], ['id', 'DESC']],
-    });
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
@@ -1076,11 +1072,25 @@ const getBookings = async (req, res) => {
         message: `Custom dates must be valid, end no later than yesterday, and span at most ${MAX_CUSTOM_PERFORMANCE_DAYS} days.`,
       });
     }
-    const serialized = await applyBookingVideoPerformanceWindow(
-      await serializeBookingsWithFreshCreatorAvatars(bookings),
-      requestedWindow,
-    );
-    res.json(await addReferencePerformance(serialized, requestedWindow, customRange));
+
+    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${startDate || 'none'}:${endDate || 'none'}`;
+    const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
+      const bookings = await Booking.findAll({
+        where: { evaluation_snapshot: { [Op.not]: null } },
+        include: bookingInclude,
+        order: [['deadline', 'ASC'], ['id', 'DESC']],
+      });
+      const serialized = await applyBookingVideoPerformanceWindow(
+        await serializeBookingsWithFreshCreatorAvatars(bookings),
+        requestedWindow,
+      );
+      return addReferencePerformance(serialized, requestedWindow, customRange);
+    });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1167,6 +1177,12 @@ const createBooking = async (req, res) => {
     }
 
     const booking = await Booking.create(payload);
+    await Promise.all([
+      delByPattern('bookings:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
+
     await upsertShopProducts(shopId, selectedProducts).catch((error) => {
       console.warn(`Unable to cache product thumbnails for booking ${booking.id}: ${error.message}`);
     });
@@ -1237,6 +1253,12 @@ const updateBooking = async (req, res) => {
     if (!updated) {
       return res.status(404).json({ message: 'Booking not found' });
     }
+
+    await Promise.all([
+      delByPattern('bookings:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
 
     const booking = await Booking.findByPk(req.params.id, { include: bookingInclude });
     if (updatedProducts) {
@@ -1343,6 +1365,12 @@ const deleteBooking = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({ message: 'Booking not found' });
     }
+
+    await Promise.all([
+      delByPattern('bookings:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
 
     res.json({ message: 'Booking deleted successfully' });
   } catch (error) {

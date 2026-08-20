@@ -7,6 +7,10 @@ const apiProxy = {
     target: 'http://localhost:8000',
     changeOrigin: true,
   },
+  '/admin/queues': {
+    target: 'http://localhost:8000',
+    changeOrigin: true,
+  },
 }
 
 const productionCacheHeaders = () => ({

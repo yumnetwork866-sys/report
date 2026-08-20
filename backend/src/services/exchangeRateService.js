@@ -1,3 +1,5 @@
+const { getCache, setCache, delCache } = require('../lib/redis');
+
 const BNM_EXCHANGE_RATE_URL = 'https://api.bnm.gov.my/public/exchange-rate?session=0900&quote=rm';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -5,6 +7,15 @@ let myrRatesCache = null;
 
 const getMyrExchangeRates = async (fetchImpl = fetch) => {
   if (myrRatesCache && myrRatesCache.expiresAt > Date.now()) return myrRatesCache.value;
+
+  const isTest = process.env.NODE_ENV === 'test' && process.env.ENABLE_TEST_CACHE !== 'true';
+  if (!isTest) {
+    const cachedFromRedis = await getCache('exchange_rate:myr');
+    if (cachedFromRedis) {
+      myrRatesCache = { value: cachedFromRedis, expiresAt: Date.now() + CACHE_TTL_MS };
+      return cachedFromRedis;
+    }
+  }
 
   const response = await fetchImpl(process.env.BNM_EXCHANGE_RATE_URL || BNM_EXCHANGE_RATE_URL, {
     headers: {
@@ -35,6 +46,9 @@ const getMyrExchangeRates = async (fetchImpl = fetch) => {
     throw new Error('BNM exchange-rate response does not contain a valid USD/MYR middle rate.');
   }
   myrRatesCache = { value, expiresAt: Date.now() + CACHE_TTL_MS };
+  if (!isTest) {
+    await setCache('exchange_rate:myr', value, Math.ceil(CACHE_TTL_MS / 1000));
+  }
   return value;
 };
 
@@ -142,7 +156,10 @@ const addMarketplaceLocalCurrency = async (payload, region, fetchImpl = fetch) =
   };
 };
 
-const clearExchangeRateCache = () => { myrRatesCache = null; };
+const clearExchangeRateCache = async () => {
+  myrRatesCache = null;
+  await delCache('exchange_rate:myr');
+};
 
 module.exports = {
   BNM_EXCHANGE_RATE_URL,

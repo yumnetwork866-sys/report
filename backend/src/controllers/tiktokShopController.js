@@ -64,6 +64,7 @@ const {
 const { saveTargetCollaborationSnapshots } = require('../services/tiktokTargetCollaborationSnapshotService');
 const { targetCollaborationSyncService } = require('../services/tiktokTargetCollaborationSyncService');
 const { upsertShopProducts } = require('../services/shopProductCatalogService');
+const { getOrSetCache } = require('../lib/redis');
 
 const affiliateCacheTtlValue = Number(process.env.TIKTOK_SELLER_AFFILIATE_CACHE_TTL_MS ?? 120000);
 const affiliateCacheTtlMs = affiliateCacheTtlValue === 0
@@ -79,12 +80,15 @@ const flattenMarketplaceCategories = (categories = []) => categories.flatMap((ca
 const addMarketplaceCategoryNames = async (creators, shop) => {
   const scopes = Array.isArray(shop.authorization?.granted_scopes) ? shop.authorization.granted_scopes : [];
   if (!creators.length || !scopes.includes(SELLER_PRODUCT_BASIC_SCOPE)) return creators;
-  const { value: categoryPayload } = await marketplaceCategoryCache.getOrLoad(String(shop.id), () => getProductCategories({
-    authorization: shop.authorization,
-    shopCipher: shop.cipher,
-    locale: 'en-US',
-  }));
-  const categoryMap = new Map(flattenMarketplaceCategories(categoryPayload.data?.categories || [])
+  const { data: categoryPayload } = await getOrSetCache(`tiktok:categories:${shop.id}`, 6 * 3600, async () => {
+    const { value } = await marketplaceCategoryCache.getOrLoad(String(shop.id), () => getProductCategories({
+      authorization: shop.authorization,
+      shopCipher: shop.cipher,
+      locale: 'en-US',
+    }));
+    return value;
+  });
+  const categoryMap = new Map(flattenMarketplaceCategories(categoryPayload?.data?.categories || [])
     .map((category) => [String(category.id), category]));
   return creators.map((creator) => {
     const categories = (creator.category_ids || []).map((id) => categoryMap.get(String(id))).filter(Boolean);
@@ -413,25 +417,28 @@ const getShopVideoThumbnail = async (req, res) => {
     }
     const shopExists = await TikTokShop.count({ where: { id: shopId } });
     if (!shopExists) return res.status(404).json({ message: 'TikTok Shop not found.' });
-    const cacheKey = `${username.toLowerCase()}:${videoId}`;
-    const { value, hit } = await videoThumbnailCache.getOrLoad(cacheKey, async () => {
-      const videoUrl = `https://www.tiktok.com/@${username}/video/${videoId}`;
-      const url = new URL('https://www.tiktok.com/oembed');
-      url.searchParams.set('url', videoUrl);
-      const response = await fetch(url, {
-        headers: { accept: 'application/json' },
-        ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout
-          ? { signal: AbortSignal.timeout(10000) }
-          : {}),
+    const cacheKey = `tiktok:thumbnail:${username.toLowerCase()}:${videoId}`;
+    const { data: value, hit } = await getOrSetCache(cacheKey, 12 * 3600, async () => {
+      const { value: thumbValue } = await videoThumbnailCache.getOrLoad(`${username.toLowerCase()}:${videoId}`, async () => {
+        const videoUrl = `https://www.tiktok.com/@${username}/video/${videoId}`;
+        const url = new URL('https://www.tiktok.com/oembed');
+        url.searchParams.set('url', videoUrl);
+        const response = await fetch(url, {
+          headers: { accept: 'application/json' },
+          ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout
+            ? { signal: AbortSignal.timeout(10000) }
+            : {}),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(`TikTok thumbnail request failed with status ${response.status}.`);
+        return {
+          thumbnail_url: payload?.thumbnail_url || null,
+          title: payload?.title || null,
+          width: Number(payload?.thumbnail_width) || null,
+          height: Number(payload?.thumbnail_height) || null,
+        };
       });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(`TikTok thumbnail request failed with status ${response.status}.`);
-      return {
-        thumbnail_url: payload?.thumbnail_url || null,
-        title: payload?.title || null,
-        width: Number(payload?.thumbnail_width) || null,
-        height: Number(payload?.thumbnail_height) || null,
-      };
+      return thumbValue;
     });
     res.set('X-TikTok-Thumbnail-Cache', hit ? 'HIT' : 'MISS');
     res.json(value);

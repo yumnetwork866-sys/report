@@ -12,6 +12,7 @@ const {
   VideoAssignment,
   sequelize,
 } = require('../models');
+const { getOrSetCache, delByPattern } = require('../lib/redis');
 
 const videoDetailInclude = [
   { model: TikTokChannel, as: 'channel' },
@@ -116,45 +117,57 @@ const addLatestShopPerformance = async (videos) => {
 const getVideos = async (req, res) => {
   try {
     const { page, pageSize, where } = videoListOptions(req.query);
-    const [{ count, rows }, summary] = await Promise.all([
-      Video.findAndCountAll({
-        where,
-        attributes: VIDEO_LIST_ATTRIBUTES,
-        include: [{
-          model: TikTokChannel,
-          as: 'channel',
-          attributes: ['id', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
-          required: false,
-        }],
-        order: [['published_at', 'DESC'], ['id', 'DESC']],
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-        distinct: true,
-      }),
-      Video.findOne({
-        where,
-        attributes: [
-          [fn('COUNT', col('id')), 'video_count'],
-          [fn('COALESCE', fn('SUM', col('views')), 0), 'views'],
-          [fn('COALESCE', fn('SUM', col('likes')), 0), 'likes'],
-          [fn('COALESCE', fn('SUM', col('comments')), 0), 'comments'],
-          [fn('COALESCE', fn('SUM', col('shares')), 0), 'shares'],
-        ],
-        raw: true,
-      }),
-    ]);
-    res.json({
-      items: await addLatestShopPerformance(rows),
-      summary: Object.fromEntries(
-        Object.entries(summary || {}).map(([key, value]) => [key, Number(value || 0)]),
-      ),
-      pagination: {
-        page,
-        page_size: pageSize,
-        total: count,
-        total_pages: Math.max(1, Math.ceil(count / pageSize)),
-      },
+    const channelId = req.query.channel_id || 'all';
+    const startDate = req.query.start_date || 'none';
+    const endDate = req.query.end_date || 'none';
+    const cacheKey = `videos:list:${channelId}:${startDate}:${endDate}:${page}:${pageSize}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
+      const [{ count, rows }, summary] = await Promise.all([
+        Video.findAndCountAll({
+          where,
+          attributes: VIDEO_LIST_ATTRIBUTES,
+          include: [{
+            model: TikTokChannel,
+            as: 'channel',
+            attributes: ['id', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
+            required: false,
+          }],
+          order: [['published_at', 'DESC'], ['id', 'DESC']],
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+          distinct: true,
+        }),
+        Video.findOne({
+          where,
+          attributes: [
+            [fn('COUNT', col('id')), 'video_count'],
+            [fn('COALESCE', fn('SUM', col('views')), 0), 'views'],
+            [fn('COALESCE', fn('SUM', col('likes')), 0), 'likes'],
+            [fn('COALESCE', fn('SUM', col('comments')), 0), 'comments'],
+            [fn('COALESCE', fn('SUM', col('shares')), 0), 'shares'],
+          ],
+          raw: true,
+        }),
+      ]);
+      return {
+        items: await addLatestShopPerformance(rows),
+        summary: Object.fromEntries(
+          Object.entries(summary || {}).map(([key, value]) => [key, Number(value || 0)]),
+        ),
+        pagination: {
+          page,
+          page_size: pageSize,
+          total: count,
+          total_pages: Math.max(1, Math.ceil(count / pageSize)),
+        },
+      };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -193,6 +206,11 @@ const createVideo = async (req, res) => {
     });
 
     await syncVideoProducts(video, product_ids);
+    await Promise.all([
+      delByPattern('videos:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
 
     const createdVideo = await Video.findByPk(video.id, { include: videoDetailInclude });
     res.status(201).json(createdVideo);
@@ -215,6 +233,11 @@ const updateVideo = async (req, res) => {
       last_synced_at: payload.last_synced_at || new Date(),
     });
     await syncVideoProducts(video, product_ids);
+    await Promise.all([
+      delByPattern('videos:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
 
     const updatedVideo = await Video.findByPk(req.params.id, { include: videoDetailInclude });
     res.json(updatedVideo);
@@ -229,6 +252,11 @@ const deleteVideo = async (req, res) => {
       where: { id: req.params.id },
     });
     if (deleted) {
+      await Promise.all([
+        delByPattern('videos:*'),
+        delByPattern('dashboard:*'),
+        delByPattern('report:*'),
+      ]).catch(() => {});
       res.json({ message: 'Video deleted successfully' });
     } else {
       res.status(404).json({ message: 'Video not found' });

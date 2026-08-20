@@ -11,6 +11,7 @@ export const KOCPerformance = lazy(() => import('../components/KOCPerformance'))
 export const SellerAffiliatePanel = lazy(() => import('../components/SellerAffiliatePanel'));
 export const ShopAnalytics = lazy(() => import('../components/ShopAnalytics'));
 export const ScheduleManagement = lazy(() => import('../components/ScheduleManagement'));
+export const QueueManagement = lazy(() => import('../components/QueueManagement'));
 export const HomePage = lazy(() => import('../components/HomePage'));
 export const Login = lazy(() => import('../components/Login'));
 export const PublicReport = lazy(() => import('../components/PublicReport'));

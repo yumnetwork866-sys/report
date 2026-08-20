@@ -10,6 +10,7 @@ const {
   VideoDailyStats,
   sequelize,
 } = require('../models');
+const { delByPattern } = require('../lib/redis');
 
 const TIKTOK_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
 const TIKTOK_REVOKE_URL = 'https://open.tiktokapis.com/v2/oauth/revoke/';
@@ -916,6 +917,12 @@ const updateChannel = async (req, res) => {
       return res.status(404).json({ message: 'Channel not found' });
     }
 
+    await Promise.all([
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+      delByPattern('videos:*'),
+    ]).catch(() => {});
+
     const updatedChannel = await TikTokChannel.findByPk(req.params.id, {
       include: [{ model: User, as: 'creator', attributes: ['id', 'name', 'email', 'role'], required: false }],
     });
@@ -940,6 +947,12 @@ const syncChannelVideos = async (req, res) => {
     }
 
     const summary = await syncTiktokChannel(channel);
+
+    await Promise.all([
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+      delByPattern('videos:*'),
+    ]).catch(() => {});
 
     return res.json({
       message: `Synced ${summary.total} videos`,
@@ -1013,6 +1026,12 @@ const deleteChannel = async (req, res) => {
 
       await channel.destroy({ transaction });
     });
+
+    await Promise.all([
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+      delByPattern('videos:*'),
+    ]).catch(() => {});
 
     res.json({ message: 'Channel deleted successfully' });
   } catch (error) {

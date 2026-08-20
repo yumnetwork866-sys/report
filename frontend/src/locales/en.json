@@ -233,6 +233,7 @@
     "users": "Users",
     "manageShops": "Manage Shop",
     "schedule": "Schedule",
+    "queues": "Job Queues (BullMQ)",
     "chatSettings": "LLM Model",
     "workspace": "Workspace",
     "expand": "Expand navigation",

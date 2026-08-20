@@ -29,6 +29,8 @@ const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
 const { syncVideoPerformanceApi } = require('./tiktokVideoPerformanceService');
 const { syncChannelReportRevenue } = require('./channelReportRevenueSyncService');
 const { syncAffiliateOrders } = require('./affiliateOrderSyncService');
+const { delByPattern } = require('../lib/redis');
+const { startTiktokSyncWorker, queueSyncJob } = require('../workers/tiktokSyncWorker');
 
 const JOB_KEYS = new Set([
   'tiktok_creator_performance',
@@ -623,6 +625,10 @@ const processScheduledJobRun = async (job, run) => {
     await run.reload();
     if (run.status !== 'PROCESSING') return run;
     await run.update({ status: 'SUCCEEDED', summary, completed_at: new Date(), error: null });
+    await Promise.all([
+      delByPattern('report:*'),
+      delByPattern('dashboard:*'),
+    ]).catch(() => {});
   } catch (error) {
     await run.reload();
     if (run.status !== 'PROCESSING' || controller.signal.aborted || error.name === 'AbortError') return run;
@@ -651,6 +657,17 @@ const stopScheduledJob = async (job) => {
   });
   if (!run) return null;
   activeRunControllers.get(String(run.id))?.abort();
+  try {
+    const { getQueue } = require('../lib/queue');
+    const queue = getQueue('tiktok-sync');
+    const bullJob = await queue.getJob(`run-${run.id}`);
+    if (bullJob) {
+      const state = await bullJob.getState();
+      if (state === 'waiting' || state === 'delayed') {
+        await bullJob.remove();
+      }
+    }
+  } catch (_) {}
   await run.update({
     status: 'CANCELLED',
     error: 'Stopped by user.',
@@ -700,9 +717,27 @@ const enqueueScheduledJob = async (job, {
   }
   const { run, created } = await createScheduledJobRun(job, { triggerType, scheduledKey });
   if (created) {
-    setImmediate(() => processScheduledJobRun(job, run).catch((error) => {
-      console.error('[Schedule Manager] Manual run failed', { jobKey: job.job_key, message: error.message });
-    }));
+    queueSyncJob(
+      job.job_key,
+      {
+        runId: run.id,
+        scheduledJobId: job.id,
+        triggerType,
+        scheduledKey,
+      },
+      {
+        jobId: `run-${run.id}`,
+        attempts: 1,
+      },
+    ).catch((queueErr) => {
+      console.warn('[Schedule Manager] Redis queue dispatch failed, falling back to in-process execution', {
+        jobKey: job.job_key,
+        message: queueErr.message,
+      });
+      setImmediate(() => processScheduledJobRun(job, run).catch((error) => {
+        console.error('[Schedule Manager] In-process run failed', { jobKey: job.job_key, message: error.message });
+      }));
+    });
   }
   return { run, created };
 };
@@ -757,6 +792,7 @@ const catchUpScheduledJobs = async (now = new Date(), {
 };
 
 const startDatabaseScheduler = () => {
+  startTiktokSyncWorker(jobHandlers);
   const task = cron.schedule('0 * * * * *', () => tickScheduledJobs().catch((error) => {
     console.error('[Schedule Manager] Tick failed', { message: error.message });
   }), { name: 'database-schedule-manager', noOverlap: true });
@@ -784,6 +820,7 @@ module.exports = {
   assertRequestedCreatorPerformanceSynced,
   executeScheduledJob,
   enqueueScheduledJob,
+  queueSyncJob,
   stopScheduledJob,
   tickScheduledJobs,
   catchUpScheduledJobs,

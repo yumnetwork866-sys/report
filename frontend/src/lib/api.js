@@ -788,3 +788,43 @@ export function updateChatbotSettings(payload) {
     body: payload,
   });
 }
+
+export function fetchQueues({ status = 'ALL', queueName = 'tiktok-sync', limit = 50 } = {}, signal) {
+  const params = new URLSearchParams();
+  if (status && status !== 'ALL') params.set('status', status);
+  if (queueName) params.set('queueName', queueName);
+  if (limit) params.set('limit', String(limit));
+  return apiRequest(`/queues?${params.toString()}`, { signal });
+}
+
+export function triggerQueueTestJob(queueName = 'tiktok-sync', payload = {}) {
+  return apiRequest(`/queues/${encodeURIComponent(queueName)}/test-job`, {
+    method: 'POST',
+    body: payload,
+  });
+}
+
+export function retryAllFailedQueueJobs(queueName = 'tiktok-sync') {
+  return apiRequest(`/queues/${encodeURIComponent(queueName)}/retry-all-failed`, {
+    method: 'POST',
+  });
+}
+
+export function cleanQueueJobs(queueName = 'tiktok-sync', type = 'completed') {
+  return apiRequest(`/queues/${encodeURIComponent(queueName)}/clean`, {
+    method: 'POST',
+    body: { type },
+  });
+}
+
+export function retryQueueJob(queueName = 'tiktok-sync', jobId) {
+  return apiRequest(`/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST',
+  });
+}
+
+export function deleteQueueJob(queueName = 'tiktok-sync', jobId) {
+  return apiRequest(`/queues/${encodeURIComponent(queueName)}/jobs/${encodeURIComponent(jobId)}`, {
+    method: 'DELETE',
+  });
+}

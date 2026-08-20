@@ -13,6 +13,10 @@ const {
   loadMonthlyShopVideoRevenue,
   loadVideoDailyRevenue,
 } = require('../services/channelReportRevenueService');
+const { getOrSetCache, delByPattern } = require('../lib/redis');
+
+const REPORT_CACHE_TTL_SECONDS = 300; // 5 minutes
+const clearReportCache = () => delByPattern('report:*');
 
 const toDateOnly = (date) => date.toISOString().slice(0, 10);
 const REPORT_OLLAMA_HOST = String(
@@ -319,6 +323,7 @@ const channelReportBaseSql = `
 
 const getChannelReport = async (req, res) => {
   try {
+    const options = channelReportOptions(req.query);
     const {
       mode,
       month,
@@ -331,11 +336,16 @@ const getChannelReport = async (req, res) => {
       metric,
       page,
       pageSize,
-    } = channelReportOptions(req.query);
-    const monthlyRevenue = await loadMonthlyShopVideoRevenue({
-      startDate,
-      endDate: endDateExclusive,
-    });
+    } = options;
+
+    const channelKey = channelIds ? [...channelIds].sort().join(',') : 'all';
+    const cacheKey = `report:channel:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamId || 'all'}:${userId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
+      const monthlyRevenue = await loadMonthlyShopVideoRevenue({
+        startDate,
+        endDate: endDateExclusive,
+      });
     const replacements = {
       startDate,
       endDateExclusive,
@@ -570,7 +580,7 @@ const getChannelReport = async (req, res) => {
       }
     }
     const total = number(summary.videos);
-    res.json({
+    return {
       period: { mode, month, start: startDate, end: endDate },
       kpis: aggregateMetrics(summary),
       chart: aggregateRows
@@ -645,7 +655,13 @@ const getChannelReport = async (req, res) => {
         partial: monthlyRevenue.errors.length > 0,
         errors: monthlyRevenue.errors,
       },
+    };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message });
   }
@@ -653,6 +669,7 @@ const getChannelReport = async (req, res) => {
 
 const getChannelReportMemberDetail = async (req, res) => {
   try {
+    const options = channelReportOptions({ ...req.query, user_id: req.params.userId });
     const {
       mode,
       month,
@@ -665,27 +682,32 @@ const getChannelReportMemberDetail = async (req, res) => {
       metric,
       page,
       pageSize,
-    } = channelReportOptions({ ...req.query, user_id: req.params.userId });
-    const monthlyRevenue = await loadMonthlyShopVideoRevenue({
-      startDate,
-      endDate: endDateExclusive,
-    });
-    const replacements = {
-      startDate,
-      endDateExclusive,
-      teamId,
-      userId,
-      filterChannels: channelIds !== null,
-      channelIds: JSON.stringify(channelIds || []),
-      revenueRows: JSON.stringify(monthlyRevenue.rows.map((row) => ({
-        platform_video_id: row.platform_video_id,
-        gross_gmv: row.revenue,
-        currency: row.currency,
-      }))),
-    };
-    replacements.metric = metric;
-    const [videoRows, productRows] = await Promise.all([
-      sequelize.query(`${channelReportBaseSql}
+    } = options;
+
+    const channelKey = channelIds ? [...channelIds].sort().join(',') : 'all';
+    const cacheKey = `report:member-detail:${userId}:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
+      const monthlyRevenue = await loadMonthlyShopVideoRevenue({
+        startDate,
+        endDate: endDateExclusive,
+      });
+      const replacements = {
+        startDate,
+        endDateExclusive,
+        teamId,
+        userId,
+        filterChannels: channelIds !== null,
+        channelIds: JSON.stringify(channelIds || []),
+        revenueRows: JSON.stringify(monthlyRevenue.rows.map((row) => ({
+          platform_video_id: row.platform_video_id,
+          gross_gmv: row.revenue,
+          currency: row.currency,
+        }))),
+      };
+      replacements.metric = metric;
+      const [videoRows, productRows] = await Promise.all([
+        sequelize.query(`${channelReportBaseSql}
         /* channel-report-member-videos */
         SELECT
           video.id,
@@ -730,14 +752,14 @@ const getChannelReportMemberDetail = async (req, res) => {
         ORDER BY video.revenue DESC NULLS LAST, video.published_at DESC, video.id DESC
         LIMIT :limit OFFSET :offset
       `, {
-        replacements: {
-          ...replacements,
-          limit: pageSize,
-          offset: (page - 1) * pageSize,
-        },
-        type: QueryTypes.SELECT,
-      }),
-      sequelize.query(`${channelReportBaseSql}
+          replacements: {
+            ...replacements,
+            limit: pageSize,
+            offset: (page - 1) * pageSize,
+          },
+          type: QueryTypes.SELECT,
+        }),
+        sequelize.query(`${channelReportBaseSql}
         /* channel-report-member-products */
         , member_video_products AS (
           SELECT
@@ -785,55 +807,60 @@ const getChannelReportMemberDetail = async (req, res) => {
         GROUP BY product_id, name
         ORDER BY revenue_available DESC, revenue DESC, videos DESC, name ASC
       `, { replacements, type: QueryTypes.SELECT }),
-    ]);
-    const total = number(videoRows[0]?.total_count);
-    res.json({
-      period: { mode, month, start: startDate, end: endDate },
-      user_id: userId,
-      videos: {
-        items: videoRows.map((row) => ({
-          id: Number(row.id),
-          platform_video_id: row.platform_video_id,
-          title: row.title || null,
-          video_url: row.video_url || null,
-          thumbnail_url: row.thumbnail_url || null,
-          published_at: row.published_at,
-          views: number(row.views),
-          likes: number(row.likes),
-          comments: number(row.comments),
-          shares: number(row.shares),
-          channel: {
-            id: Number(row.channel_id),
-            username: row.channel_username || null,
-            display_name: row.channel_name || null,
+      ]);
+
+      const total = Number(videoRows[0]?.total_count || 0);
+      return {
+        videos: {
+          items: videoRows.map((row) => ({
+            id: Number(row.id),
+            platform_video_id: row.platform_video_id,
+            title: row.title || null,
+            video_url: row.video_url || null,
+            thumbnail_url: row.thumbnail_url || null,
+            published_at: row.published_at,
+            views: number(row.views),
+            likes: number(row.likes),
+            comments: number(row.comments),
+            shares: number(row.shares),
+            channel: {
+              id: Number(row.channel_id),
+              username: row.channel_username || null,
+              display_name: row.channel_name || null,
+            },
+            products: Array.isArray(row.products) ? row.products : [],
+            revenue: row.revenue === null ? null : {
+              amount: number(row.revenue),
+              currency: row.currency || null,
+            },
+          })),
+          pagination: {
+            page,
+            page_size: pageSize,
+            total,
+            total_pages: Math.max(1, Math.ceil(total / pageSize)),
           },
-          products: Array.isArray(row.products) ? row.products : [],
-          revenue: row.revenue === null ? null : {
-            amount: number(row.revenue),
-            currency: row.currency || null,
-          },
-        })),
-        pagination: {
-          page,
-          page_size: pageSize,
-          total,
-          total_pages: Math.max(1, Math.ceil(total / pageSize)),
         },
-      },
-      products: productRows.map((row) => ({
-        id: row.product_id === null ? null : String(row.product_id),
-        name: row.name,
-        videos: number(row.videos),
-        views: Math.round(number(row.views)),
-        revenue: number(row.revenue),
-        revenue_available: Boolean(row.revenue_available),
-        currency: row.currency || null,
-      })),
-      revenue_sync: {
-        partial: monthlyRevenue.errors.length > 0,
-        errors: monthlyRevenue.errors,
-      },
+        products: productRows.map((row) => ({
+          id: row.product_id === null ? null : String(row.product_id),
+          name: row.name,
+          videos: number(row.videos),
+          views: Math.round(number(row.views)),
+          revenue: number(row.revenue),
+          revenue_available: Boolean(row.revenue_available),
+          currency: row.currency || null,
+        })),
+        revenue_sync: {
+          partial: monthlyRevenue.errors.length > 0,
+          errors: monthlyRevenue.errors,
+        },
+      };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message });
   }
@@ -845,13 +872,22 @@ const getChannelReportVideoDailyRevenue = async (req, res) => {
     if (!platformVideoId || platformVideoId.length > 64) {
       return res.status(400).json({ message: 'Video báo cáo không hợp lệ.' });
     }
-    const { startDate, endDate, endDateExclusive } = channelReportOptions(req.query);
-    const result = await loadVideoDailyRevenue({
-      platformVideoId,
-      startDate,
-      endDate: endDateExclusive,
+    const { startDate, endDate, endDateExclusive, metric } = channelReportOptions(req.query);
+    const cacheKey = `report:video-daily-revenue:${platformVideoId}:${startDate || 'none'}:${endDate || 'none'}:${metric || 'revenue'}`;
+
+    const { data: result, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
+      const data = await loadVideoDailyRevenue({
+        platformVideoId,
+        startDate,
+        endDate: endDateExclusive,
+      });
+      return { ...data, end_date: endDate };
     });
-    return res.json({ ...result, end_date: endDate });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    return res.json(result);
   } catch (error) {
     return res.status(error.status || 500).json({ message: error.message });
   }
@@ -1217,11 +1253,18 @@ const getPublicReport = async (req, res) => {
     if (!/^[a-f0-9]{48}$/i.test(token)) {
       return res.status(404).json({ message: 'Shared report not found' });
     }
-    const report = await WeeklyReport.findOne({
-      where: { public_share_token: token },
-      attributes: ['id', 'week_start', 'week_end', 'generated_content'],
+    const cacheKey = `report:public:${token}`;
+    const { data: report, hit } = await getOrSetCache(cacheKey, 600, async () => {
+      const row = await WeeklyReport.findOne({
+        where: { public_share_token: token },
+        attributes: ['id', 'week_start', 'week_end', 'generated_content'],
+      });
+      return row ? (row.toJSON ? row.toJSON() : row) : null;
     });
     if (!report) return res.status(404).json({ message: 'Shared report not found' });
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
     res.json(report);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1231,6 +1274,7 @@ const getPublicReport = async (req, res) => {
 const createReport = async (req, res) => {
   try {
     const report = await WeeklyReport.create(req.body);
+    await delByPattern('report:*');
     res.status(201).json(report);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1246,6 +1290,7 @@ const updateReport = async (req, res) => {
       return res.status(404).json({ message: 'Weekly report not found' });
     }
 
+    await delByPattern('report:*');
     const report = await WeeklyReport.findByPk(req.params.id);
     res.json(report);
   } catch (error) {
@@ -1262,6 +1307,7 @@ const deleteReport = async (req, res) => {
       return res.status(404).json({ message: 'Weekly report not found' });
     }
 
+    await delByPattern('report:*');
     res.json({ message: 'Weekly report deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1271,17 +1317,21 @@ const deleteReport = async (req, res) => {
 const getKpis = async (req, res) => {
   try {
     const role = req.query.role ? String(req.query.role).trim().toLowerCase() : '';
-    const roleFilterSql = role === 'koc' ? 'WHERE role = :role' : '';
-    const userFilterSql = role === 'koc' ? 'WHERE u.role = :role' : '';
     const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.start_date || '')) ? req.query.start_date : null;
     const endDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end_date || '')) ? req.query.end_date : null;
-    const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
-    const topVideoDateSql = `${startDate ? ' AND v_top.published_at::date >= :startDate' : ''}${endDate ? ' AND v_top.published_at::date <= :endDate' : ''}`;
-    const statsDateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
-    const replacements = { ...(role === 'koc' ? { role } : {}), ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
 
-    const [overviewRows, userKpis, productKpis, weeklyViews, topVideos] = await Promise.all([
-      sequelize.query(`
+    const cacheKey = `report:kpis:${role || 'all'}:${startDate || 'none'}:${endDate || 'none'}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
+      const roleFilterSql = role === 'koc' ? 'WHERE role = :role' : '';
+      const userFilterSql = role === 'koc' ? 'WHERE u.role = :role' : '';
+      const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
+      const topVideoDateSql = `${startDate ? ' AND v_top.published_at::date >= :startDate' : ''}${endDate ? ' AND v_top.published_at::date <= :endDate' : ''}`;
+      const statsDateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
+      const replacements = { ...(role === 'koc' ? { role } : {}), ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
+
+      const [overviewRows, userKpis, productKpis, weeklyViews, topVideos] = await Promise.all([
+        sequelize.query(`
         SELECT
           (SELECT COUNT(*) FROM users ${roleFilterSql})::int AS "totalUsers",
           COUNT(*)::int AS "totalVideos",
@@ -1291,7 +1341,7 @@ const getKpis = async (req, res) => {
           COALESCE(SUM(shares), 0)::bigint AS "totalShares"
         FROM videos
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         WITH user_videos AS (
           SELECT DISTINCT user_id, video_id
           FROM video_assignments
@@ -1358,7 +1408,7 @@ const getKpis = async (req, res) => {
         GROUP BY u.id, u.name, u.email, u.role, top_video.id, top_video.title, top_video.views
         ORDER BY u.id ASC
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         SELECT
           p.id,
           p.name,
@@ -1371,7 +1421,7 @@ const getKpis = async (req, res) => {
         GROUP BY p.id, p.name
         ORDER BY p.id ASC
       `, { type: QueryTypes.SELECT }),
-      sequelize.query(`
+        sequelize.query(`
         WITH koc_videos AS (
           SELECT DISTINCT va.video_id
           FROM video_assignments va
@@ -1397,7 +1447,7 @@ const getKpis = async (req, res) => {
         GROUP BY date_trunc('week', date)
         ORDER BY week ASC
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         WITH koc_videos AS (
           SELECT DISTINCT va.video_id
           FROM video_assignments va
@@ -1422,29 +1472,35 @@ const getKpis = async (req, res) => {
         ORDER BY v.views DESC, v.id DESC
         LIMIT 10
       `, { type: QueryTypes.SELECT, replacements }),
-    ]);
+      ]);
 
-    res.json({
-      overview: toNumbers(overviewRows[0], ['totalUsers', 'totalViews', 'totalLikes', 'totalComments', 'totalShares']),
-      users: userKpis.map((user) => toNumbers(user, [
-        'totalViews',
-        'totalLikes',
-        'totalComments',
-        'totalShares',
-        'avgViewsPerVideo',
-        'currentPeriodViews',
-        'previousPeriodViews',
-      ])),
-      products: productKpis.map((product) => toNumbers(product, ['totalViews', 'avgViewsPerVideo'])),
-      weeklyViews: weeklyViews.map((row) => ({ week: row.week, views: Number(row.views || 0) })),
-      topVideos: topVideos.map((video) => ({
-        ...video,
-        views: Number(video.views || 0),
-        likes: Number(video.likes || 0),
-        comments: Number(video.comments || 0),
-        shares: Number(video.shares || 0),
-      })),
+      return {
+        overview: toNumbers(overviewRows[0], ['totalUsers', 'totalViews', 'totalLikes', 'totalComments', 'totalShares']),
+        users: userKpis.map((user) => toNumbers(user, [
+          'totalViews',
+          'totalLikes',
+          'totalComments',
+          'totalShares',
+          'avgViewsPerVideo',
+          'currentPeriodViews',
+          'previousPeriodViews',
+        ])),
+        products: productKpis.map((product) => toNumbers(product, ['totalViews', 'avgViewsPerVideo'])),
+        weeklyViews: weeklyViews.map((row) => ({ week: row.week, views: Number(row.views || 0) })),
+        topVideos: topVideos.map((video) => ({
+          ...video,
+          views: Number(video.views || 0),
+          likes: Number(video.likes || 0),
+          comments: Number(video.comments || 0),
+          shares: Number(video.shares || 0),
+        })),
+      };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1459,11 +1515,14 @@ const getKocDetail = async (req, res) => {
 
     const startDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.start_date || '')) ? req.query.start_date : null;
     const endDate = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query.end_date || '')) ? req.query.end_date : null;
-    const dateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
-    const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
-    const replacements = { creatorId, ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
-    const [dailyViews, videos, bookings, syncHistory] = await Promise.all([
-      sequelize.query(`
+    const cacheKey = `report:koc-detail:${creatorId}:${startDate || 'none'}:${endDate || 'none'}`;
+
+    const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
+      const dateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
+      const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
+      const replacements = { creatorId, ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
+      const [dailyViews, videos, bookings, syncHistory] = await Promise.all([
+        sequelize.query(`
         WITH creator_videos AS (
           SELECT DISTINCT video_id FROM video_assignments WHERE user_id = :creatorId
           UNION
@@ -1478,7 +1537,7 @@ const getKocDetail = async (req, res) => {
         GROUP BY vds.date
         ORDER BY vds.date ASC
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         WITH creator_videos AS (
           SELECT DISTINCT video_id FROM video_assignments WHERE user_id = :creatorId
           UNION
@@ -1494,7 +1553,7 @@ const getKocDetail = async (req, res) => {
         ORDER BY v.views DESC, v.id DESC
         LIMIT 20
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         SELECT id, COALESCE(total_cost, booking_cost) AS "bookingCost", cost_note AS "costNote",
           currency, status, deadline, note, video_url AS "videoUrl", posted_at AS "postedAt"
         FROM bookings
@@ -1502,21 +1561,27 @@ const getKocDetail = async (req, res) => {
         ORDER BY deadline DESC, id DESC
         LIMIT 20
       `, { type: QueryTypes.SELECT, replacements }),
-      sequelize.query(`
+        sequelize.query(`
         SELECT id, status, error, synced_at AS "syncedAt"
         FROM tiktok_partner_sync_logs
         WHERE creator_id = :creatorId
         ORDER BY synced_at DESC, id DESC
         LIMIT 10
       `, { type: QueryTypes.SELECT, replacements }),
-    ]);
-    res.json({
-      creator,
-      dailyViews: dailyViews.map((row) => ({ date: row.date, views: Number(row.views || 0) })),
-      videos: videos.map((row) => ({ ...row, views: Number(row.views || 0), likes: Number(row.likes || 0), comments: Number(row.comments || 0), shares: Number(row.shares || 0) })),
-      bookings,
-      syncHistory,
+      ]);
+      return {
+        creator,
+        dailyViews: dailyViews.map((row) => ({ date: row.date, views: Number(row.views || 0) })),
+        videos: videos.map((row) => ({ ...row, views: Number(row.views || 0), likes: Number(row.likes || 0), comments: Number(row.comments || 0), shares: Number(row.shares || 0) })),
+        bookings,
+        syncHistory,
+      };
     });
+
+    if (hit) {
+      res.setHeader('X-Cache', 'HIT');
+    }
+    res.json(payload);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1604,6 +1669,7 @@ module.exports = {
   getChannelReportMemberDetail,
   getChannelReportVideoDailyRevenue,
   generateWeeklyReport,
+  clearReportCache,
   __test: {
     buildKocReportSnapshot,
     buildKocFactualReport,

@@ -228,6 +228,7 @@
     "users": "Người dùng",
     "manageShops": "Quản lý Shop",
     "schedule": "Lịch đồng bộ",
+    "queues": "Hàng đợi (BullMQ)",
     "chatSettings": "Model LLM",
     "workspace": "Không gian làm việc",
     "expand": "Mở rộng thanh điều hướng",
