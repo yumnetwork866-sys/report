@@ -78,7 +78,7 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
       if (runId && ScheduledJobRun) {
         try {
           runRecord = await ScheduledJobRun.findByPk(runId);
-        } catch (_) {}
+        } catch {}
       }
 
       const controller = new AbortController();
@@ -97,7 +97,7 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
                 completed_at: new Date(),
               });
             }
-          } catch (_) {}
+          } catch {}
         }
         throw err;
       }
@@ -123,7 +123,7 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
               error: null,
             });
           }
-        } catch (_) {}
+        } catch {}
       }
 
       await job.updateProgress(100);

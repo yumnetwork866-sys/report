@@ -56,6 +56,18 @@ test('affiliate order sync follows every page for one local shop day', async (t)
   assert.equal(calls[1].pageToken, 'page-2');
 });
 
+test('affiliate order sync handles empty days when TikTok omits the orders array', async (t) => {
+  const service = loadService(t, async () => ({
+    data: { next_page_token: '', total_count: 0 },
+  }));
+
+  const result = await service.__test.loadOrderDay({
+    region: 'MY', cipher: 'cipher', authorization: {},
+  }, '2026-08-13');
+
+  assert.deepEqual(result.orders, []);
+});
+
 test('affiliate order sync replaces a day atomically and stores SKU video attribution', async (t) => {
   const events = [];
   const service = loadService(t, async () => ({ data: { orders: [] } }), {

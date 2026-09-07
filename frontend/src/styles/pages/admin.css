@@ -1424,6 +1424,133 @@
 
 .schedule-action--save, .schedule-action--save:hover { border-color: var(--color-action-border); background: var(--color-action); color: var(--color-action-text); }
 
+.schedule-action--run-trigger {
+  cursor: pointer;
+  user-select: none;
+}
+
+.schedule-action-run__chevron {
+  width: 13px !important;
+  height: 13px !important;
+  margin-left: -2px;
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+
+.schedule-action--run-trigger[aria-expanded="true"] .schedule-action-run__chevron {
+  transform: rotate(180deg);
+}
+
+.schedule-run-menu {
+  position: fixed;
+  z-index: 9999;
+  min-width: 210px;
+  max-width: 300px;
+  padding: 6px;
+  border: 1px solid #dfe7f1;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.16), 0 8px 10px -6px rgba(15, 23, 42, 0.08);
+  animation: scheduleMenuFadeIn 0.12s ease-out;
+}
+
+@keyframes scheduleMenuFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.schedule-run-menu__header {
+  padding: 5px 8px 3px;
+  color: #64748b;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.schedule-run-menu__divider {
+  height: 1px;
+  margin: 4px 0;
+  background: #e2e8f0;
+}
+
+.schedule-run-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.schedule-run-menu__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #1e293b;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.schedule-run-menu__item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.schedule-run-menu__item.is-all {
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.schedule-run-menu__item.is-all:hover {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.schedule-run-menu__item-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 2px;
+}
+
+.schedule-run-menu__item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.schedule-run-menu__item-sub {
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.schedule-log-shop-tag {
+  display: inline-block;
+  margin-top: 3px;
+  padding: 1px 7px;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  background: #eff6ff;
+  color: #1e40af;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 
 .schedule-logs { display: grid; gap: 0; overflow: hidden; padding: 0; border-radius: 16px; }
 

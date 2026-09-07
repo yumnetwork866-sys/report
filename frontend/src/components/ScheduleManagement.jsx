@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Activity,
   CalendarClock,
@@ -67,9 +68,28 @@ const ScheduleManagement = () => {
   const [savingKey, setSavingKey] = useState('');
   const [runningKey, setRunningKey] = useState('');
   const [stoppingKey, setStoppingKey] = useState('');
+  const [openRunMenu, setOpenRunMenu] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [expandedErrorRuns, setExpandedErrorRuns] = useState(() => new Set());
+
+  useEffect(() => {
+    const closeRunMenu = (event) => {
+      if (event.type === 'keydown' && event.key !== 'Escape') return;
+      if (event.type === 'click' && (event.target.closest('.schedule-run-menu') || event.target.closest('.schedule-action--run-trigger'))) return;
+      setOpenRunMenu(null);
+    };
+    document.addEventListener('click', closeRunMenu);
+    document.addEventListener('keydown', closeRunMenu);
+    window.addEventListener('resize', closeRunMenu);
+    window.addEventListener('scroll', closeRunMenu, true);
+    return () => {
+      document.removeEventListener('click', closeRunMenu);
+      document.removeEventListener('keydown', closeRunMenu);
+      window.removeEventListener('resize', closeRunMenu);
+      window.removeEventListener('scroll', closeRunMenu, true);
+    };
+  }, []);
 
   const load = useCallback(async (signal, quiet = false) => {
     if (!quiet) setLoading(true);
@@ -159,12 +179,35 @@ const ScheduleManagement = () => {
     }
   };
 
-  const runNow = async (schedule) => {
+  const toggleRunMenu = (schedule, triggerElement) => {
+    setOpenRunMenu((current) => {
+      if (current?.jobKey === schedule.job_key) {
+        return null;
+      }
+      const rect = triggerElement.getBoundingClientRect();
+      const menuHeight = 50 + shops.length * 45;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const direction = spaceBelow < menuHeight && spaceAbove > spaceBelow ? 'up' : 'down';
+      return {
+        jobKey: schedule.job_key,
+        schedule,
+        direction,
+        top: Math.min(window.innerHeight - 12, rect.bottom + 6),
+        bottom: Math.max(12, window.innerHeight - (rect.top - 6)),
+        right: Math.max(12, window.innerWidth - rect.right),
+      };
+    });
+  };
+
+  const runNow = async (schedule, shopId = null) => {
     try {
       setRunningKey(schedule.job_key);
       setError('');
-      await runScheduleNow(schedule.job_key);
-      setNotice(t('schedule.started'));
+      setOpenRunMenu(null);
+      await runScheduleNow(schedule.job_key, shopId ? { shop_id: shopId } : {});
+      const targetShopName = shopId ? (shopNames[shopId] || `Shop ${shopId}`) : null;
+      setNotice(targetShopName ? t('schedule.startedShop', { shop: targetShopName }) : t('schedule.started'));
       setActiveTab('logs');
       await load(undefined, true);
     } catch (err) {
@@ -317,13 +360,23 @@ const ScheduleManagement = () => {
                   </div>
                 </div>
 
-
-                {latest?.error ? <p className="schedule-card__error" title={latest.error}>{latest.error}</p> : null}
-
                 <footer className="schedule-card__actions">
                   <button className="button schedule-action schedule-action--save" type="button" disabled={savingKey === schedule.job_key} onClick={() => save(schedule)}><Save aria-hidden="true" />{savingKey === schedule.job_key ? t('common.loading') : t('schedule.save')}</button>
                   {isRunning ? (
                     <button className="button button--danger schedule-action" type="button" disabled={stoppingKey === schedule.job_key} onClick={() => stopNow(schedule)}><Square aria-hidden="true" />{stoppingKey === schedule.job_key ? t('schedule.stopping') : t('schedule.stop')}</button>
+                  ) : !CHANNEL_JOB_KEYS.has(schedule.job_key) && shops.length > 0 ? (
+                    <button
+                      className="button button--ghost schedule-action schedule-action--run-trigger"
+                      type="button"
+                      disabled={runningKey === schedule.job_key}
+                      aria-haspopup="true"
+                      aria-expanded={openRunMenu?.jobKey === schedule.job_key}
+                      onClick={(event) => toggleRunMenu(schedule, event.currentTarget)}
+                    >
+                      <Play aria-hidden="true" />
+                      {t('schedule.runNow')}
+                      <ChevronDown aria-hidden="true" className="schedule-action-run__chevron" />
+                    </button>
                   ) : (
                     <button className="button button--ghost schedule-action" type="button" disabled={runningKey === schedule.job_key} onClick={() => runNow(schedule)}><Play aria-hidden="true" />{t('schedule.runNow')}</button>
                   )}
@@ -355,13 +408,62 @@ const ScheduleManagement = () => {
                   const errorMessages = getRunErrorMessages(run, shopNames).map((message) => formatErrorDates(message));
                   const errorText = errorMessages.join('\n');
                   const errorExpanded = expandedErrorRuns.has(String(run.id));
-                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong></td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
+                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>{run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}</td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
                 })}
                 {!filteredRuns.length ? <tr><td colSpan="7"><div className="empty-state empty-state--compact">{t('schedule.noLogs')}</div></td></tr> : null}
               </tbody>
             </table>
           </div>
         </section>
+      ) : null}
+
+      {openRunMenu ? createPortal(
+        <div
+          className={`schedule-run-menu schedule-run-menu--${openRunMenu.direction}`}
+          role="menu"
+          style={{
+            position: 'fixed',
+            right: `${openRunMenu.right}px`,
+            top: openRunMenu.direction === 'down' ? `${openRunMenu.top}px` : 'auto',
+            bottom: openRunMenu.direction === 'up' ? `${openRunMenu.bottom}px` : 'auto',
+            zIndex: 9999,
+          }}
+        >
+          <div className="schedule-run-menu__header">
+            {t('schedule.runDropdownLabel')}
+          </div>
+          <button
+            type="button"
+            className="schedule-run-menu__item is-all"
+            role="menuitem"
+            onClick={() => runNow(openRunMenu.schedule, null)}
+          >
+            <div className="schedule-run-menu__item-content">
+              <span className="schedule-run-menu__item-title">{t('schedule.runAllShops')}</span>
+              <span className="schedule-run-menu__item-sub">{t('schedule.runAllShopsSub', { count: shops.length })}</span>
+            </div>
+          </button>
+          <div className="schedule-run-menu__divider" />
+          <div className="schedule-run-menu__list">
+            {shops.map((shop) => (
+              <button
+                key={shop.id}
+                type="button"
+                className="schedule-run-menu__item"
+                role="menuitem"
+                onClick={() => runNow(openRunMenu.schedule, shop.id)}
+              >
+                <div className="schedule-run-menu__item-content">
+                  <span className="schedule-run-menu__item-title">{shop.name || shop.code || `Shop ${shop.id}`}</span>
+                  {shop.code || shop.region ? (
+                    <span className="schedule-run-menu__item-sub">{[shop.code, shop.region].filter(Boolean).join(' • ')}</span>
+                  ) : null}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

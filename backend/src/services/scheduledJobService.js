@@ -130,13 +130,17 @@ const latestScheduledSlot = (job, now = new Date()) => {
   };
 };
 
-const connectedShops = () => TikTokShop.findAll({
+const connectedShops = (targetShopId = null) => TikTokShop.findAll({
+  where: targetShopId ? { id: Number(targetShopId) } : undefined,
   include: [{ model: TikTokShopAuthorization, as: 'authorization' }],
   order: [['id', 'ASC']],
 });
 
-const runForShops = async (operation, signal) => {
-  const shops = await connectedShops();
+const runForShops = async (operation, signal, targetShopId = null) => {
+  const shops = await connectedShops(targetShopId);
+  if (!shops.length && targetShopId) {
+    throw new Error(`Shop #${targetShopId} not found or not connected.`);
+  }
   const results = [];
   for (const shop of shops) {
     throwIfAborted(signal);
@@ -556,7 +560,7 @@ const _refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal
 };
 
 const jobHandlers = {
-  tiktok_creator_performance: ({ signal } = {}) => runForShops(async (shop) => {
+  tiktok_creator_performance: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const endDay = yesterdayEndDay(shop.region);
     const exports = await syncCreatorPerformanceWindows(shop, [
       { windowType: 'PAST_30_DAYS', endDay },
@@ -568,8 +572,8 @@ const jobHandlers = {
     assertRequestedCreatorPerformanceSynced(exports);
     const baseExports = await syncBasePerformanceWindows(shop, exports, signal);
     return { exports, base_exports: baseExports };
-  }, signal),
-  tiktok_creator_performance_backfill: ({ signal } = {}) => runForShops(async (shop) => {
+  }, signal, shopId),
+  tiktok_creator_performance_backfill: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const dailyBackfill = await backfillCreatorDailyPerformance(
       shop,
       yesterdayEndDay(shop.region),
@@ -581,14 +585,14 @@ const jobHandlers = {
       throw error;
     }
     return { daily_backfill: dailyBackfill };
-  }, signal),
-  tiktok_shop_analytics: ({ signal } = {}) => runForShops(async (shop) => {
+  }, signal, shopId),
+  tiktok_shop_analytics: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const range = scheduledAnalyticsRange(shop);
     const analytics = await syncShopAnalyticsSnapshot(shop, range);
     throwIfAborted(signal);
     const target_collaborations = await targetCollaborationSyncService.syncShop(shop, { signal });
     return { ...analytics, target_collaborations };
-  }, signal),
+  }, signal, shopId),
   tiktok_channel_metrics: async ({ signal } = {}) => {
     throwIfAborted(signal);
     const summary = await syncTikTokChannels({ closeConnection: false });
@@ -601,19 +605,22 @@ const jobHandlers = {
     return summary;
   },
   booking_video_performance: ({ signal } = {}) => syncActiveBookingVideos({ signal }),
-  tiktok_shop_video_catalog: ({ signal } = {}) => runForShops(
+  tiktok_shop_video_catalog: ({ signal, shopId } = {}) => runForShops(
     (shop) => syncShopVideoCatalog(shop, { signal }),
     signal,
+    shopId,
   ),
-  tiktok_channel_report_revenue: ({ signal } = {}) => runForShops(
+  tiktok_channel_report_revenue: ({ signal, shopId } = {}) => runForShops(
     (shop) => syncChannelReportRevenue(shop, { signal }),
     signal,
+    shopId,
   ),
-  tiktok_affiliate_orders: ({ signal } = {}) => runForShops(
+  tiktok_affiliate_orders: ({ signal, shopId } = {}) => runForShops(
     (shop) => syncAffiliateOrders(shop, { signal }),
     signal,
+    shopId,
   ),
-  tiktok_affiliate_video_performance: ({ signal } = {}) => runForShops(async (shop) => {
+  tiktok_affiliate_video_performance: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const { endDate } = scheduledAnalyticsRange(shop);
     const windows = [];
     for (const days of [7, 30]) {
@@ -626,14 +633,14 @@ const jobHandlers = {
       windows.push({ days, ...result });
     }
     return { windows };
-  }, signal),
+  }, signal, shopId),
 };
 
-const processScheduledJobRun = async (job, run) => {
+const processScheduledJobRun = async (job, run, { shopId = null } = {}) => {
   const controller = new AbortController();
   activeRunControllers.set(String(run.id), controller);
   try {
-    const summary = await jobHandlers[job.job_key]({ signal: controller.signal });
+    const summary = await jobHandlers[job.job_key]({ signal: controller.signal, shopId });
     await run.reload();
     if (run.status !== 'PROCESSING') return run;
     await run.update({ status: 'SUCCEEDED', summary, completed_at: new Date(), error: null });
@@ -679,7 +686,7 @@ const stopScheduledJob = async (job) => {
         await bullJob.remove();
       }
     }
-  } catch (_) {}
+  } catch {}
   await run.update({
     status: 'CANCELLED',
     error: 'Stopped by user.',
@@ -702,13 +709,15 @@ const createScheduledJobRun = async (job, {
 
 const executeScheduledJob = async (job, options = {}) => {
   const { run, created } = await createScheduledJobRun(job, options);
-  return created ? processScheduledJobRun(job, run) : run;
+  return created ? processScheduledJobRun(job, run, options) : run;
 };
 
 const enqueueScheduledJob = async (job, {
   triggerType = 'MANUAL',
-  scheduledKey = `${triggerType}:${Date.now()}:${crypto.randomUUID()}`,
+  scheduledKey,
+  shopId = null,
 } = {}) => {
+  const effectiveScheduledKey = scheduledKey || `${triggerType}:${shopId ? `shop:${shopId}:` : ''}${Date.now()}:${crypto.randomUUID()}`;
   const processing = await ScheduledJobRun.findOne({
     where: { scheduled_job_id: job.id, status: 'PROCESSING' },
     order: [['started_at', 'DESC']],
@@ -727,7 +736,7 @@ const enqueueScheduledJob = async (job, {
       completed_at: new Date(),
     });
   }
-  const { run, created } = await createScheduledJobRun(job, { triggerType, scheduledKey });
+  const { run, created } = await createScheduledJobRun(job, { triggerType, scheduledKey: effectiveScheduledKey });
   if (created) {
     queueSyncJob(
       job.job_key,
@@ -735,7 +744,8 @@ const enqueueScheduledJob = async (job, {
         runId: run.id,
         scheduledJobId: job.id,
         triggerType,
-        scheduledKey,
+        scheduledKey: effectiveScheduledKey,
+        shopId,
       },
       {
         jobId: `run-${run.id}`,
@@ -746,7 +756,7 @@ const enqueueScheduledJob = async (job, {
         jobKey: job.job_key,
         message: queueErr.message,
       });
-      setImmediate(() => processScheduledJobRun(job, run).catch((error) => {
+      setImmediate(() => processScheduledJobRun(job, run, { shopId }).catch((error) => {
         console.error('[Schedule Manager] In-process run failed', { jobKey: job.job_key, message: error.message });
       }));
     });

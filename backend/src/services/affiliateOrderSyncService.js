@@ -103,10 +103,15 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
   for (let page = 0; page < maxPages; page += 1) {
     throwIfAborted(signal);
     const payload = await fetchOrderPage(shop, { pageToken, pageSize: 100, startTime, endTime });
-    if (!Array.isArray(payload?.data?.orders)) {
+    if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') {
       throw new Error('TikTok returned an invalid Affiliate Orders response.');
     }
-    payload.data.orders.forEach((order) => {
+    const rawOrders = payload.data.orders;
+    if (rawOrders !== undefined && rawOrders !== null && !Array.isArray(rawOrders)) {
+      throw new Error('TikTok returned an invalid Affiliate Orders response.');
+    }
+    const ordersList = Array.isArray(rawOrders) ? rawOrders : [];
+    ordersList.forEach((order) => {
       const id = orderId(order);
       if (id) orders.set(id, order);
     });

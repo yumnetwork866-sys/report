@@ -58,7 +58,9 @@ const runScheduleNow = async (req, res) => {
     if (!JOB_KEYS.has(jobKey)) return res.status(404).json({ message: 'Schedule not found.' });
     const job = await ScheduledJob.findOne({ where: { job_key: jobKey } });
     if (!job) return res.status(404).json({ message: 'Schedule not found.' });
-    const { run, created } = await enqueueScheduledJob(job);
+    const rawShopId = req.body?.shop_id ?? req.query?.shop_id;
+    const shopId = rawShopId !== undefined && rawShopId !== null && rawShopId !== '' ? Number(rawShopId) : null;
+    const { run, created } = await enqueueScheduledJob(job, { shopId });
     res.status(created ? 202 : 409).json({ run, started: created });
   } catch (error) {
     res.status(500).json({ message: error.message });

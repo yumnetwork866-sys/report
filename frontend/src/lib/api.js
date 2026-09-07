@@ -221,8 +221,11 @@ export function updateSchedule(jobKey, payload) {
   return apiRequest(`/schedules/${encodeURIComponent(jobKey)}`, { method: 'PUT', body: payload });
 }
 
-export function runScheduleNow(jobKey) {
-  return apiRequest(`/schedules/${encodeURIComponent(jobKey)}/run`, { method: 'POST' });
+export function runScheduleNow(jobKey, payload = {}) {
+  return apiRequest(`/schedules/${encodeURIComponent(jobKey)}/run`, {
+    method: 'POST',
+    ...(payload && Object.keys(payload).length > 0 ? { body: payload } : {}),
+  });
 }
 
 export function stopScheduleNow(jobKey) {
