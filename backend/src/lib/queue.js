@@ -65,6 +65,12 @@ const getQueue = (queueName, customOpts = {}) => {
     ...customOpts,
   });
 
+  queue.on('error', (err) => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.error(`[BullMQ Queue: ${queueName}] Queue error:`, err.message);
+    }
+  });
+
   activeQueues.set(queueName, queue);
   return queue;
 };
@@ -131,6 +137,12 @@ const getQueueEvents = (queueName) => {
   const events = new QueueEvents(queueName, {
     connection: redisConnection,
     prefix: QUEUE_PREFIX,
+  });
+
+  events.on('error', (err) => {
+    if (process.env.NODE_ENV !== 'test') {
+      console.error(`[BullMQ QueueEvents: ${queueName}] Events error:`, err.message);
+    }
   });
 
   activeEvents.set(queueName, events);
