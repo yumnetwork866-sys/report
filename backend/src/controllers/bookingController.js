@@ -497,6 +497,7 @@ const findBookingVideoCandidates = async (booking) => {
 const bookingInclude = [
   { model: User, as: 'staff' },
   { model: User, as: 'creator' },
+  { model: TikTokShop, as: 'target_shop', attributes: ['id', 'name', 'code', 'region'] },
   {
     model: BookingVideo,
     as: 'booking_videos',
@@ -885,15 +886,17 @@ const getTargetKocs = async (req, res) => {
           OR CONCAT_WS(' ', nickname, username, collaboration_names) ILIKE '%' || :keyword || '%'
       )
       SELECT
-        shop_id,
-        creator_open_id,
-        username,
-        nickname,
-        avatar_url,
-        collaboration_count,
+        filtered.shop_id,
+        shop.name AS shop_name,
+        filtered.creator_open_id,
+        filtered.username,
+        filtered.nickname,
+        filtered.avatar_url,
+        filtered.collaboration_count,
         COUNT(*) OVER()::integer AS total_count
       FROM filtered
-      ORDER BY collaboration_count DESC, COALESCE(nickname, username) ASC, shop_id ASC
+      LEFT JOIN tiktok_shops shop ON shop.id = filtered.shop_id
+      ORDER BY collaboration_count DESC, COALESCE(nickname, username) ASC, filtered.shop_id ASC
       LIMIT :limit OFFSET :offset
     `, {
       replacements: {
@@ -907,6 +910,7 @@ const getTargetKocs = async (req, res) => {
     res.json({
       items: rows.map((row) => ({
         shop_id: Number(row.shop_id),
+        ...(row.shop_name ? { shop_name: row.shop_name } : {}),
         creator_open_id: row.creator_open_id || null,
         username: row.username || null,
         nickname: row.nickname || null,

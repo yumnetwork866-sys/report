@@ -12,6 +12,24 @@ test('schedule errors prefer the real nested shop error over a generic run failu
       results: [{ shop_id: 7, status: 'FAILED', error: 'TikTok access token expired.' }],
     },
   }), ['Shop 7: TikTok access token expired.']);
+
+  assert.deepEqual(getRunErrorMessages({
+    error: '1/1 Shop syncs failed.',
+    summary: {
+      total: 1,
+      failed: 1,
+      results: [{ shop_id: 7, shop_name: 'Follicas Malaysia', status: 'FAILED', error: 'TikTok access token expired.' }],
+    },
+  }), ['Follicas Malaysia: TikTok access token expired.']);
+
+  assert.deepEqual(getRunErrorMessages({
+    error: '1/1 Shop syncs failed.',
+    summary: {
+      total: 1,
+      failed: 1,
+      results: [{ shop_id: 7, status: 'FAILED', error: 'TikTok access token expired.' }],
+    },
+  }, { 7: 'Follicas Malaysia' }), ['Follicas Malaysia: TikTok access token expired.']);
 });
 
 test('schedule errors retain multiple nested details and direct non-generic errors', () => {

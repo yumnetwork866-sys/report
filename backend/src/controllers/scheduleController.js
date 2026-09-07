@@ -1,4 +1,4 @@
-const { ScheduledJob, ScheduledJobRun } = require('../models');
+const { ScheduledJob, ScheduledJobRun, TikTokShop } = require('../models');
 const {
   JOB_KEYS,
   normalizeRunTimes,
@@ -19,7 +19,14 @@ const serializeJob = async (job) => {
 const listSchedules = async (_req, res) => {
   try {
     const jobs = await ScheduledJob.findAll({ order: [['id', 'ASC']] });
-    res.json({ schedules: await Promise.all(jobs.map(serializeJob)) });
+    const shops = await TikTokShop.findAll({
+      attributes: ['id', 'name', 'code', 'region'],
+      order: [['id', 'ASC']],
+    });
+    res.json({
+      schedules: await Promise.all(jobs.map(serializeJob)),
+      shops,
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

@@ -141,10 +141,22 @@ const runForShops = async (operation, signal) => {
   for (const shop of shops) {
     throwIfAborted(signal);
     try {
-      results.push({ shop_id: shop.id, status: 'SUCCEEDED', ...(await operation(shop)) });
+      results.push({
+        shop_id: shop.id,
+        shop_name: shop.name,
+        shop_code: shop.code,
+        status: 'SUCCEEDED',
+        ...(await operation(shop)),
+      });
     } catch (error) {
       if (signal?.aborted || error.name === 'AbortError') throw error;
-      results.push({ shop_id: shop.id, status: 'FAILED', error: error.message });
+      results.push({
+        shop_id: shop.id,
+        shop_name: shop.name,
+        shop_code: shop.code,
+        status: 'FAILED',
+        error: error.message,
+      });
     }
   }
   const summary = {

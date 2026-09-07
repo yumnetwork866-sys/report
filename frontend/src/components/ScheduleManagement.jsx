@@ -58,6 +58,7 @@ const ScheduleManagement = () => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const [schedules, setSchedules] = useState([]);
+  const [shops, setShops] = useState([]);
   const [activeTab, setActiveTab] = useState('schedules');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [jobFilter, setJobFilter] = useState('ALL');
@@ -76,6 +77,7 @@ const ScheduleManagement = () => {
     try {
       const payload = await fetchSchedules(signal);
       setSchedules(payload.schedules || []);
+      if (Array.isArray(payload.shops)) setShops(payload.shops);
       setError('');
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message || t('schedule.loadError'));
@@ -116,6 +118,10 @@ const ScheduleManagement = () => {
     (statusFilter === 'ALL' || run.status === statusFilter)
     && (jobFilter === 'ALL' || run.job_key === jobFilter)
   )), [allRuns, jobFilter, statusFilter]);
+
+  const shopNames = useMemo(() => Object.fromEntries(
+    shops.map((shop) => [String(shop.id), shop.name || shop.code || `Shop ${shop.id}`])
+  ), [shops]);
 
   const enabledCount = schedules.filter((schedule) => schedule.enabled).length;
   const runningCount = allRuns.filter((run) => run.status === 'PROCESSING').length;
@@ -346,7 +352,7 @@ const ScheduleManagement = () => {
               <thead><tr><th>{t('schedule.startedAt')}</th><th>{t('schedule.job')}</th><th>{t('schedule.trigger')}</th><th>{t('schedule.status')}</th><th>{t('schedule.duration')}</th><th>{t('schedule.result')}</th><th>{t('schedule.error')}</th></tr></thead>
               <tbody>
                 {filteredRuns.map((run) => {
-                  const errorMessages = getRunErrorMessages(run).map((message) => formatErrorDates(message));
+                  const errorMessages = getRunErrorMessages(run, shopNames).map((message) => formatErrorDates(message));
                   const errorText = errorMessages.join('\n');
                   const errorExpanded = expandedErrorRuns.has(String(run.id));
                   return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong></td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;

@@ -687,7 +687,7 @@ const TargetKocCombobox = ({
               <TargetKocAvatar src={creator.avatar_url} name={creator.nickname || creator.username} />
               <span>
                 <strong>{creator.nickname || creator.username}</strong>
-                <small>@{creator.username} · {creator.collaboration_count ? `${creator.collaboration_count} ${collaborationLabel}` : performanceSourceLabel}</small>
+                <small>{creator.shop_name ? `${creator.shop_name} · ` : ''}@{creator.username} · {creator.collaboration_count ? `${creator.collaboration_count} ${collaborationLabel}` : performanceSourceLabel}</small>
               </span>
             </button>
           )) : loading ? null : <div className="booking-koc-combobox__empty">{noResults}</div>}
@@ -1528,7 +1528,7 @@ const BookingManagement = ({ heroTitle }) => {
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
             <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{t('booking.detailTitle', { id: selectedBooking.id })}</h2><p>{selectedBooking.creator_name || selectedBooking.creator_username} · @{selectedBooking.creator_username}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={() => setSelectedBooking(null)}>×</button></div>
             <div className="koc-drawer__body">
-              <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
+              <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}{selectedBooking.target_shop?.name ? <div><span>{t('booking.partnerShop')}</span><strong>{selectedBooking.target_shop.name}</strong></div> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
               <form className="booking-detail-form" onSubmit={saveCost}>
                 <div className="field booking-product-picker-field booking-detail-product-picker-field">
                   <span>{t('booking.selectedProducts')}</span>

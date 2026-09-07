@@ -17,8 +17,15 @@ const errorStrings = (value) => {
   }
 };
 
-const nodeContext = (node) => {
-  if (node.shop_id !== undefined && node.shop_id !== null) return `Shop ${node.shop_id}`;
+const nodeContext = (node, shopNames = {}) => {
+  if (node.shop_name) return node.shop_name;
+  if (node.shop_id !== undefined && node.shop_id !== null) {
+    const customName = shopNames[node.shop_id] || shopNames[String(node.shop_id)];
+    if (customName) return customName;
+    return `Shop ${node.shop_id}`;
+  }
+  if (node.channel_name) return node.channel_name;
+  if (node.channel_username) return `@${node.channel_username}`;
   if (node.channelId !== undefined && node.channelId !== null) return `Channel ${node.channelId}`;
   if (node.channel_id !== undefined && node.channel_id !== null) return `Channel ${node.channel_id}`;
   if (node.metric_date) return String(node.metric_date);
@@ -26,14 +33,14 @@ const nodeContext = (node) => {
   return '';
 };
 
-const collectNestedErrors = (node, context = '', output = []) => {
+const collectNestedErrors = (node, context = '', output = [], shopNames = {}) => {
   if (Array.isArray(node)) {
-    node.forEach((item) => collectNestedErrors(item, context, output));
+    node.forEach((item) => collectNestedErrors(item, context, output, shopNames));
     return output;
   }
   if (!node || typeof node !== 'object') return output;
 
-  const currentContext = nodeContext(node) || context;
+  const currentContext = nodeContext(node, shopNames) || context;
   Object.entries(node).forEach(([key, value]) => {
     if (ERROR_KEYS.has(key)) {
       errorStrings(value).forEach((message) => {
@@ -41,13 +48,13 @@ const collectNestedErrors = (node, context = '', output = []) => {
       });
       return;
     }
-    if (value && typeof value === 'object') collectNestedErrors(value, currentContext, output);
+    if (value && typeof value === 'object') collectNestedErrors(value, currentContext, output, shopNames);
   });
   return output;
 };
 
-export const getRunErrorMessages = (run = {}) => {
-  const nested = collectNestedErrors(run.summary);
+export const getRunErrorMessages = (run = {}, shopNames = {}) => {
+  const nested = collectNestedErrors(run.summary, '', [], shopNames);
   const direct = errorStrings(run.error);
   const messages = nested.length && direct.every((message) => GENERIC_FAILURE.test(message))
     ? nested

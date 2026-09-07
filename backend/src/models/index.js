@@ -1345,6 +1345,8 @@ User.hasMany(Booking, { foreignKey: 'staff_id', as: 'staff_bookings' });
 Booking.belongsTo(User, { foreignKey: 'staff_id', as: 'staff' });
 User.hasMany(Booking, { foreignKey: 'creator_id', as: 'creator_bookings' });
 Booking.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
+TikTokShop.hasMany(Booking, { foreignKey: 'target_shop_id', as: 'bookings' });
+Booking.belongsTo(TikTokShop, { foreignKey: 'target_shop_id', as: 'target_shop' });
 Booking.hasMany(BookingVideo, { foreignKey: 'booking_id', as: 'booking_videos' });
 BookingVideo.belongsTo(Booking, { foreignKey: 'booking_id', as: 'booking' });
 BookingVideo.hasMany(BookingVideoPerformanceSnapshot, { foreignKey: 'booking_video_id', as: 'performance_snapshots' });
