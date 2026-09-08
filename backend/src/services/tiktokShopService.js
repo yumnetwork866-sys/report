@@ -660,7 +660,14 @@ const createCompassExportTask = ({
       end_day: Number(endDay),
       ...(normalizedModuleType === 'CREATOR' ? { plan_type: planType } : {}),
     },
-  }, fetchImpl);
+  }, fetchImpl).catch((error) => {
+    error.windowType = windowType;
+    error.moduleType = normalizedModuleType;
+    if (error.message && !error.message.includes('window_type=')) {
+      error.message = `${error.message}, window_type=${windowType}`;
+    }
+    throw error;
+  });
 };
 
 const listCompassExportTasks = ({ authorization, shopCipher, docType = 'CREATOR', pageSize = 50, pageToken } = {}, fetchImpl) => {

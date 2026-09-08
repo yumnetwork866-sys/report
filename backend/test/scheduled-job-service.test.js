@@ -10,6 +10,9 @@ const {
   creatorDailyBackfillDates,
   assertRequestedCreatorPerformanceSynced,
   catchUpScheduledJobs,
+  DEFAULT_COMPASS_WINDOW_DELAY_MS,
+  configuredCompassWindowDelayMs,
+  formatCompassWindowOverview,
 } = require('../src/services/scheduledJobService');
 
 test('creator daily backfill selects only the newest missing historical date', () => {
@@ -19,6 +22,25 @@ test('creator daily backfill selects only the newest missing historical date', (
   ]);
 
   assert.deepEqual(dates, ['2026-08-05']);
+});
+
+test('Compass window delay defaults to 60s and respects environment override', () => {
+  assert.equal(DEFAULT_COMPASS_WINDOW_DELAY_MS, 60000);
+  const original = process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS;
+  try {
+    delete process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS;
+    assert.equal(configuredCompassWindowDelayMs(), 60000);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS = '90000';
+    assert.equal(configuredCompassWindowDelayMs(), 90000);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS = 'invalid';
+    assert.equal(configuredCompassWindowDelayMs(), 60000);
+  } finally {
+    if (original === undefined) {
+      delete process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS;
+    } else {
+      process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS = original;
+    }
+  }
 });
 
 test('Creator Performance run fails when it reuses fallback data instead of the requested day', () => {
@@ -137,4 +159,25 @@ test('startup catch-up skips a job already completed after its latest slot', asy
     caught_up: false,
     reason: 'already_current',
   }]);
+});
+
+test('formatCompassWindowOverview accurately displays status of 30 days, 7 days, 24h windows', () => {
+  const windows = [
+    { windowType: 'PAST_30_DAYS' },
+    { windowType: 'PAST_7_DAYS' },
+    { windowType: 'PAST_24H' },
+  ];
+
+  assert.equal(
+    formatCompassWindowOverview(windows, 0),
+    '30 days: FAILED | 7 days: SKIPPED | 24h: SKIPPED',
+  );
+  assert.equal(
+    formatCompassWindowOverview(windows, 1),
+    '30 days: SUCCEEDED | 7 days: FAILED | 24h: SKIPPED',
+  );
+  assert.equal(
+    formatCompassWindowOverview(windows, 2),
+    '30 days: SUCCEEDED | 7 days: SUCCEEDED | 24h: FAILED',
+  );
 });

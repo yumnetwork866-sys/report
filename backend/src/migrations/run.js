@@ -77,6 +77,7 @@ const migrations = [
   require('./067_cleanup_duplicate_unique_indexes'),
   require('./068_add_creator_performance_backfill_schedule'),
   require('./069_add_tiktok_api_cooldown_streak'),
+  require('./070_update_creator_performance_schedule'),
 ];
 
 const createMigrationRunner = ({

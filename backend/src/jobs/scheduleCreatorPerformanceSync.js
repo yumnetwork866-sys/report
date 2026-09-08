@@ -5,11 +5,11 @@ const {
   createBasePerformanceExportWithFallback,
   processCreatorPerformanceExport,
   processBasePerformanceExport,
-  yesterdayEndDay,
+  latestCompassEndDay,
 } = require('../services/tiktokCreatorPerformanceService');
 
 const startCreatorPerformanceScheduler = () => {
-  const schedule = process.env.TIKTOK_CREATOR_PERFORMANCE_SCHEDULE || '30 3 * * *';
+  const schedule = process.env.TIKTOK_CREATOR_PERFORMANCE_SCHEDULE || '30 14 * * *';
   const timezone = process.env.TIKTOK_CREATOR_PERFORMANCE_TIMEZONE || 'Asia/Kuala_Lumpur';
   if (!cron.validate(schedule)) throw new Error(`Invalid TIKTOK_CREATOR_PERFORMANCE_SCHEDULE: ${schedule}`);
   const task = cron.schedule(schedule, async () => {
@@ -18,7 +18,7 @@ const startCreatorPerformanceScheduler = () => {
       try {
         const { exportRecord, requestedEndDay, endDay } = await createCreatorPerformanceExportWithFallback(shop, {
           windowType: 'PAST_7_DAYS',
-          endDay: yesterdayEndDay(shop.region),
+          endDay: latestCompassEndDay(shop.region),
           planType: 'ALL',
         });
         if (endDay !== requestedEndDay) {

@@ -24,6 +24,10 @@ const {
   persistCompassCooldown,
   runCompassRequest,
   configuredCompassRateLimitCooldownMs,
+  DEFAULT_COMPASS_FALLBACK_DELAY_MS,
+  configuredCompassFallbackDelayMs,
+  DEFAULT_COMPASS_END_DAY_OFFSET,
+  latestCompassEndDay,
 } = require('../src/services/tiktokCreatorPerformanceService');
 
 test('creator profile identity logs describe name and avatar changes without exposing the URL', () => {
@@ -59,6 +63,26 @@ test('Compass date ranges are inclusive and match TikTok report filenames', () =
   assert.equal(shiftEndDay(20260716, -1), 20260715);
 });
 
+test('latestCompassEndDay calculates T-2 by default and respects environment override', () => {
+  assert.equal(DEFAULT_COMPASS_END_DAY_OFFSET, -2);
+  const now = new Date('2026-09-07T10:00:00.000Z');
+  const original = process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+  try {
+    delete process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+    assert.equal(latestCompassEndDay('MY', now), 20260905);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = '-1';
+    assert.equal(latestCompassEndDay('MY', now), 20260906);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = '-3';
+    assert.equal(latestCompassEndDay('MY', now), 20260904);
+  } finally {
+    if (original === undefined) {
+      delete process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+    } else {
+      process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = original;
+    }
+  }
+});
+
 test('Compass export falls back when TikTok has not made the requested day available', async () => {
   const attempts = [];
   const result = await createCreatorPerformanceExportWithFallback({ region: 'MY' }, {
@@ -81,6 +105,25 @@ test('Compass export falls back when TikTok has not made the requested day avail
   assert.equal(result.requestedEndDay, 20260716);
   assert.equal(result.endDay, 20260715);
   assert.equal(result.fallbackDays, 1);
+});
+
+test('Compass fallback delay defaults to 30s and respects environment override', () => {
+  assert.equal(DEFAULT_COMPASS_FALLBACK_DELAY_MS, 30000);
+  const original = process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS;
+  try {
+    delete process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS;
+    assert.equal(configuredCompassFallbackDelayMs(), 30000);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS = '45000';
+    assert.equal(configuredCompassFallbackDelayMs(), 45000);
+    process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS = 'invalid';
+    assert.equal(configuredCompassFallbackDelayMs(), 30000);
+  } finally {
+    if (original === undefined) {
+      delete process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS;
+    } else {
+      process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS = original;
+    }
+  }
 });
 
 test('Compass export stops immediately on rate limit instead of retrying or falling back by date', async () => {

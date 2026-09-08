@@ -16,7 +16,7 @@ const {
   processCreatorPerformanceExport,
   processBasePerformanceExport,
   shiftEndDay,
-  yesterdayEndDay,
+  latestCompassEndDay,
 } = require('./tiktokCreatorPerformanceService');
 const {
   scheduledAnalyticsRange,
@@ -55,6 +55,19 @@ const SHOP_TIMEZONES = {
   PH: 'Asia/Manila',
   ID: 'Asia/Jakarta',
 };
+const DEFAULT_COMPASS_WINDOW_DELAY_MS = 60 * 1000;
+
+const configuredCompassWindowDelayMs = () => {
+  const value = Number(
+    process.env.TIKTOK_CREATOR_PERFORMANCE_WINDOW_DELAY_MS
+      ?? DEFAULT_COMPASS_WINDOW_DELAY_MS,
+  );
+  return Number.isFinite(value) && value >= 0
+    ? value
+    : DEFAULT_COMPASS_WINDOW_DELAY_MS;
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const throwIfAborted = (signal) => {
   if (!signal?.aborted) return;
@@ -177,25 +190,55 @@ const runForShops = async (operation, signal, targetShopId = null) => {
   return summary;
 };
 
+const COMPASS_WINDOW_LABELS = {
+  PAST_30_DAYS: '30 days',
+  PAST_7_DAYS: '7 days',
+  PAST_24H: '24h',
+};
+
+const formatCompassWindowOverview = (windows, failedIndex) => windows.map((w, idx) => {
+  const windowKey = w.windowType || w.window_type;
+  const label = COMPASS_WINDOW_LABELS[windowKey] || windowKey;
+  if (idx < failedIndex) return `${label}: SUCCEEDED`;
+  if (idx === failedIndex) return `${label}: FAILED`;
+  return `${label}: SKIPPED`;
+}).join(' | ');
+
 const syncCreatorPerformanceWindows = async (shop, windows, signal) => {
   const exports = [];
-  for (const window of windows) {
+  for (let index = 0; index < windows.length; index += 1) {
     throwIfAborted(signal);
-    const { exportRecord, requestedEndDay, endDay, fallbackDays } = await createCreatorPerformanceExportWithFallback(shop, {
-      windowType: window.windowType,
-      endDay: window.endDay,
-      planType: 'ALL',
-    });
-    if (exportRecord.status === 'PROCESSING') await processCreatorPerformanceExport(shop, exportRecord);
-    exports.push({
-      window_type: window.windowType,
-      requested_end_day: requestedEndDay,
-      effective_end_day: endDay,
-      fallback_days: fallbackDays,
-      start_date: exportRecord.start_date,
-      end_date: exportRecord.end_date,
-      export_id: exportRecord.id,
-    });
+    if (index > 0 && configuredCompassWindowDelayMs() > 0) {
+      await sleep(configuredCompassWindowDelayMs());
+      throwIfAborted(signal);
+    }
+    const window = windows[index];
+    try {
+      const { exportRecord, requestedEndDay, endDay, fallbackDays } = await createCreatorPerformanceExportWithFallback(shop, {
+        windowType: window.windowType,
+        endDay: window.endDay,
+        planType: 'ALL',
+      });
+      if (exportRecord.status === 'PROCESSING') await processCreatorPerformanceExport(shop, exportRecord);
+      exports.push({
+        window_type: window.windowType,
+        requested_end_day: requestedEndDay,
+        effective_end_day: endDay,
+        fallback_days: fallbackDays,
+        start_date: exportRecord.start_date,
+        end_date: exportRecord.end_date,
+        export_id: exportRecord.id,
+      });
+    } catch (error) {
+      if (signal?.aborted || error.name === 'AbortError') throw error;
+      const failedLabel = COMPASS_WINDOW_LABELS[window.windowType] || window.windowType;
+      const overview = formatCompassWindowOverview(windows, index);
+      const enrichedError = new Error(`[${overview}] (${failedLabel}) ${error.message}`);
+      Object.assign(enrichedError, error);
+      enrichedError.failedWindow = window.windowType;
+      enrichedError.completedExports = exports;
+      throw enrichedError;
+    }
   }
   return exports;
 };
@@ -280,22 +323,38 @@ const backfillCreatorDailyPerformance = async (shop, effectiveEndDay, signal, no
 
 const syncBasePerformanceWindows = async (shop, creatorExports, signal) => {
   const exports = [];
-  for (const creatorExport of creatorExports) {
+  for (let index = 0; index < creatorExports.length; index += 1) {
+    const creatorExport = creatorExports[index];
     throwIfAborted(signal);
-    const { exportRecord, requestedEndDay, endDay, fallbackDays } = await createBasePerformanceExportWithFallback(shop, {
-      windowType: creatorExport.window_type,
-      endDay: creatorExport.effective_end_day,
-    });
-    if (exportRecord.status === 'PROCESSING') await processBasePerformanceExport(shop, exportRecord);
-    exports.push({
-      window_type: creatorExport.window_type,
-      requested_end_day: requestedEndDay,
-      effective_end_day: endDay,
-      fallback_days: fallbackDays,
-      start_date: exportRecord.start_date,
-      end_date: exportRecord.end_date,
-      export_id: exportRecord.id,
-    });
+    if (configuredCompassWindowDelayMs() > 0) {
+      await sleep(configuredCompassWindowDelayMs());
+      throwIfAborted(signal);
+    }
+    try {
+      const { exportRecord, requestedEndDay, endDay, fallbackDays } = await createBasePerformanceExportWithFallback(shop, {
+        windowType: creatorExport.window_type,
+        endDay: creatorExport.effective_end_day,
+      });
+      if (exportRecord.status === 'PROCESSING') await processBasePerformanceExport(shop, exportRecord);
+      exports.push({
+        window_type: creatorExport.window_type,
+        requested_end_day: requestedEndDay,
+        effective_end_day: endDay,
+        fallback_days: fallbackDays,
+        start_date: exportRecord.start_date,
+        end_date: exportRecord.end_date,
+        export_id: exportRecord.id,
+      });
+    } catch (error) {
+      if (signal?.aborted || error.name === 'AbortError') throw error;
+      const failedLabel = COMPASS_WINDOW_LABELS[creatorExport.window_type] || creatorExport.window_type;
+      const overview = formatCompassWindowOverview(creatorExports, index);
+      const enrichedError = new Error(`[BASE: ${overview}] (${failedLabel}) ${error.message}`);
+      Object.assign(enrichedError, error);
+      enrichedError.failedWindow = creatorExport.window_type;
+      enrichedError.completedExports = exports;
+      throw enrichedError;
+    }
   }
   return exports;
 };
@@ -561,7 +620,7 @@ const _refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal
 
 const jobHandlers = {
   tiktok_creator_performance: ({ signal, shopId } = {}) => runForShops(async (shop) => {
-    const endDay = yesterdayEndDay(shop.region);
+    const endDay = latestCompassEndDay(shop.region);
     const exports = await syncCreatorPerformanceWindows(shop, [
       { windowType: 'PAST_30_DAYS', endDay },
       { windowType: 'PAST_7_DAYS', endDay },
@@ -576,7 +635,7 @@ const jobHandlers = {
   tiktok_creator_performance_backfill: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const dailyBackfill = await backfillCreatorDailyPerformance(
       shop,
-      yesterdayEndDay(shop.region),
+      latestCompassEndDay(shop.region),
       signal,
     );
     if (dailyBackfill.failed.length) {
@@ -847,4 +906,8 @@ module.exports = {
   tickScheduledJobs,
   catchUpScheduledJobs,
   startDatabaseScheduler,
+  DEFAULT_COMPASS_WINDOW_DELAY_MS,
+  configuredCompassWindowDelayMs,
+  COMPASS_WINDOW_LABELS,
+  formatCompassWindowOverview,
 };

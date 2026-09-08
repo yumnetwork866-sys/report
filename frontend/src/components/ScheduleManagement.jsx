@@ -429,9 +429,6 @@ const ScheduleManagement = () => {
             zIndex: 9999,
           }}
         >
-          <div className="schedule-run-menu__header">
-            {t('schedule.runDropdownLabel')}
-          </div>
           <button
             type="button"
             className="schedule-run-menu__item is-all"

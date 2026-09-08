@@ -76,6 +76,7 @@ const defaultMigrationNames = [
   '067_cleanup_duplicate_unique_indexes',
   '068_add_creator_performance_backfill_schedule',
   '069_add_tiktok_api_cooldown_streak',
+  '070_update_creator_performance_schedule',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

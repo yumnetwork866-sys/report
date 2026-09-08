@@ -46,12 +46,23 @@ const DEFAULT_CREATOR_PROFILE_TTL_MS = 24 * HOUR_MS;
 const DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS = 2 * MINUTE_MS;
 const DEFAULT_COMPASS_RATE_LIMIT_COOLDOWN_MS = 15 * MINUTE_MS;
 const DEFAULT_COMPASS_RATE_LIMIT_MAX_COOLDOWN_MS = HOUR_MS;
+const DEFAULT_COMPASS_FALLBACK_DELAY_MS = 30 * 1000;
 const COMPASS_RATE_LIMIT_CODES = new Set([36009002, 36009037]);
 const runCreatorProfileMarketplaceRequest = createMarketplaceRequestGate({
   // The profile worker itself waits two minutes. The shared Marketplace gate
   // leaves a one-minute slot for Discovery between profile requests.
   minIntervalMs: MINUTE_MS,
 });
+
+const configuredCompassFallbackDelayMs = () => {
+  const value = Number(
+    process.env.TIKTOK_CREATOR_PERFORMANCE_FALLBACK_DELAY_MS
+      ?? DEFAULT_COMPASS_FALLBACK_DELAY_MS,
+  );
+  return Number.isFinite(value) && value >= 0
+    ? value
+    : DEFAULT_COMPASS_FALLBACK_DELAY_MS;
+};
 
 const configuredCreatorProfileTtlMs = () => {
   const value = Number(process.env.TIKTOK_CREATOR_PROFILE_TTL_MS ?? DEFAULT_CREATOR_PROFILE_TTL_MS);
@@ -262,6 +273,20 @@ const exportDateRange = (windowType, endDay) => {
   const start = new Date(`${endDate}T00:00:00.000Z`);
   start.setUTCDate(start.getUTCDate() - days + 1);
   return { startDate: start.toISOString().slice(0, 10), endDate };
+};
+
+const DEFAULT_COMPASS_END_DAY_OFFSET = -2;
+
+const latestCompassEndDay = (region = 'MY', now = new Date()) => {
+  const configuredOffset = Number(process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET);
+  const offset = Number.isInteger(configuredOffset) ? configuredOffset : DEFAULT_COMPASS_END_DAY_OFFSET;
+  const timezone = REGION_TIMEZONE[String(region || '').toUpperCase()] || 'UTC';
+  const localParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+  const local = new Date(`${localParts.year}-${localParts.month}-${localParts.day}T00:00:00.000Z`);
+  local.setUTCDate(local.getUTCDate() + offset);
+  return Number(local.toISOString().slice(0, 10).replaceAll('-', ''));
 };
 
 const yesterdayEndDay = (region = 'MY', now = new Date()) => {
@@ -810,7 +835,7 @@ const refreshCreatorPerformanceProfiles = (shop, exportRecord, dependencies = {}
 };
 
 const createCreatorPerformanceExport = async (shop, {
-  windowType = 'PAST_7_DAYS', endDay = yesterdayEndDay(shop.region), planType = 'ALL',
+  windowType = 'PAST_7_DAYS', endDay = latestCompassEndDay(shop.region), planType = 'ALL',
 } = {}, dependencies = {}) => {
   const normalizedWindow = String(windowType).toUpperCase();
   const normalizedPlan = String(planType).toUpperCase();
@@ -854,7 +879,7 @@ const createCreatorPerformanceExport = async (shop, {
 };
 
 const createBasePerformanceExport = async (shop, {
-  windowType = 'PAST_7_DAYS', endDay = yesterdayEndDay(shop.region),
+  windowType = 'PAST_7_DAYS', endDay = latestCompassEndDay(shop.region),
 } = {}, dependencies = {}) => {
   const normalizedWindow = String(windowType).toUpperCase();
   const { startDate, endDate } = exportDateRange(normalizedWindow, endDay);
@@ -896,12 +921,12 @@ const createBasePerformanceExport = async (shop, {
 
 const createCreatorPerformanceExportWithFallback = async (shop, options = {}, {
   maxFallbackDays = 7,
-  fallbackDelayMs = 2000,
+  fallbackDelayMs = configuredCompassFallbackDelayMs(),
   createExport = createCreatorPerformanceExport,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   logger = console,
 } = {}) => {
-  const requestedEndDay = Number(options.endDay || yesterdayEndDay(shop.region));
+  const requestedEndDay = Number(options.endDay || latestCompassEndDay(shop.region));
   let endDay = requestedEndDay;
   let lastError;
 
@@ -1059,6 +1084,8 @@ module.exports = {
   WINDOW_DAYS,
   exportDateRange,
   yesterdayEndDay,
+  DEFAULT_COMPASS_END_DAY_OFFSET,
+  latestCompassEndDay,
   shiftEndDay,
   parseCreatorPerformanceWorkbook,
   parseBasePerformanceWorkbook,
@@ -1089,4 +1116,6 @@ module.exports = {
   refreshCreatorPerformanceProfiles,
   DEFAULT_CREATOR_PROFILE_TTL_MS,
   DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS,
+  DEFAULT_COMPASS_FALLBACK_DELAY_MS,
+  configuredCompassFallbackDelayMs,
 };

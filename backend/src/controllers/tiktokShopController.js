@@ -44,7 +44,7 @@ const {
   createBasePerformanceExportWithFallback,
   processCreatorPerformanceExport,
   processBasePerformanceExport,
-  yesterdayEndDay,
+  latestCompassEndDay,
 } = require('../services/tiktokCreatorPerformanceService');
 const {
   VIDEO_API_MODULE_TYPE,
@@ -1396,7 +1396,7 @@ const creatorPerformanceOptions = (shop, input = {}, { allowAggregate = false } 
     ...(allowAggregate ? ['PAST_180_DAYS'] : []),
   ].includes(input.window_type)
     ? input.window_type : 'PAST_7_DAYS',
-  endDay: /^\d{8}$/.test(String(input.end_day || '')) ? Number(input.end_day) : yesterdayEndDay(shop.region),
+  endDay: /^\d{8}$/.test(String(input.end_day || '')) ? Number(input.end_day) : latestCompassEndDay(shop.region),
   planType: ['ALL', 'TARGET', 'OPEN', 'PARTNER'].includes(input.plan_type) ? input.plan_type : 'ALL',
 });
 

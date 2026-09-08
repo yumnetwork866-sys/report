@@ -331,6 +331,15 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
   try {
     const affiliateSnapshot = await loadAffiliateVideoPerformance(shop.id, bookingVideo.platform_video_id);
     if (!affiliateSnapshot) {
+      if (bookingVideo.attribution_end && dateOnly(now) > bookingVideo.attribution_end) {
+        await bookingVideo.update({
+          status: 'FINALIZED',
+          last_synced_at: now,
+          last_sync_error: null,
+          updated_at: now,
+        });
+        return { booking_video_id: bookingVideo.id, platform_video_id: bookingVideo.platform_video_id, status: 'SUCCEEDED' };
+      }
       throw new Error('Video is not available in the latest Affiliate Video Performance snapshots.');
     }
     const sourceVideo = affiliateSnapshot.raw_metrics?.list || {};
@@ -345,15 +354,19 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
       ...metrics,
       synced_at: now,
     });
+    const effectiveAttributionEnd = detectedPostedAt
+      ? shiftDate(detectedPostedAt, 30)
+      : bookingVideo.attribution_end;
+    const isCompleted = effectiveAttributionEnd && dateOnly(now) > effectiveAttributionEnd;
     await bookingVideo.update({
       creator_username: usernameOf(sourceVideo) || bookingVideo.creator_username,
       title: affiliateSnapshot.video_title || sourceVideo.title || bookingVideo.title,
       posted_at: detectedPostedAt || bookingVideo.posted_at,
       ...(detectedPostedAt ? {
         attribution_start: dateOnly(detectedPostedAt),
-        attribution_end: shiftDate(detectedPostedAt, 30),
+        attribution_end: effectiveAttributionEnd,
       } : {}),
-      status: 'COLLECTING',
+      status: isCompleted ? 'FINALIZED' : 'COLLECTING',
       last_synced_at: now,
       last_sync_error: null,
       updated_at: now,
