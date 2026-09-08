@@ -149,14 +149,27 @@ const connectedShops = (targetShopId = null) => TikTokShop.findAll({
   order: [['id', 'ASC']],
 });
 
-const runForShops = async (operation, signal, targetShopId = null) => {
+const DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS = 30000;
+const configuredAffiliateVideoShopDelayMs = () => {
+  const configured = Number(process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS;
+};
+
+const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs = 0 } = {}) => {
   const shops = await connectedShops(targetShopId);
   if (!shops.length && targetShopId) {
     throw new Error(`Shop #${targetShopId} not found or not connected.`);
   }
   const results = [];
-  for (const shop of shops) {
+  for (let index = 0; index < shops.length; index += 1) {
+    const shop = shops[index];
     throwIfAborted(signal);
+    if (index > 0 && shopDelayMs > 0) {
+      await sleep(shopDelayMs);
+      throwIfAborted(signal);
+    }
     try {
       results.push({
         shop_id: shop.id,
@@ -692,7 +705,7 @@ const jobHandlers = {
       windows.push({ days, ...result });
     }
     return { windows };
-  }, signal, shopId),
+  }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
 };
 
 const processScheduledJobRun = async (job, run, { shopId = null } = {}) => {
@@ -908,6 +921,8 @@ module.exports = {
   startDatabaseScheduler,
   DEFAULT_COMPASS_WINDOW_DELAY_MS,
   configuredCompassWindowDelayMs,
+  DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS,
+  configuredAffiliateVideoShopDelayMs,
   COMPASS_WINDOW_LABELS,
   formatCompassWindowOverview,
 };

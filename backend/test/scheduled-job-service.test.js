@@ -12,6 +12,8 @@ const {
   catchUpScheduledJobs,
   DEFAULT_COMPASS_WINDOW_DELAY_MS,
   configuredCompassWindowDelayMs,
+  DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS,
+  configuredAffiliateVideoShopDelayMs,
   formatCompassWindowOverview,
 } = require('../src/services/scheduledJobService');
 
@@ -180,4 +182,21 @@ test('formatCompassWindowOverview accurately displays status of 30 days, 7 days,
     formatCompassWindowOverview(windows, 2),
     '30 days: SUCCEEDED | 7 days: SUCCEEDED | 24h: FAILED',
   );
+});
+
+test('affiliate video shop delay defaults to 30s and respects environment override', () => {
+  assert.equal(DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS, 30000);
+  const original = process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS;
+  try {
+    delete process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS;
+    assert.equal(configuredAffiliateVideoShopDelayMs(), 30000);
+    process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS = '45000';
+    assert.equal(configuredAffiliateVideoShopDelayMs(), 45000);
+  } finally {
+    if (original === undefined) {
+      delete process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS;
+    } else {
+      process.env.TIKTOK_AFFILIATE_VIDEO_SHOP_DELAY_MS = original;
+    }
+  }
 });

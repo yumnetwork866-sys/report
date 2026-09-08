@@ -50,7 +50,15 @@ const requestWithRetry = async (operation, attempts = 4) => {
   throw lastError;
 };
 
-const mapWithConcurrency = async (items, concurrency, mapper) => {
+const DEFAULT_VIDEO_DETAIL_DELAY_MS = 150;
+const configuredVideoDetailDelayMs = () => {
+  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_VIDEO_DETAIL_DELAY_MS;
+};
+
+const mapWithConcurrency = async (items, concurrency, mapper, delayMs = 0) => {
   const results = new Array(items.length);
   let cursor = 0;
   const worker = async () => {
@@ -58,6 +66,9 @@ const mapWithConcurrency = async (items, concurrency, mapper) => {
       const index = cursor;
       cursor += 1;
       results[index] = await mapper(items[index], index);
+      if (delayMs > 0 && cursor < items.length) {
+        await wait(delayMs);
+      }
     }
   };
   await Promise.all(Array.from(
@@ -220,6 +231,7 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
       : 4;
     let failedDetails = 0;
     const syncedAt = new Date();
+    const detailDelayMs = configuredVideoDetailDelayMs();
     const rows = await mapWithConcurrency(videos, concurrency, async (video) => {
       let detail = null;
       let detailError = null;
@@ -238,9 +250,13 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
         detailError,
         syncedAt,
       });
-    });
-    if (videos.length && failedDetails === videos.length) {
-      throw new Error('TikTok returned no video performance details. No snapshot was saved.');
+    }, detailDelayMs);
+    if (failedDetails > 0) {
+      console.warn('[Video Performance API] Video detail requests failed; retaining list metrics', {
+        shopId: shop.id,
+        totalVideos: videos.length,
+        failedDetails,
+      });
     }
     await sequelize.transaction(async (transaction) => {
       if (rows.length) await TikTokVideoPerformanceSnapshot.bulkCreate(rows, { transaction });
@@ -253,7 +269,7 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
         status: 'SUCCEEDED',
         row_count: rows.length,
         request_id: uniqueValues(requestIds).join(',').slice(0, 255) || null,
-        error: failedDetails ? `${failedDetails} video detail request(s) failed; list metrics were retained.` : null,
+        error: failedDetails ? `${failedDetails}/${videos.length} video detail request(s) failed; list metrics were retained.` : null,
         completed_at: new Date(),
       }, { transaction });
     });
@@ -401,6 +417,8 @@ const importVideoPerformanceWorkbook = async (shop, buffer, {
 
 module.exports = {
   VIDEO_API_MODULE_TYPE,
+  DEFAULT_VIDEO_DETAIL_DELAY_MS,
+  configuredVideoDetailDelayMs,
   importVideoPerformanceWorkbook,
   parseVideoPerformanceWorkbook,
   processVideoPerformanceApiSync,
@@ -411,5 +429,7 @@ module.exports = {
     mapWithConcurrency,
     productCtr,
     retryableTikTokError,
+    DEFAULT_VIDEO_DETAIL_DELAY_MS,
+    configuredVideoDetailDelayMs,
   },
 };

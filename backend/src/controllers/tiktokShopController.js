@@ -124,6 +124,12 @@ const comparableShopName = (value) => String(value || '')
   .replace(/^@+/, '')
   .replace(/\s+/g, ' ')
   .toLocaleLowerCase('en');
+const simplifiedShopName = (value) => comparableShopName(value)
+  .split(/\s*[-–—|:]\s*/)[0]
+  .trim();
+const alphanumericShopName = (value) => comparableShopName(value)
+  .replace(/[^a-z0-9]/g, '');
+
 const getChannelAvatarIndex = async () => {
   const channels = await TikTokChannel.findAll({
     attributes: ['username', 'display_name', 'avatar_url', 'avatar_large_url'],
@@ -137,14 +143,23 @@ const getChannelAvatarIndex = async () => {
     if (!avatar.avatar_url) continue;
     for (const name of [channel.display_name, channel.username]) {
       const key = comparableShopName(name);
+      const baseKey = simplifiedShopName(name);
+      const alphaKey = alphanumericShopName(name);
       if (key && !index.has(key)) index.set(key, avatar);
+      if (baseKey && !index.has(baseKey)) index.set(baseKey, avatar);
+      if (alphaKey && !index.has(alphaKey)) index.set(alphaKey, avatar);
     }
   }
   return index;
 };
 const addMatchingChannelAvatar = (shop, avatarIndex) => {
   const value = shop?.toJSON ? shop.toJSON() : { ...shop };
-  const avatar = avatarIndex.get(comparableShopName(value.name));
+  const exactKey = comparableShopName(value.name);
+  const baseKey = simplifiedShopName(value.name);
+  const alphaKey = alphanumericShopName(value.name);
+  const avatar = avatarIndex.get(exactKey)
+    || avatarIndex.get(baseKey)
+    || avatarIndex.get(alphaKey);
   return avatar ? { ...value, ...avatar } : value;
 };
 const oauthErrorMessage = (error) => {
