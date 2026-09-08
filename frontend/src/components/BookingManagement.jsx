@@ -794,7 +794,7 @@ const BookingManagement = ({ heroTitle }) => {
       return next;
     });
   }, []);
-  const [overviewSort, setOverviewSort] = useState({ key: 'revenue', direction: 'desc' });
+  const [overviewSort, setOverviewSort] = useState({ key: 'ratio', direction: 'desc' });
   const [bookingSort, setBookingSort] = useState({ key: 'revenue', direction: 'desc' });
 
   const handleOverviewSort = (key) => {
@@ -1610,7 +1610,6 @@ const BookingManagement = ({ heroTitle }) => {
                             aria-expanded={isExpanded}
                             onClick={() => toggleGroup(group.key)}
                           >
-                            <span className={`sidebar__chevron${isExpanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
                             <TargetKocAvatar src={group.manager.avatar_url} name={group.manager.name} />
                             <span className="booking-staff-row__identity">
                               <strong>{group.manager.name}</strong>
