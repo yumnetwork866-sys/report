@@ -311,3 +311,83 @@ test('PUT /users/:id rejects self-update of sensitive fields (role, is_active, t
   assert.equal(otherRes.statusCode, 403);
   assert.equal(otherRes.body.message, 'Không có quyền truy cập');
 });
+
+test('GET /users/:id/bookings returns user and their assigned bookings', async (t) => {
+  const restoreModels = mockModule(modelsPath, {
+    User: {
+      findByPk: async (id) => ({
+        id: Number(id),
+        name: 'Test Staff',
+        email: 'staff@example.com',
+        avatar_url: null,
+      }),
+    },
+    Booking: {
+      findAll: async ({ where }) => [
+        {
+          id: 101,
+          staff_id: where.staff_id,
+          creator_name: 'Creator A',
+          creator_username: 'creator_a',
+          total_cost: 500,
+          currency: 'MYR',
+          status: 'booked',
+        },
+      ],
+    },
+    TikTokShop: {},
+  });
+
+  t.after(() => {
+    restoreModels();
+    delete require.cache[userControllerPath];
+  });
+
+  const { getUserBookings } = require('../src/controllers/userController');
+  const req = { params: { id: '5' } };
+  const res = makeResponse();
+  await getUserBookings(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.user.id, 5);
+  assert.equal(res.body.bookings.length, 1);
+  assert.equal(res.body.bookings[0].id, 101);
+});
+
+test('POST /users/:id/unassign-bookings unassigns all or selected bookings', async (t) => {
+  let updateCalledWith = null;
+  const restoreModels = mockModule(modelsPath, {
+    User: {
+      findByPk: async (id) => ({
+        id: Number(id),
+        name: 'Test Staff',
+      }),
+    },
+    Booking: {
+      update: async (payload, options) => {
+        updateCalledWith = { payload, options };
+        return [2];
+      },
+    },
+    TikTokShop: {},
+  });
+
+  t.after(() => {
+    restoreModels();
+    delete require.cache[userControllerPath];
+  });
+
+  const { unassignUserBookings } = require('../src/controllers/userController');
+  const req = {
+    params: { id: '5' },
+    body: { booking_ids: [101, 102] },
+  };
+  const res = makeResponse();
+  await unassignUserBookings(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.success, true);
+  assert.equal(res.body.updatedCount, 2);
+  assert.equal(updateCalledWith.payload.staff_id, null);
+  assert.equal(updateCalledWith.payload.staff_name, null);
+});

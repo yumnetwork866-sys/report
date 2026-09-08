@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const { monitoredFetch } = require('./scheduledRunMonitorService');
+const { runCompassApiRequest, CREATE_ENDPOINT, LIST_ENDPOINT, DOWNLOAD_ENDPOINT } = require('./tiktokCompassRequestService');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -88,10 +90,10 @@ const tokenRequest = async (path, params, fetchImpl = fetch) => {
   assertConfigured(config);
   const url = new URL(`${config.tokenBaseUrl}/${path}`);
   Object.entries({ app_key: config.appKey, app_secret: config.appSecret, ...params }).forEach(([key, value]) => url.searchParams.set(key, value));
-  const response = await fetchImpl(url, {
+  const response = await monitoredFetch(url, {
     headers: { accept: 'application/json' },
     ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(config.requestTimeoutMs) } : {}),
-  });
+  }, fetchImpl);
   const payload = await response.json().catch(() => null);
   if (!response.ok || Number(payload?.code) !== 0 || !payload?.data?.access_token) throw new Error(`TikTok Shop token error: ${payload?.message || response.statusText || response.status}`);
   return payload.data;
@@ -134,7 +136,7 @@ const parseRetryAfterMs = (value, now = Date.now()) => {
 };
 
 const requestShopApi = async ({
-  path, accessToken, method = 'GET', query = {}, body, contentType = 'application/json', fetchImpl = fetch,
+  path, accessToken, method = 'GET', query = {}, body, contentType = 'application/json', fetchImpl = fetch, signal,
 }) => {
   const config = getConfig();
   assertConfigured(config);
@@ -144,16 +146,26 @@ const requestShopApi = async ({
   const url = new URL(`${config.apiBaseUrl}${path}`);
   Object.entries(signed).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value)); });
   let response;
+  let requestSignal = signal;
+  if (typeof AbortSignal !== 'undefined') {
+    if (signal && AbortSignal.any && AbortSignal.timeout) {
+      requestSignal = AbortSignal.any([signal, AbortSignal.timeout(config.requestTimeoutMs)]);
+    } else if (!signal && AbortSignal.timeout) {
+      requestSignal = AbortSignal.timeout(config.requestTimeoutMs);
+    }
+  }
   try {
-    response = await fetchImpl(url, {
+    response = await monitoredFetch(url, {
       method,
       headers: { 'content-type': contentType, 'x-tts-access-token': accessToken },
       ...(bodyString ? { body: bodyString } : {}),
-      ...(typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(config.requestTimeoutMs) } : {}),
-    });
+      ...(requestSignal ? { signal: requestSignal } : {}),
+    }, fetchImpl);
   } catch (error) {
+    if (error.name === 'AbortError' || signal?.aborted) throw error;
     error.endpoint = path;
     error.httpMethod = method;
+    error.requestOutcomeUnknown = true;
     throw error;
   }
   const payload = await response.json().catch(() => null);
@@ -175,6 +187,7 @@ const requestShopApi = async ({
     error.httpMethod = method;
     error.retryAfter = retryAfter;
     error.retryAfterMs = parseRetryAfterMs(retryAfter);
+    error.requestOutcomeUnknown = response.status >= 500 || (response.ok && !payload);
     throw error;
   }
   return payload;
@@ -647,10 +660,11 @@ const getSellerCreatorContentDetails = ({
 
 const createCompassExportTask = ({
   authorization, shopCipher, moduleType = 'CREATOR', windowType = 'PAST_7_DAYS', endDay, planType = 'ALL',
+  requestGate = runCompassApiRequest,
 } = {}, fetchImpl) => {
   const normalizedModuleType = String(moduleType || 'CREATOR').toUpperCase();
   if (!['CREATOR', 'BASE'].includes(normalizedModuleType)) throw new Error('module_type must be CREATOR or BASE.');
-  return sellerAffiliateRequest({
+  return requestGate({ shopCipher, endpoint: CREATE_ENDPOINT }, () => sellerAffiliateRequest({
     authorization,
     shopCipher,
     path: COMPASS_CREATE_TASK_PATH,
@@ -660,7 +674,7 @@ const createCompassExportTask = ({
       end_day: Number(endDay),
       ...(normalizedModuleType === 'CREATOR' ? { plan_type: planType } : {}),
     },
-  }, fetchImpl).catch((error) => {
+  }, fetchImpl)).catch((error) => {
     error.windowType = windowType;
     error.moduleType = normalizedModuleType;
     if (error.message && !error.message.includes('window_type=')) {
@@ -670,10 +684,10 @@ const createCompassExportTask = ({
   });
 };
 
-const listCompassExportTasks = ({ authorization, shopCipher, docType = 'CREATOR', pageSize = 50, pageToken } = {}, fetchImpl) => {
+const listCompassExportTasks = ({ authorization, shopCipher, docType = 'CREATOR', pageSize = 50, pageToken, requestGate = runCompassApiRequest } = {}, fetchImpl) => {
   const normalizedDocType = String(docType || 'CREATOR').toUpperCase();
   if (!['CREATOR', 'BASE'].includes(normalizedDocType)) throw new Error('doc_type must be CREATOR or BASE.');
-  return sellerAffiliateRequest({
+  return requestGate({ shopCipher, endpoint: LIST_ENDPOINT }, () => sellerAffiliateRequest({
     authorization,
     shopCipher,
     path: COMPASS_TASK_LIST_PATH,
@@ -683,20 +697,20 @@ const listCompassExportTasks = ({ authorization, shopCipher, docType = 'CREATOR'
       page_size: Math.min(100, Math.max(1, Number(pageSize) || 50)),
       ...(pageToken ? { page_token: pageToken } : {}),
     },
-  }, fetchImpl);
+  }, fetchImpl));
 };
 
-const downloadCompassExportFile = async ({ authorization, shopCipher, taskId } = {}, fetchImpl) => {
+const downloadCompassExportFile = async ({ authorization, shopCipher, taskId, requestGate = runCompassApiRequest } = {}, fetchImpl) => {
   const normalizedTaskId = String(taskId || '').trim();
   if (!normalizedTaskId) throw new Error('Compass task_id is required.');
   const accessToken = await getUsableShopToken(authorization, fetchImpl || fetch);
-  return requestShopApi({
+  return requestGate({ shopCipher, endpoint: DOWNLOAD_ENDPOINT }, () => requestShopApi({
     path: `${COMPASS_TASK_LIST_PATH}/${encodeURIComponent(normalizedTaskId)}/file`,
     accessToken,
     fetchImpl: fetchImpl || fetch,
     query: { shop_cipher: shopCipher },
     contentType: 'multipart/form-data',
-  });
+  }));
 };
 
 const getUsableShopToken = async (authorization, fetchImpl = fetch) => {
@@ -771,6 +785,7 @@ const getShopVideoPerformanceDetails = async ({
   endDate,
   currency = 'LOCAL',
   granularity = 'ALL',
+  signal,
 }, fetchImpl) => {
   const scopes = Array.isArray(authorization?.granted_scopes) ? authorization.granted_scopes : [];
   if (!scopes.includes('data.shop_analytics.public.read')) {
@@ -783,6 +798,7 @@ const getShopVideoPerformanceDetails = async ({
     path: `${SHOP_VIDEO_PERFORMANCE_DETAIL_PATH}/${encodeURIComponent(normalizedVideoId)}/performance`,
     accessToken,
     fetchImpl: fetchImpl || fetch,
+    signal,
     query: {
       shop_cipher: shopCipher,
       start_date_ge: startDate,

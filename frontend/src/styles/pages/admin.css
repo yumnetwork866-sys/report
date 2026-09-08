@@ -1413,6 +1413,7 @@
 .schedule-run-status.is-failed { color: #ad3543; }
 
 .schedule-run-status.is-processing { color: #376bd2; }
+.schedule-run-status.is-retry_pending { color: #946200; }
 
 .schedule-card--compact .schedule-card__error { margin: 0 16px 14px; padding: 9px 10px; overflow: hidden; border: 1px solid #f0ccd1; border-radius: 10px; background: #fff7f8; color: #91313d; font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -2285,3 +2286,25 @@
   border-color: #1d4ed8;
 }
 
+.user-bookings-drawer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+}
+
+.user-bookings-drawer__reassign-box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+}
+
+.user-bookings-drawer__reassign-box select {
+  flex: 1;
+  min-width: 0;
+}

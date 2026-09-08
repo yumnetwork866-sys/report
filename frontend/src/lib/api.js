@@ -63,6 +63,20 @@ export function fetchUsers(signal) {
   return apiRequest('/users', { signal });
 }
 
+export function fetchUserBookings(userId, signal) {
+  return apiRequest(`/users/${encodeURIComponent(userId)}/bookings`, { signal });
+}
+
+export function unassignUserBookings(userId, { bookingIds, targetStaffId } = {}) {
+  return apiRequest(`/users/${encodeURIComponent(userId)}/unassign-bookings`, {
+    method: 'POST',
+    body: {
+      ...(Array.isArray(bookingIds) ? { booking_ids: bookingIds } : {}),
+      ...(targetStaffId ? { target_staff_id: targetStaffId } : {}),
+    },
+  });
+}
+
 export function fetchRoles(signal) {
   return apiRequest('/roles', { signal });
 }
@@ -215,6 +229,15 @@ export function fetchTikTokShopVideoThumbnail(shopId, videoId, username, signal)
 
 export function fetchSchedules(signal) {
   return apiRequest('/schedules', { signal });
+}
+
+export function fetchScheduleRunEvents(runId, filters = {}, signal) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '' && value != null));
+  return apiRequest(`/schedules/runs/${encodeURIComponent(runId)}/events?${query}`, { signal });
+}
+
+export function fetchScheduleRunEvent(runId, eventId, signal) {
+  return apiRequest(`/schedules/runs/${encodeURIComponent(runId)}/events/${encodeURIComponent(eventId)}`, { signal });
 }
 
 export function updateSchedule(jobKey, payload) {

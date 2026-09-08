@@ -6,11 +6,19 @@ const {
   getUserById,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  getUserBookings,
+  unassignUserBookings,
 } = require('../controllers/userController');
 
 // GET /api/users
 router.get('/', requirePermission('users'), getUsers);
+
+// GET /api/users/:id/bookings
+router.get('/:id/bookings', requirePermission('users'), getUserBookings);
+
+// POST /api/users/:id/unassign-bookings
+router.post('/:id/unassign-bookings', requirePermission('users'), unassignUserBookings);
 
 // GET /api/users/:id
 router.get('/:id', getUserById);

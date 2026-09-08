@@ -797,6 +797,7 @@ test('seller affiliate API fails before network access when the read scope is mi
 test('Compass creator export uses the production task parameters', async (t) => {
   configure(t);
   await createCompassExportTask({
+    requestGate: async (_bucket, operation) => operation(),
     authorization: sellerAuthorization(),
     shopCipher: 'cipher-1',
     windowType: 'PAST_7_DAYS',
@@ -817,6 +818,7 @@ test('Compass creator export uses the production task parameters', async (t) => 
 test('Compass base export uses the BASE module type', async (t) => {
   configure(t);
   await createCompassExportTask({
+    requestGate: async (_bucket, operation) => operation(),
     authorization: sellerAuthorization(),
     shopCipher: 'cipher-1',
     moduleType: 'BASE',
@@ -836,6 +838,7 @@ test('Compass base export uses the BASE module type', async (t) => {
 test('Compass task list includes the required production doc_type', async (t) => {
   configure(t);
   await listCompassExportTasks({
+    requestGate: async (_bucket, operation) => operation(),
     authorization: sellerAuthorization(), shopCipher: 'cipher-1', pageSize: 10,
   }, async (url) => {
     assert.equal(url.pathname, '/affiliate_seller/202603/compass/offline_tasks');

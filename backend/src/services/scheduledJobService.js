@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const { runResumableCompassSync } = require('./tiktokCompassSyncService');
+const { withRunMonitor, withMonitorContext, recordRunEvent } = require('./scheduledRunMonitorService');
 const cron = require('node-cron');
 const { Op } = require('sequelize');
 const {
@@ -45,6 +47,21 @@ const JOB_KEYS = new Set([
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
+const registerActiveRunController = (runId, controller) => {
+  if (runId && controller) activeRunControllers.set(String(runId), controller);
+};
+const unregisterActiveRunController = (runId) => {
+  if (runId) activeRunControllers.delete(String(runId));
+};
+const abortActiveRun = (runId) => {
+  const controller = activeRunControllers.get(String(runId));
+  if (controller) {
+    controller.abort();
+    activeRunControllers.delete(String(runId));
+    return true;
+  }
+  return false;
+};
 const CREATOR_DAILY_BACKFILL_DAYS = 1;
 const CREATOR_DAILY_HISTORY_DAYS = 180;
 const SHOP_TIMEZONES = {
@@ -176,7 +193,12 @@ const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs
         shop_name: shop.name,
         shop_code: shop.code,
         status: 'SUCCEEDED',
-        ...(await operation(shop)),
+        ...(await withMonitorContext({ shop_id: shop.id, shop_name: shop.name }, async () => {
+          await recordRunEvent('SHOP_STARTED', { status: 'PROCESSING' });
+          const result = await operation(shop);
+          await recordRunEvent('SHOP_FINISHED', { status: 'SUCCEEDED' });
+          return result;
+        })),
       });
     } catch (error) {
       if (signal?.aborted || error.name === 'AbortError') throw error;
@@ -632,19 +654,11 @@ const _refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal
 };
 
 const jobHandlers = {
-  tiktok_creator_performance: ({ signal, shopId } = {}) => runForShops(async (shop) => {
-    const endDay = latestCompassEndDay(shop.region);
-    const exports = await syncCreatorPerformanceWindows(shop, [
-      { windowType: 'PAST_30_DAYS', endDay },
-      { windowType: 'PAST_7_DAYS', endDay },
-      // Keep one immutable calendar-day snapshot so arbitrary booking ranges
-      // can be aggregated without summing overlapping rolling windows.
-      { windowType: 'PAST_24H', endDay },
-    ], signal);
-    assertRequestedCreatorPerformanceSynced(exports);
-    const baseExports = await syncBasePerformanceWindows(shop, exports, signal);
-    return { exports, base_exports: baseExports };
-  }, signal, shopId),
+  tiktok_creator_performance: async ({ signal, shopId, resumeState, checkpoint } = {}) => {
+    const shops = await connectedShops(shopId);
+    if (!shops.length && shopId) throw new Error('Shop not found or not connected.');
+    return runResumableCompassSync({ shops, signal, resumeState, checkpoint });
+  },
   tiktok_creator_performance_backfill: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const dailyBackfill = await backfillCreatorDailyPerformance(
       shop,
@@ -701,6 +715,7 @@ const jobHandlers = {
         startDate: shiftLocalDate(endDate, -days),
         endDate,
         currency: 'LOCAL',
+        signal,
       });
       windows.push({ days, ...result });
     }
@@ -708,14 +723,44 @@ const jobHandlers = {
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
 };
 
-const processScheduledJobRun = async (job, run, { shopId = null } = {}) => {
+const processScheduledJobRun = async (job, run, { shopId = null } = {}, {
+  RunModel = ScheduledJobRun, runHandler = jobHandlers[job.job_key],
+  monitor = withRunMonitor,
+} = {}) => {
+  await run.reload();
+  if (!['PROCESSING', 'RETRY_PENDING'].includes(run.status)) return run;
+  if (activeRunControllers.has(String(run.id))) return run;
+  if (run.status === 'RETRY_PENDING') {
+    if (new Date(run.next_retry_at).getTime() > Date.now()) return run;
+    const [claimed] = await RunModel.update({ status: 'PROCESSING', next_retry_at: null }, {
+      where: { id: run.id, status: 'RETRY_PENDING', next_retry_at: run.next_retry_at },
+    });
+    if (!claimed) return run.reload();
+  }
+  const effectiveShopId = run.summary?.retry_scope?.shop_id ?? shopId;
+  const withScope = (summary) => ({ ...summary, retry_scope: { shop_id: effectiveShopId } });
   const controller = new AbortController();
   activeRunControllers.set(String(run.id), controller);
+  return monitor({ run_id: run.id, shop_id: effectiveShopId }, async () => {
   try {
-    const summary = await jobHandlers[job.job_key]({ signal: controller.signal, shopId });
+    const summary = await runHandler({
+      signal: controller.signal, shopId: effectiveShopId,
+      resumeState: run.summary?.compass_state,
+      checkpoint: async (progress) => {
+        const [updated] = await RunModel.update({ summary: withScope(progress) }, {
+          where: { id: run.id, status: 'PROCESSING' },
+        });
+        if (!updated) {
+          controller.abort();
+          throwIfAborted(controller.signal);
+        }
+      },
+    });
     await run.reload();
     if (run.status !== 'PROCESSING') return run;
-    await run.update({ status: 'SUCCEEDED', summary, completed_at: new Date(), error: null });
+    await RunModel.update({ status: 'SUCCEEDED', summary: withScope(summary), completed_at: new Date(), error: null, next_retry_at: null }, {
+      where: { id: run.id, status: 'PROCESSING' },
+    });
     await Promise.all([
       delByPattern('report:*'),
       delByPattern('dashboard:*'),
@@ -723,31 +768,41 @@ const processScheduledJobRun = async (job, run, { shopId = null } = {}) => {
   } catch (error) {
     await run.reload();
     if (run.status !== 'PROCESSING' || controller.signal.aborted || error.name === 'AbortError') return run;
+    if (error.code === 'TIKTOK_COMPASS_RETRY_PENDING') {
+      await RunModel.update({
+        status: 'RETRY_PENDING', summary: withScope(error.summary), error: error.message,
+        next_retry_at: new Date(error.nextRetryAt), completed_at: null,
+      }, { where: { id: run.id, status: 'PROCESSING' } });
+      await recordRunEvent('RETRY_SCHEDULED', { status: 'RETRY_PENDING', next_retry_at: new Date(error.nextRetryAt), message: error.message });
+      return run.reload();
+    }
     console.error('[Schedule Manager] Job failed\n%s', JSON.stringify({
       jobKey: job.job_key,
       runId: String(run.id),
       message: String(error.message || error),
       summary: error.summary || null,
     }, null, 2));
-    await run.update({
+    await RunModel.update({
       status: 'FAILED',
       summary: error.summary || null,
       error: String(error.message || error).slice(0, 4000),
       completed_at: new Date(),
-    });
+      next_retry_at: null,
+    }, { where: { id: run.id, status: 'PROCESSING' } });
   } finally {
     activeRunControllers.delete(String(run.id));
   }
   return run.reload();
+  });
 };
 
 const stopScheduledJob = async (job) => {
   const run = await ScheduledJobRun.findOne({
-    where: { scheduled_job_id: job.id, status: 'PROCESSING' },
+    where: { scheduled_job_id: job.id, status: { [Op.in]: ['PROCESSING', 'RETRY_PENDING'] } },
     order: [['started_at', 'DESC']],
   });
   if (!run) return null;
-  activeRunControllers.get(String(run.id))?.abort();
+  abortActiveRun(run.id);
   try {
     const { getQueue } = require('../lib/queue');
     const queue = getQueue('tiktok-sync');
@@ -761,9 +816,11 @@ const stopScheduledJob = async (job) => {
   } catch {}
   await run.update({
     status: 'CANCELLED',
+    next_retry_at: null,
     error: 'Stopped by user.',
     completed_at: new Date(),
   });
+  await withMonitorContext({ run_id: run.id }, () => recordRunEvent('RUN_CANCELLED', { status: 'CANCELLED', message: 'Stopped by user.' }));
   return run.reload();
 };
 
@@ -791,10 +848,11 @@ const enqueueScheduledJob = async (job, {
 } = {}) => {
   const effectiveScheduledKey = scheduledKey || `${triggerType}:${shopId ? `shop:${shopId}:` : ''}${Date.now()}:${crypto.randomUUID()}`;
   const processing = await ScheduledJobRun.findOne({
-    where: { scheduled_job_id: job.id, status: 'PROCESSING' },
+    where: { scheduled_job_id: job.id, status: { [Op.in]: ['PROCESSING', 'RETRY_PENDING'] } },
     order: [['started_at', 'DESC']],
   });
   if (processing) {
+    if (processing.status === 'RETRY_PENDING') return { run: processing, created: false };
     const configuredStaleAfterMs = Number(process.env.SCHEDULE_JOB_STALE_AFTER_MS);
     const staleAfterMs = Number.isFinite(configuredStaleAfterMs) && configuredStaleAfterMs >= 60 * 60 * 1000
       ? configuredStaleAfterMs
@@ -837,6 +895,9 @@ const enqueueScheduledJob = async (job, {
 };
 
 const tickScheduledJobs = async (now = new Date()) => {
+  await dispatchPendingCompassRetries(now).catch((error) => {
+    console.error('[Schedule Manager] Retry dispatch failed; pending state retained', error.message);
+  });
   const jobs = await ScheduledJob.findAll({ where: { enabled: true } });
   await Promise.all(jobs.map(async (job) => {
     const local = localScheduleParts(now, job.timezone);
@@ -885,8 +946,43 @@ const catchUpScheduledJobs = async (now = new Date(), {
   return results;
 };
 
+const dispatchPendingCompassRetries = async (now = new Date(), {
+  RunModel = ScheduledJobRun, JobModel = ScheduledJob, enqueue = queueSyncJob,
+} = {}) => {
+  const runs = await RunModel.findAll({
+    where: { status: 'RETRY_PENDING', next_retry_at: { [Op.lte]: now } },
+    order: [['next_retry_at', 'ASC']],
+  });
+  for (const run of runs) {
+    const job = await JobModel.findByPk(run.scheduled_job_id);
+    if (!job || job.job_key !== 'tiktok_creator_performance') continue;
+    // The persisted retry timestamp makes dispatch idempotent across scheduler
+    // processes. Leave RETRY_PENDING until a worker claims it, so Redis outages
+    // and application restarts do not lose the retry.
+    await enqueue(job.job_key, {
+      runId: run.id, scheduledJobId: job.id, shopId: run.summary?.retry_scope?.shop_id ?? null,
+    }, {
+      jobId: `run-${run.id}-retry-${new Date(run.next_retry_at).getTime()}`,
+      // Queue retries cover infrastructure failures only. Compass HTTP retries
+      // are checkpointed by the handler and return normally to the worker.
+      attempts: 3, backoff: { type: 'exponential', delay: 60000 },
+      removeOnComplete: true, removeOnFail: true,
+    });
+  }
+};
+
 const startDatabaseScheduler = () => {
-  startTiktokSyncWorker(jobHandlers);
+  startTiktokSyncWorker({
+    ...jobHandlers,
+    tiktok_creator_performance: Object.assign(async (data = {}) => {
+      if (!data.runId) return jobHandlers.tiktok_creator_performance(data);
+      const run = await ScheduledJobRun.findByPk(data.runId);
+      if (!run) throw new Error('Scheduled run not found.');
+      const job = await ScheduledJob.findByPk(run.scheduled_job_id);
+      const result = await processScheduledJobRun(job, run, data);
+      return { ...result.summary, status: result.status };
+    }, { managesRunStatus: true }),
+  });
   const task = cron.schedule('0 * * * * *', () => tickScheduledJobs().catch((error) => {
     console.error('[Schedule Manager] Tick failed', { message: error.message });
   }), { name: 'database-schedule-manager', noOverlap: true });
@@ -925,4 +1021,9 @@ module.exports = {
   configuredAffiliateVideoShopDelayMs,
   COMPASS_WINDOW_LABELS,
   formatCompassWindowOverview,
+  dispatchPendingCompassRetries,
+  processScheduledJobRun,
+  registerActiveRunController,
+  unregisterActiveRunController,
+  abortActiveRun,
 };

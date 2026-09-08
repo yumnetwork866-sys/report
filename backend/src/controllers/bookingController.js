@@ -3,7 +3,7 @@ const { Op, QueryTypes, literal } = require('sequelize');
 const {
   User, Booking, TikTokPartnerAuthorization, TikTokShop,
   TikTokTargetCollaborationSnapshot, TikTokCreatorPerformanceExport, TikTokCreatorPerformanceSnapshot,
-  TikTokVideoPerformanceSnapshot,
+  TikTokVideoPerformanceSnapshot, TikTokAffiliateOrderSku,
   BookingVideo, BookingVideoPerformanceSnapshot,
   ShopVideo, ShopVideoPerformanceSnapshot, sequelize,
 } = require('../models');
@@ -27,10 +27,12 @@ const { getShopVideoPerformance } = require('../services/tiktokShopService');
 const {
   autoLinkBookingVideos,
   calculateActualPerformance,
+  loadOrderMetricsForVideos,
   matchesBookingProducts,
   metricOfAffiliateSnapshot,
   productIdsOfVideo,
   recordBookingVideoMatch,
+  resolveOrderMetricsForVideo,
   serializeBookingWithActual,
   selectedProductIdsOfBooking,
   syncBookingVideo,
@@ -145,6 +147,23 @@ const hydrateBookingVideoProducts = async (bookings) => {
     const key = `${snapshot.shop_id}:${snapshot.video_id}`;
     if (!productsByVideo.has(key)) productsByVideo.set(key, affiliateProductsOfSnapshot(snapshot));
   }
+  const orderSkus = TikTokAffiliateOrderSku?.findAll ? await TikTokAffiliateOrderSku.findAll({
+    where: {
+      shop_id: { [Op.in]: shopIds },
+      content_id: { [Op.in]: videoIds },
+      product_id: { [Op.not]: null },
+    },
+    attributes: ['shop_id', 'content_id', 'product_id', 'product_name'],
+  }).catch(() => []) : [];
+  for (const sku of orderSkus || []) {
+    const key = `${sku.shop_id}:${sku.content_id}`;
+    const list = productsByVideo.get(key) || [];
+    const prodId = String(sku.product_id || '').trim();
+    if (prodId && !list.some((p) => String(p.id) === prodId)) {
+      list.push({ id: prodId, name: sku.product_name || null, thumbnail_url: null });
+      productsByVideo.set(key, list);
+    }
+  }
   for (const booking of bookings) {
     for (const video of booking.booking_videos || []) {
       video.affiliate_products = productsByVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`) || [];
@@ -222,6 +241,26 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
     `${snapshot.export_id}:${snapshot.video_id}`,
     snapshot,
   ]));
+
+  const orderMetricsByShopAndVideo = new Map();
+  const windows = new Map();
+  for (const [shopId, record] of selectedExportByShop.entries()) {
+    const key = `${record.start_date}:${record.end_date}`;
+    if (!windows.has(key)) windows.set(key, { startDate: record.start_date, endDate: record.end_date, shopIds: [] });
+    windows.get(key).shopIds.push(shopId);
+  }
+  for (const win of windows.values()) {
+    const metricsMap = await loadOrderMetricsForVideos({
+      shopIds: win.shopIds,
+      videoIds,
+      startDate: win.startDate,
+      endDate: win.endDate,
+    });
+    for (const [k, v] of metricsMap.entries()) {
+      orderMetricsByShopAndVideo.set(k, v);
+    }
+  }
+
   for (const booking of bookings) {
     const exportRecord = selectedExportByShop.get(Number(booking.target_shop_id));
     const selectedIds = selectedProductIdsOfBooking(booking);
@@ -229,25 +268,29 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
       const snapshot = exportRecord
         ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
         : null;
+      const videoData = orderMetricsByShopAndVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`);
+      const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedIds);
       video.performance_snapshots = snapshot ? [{
         snapshot_date: exportRecord.end_date,
-        ...metricOfAffiliateSnapshot(snapshot, selectedIds),
+        ...metricOfAffiliateSnapshot(snapshot, selectedIds, orderMetrics),
         synced_at: snapshot.synced_at || exportRecord.completed_at || exportRecord.created_at,
       }] : exportRecord ? [{
         snapshot_date: exportRecord.end_date,
-        gross_gmv: 0,
-        refunded_gmv: null,
-        net_gmv: null,
-        orders: 0,
-        items_sold: 0,
+        gross_gmv: orderMetrics?.gross_gmv || 0,
+        refunded_gmv: orderMetrics?.refunded_gmv ?? null,
+        net_gmv: orderMetrics?.net_gmv ?? null,
+        orders: orderMetrics?.orders || 0,
+        items_sold: orderMetrics?.items_sold || 0,
         views: 0,
         ctr: null,
-        currency: booking.currency || null,
+        currency: orderMetrics?.currency || booking.currency || null,
         raw_metrics: {
-          source: 'AFFILIATE_VIDEO_PERFORMANCE',
-          metric_scope: 'SELECTED_BOOKING_PRODUCTS',
+          source: orderMetrics?.has_data ? 'AFFILIATE_ORDER_LEDGER' : 'AFFILIATE_VIDEO_PERFORMANCE',
+          metric_scope: selectedIds.size ? 'SELECTED_BOOKING_PRODUCTS' : 'ALL_VIDEO_PRODUCTS',
           selected_product_ids: [...selectedIds],
-          no_activity_in_window: true,
+          no_activity_in_window: !orderMetrics?.has_data,
+          order_ledger_used: Boolean(orderMetrics),
+          order_metrics: orderMetrics || null,
         },
         synced_at: exportRecord.completed_at || exportRecord.created_at,
       }] : [];
@@ -1230,9 +1273,33 @@ const updateBooking = async (req, res) => {
       };
     }
 
+    let staffUpdate = {};
+    if (req.body.staff_id !== undefined) {
+      const canManageUsers = !req.session
+        || req.session.role === 'admin'
+        || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+      if (!canManageUsers) {
+        return res.status(403).json({ message: 'You do not have permission to reassign booking staff.' });
+      }
+
+      const rawStaffId = req.body.staff_id;
+      if (rawStaffId === null || rawStaffId === '' || rawStaffId === 'unassigned') {
+        staffUpdate = { staff_id: null, staff_name: null };
+      } else {
+        const parsedStaffId = Number(rawStaffId);
+        if (!Number.isInteger(parsedStaffId)) {
+          return res.status(400).json({ message: 'Select a valid managing user.' });
+        }
+        const staff = await User.findByPk(parsedStaffId, { attributes: ['id', 'name'] });
+        if (!staff) {
+          return res.status(400).json({ message: 'Managing user not found.' });
+        }
+        staffUpdate = { staff_id: staff.id, staff_name: staff.name };
+      }
+    }
+
     const payload = compactPayload({
-      staff_id: req.body.staff_id,
-      staff_name: req.body.staff_name === undefined ? undefined : String(req.body.staff_name || '').trim(),
+      ...staffUpdate,
       creator_id: req.body.creator_id,
       booking_cost: req.body.booking_cost,
       total_cost: req.body.total_cost,

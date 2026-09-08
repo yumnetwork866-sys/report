@@ -130,3 +130,102 @@ test('video detail delay defaults to 150ms and respects environment override', (
     }
   }
 });
+
+test('selectVideosForDetailFetch returns empty set when TIKTOK_VIDEO_DETAIL_ENABLED is false', () => {
+  const originalEnabled = process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
+  try {
+    process.env.TIKTOK_VIDEO_DETAIL_ENABLED = 'false';
+    const videos = [{ id: '1', gmv: { amount: '100' }, sku_orders: 5, views: 100 }];
+    const selected = __test.selectVideosForDetailFetch(videos);
+    assert.equal(selected.size, 0);
+  } finally {
+    if (originalEnabled === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
+    else process.env.TIKTOK_VIDEO_DETAIL_ENABLED = originalEnabled;
+  }
+});
+
+test('selectVideosForDetailFetch prioritizes videos with GMV, orders, and top activity', () => {
+  const originalEnabled = process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
+  const originalTop = process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT;
+  const originalMax = process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH;
+  try {
+    process.env.TIKTOK_VIDEO_DETAIL_ENABLED = 'true';
+    process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT = '2';
+    process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH = '5';
+
+    const videos = [
+      { id: '1', gmv: { amount: '0' }, sku_orders: 0, views: 10 },
+      { id: '2', gmv: { amount: '0' }, sku_orders: 0, views: 20 },
+      { id: '3', gmv: { amount: '0' }, sku_orders: 0, views: 5 },
+      { id: '4', gmv: { amount: '150' }, sku_orders: 0, views: 10 }, // has GMV
+      { id: '5', gmv: { amount: '0' }, sku_orders: 3, views: 10 },   // has orders
+      { id: '6', gmv: { amount: '0' }, sku_orders: 0, views: 1000 }, // high views
+      { id: '7', gmv: { amount: '0' }, sku_orders: 0, views: 0 },    // inactive
+    ];
+
+    const selected = __test.selectVideosForDetailFetch(videos);
+
+    // 1 and 2 are top 2 by rank
+    assert.ok(selected.has('1'), 'Top 1 by rank should be included');
+    assert.ok(selected.has('2'), 'Top 2 by rank should be included');
+    // 4 has GMV
+    assert.ok(selected.has('4'), 'Video with GMV should be included');
+    // 5 has orders
+    assert.ok(selected.has('5'), 'Video with orders should be included');
+    // 6 is top by views
+    assert.ok(selected.has('6'), 'Video with highest views should be included');
+    // 7 is inactive and not top
+    assert.equal(selected.has('7'), false, 'Inactive video should not be selected');
+  } finally {
+    if (originalEnabled === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
+    else process.env.TIKTOK_VIDEO_DETAIL_ENABLED = originalEnabled;
+    if (originalTop === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT;
+    else process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT = originalTop;
+    if (originalMax === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH;
+    else process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH = originalMax;
+  }
+});
+
+test('apiVideoRow works cleanly without detail for inactive videos', () => {
+  const row = __test.apiVideoRow({
+    exportId: 10,
+    shopId: 7,
+    video: {
+      id: '7681915692634967315',
+      title: 'Zero activity video',
+      username: 'sample.creator',
+      video_post_time: '2026-09-01 10:00:00',
+      gmv: { amount: '0', currency: 'MYR' },
+      views: 12,
+      sku_orders: 0,
+      items_sold: 0,
+    },
+    detail: null,
+  });
+
+  assert.equal(row.video_id, '7681915692634967315');
+  assert.equal(row.video_title, 'Zero activity video');
+  assert.equal(row.creator_attributed_gmv, 0);
+  assert.equal(row.video_views, 12);
+  assert.equal(row.attributed_orders, 0);
+  assert.equal(row.raw_metrics.detail, null);
+  assert.equal(row.raw_metrics.detail_error, undefined);
+});
+
+test('mapWithConcurrency aborts immediately when AbortSignal is triggered', async () => {
+  const controller = new AbortController();
+  let processed = 0;
+  await assert.rejects(async () => {
+    await __test.mapWithConcurrency([1, 2, 3, 4, 5], 1, async (v) => {
+      processed += 1;
+      if (processed === 2) controller.abort();
+      return v * 10;
+    }, 0, controller.signal);
+  }, (err) => {
+    assert.equal(err.name, 'AbortError');
+    return true;
+  });
+  assert.equal(processed, 2, 'Should not process remaining items after abort');
+});
+
+

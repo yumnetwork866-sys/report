@@ -1,0 +1,59 @@
+.run-monitor { display: grid; gap: 16px; padding: 20px; color: #23364e; }
+.run-monitor__header, .run-monitor__actions, .run-monitor__activity, .run-monitor__filters, .run-monitor__detail > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.run-monitor__header h2 { margin: 12px 0 4px; font-size: 1.2rem; }
+.run-monitor__header h2 span, .run-monitor__header p { color: #63758c; }
+.run-monitor__header p { margin: 0; font-size: .8rem; }
+.run-monitor__live { display: flex; align-items: center; gap: 6px; font-size: .78rem; }
+.run-monitor__metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.run-monitor__metrics > div { display: grid; gap: 8px; padding: 14px; background: #f7f9fd; border: 1px solid #e0e7f0; border-radius: 10px; }
+.run-monitor__metrics span { color: #62748d; font-size: .75rem; }
+.run-monitor__metrics strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.run-monitor__activity { font-size: .75rem; color: #62748d; }
+.run-monitor__activity strong { color: #8c650b; }
+.run-monitor__shops { border: 1px solid #e0e7f0; border-radius: 10px; padding: 12px; }
+.run-monitor__shops summary { cursor: pointer; font-size: .82rem; font-weight: 650; }
+.run-monitor__shops > div { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+.run-monitor__shops article { min-width: 0; background: #f8fafc; border-radius: 8px; padding: 12px; font-size: .78rem; }
+.run-monitor__shops article header { display: flex; justify-content: space-between; gap: 10px; }
+.run-monitor__shops article p { color: #a13c48; overflow-wrap: anywhere; font-size: .72rem; }
+.run-monitor__windows { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
+.monitor-status { display: inline-flex; align-items: center; gap: 4px; border-radius: 5px; padding: 3px 6px; background: #edf1f6; color: #5f7188; font-size: .68rem; line-height: 1.4; white-space: nowrap; }
+.monitor-status.is-succeeded, .monitor-status.is-success { color: #176941; background: #eaf7ef; }
+.monitor-status.is-failed, .monitor-status.is-network_error, .monitor-status.is-invalid_response { color: #a42f40; background: #fff0f1; }
+.monitor-status.is-processing, .monitor-status.is-in_flight, .monitor-status.is-received { color: #265bc2; background: #ebf2ff; }
+.monitor-status.is-retry_pending { color: #8c650b; background: #fff5dc; }
+.run-monitor__filters { justify-content: flex-start; }
+.run-monitor__filters select { min-height: 36px; max-width: 240px; font-size: .78rem; }
+.run-monitor__search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px; border: 1px solid #dbe3ee; border-radius: 8px; padding-left: 10px; }
+.run-monitor__search input { width: 100%; min-height: 36px; border: 0; background: transparent; font-size: .78rem; }
+.run-monitor__workspace { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr); gap: 14px; align-items: start; }
+.run-monitor__timeline, .run-monitor__detail { min-width: 0; border: 1px solid #e0e7f0; border-radius: 10px; overflow: hidden; }
+.run-monitor__timeline .table-wrap { max-height: 660px; overflow: auto; }
+.run-monitor__timeline th { position: sticky; top: 0; z-index: 1; background: #f5f8fc; }
+.run-monitor__timeline .data-table td { padding: 10px 8px; vertical-align: top; font-size: .72rem; }
+.run-monitor__timeline td small { display: block; color: #77859b; margin-top: 4px; }
+.run-monitor__timeline td button { display: grid; gap: 5px; text-align: left; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; width: 100%; }
+.run-monitor__timeline td button strong { overflow-wrap: anywhere; font-size: .73rem; min-width: 160px; }
+.run-monitor__timeline td button span { color: #63758c; font-size: .65rem; }
+.run-monitor__timeline td code { display: block; max-width: 270px; overflow: hidden; text-overflow: ellipsis; font-size: .65rem; }
+.run-monitor__timeline tr.is-selected { background: #edf4ff; }
+.run-monitor__timeline > button { margin: 10px; }
+.run-monitor__detail { padding: 14px; position: sticky; top: 16px; }
+.run-monitor__detail h3 { font-size: .86rem; margin: 0; }
+.run-monitor__detail dl { margin: 14px 0; display: grid; gap: 7px; }
+.run-monitor__detail dl > div { display: grid; grid-template-columns: 115px minmax(0, 1fr); gap: 8px; font-size: .71rem; }
+.run-monitor__detail dt { color: #718197; }
+.run-monitor__detail dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.run-monitor__detail dd button { margin-left: 6px; border: 0; color: #376bd2; background: none; cursor: pointer; }
+.run-monitor__message { font-size: .75rem; overflow-wrap: anywhere; background: #f8fafd; padding: 10px; border-radius: 6px; }
+.run-monitor__tabs { display: flex; gap: 4px; border-bottom: 1px solid #e0e7f0; }
+.run-monitor__tabs button { display: inline-flex; align-items: center; gap: 4px; padding: 8px; border: 0; background: transparent; color: #63758c; cursor: pointer; font-size: .72rem; }
+.run-monitor__tabs button[aria-selected='true'] { color: #265bc2; border-bottom: 2px solid #376bd2; }
+.run-monitor__tabs button:last-child { margin-left: auto; }
+.run-monitor__capture-note { font-size: .66rem; color: #718197; line-height: 1.5; }
+.run-monitor__detail pre { max-height: 430px; overflow: auto; padding: 12px; background: #f3f6fb; border-radius: 8px; font-size: .69rem; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-monitor__empty { padding: 28px 18px; font-size: .8rem; color: #718197; line-height: 1.6; text-align: center; }
+.run-monitor__error { color: #a42f40; background: #fff0f1; border-radius: 7px; padding: 10px; font-size: .78rem; }
+.schedule-log-open { display: block; margin-top: 5px; padding: 3px 7px; border: 1px solid #cfdef5; border-radius: 5px; color: #265bc2; background: #f5f9ff; cursor: pointer; font-size: .7rem; }
+@media (max-width: 1100px) { .run-monitor__workspace { grid-template-columns: minmax(0, 1fr); } .run-monitor__detail { position: static; } }
+@media (max-width: 600px) { .run-monitor { padding: 12px; } .run-monitor__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .run-monitor__filters select { max-width: 100%; flex: 1; } }

@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { monitoredFetch } = require('./scheduledRunMonitorService');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 
 const DEFAULT_API_BASE_URL = 'https://open-api.tiktokglobalshop.com';
@@ -97,7 +98,7 @@ const tokenRequest = async (path, params, fetchImpl = fetch) => {
   for (const [key, value] of Object.entries({ app_key: config.appKey, app_secret: config.appSecret, ...params })) {
     url.searchParams.set(key, String(value));
   }
-  const response = await fetchImpl(url, { method: 'GET', headers: { accept: 'application/json' } });
+  const response = await monitoredFetch(url, { method: 'GET', headers: { accept: 'application/json' } }, fetchImpl);
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload || Number(payload.code) !== 0 || !payload.data?.access_token) {
     throw new Error(`TikTok Partner token error: ${payload?.message || response.statusText || `HTTP ${response.status}`}`);
@@ -176,11 +177,11 @@ const requestTikTokPartner = async ({ path, method = 'GET', query = {}, body, ac
   for (const [key, value] of Object.entries(signedQuery)) {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
-  const response = await fetchImpl(url, {
+  const response = await monitoredFetch(url, {
     method,
     headers: { 'content-type': 'application/json', 'x-tts-access-token': accessToken },
     ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  }, fetchImpl);
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload || Number(payload.code) !== 0) {
     throw new Error(`TikTok Partner API error: ${payload?.message || response.statusText || `HTTP ${response.status}`}`);

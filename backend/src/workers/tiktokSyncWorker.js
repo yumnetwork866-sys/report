@@ -1,6 +1,7 @@
 const { createWorker, addJob } = require('../lib/queue');
 const { delByPattern } = require('../lib/redis');
 const { ScheduledJobRun } = require('../models');
+const { withRunMonitor } = require('../services/scheduledRunMonitorService');
 
 const TIKTOK_SYNC_QUEUE = 'tiktok-sync';
 
@@ -75,7 +76,9 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
       await job.updateProgress(10);
 
       let runRecord = null;
-      if (runId && ScheduledJobRun) {
+      // Resumable handlers own their run state, including RETRY_PENDING and
+      // conditional claims. A duplicate delivery must not mark that run done.
+      if (runId && ScheduledJobRun && !handler.managesRunStatus) {
         try {
           runRecord = await ScheduledJobRun.findByPk(runId);
         } catch {}
@@ -84,22 +87,41 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
       const controller = new AbortController();
       let result;
       try {
-        result = await handler({ ...data, signal: controller.signal, job });
+        if (runId) {
+          const { registerActiveRunController } = require('../services/scheduledJobService');
+          registerActiveRunController(runId, controller);
+        }
+        result = await withRunMonitor({ run_id: runId, attempt: (job.attemptsMade || 0) + 1 },
+          () => handler({ ...data, signal: controller.signal, job }));
       } catch (err) {
+        const isAborted = err.name === 'AbortError' || controller.signal.aborted || /stopped by user|abort/i.test(String(err.message || ''));
         if (runRecord) {
           try {
             await runRecord.reload();
-            if (runRecord.status === 'PROCESSING') {
+            if (['PROCESSING', 'RETRY_PENDING'].includes(runRecord.status)) {
               await runRecord.update({
-                status: 'FAILED',
+                status: isAborted ? 'CANCELLED' : 'FAILED',
                 summary: err.summary || null,
-                error: String(err.message || err).slice(0, 4000),
+                error: isAborted ? 'Stopped by user.' : String(err.message || err).slice(0, 4000),
                 completed_at: new Date(),
               });
             }
           } catch {}
         }
+        if (isAborted) {
+          return {
+            jobKey,
+            completedAt: new Date().toISOString(),
+            status: 'CANCELLED',
+            stopped: true,
+          };
+        }
         throw err;
+      } finally {
+        if (runId) {
+          const { unregisterActiveRunController } = require('../services/scheduledJobService');
+          unregisterActiveRunController(runId);
+        }
       }
 
       await job.updateProgress(90);

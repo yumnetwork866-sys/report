@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { monitoredFetch } = require('../services/scheduledRunMonitorService');
 const { literal, Op } = require('sequelize');
 const { decryptToken, encryptToken } = require('../lib/tokenEncryption');
 const {
@@ -177,7 +178,7 @@ const revokeTiktokAccessToken = async (accessToken) => {
     token: accessToken,
   });
 
-  const response = await fetch(TIKTOK_REVOKE_URL, {
+  const response = await monitoredFetch(TIKTOK_REVOKE_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -299,7 +300,7 @@ const exchangeTiktokCodeForToken = async (code) => {
     redirect_uri: redirectUri,
   });
 
-  const response = await fetch(TIKTOK_TOKEN_URL, {
+  const response = await monitoredFetch(TIKTOK_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -340,7 +341,7 @@ const refreshTiktokAccessToken = async (refreshToken) => {
     grant_type: 'refresh_token',
     refresh_token: refreshToken,
   });
-  const response = await fetch(TIKTOK_TOKEN_URL, {
+  const response = await monitoredFetch(TIKTOK_TOKEN_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -400,7 +401,7 @@ const getUsableTiktokAccessToken = async (channel) => {
 };
 
 const fetchTiktokUserInfo = async (accessToken) => {
-  const response = await fetch(TIKTOK_USER_INFO_URL, {
+  const response = await monitoredFetch(TIKTOK_USER_INFO_URL, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -441,7 +442,7 @@ const fetchTiktokVideoList = async (accessToken, cursor) => {
     body.set('cursor', String(cursor));
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await monitoredFetch(url.toString(), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

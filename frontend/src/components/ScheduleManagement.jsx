@@ -27,9 +27,11 @@ import {
 } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { formatErrorDates, getRunErrorMessages } from '../lib/scheduleErrors';
+import ScheduleRunMonitor from './ScheduleRunMonitor';
 
 const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
 const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
+const isActiveRun = (run) => ['PROCESSING', 'RETRY_PENDING'].includes(run?.status);
 
 const resizeRunTimes = (current, count) => {
   const next = [...current].slice(0, count);
@@ -72,6 +74,7 @@ const ScheduleManagement = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [expandedErrorRuns, setExpandedErrorRuns] = useState(() => new Set());
+  const [monitorRun, setMonitorRun] = useState(null);
 
   useEffect(() => {
     const closeRunMenu = (event) => {
@@ -120,7 +123,7 @@ const ScheduleManagement = () => {
   )).sort((a, b) => new Date(b.started_at) - new Date(a.started_at)), [schedules]);
 
   const hasRunningJob = useMemo(
-    () => allRuns.some((run) => run.status === 'PROCESSING'),
+    () => allRuns.some(isActiveRun),
     [allRuns],
   );
 
@@ -144,7 +147,7 @@ const ScheduleManagement = () => {
   ), [shops]);
 
   const enabledCount = schedules.filter((schedule) => schedule.enabled).length;
-  const runningCount = allRuns.filter((run) => run.status === 'PROCESSING').length;
+  const runningCount = allRuns.filter(isActiveRun).length;
   const failedCount = allRuns.filter((run) => run.status === 'FAILED').length;
   const scheduleGroups = useMemo(() => ([
     {
@@ -237,7 +240,9 @@ const ScheduleManagement = () => {
     if (!run.summary) return '—';
     const total = run.summary.total ?? run.summary.channels ?? 0;
     const succeeded = run.summary.succeeded ?? Math.max(0, total - (run.summary.failed ?? 0));
-    return `${succeeded}/${total}`;
+    return run.status === 'RETRY_PENDING' && run.next_retry_at
+      ? `${succeeded}/${total} · ${t('schedule.nextRetry')}: ${formatDateTime(run.next_retry_at, locale)}`
+      : `${succeeded}/${total}`;
   };
   const toggleRunError = (runId) => setExpandedErrorRuns((current) => {
     const next = new Set(current);
@@ -290,7 +295,7 @@ const ScheduleManagement = () => {
               <div className="schedule-grid schedule-grid--compact">
                 {group.schedules.map((schedule) => {
             const latest = schedule.runs?.[0];
-            const isRunning = runningKey === schedule.job_key || latest?.status === 'PROCESSING';
+            const isRunning = runningKey === schedule.job_key || isActiveRun(latest);
             const description = t(`schedule.jobs.${schedule.job_key}.description`);
             return (
               <article className="section-card schedule-card schedule-card--compact" key={schedule.job_key}>
@@ -392,11 +397,12 @@ const ScheduleManagement = () => {
 
       {!loading && activeTab === 'logs' ? (
         <section className="section-card schedule-logs" role="tabpanel">
+          {monitorRun ? <ScheduleRunMonitor initialRun={monitorRun} shops={shops} onBack={() => setMonitorRun(null)} /> : <>
           <header className="schedule-logs__toolbar">
             <div><h2>{t('schedule.logsTitle')}</h2><span>{t('schedule.logsCount', { count: filteredRuns.length })}</span></div>
             <div className="schedule-logs__filters">
               <label><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
-              <label><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
+              <label><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
               <button className="button button--ghost schedule-logs__refresh" type="button" disabled={refreshing} onClick={() => load(undefined, true)}><RefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" />{t('schedule.refresh')}</button>
             </div>
           </header>
@@ -408,12 +414,13 @@ const ScheduleManagement = () => {
                   const errorMessages = getRunErrorMessages(run, shopNames).map((message) => formatErrorDates(message));
                   const errorText = errorMessages.join('\n');
                   const errorExpanded = expandedErrorRuns.has(String(run.id));
-                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}</td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>{run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}</td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
+                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}<button type="button" className="schedule-log-open" onClick={() => setMonitorRun(run)}>#{run.id} · {t('schedule.monitor.open')}</button></td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>{run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}</td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
                 })}
                 {!filteredRuns.length ? <tr><td colSpan="7"><div className="empty-state empty-state--compact">{t('schedule.noLogs')}</div></td></tr> : null}
               </tbody>
             </table>
           </div>
+          </>}
         </section>
       ) : null}
 

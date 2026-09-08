@@ -78,6 +78,8 @@ const migrations = [
   require('./068_add_creator_performance_backfill_schedule'),
   require('./069_add_tiktok_api_cooldown_streak'),
   require('./070_update_creator_performance_schedule'),
+  require('./071_create_compass_request_state'),
+  require('./072_create_scheduled_run_events'),
 ];
 
 const createMigrationRunner = ({

@@ -761,6 +761,7 @@ const ScheduledJobRun = sequelize.define('ScheduledJobRun', {
   scheduled_job_id: { type: DataTypes.INTEGER, allowNull: false },
   trigger_type: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'SCHEDULED' },
   scheduled_key: { type: DataTypes.STRING, allowNull: false },
+  next_retry_at: DataTypes.DATE,
   status: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'PROCESSING' },
   started_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   completed_at: DataTypes.DATE,
@@ -771,6 +772,37 @@ const ScheduledJobRun = sequelize.define('ScheduledJobRun', {
   timestamps: false,
   indexes: [{ unique: true, fields: ['scheduled_job_id', 'scheduled_key'] }],
 });
+
+const ScheduledJobRunEvent = sequelize.define('ScheduledJobRunEvent', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  run_id: { type: DataTypes.BIGINT, allowNull: false },
+  event_type: { type: DataTypes.STRING(40), allowNull: false },
+  status: { type: DataTypes.STRING(32), allowNull: false },
+  started_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
+  completed_at: DataTypes.DATE,
+  duration_ms: DataTypes.INTEGER,
+  shop_id: DataTypes.INTEGER,
+  shop_name: DataTypes.STRING,
+  channel_id: DataTypes.INTEGER,
+  module_type: DataTypes.STRING(32),
+  window_type: DataTypes.STRING(32),
+  end_day: DataTypes.INTEGER,
+  attempt: DataTypes.INTEGER,
+  task_id: DataTypes.STRING,
+  method: DataTypes.STRING(12),
+  endpoint: DataTypes.TEXT,
+  http_status: DataTypes.INTEGER,
+  tiktok_code: DataTypes.STRING(64),
+  request_id: DataTypes.STRING,
+  retry_after: DataTypes.STRING,
+  next_retry_at: DataTypes.DATE,
+  message: DataTypes.TEXT,
+  request_data: DataTypes.JSONB,
+  response_data: DataTypes.JSONB,
+  response_headers: DataTypes.JSONB,
+  payload_truncated: { type: DataTypes.BOOLEAN, defaultValue: false },
+}, { tableName: 'scheduled_job_run_events', timestamps: false });
 
 const TikTokChannel = sequelize.define('TikTokChannel', {
   id: {
@@ -1484,6 +1516,7 @@ module.exports = {
   TikTokBasePerformanceSnapshot,
   ScheduledJob,
   ScheduledJobRun,
+  ScheduledJobRunEvent,
   TikTokChannel,
   Video,
   VideoAssignment,

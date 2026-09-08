@@ -44,13 +44,17 @@ const requestWithRetry = async (operation, attempts = 4) => {
     } catch (error) {
       lastError = error;
       if (!retryableTikTokError(error) || attempt === attempts - 1) throw error;
-      await wait(750 * (2 ** attempt));
+      const delay = error?.retryAfterMs || (750 * (2 ** attempt));
+      await wait(delay);
     }
   }
   throw lastError;
 };
 
 const DEFAULT_VIDEO_DETAIL_DELAY_MS = 150;
+const DEFAULT_VIDEO_DETAIL_TOP_LIMIT = 50;
+const DEFAULT_VIDEO_DETAIL_MAX_FETCH = 200;
+
 const configuredVideoDetailDelayMs = () => {
   const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS);
   return Number.isFinite(configured) && configured >= 0
@@ -58,14 +62,97 @@ const configuredVideoDetailDelayMs = () => {
     : DEFAULT_VIDEO_DETAIL_DELAY_MS;
 };
 
-const mapWithConcurrency = async (items, concurrency, mapper, delayMs = 0) => {
+const configuredVideoDetailTopLimit = () => {
+  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_VIDEO_DETAIL_TOP_LIMIT;
+};
+
+const configuredVideoDetailMaxFetch = () => {
+  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH);
+  return Number.isFinite(configured) && configured >= 0
+    ? configured
+    : DEFAULT_VIDEO_DETAIL_MAX_FETCH;
+};
+
+const isVideoDetailEnabled = () => (
+  String(process.env.TIKTOK_VIDEO_DETAIL_ENABLED || 'false').trim().toLowerCase() === 'true'
+);
+
+const isVideoDetailFetchAll = () => (
+  String(process.env.TIKTOK_VIDEO_DETAIL_FETCH_ALL || '').trim().toLowerCase() === 'true'
+);
+
+const selectVideosForDetailFetch = (videos = []) => {
+  if (!isVideoDetailEnabled()) return new Set();
+  if (!Array.isArray(videos) || videos.length === 0) return new Set();
+  if (isVideoDetailFetchAll()) {
+    return new Set(videos.map((v) => String(v?.id || v?.video_id || '').trim()).filter(Boolean));
+  }
+
+  const topLimit = configuredVideoDetailTopLimit();
+  const maxFetch = configuredVideoDetailMaxFetch();
+  const selectedIds = new Set();
+
+  // 1. Top videos by GMV rank (list is already sorted by GMV DESC)
+  const topByRank = videos.slice(0, topLimit);
+  for (const video of topByRank) {
+    const id = String(video?.id || video?.video_id || '').trim();
+    if (id) selectedIds.add(id);
+  }
+
+  // 2. Top videos by interactions / views
+  if (topLimit > 0) {
+    const topByViews = [...videos]
+      .sort((a, b) => numberValue(b?.views) - numberValue(a?.views))
+      .slice(0, topLimit);
+    for (const video of topByViews) {
+      const id = String(video?.id || video?.video_id || '').trim();
+      if (id && numberValue(video?.views) > 0) selectedIds.add(id);
+    }
+  }
+
+  // 3. Videos with revenue (GMV > 0), orders (> 0), or items sold (> 0)
+  for (const video of videos) {
+    const id = String(video?.id || video?.video_id || '').trim();
+    if (!id) continue;
+    const gmv = moneyValue(video?.gmv);
+    const orders = numberValue(video?.sku_orders ?? video?.orders);
+    const itemsSold = numberValue(video?.items_sold);
+    if (gmv > 0 || orders > 0 || itemsSold > 0) {
+      selectedIds.add(id);
+    }
+  }
+
+  // If selected count exceeds maxFetch, prioritize by GMV, then orders, then views
+  if (maxFetch > 0 && selectedIds.size > maxFetch) {
+    const prioritized = videos
+      .filter((v) => selectedIds.has(String(v?.id || v?.video_id || '').trim()))
+      .sort((a, b) => {
+        const gmvDiff = moneyValue(b?.gmv) - moneyValue(a?.gmv);
+        if (gmvDiff !== 0) return gmvDiff;
+        const ordersDiff = numberValue(b?.sku_orders ?? b?.orders) - numberValue(a?.sku_orders ?? a?.orders);
+        if (ordersDiff !== 0) return ordersDiff;
+        return numberValue(b?.views) - numberValue(a?.views);
+      })
+      .slice(0, maxFetch);
+    return new Set(prioritized.map((v) => String(v?.id || v?.video_id || '').trim()));
+  }
+
+  return selectedIds;
+};
+
+const mapWithConcurrency = async (items, concurrency, mapper, delayMs = 0, signal = null) => {
   const results = new Array(items.length);
   let cursor = 0;
   const worker = async () => {
     while (cursor < items.length) {
+      if (signal?.aborted) break;
       const index = cursor;
       cursor += 1;
       results[index] = await mapper(items[index], index);
+      if (signal?.aborted) break;
       if (delayMs > 0 && cursor < items.length) {
         await wait(delayMs);
       }
@@ -75,6 +162,11 @@ const mapWithConcurrency = async (items, concurrency, mapper, delayMs = 0) => {
     { length: Math.min(Math.max(1, concurrency), Math.max(1, items.length)) },
     worker,
   ));
+  if (signal?.aborted) {
+    const error = new Error('Job was stopped by the user.');
+    error.name = 'AbortError';
+    throw error;
+  }
   return results;
 };
 
@@ -143,7 +235,7 @@ const apiVideoRow = ({ exportId, shopId, video, detail, detailError, syncedAt = 
 };
 
 const listAllAffiliateVideos = async (shop, {
-  startDate, endDate, currency, maxPages = 500,
+  startDate, endDate, currency, maxPages = 500, signal,
 }) => {
   const videos = [];
   const seenIds = new Set();
@@ -152,6 +244,11 @@ const listAllAffiliateVideos = async (shop, {
   let pageToken;
   let pages = 0;
   do {
+    if (signal?.aborted) {
+      const error = new Error('Job was stopped by the user.');
+      error.name = 'AbortError';
+      throw error;
+    }
     const payload = await requestWithRetry(() => (
       isDemoAuthorization(shop.authorization)
         ? sellerAffiliateFixture('shop-video-performance', shop, {
@@ -195,7 +292,7 @@ const listAllAffiliateVideos = async (shop, {
   return { videos, requestIds, pages };
 };
 
-const loadVideoDetail = (shop, video, { startDate, endDate, currency }) => requestWithRetry(() => (
+const loadVideoDetail = (shop, video, { startDate, endDate, currency, signal }) => requestWithRetry(() => (
   isDemoAuthorization(shop.authorization)
     ? sellerAffiliateFixture('shop-video-performance-detail', shop, {
       video,
@@ -212,6 +309,7 @@ const loadVideoDetail = (shop, video, { startDate, endDate, currency }) => reque
       endDate,
       currency,
       granularity: 'ALL',
+      signal,
     })
 ));
 
@@ -219,42 +317,68 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
   startDate,
   endDate,
   currency = 'LOCAL',
+  signal,
 } = {}) => {
   try {
+    if (signal?.aborted) {
+      const error = new Error('Job was stopped by the user.');
+      error.name = 'AbortError';
+      throw error;
+    }
     const { videos, requestIds } = await listAllAffiliateVideos(shop, {
-      startDate, endDate, currency,
+      startDate, endDate, currency, signal,
     });
     await exportRecord.update({ row_count: videos.length });
     const configuredConcurrency = Number(process.env.TIKTOK_VIDEO_DETAIL_CONCURRENCY);
     const concurrency = Number.isInteger(configuredConcurrency)
       ? Math.min(8, Math.max(1, configuredConcurrency))
       : 4;
+    const detailVideoIds = selectVideosForDetailFetch(videos);
     let failedDetails = 0;
     const syncedAt = new Date();
     const detailDelayMs = configuredVideoDetailDelayMs();
-    const rows = await mapWithConcurrency(videos, concurrency, async (video) => {
-      let detail = null;
-      let detailError = null;
-      try {
-        detail = await loadVideoDetail(shop, video, { startDate, endDate, currency });
-        if (detail?.request_id) requestIds.push(detail.request_id);
-      } catch (error) {
-        failedDetails += 1;
-        detailError = error;
-      }
-      return apiVideoRow({
+    const rows = detailVideoIds.size === 0
+      ? videos.map((video) => apiVideoRow({
         exportId: exportRecord.id,
         shopId: shop.id,
         video,
-        detail,
-        detailError,
+        detail: null,
+        detailError: null,
         syncedAt,
-      });
-    }, detailDelayMs);
+      }))
+      : await mapWithConcurrency(videos, concurrency, async (video) => {
+        if (signal?.aborted) {
+          const error = new Error('Job was stopped by the user.');
+          error.name = 'AbortError';
+          throw error;
+        }
+        const videoId = String(video?.id || video?.video_id || '').trim();
+        let detail = null;
+        let detailError = null;
+        if (detailVideoIds.has(videoId)) {
+          try {
+            detail = await loadVideoDetail(shop, video, { startDate, endDate, currency, signal });
+            if (detail?.request_id) requestIds.push(detail.request_id);
+          } catch (error) {
+            if (signal?.aborted || error.name === 'AbortError') throw error;
+            failedDetails += 1;
+            detailError = error;
+          }
+        }
+        return apiVideoRow({
+          exportId: exportRecord.id,
+          shopId: shop.id,
+          video,
+          detail,
+          detailError,
+          syncedAt,
+        });
+      }, detailDelayMs, signal);
     if (failedDetails > 0) {
       console.warn('[Video Performance API] Video detail requests failed; retaining list metrics', {
         shopId: shop.id,
         totalVideos: videos.length,
+        selectedDetails: detailVideoIds.size,
         failedDetails,
       });
     }
@@ -269,15 +393,16 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
         status: 'SUCCEEDED',
         row_count: rows.length,
         request_id: uniqueValues(requestIds).join(',').slice(0, 255) || null,
-        error: failedDetails ? `${failedDetails}/${videos.length} video detail request(s) failed; list metrics were retained.` : null,
+        error: failedDetails ? `${failedDetails}/${detailVideoIds.size} video detail request(s) failed; list metrics were retained.` : null,
         completed_at: new Date(),
       }, { transaction });
     });
     return exportRecord.reload();
   } catch (error) {
+    const isCancelled = error.name === 'AbortError' || signal?.aborted || /stopped by user|abort/i.test(String(error.message || ''));
     await exportRecord.update({
-      status: 'FAILED',
-      error: String(error.message || error).slice(0, 2000),
+      status: isCancelled ? 'CANCELLED' : 'FAILED',
+      error: isCancelled ? 'Stopped by user.' : String(error.message || error).slice(0, 2000),
       completed_at: new Date(),
     });
     throw error;
@@ -288,6 +413,7 @@ const startVideoPerformanceApiSync = async (shop, {
   startDate,
   endDate,
   currency = 'LOCAL',
+  signal,
 } = {}) => {
   const key = `${shop.id}:${startDate}:${endDate}:${currency}`;
   const active = activeApiSyncs.get(key);
@@ -310,13 +436,14 @@ const startVideoPerformanceApiSync = async (shop, {
   try {
     const exportRecord = await state.startPromise;
     state.processPromise = processVideoPerformanceApiSync(shop, exportRecord, {
-      startDate, endDate, currency,
+      startDate, endDate, currency, signal,
     }).catch((error) => {
       console.error('[Video Performance] API sync failed', {
         shopId: shop.id,
         exportId: exportRecord.id,
         message: error.message,
       });
+      throw error;
     }).finally(() => {
       if (activeApiSyncs.get(key) === state) activeApiSyncs.delete(key);
     });
@@ -335,7 +462,10 @@ const syncVideoPerformanceApi = async (shop, options = {}) => {
   if (active?.processPromise) await active.processPromise;
   await exportRecord.reload();
   if (exportRecord.status !== 'SUCCEEDED') {
-    throw new Error(exportRecord.error || 'TikTok video performance sync failed.');
+    const isCancelled = exportRecord.status === 'CANCELLED' || options.signal?.aborted;
+    const error = new Error(exportRecord.error || (isCancelled ? 'Stopped by user.' : 'TikTok video performance sync failed.'));
+    if (isCancelled) error.name = 'AbortError';
+    throw error;
   }
   return {
     export_id: exportRecord.id,
@@ -429,7 +559,13 @@ module.exports = {
     mapWithConcurrency,
     productCtr,
     retryableTikTokError,
+    selectVideosForDetailFetch,
     DEFAULT_VIDEO_DETAIL_DELAY_MS,
+    DEFAULT_VIDEO_DETAIL_TOP_LIMIT,
+    DEFAULT_VIDEO_DETAIL_MAX_FETCH,
     configuredVideoDetailDelayMs,
+    configuredVideoDetailTopLimit,
+    configuredVideoDetailMaxFetch,
+    isVideoDetailEnabled,
   },
 };

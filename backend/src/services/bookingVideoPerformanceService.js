@@ -1,8 +1,10 @@
-const { Op } = require('sequelize');
+const { Op, QueryTypes } = require('sequelize');
 const {
+  sequelize,
   Booking,
   BookingVideo,
   BookingVideoPerformanceSnapshot,
+  TikTokAffiliateOrderSku,
   TikTokCreatorPerformanceExport,
   TikTokShop,
   TikTokVideoPerformanceSnapshot,
@@ -52,6 +54,8 @@ const productIdsOfVideo = (video) => {
       raw.list,
       raw?.video?.list,
       detail?.performance?.intervals?.flatMap((interval) => interval?.sales?.breakdowns || []) || [],
+      raw.selected_product_ids,
+      raw.order_metrics?.product_ids,
     ];
   });
   return normalizedProductIds(
@@ -114,33 +118,219 @@ const exportDurationDays = (exportRecord) => {
   return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86400000) : null;
 };
 
-const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set()) => {
+const loadOrderMetricsForVideos = async ({
+  shopId,
+  shopIds = [],
+  videoIds = [],
+  startDate = null,
+  endDate = null,
+} = {}) => {
+  const targetShopIds = [...new Set([...(shopId ? [shopId] : []), ...shopIds].map(Number).filter(Number.isInteger))];
+  const targetVideoIds = [...new Set(videoIds.map((id) => String(id || '').trim()).filter(Boolean))];
+  if (!targetShopIds.length || !targetVideoIds.length || !sequelize?.query) {
+    return new Map();
+  }
+  const dateClauses = [];
+  const replacements = {
+    shopIds: targetShopIds,
+    videoIds: targetVideoIds,
+  };
+  if (startDate) {
+    replacements.startDateTime = `${dateOnly(startDate)}T00:00:00.000Z`;
+    dateClauses.push('o.create_time >= :startDateTime');
+  }
+  if (endDate) {
+    replacements.endDateTime = `${shiftDate(endDate, 1)}T00:00:00.000Z`;
+    dateClauses.push('o.create_time < :endDateTime');
+  }
+  const dateWhere = dateClauses.length ? `AND ${dateClauses.join(' AND ')}` : '';
+
+  try {
+    const rows = await sequelize.query(`
+      SELECT
+        s.shop_id,
+        s.content_id AS video_id,
+        s.product_id,
+        COALESCE(s.currency, 'VND') AS currency,
+        COUNT(DISTINCT s.order_id)::bigint AS orders,
+        SUM(s.quantity)::bigint AS items_sold,
+        SUM(s.refunded_quantity)::bigint AS refunded_quantity,
+        SUM(s.quantity * COALESCE(s.price, 0))::numeric AS gross_gmv,
+        SUM(s.refunded_quantity * COALESCE(s.price, 0))::numeric AS refunded_gmv
+      FROM tiktok_affiliate_order_skus s
+      JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
+      WHERE s.shop_id IN (:shopIds)
+        AND s.content_id IN (:videoIds)
+        ${dateWhere}
+      GROUP BY s.shop_id, s.content_id, s.product_id, COALESCE(s.currency, 'VND')
+    `, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
+
+    const metricsByVideo = new Map();
+    for (const row of rows || []) {
+      const videoKey = `${row.shop_id}:${row.video_id}`;
+      if (!metricsByVideo.has(videoKey)) {
+        metricsByVideo.set(videoKey, {
+          shop_id: Number(row.shop_id),
+          video_id: String(row.video_id),
+          by_product: new Map(),
+          products: [],
+        });
+      }
+      const videoData = metricsByVideo.get(videoKey);
+      const productId = String(row.product_id || '').trim();
+      const grossGmv = numberOrZero(row.gross_gmv);
+      const refundedGmv = numberOrZero(row.refunded_gmv);
+      const netGmv = grossGmv - refundedGmv;
+      const orders = numberOrZero(row.orders);
+      const itemsSold = numberOrZero(row.items_sold);
+      const productMetric = {
+        product_id: productId,
+        currency: row.currency,
+        orders,
+        items_sold: itemsSold,
+        refunded_quantity: numberOrZero(row.refunded_quantity),
+        gross_gmv: grossGmv,
+        refunded_gmv: refundedGmv,
+        net_gmv: netGmv,
+      };
+      if (productId) {
+        videoData.by_product.set(productId, productMetric);
+        if (!videoData.products.includes(productId)) {
+          videoData.products.push(productId);
+        }
+      }
+    }
+    return metricsByVideo;
+  } catch (error) {
+    console.warn('[Booking Video] Failed to query order ledger metrics:', error?.message || error);
+    return new Map();
+  }
+};
+
+const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) => {
+  if (!videoData) return null;
+  const hasSelectedProducts = selectedProductIds && selectedProductIds.size > 0;
+  let grossGmv = 0;
+  let refundedGmv = 0;
+  let orders = 0;
+  let itemsSold = 0;
+  let currency = null;
+  const matchedProducts = [];
+  let found = false;
+
+  for (const [prodId, prodMetric] of videoData.by_product.entries()) {
+    if (!hasSelectedProducts || selectedProductIds.has(prodId)) {
+      found = true;
+      grossGmv += prodMetric.gross_gmv;
+      refundedGmv += prodMetric.refunded_gmv;
+      orders += prodMetric.orders;
+      itemsSold += prodMetric.items_sold;
+      currency = currency || prodMetric.currency;
+      matchedProducts.push(prodId);
+    }
+  }
+
+  if (!found && hasSelectedProducts) {
+    return {
+      has_data: false,
+      gross_gmv: 0,
+      refunded_gmv: 0,
+      net_gmv: 0,
+      orders: 0,
+      items_sold: 0,
+      currency: null,
+      product_ids: [],
+    };
+  }
+
+  return {
+    has_data: found,
+    gross_gmv: grossGmv,
+    refunded_gmv: refundedGmv,
+    net_gmv: grossGmv - refundedGmv,
+    orders,
+    items_sold: itemsSold,
+    currency,
+    product_ids: matchedProducts,
+  };
+};
+
+const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), orderMetrics = null) => {
   const scoped = scopedMetricsOfSnapshot(snapshot, selectedProductIds);
   const hasSelectedProducts = selectedProductIds.size > 0;
+  const hasOrderMetrics = orderMetrics && (orderMetrics.has_data || orderMetrics.orders > 0 || orderMetrics.gross_gmv > 0);
+
+  let grossGmv;
+  let refundedGmv;
+  let netGmv;
+  let orders;
+  let itemsSold;
+  let currency;
+
+  if (hasSelectedProducts) {
+    if (orderMetrics) {
+      grossGmv = numberOrZero(orderMetrics.gross_gmv);
+      refundedGmv = orderMetrics.refunded_gmv !== null && orderMetrics.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
+      netGmv = orderMetrics.net_gmv !== null && orderMetrics.net_gmv !== undefined ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
+      orders = numberOrZero(orderMetrics.orders);
+      itemsSold = numberOrZero(orderMetrics.items_sold);
+      currency = orderMetrics.currency || null;
+    } else if (scoped) {
+      grossGmv = scoped.amount;
+      refundedGmv = null;
+      netGmv = null;
+      orders = scoped.orders;
+      itemsSold = scoped.items_sold;
+      currency = scoped.currency;
+    } else {
+      grossGmv = 0;
+      refundedGmv = null;
+      netGmv = null;
+      orders = 0;
+      itemsSold = 0;
+      currency = null;
+    }
+  } else {
+    grossGmv = numberOrZero(snapshot.creator_attributed_gmv);
+    orders = numberOrZero(snapshot.attributed_orders);
+    itemsSold = numberOrZero(snapshot.attributed_items_sold);
+    refundedGmv = orderMetrics?.refunded_gmv !== null && orderMetrics?.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
+    netGmv = refundedGmv !== null ? grossGmv - refundedGmv : null;
+    currency = snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
+      || snapshot.raw_metrics?.list?.gmv?.currency
+      || orderMetrics?.currency
+      || null;
+  }
+
   return {
-  gross_gmv: hasSelectedProducts ? scoped?.amount || 0 : numberOrZero(snapshot.creator_attributed_gmv),
-  refunded_gmv: null,
-  net_gmv: null,
-  orders: hasSelectedProducts ? scoped?.orders || 0 : numberOrZero(snapshot.attributed_orders),
-  items_sold: hasSelectedProducts ? scoped?.items_sold || 0 : numberOrZero(snapshot.attributed_items_sold),
-  views: numberOrZero(snapshot.video_views),
-  ctr: hasSelectedProducts ? scoped?.ctr ?? null : productCtrOfSnapshot(snapshot),
-  currency: scoped?.currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
-    || snapshot.raw_metrics?.list?.gmv?.currency
-    || null,
-  raw_metrics: {
-    source: 'AFFILIATE_VIDEO_PERFORMANCE',
-    metric_scope: hasSelectedProducts ? 'SELECTED_BOOKING_PRODUCTS' : 'ALL_VIDEO_PRODUCTS',
-    selected_product_ids: [...selectedProductIds],
-    product_metrics_available: !hasSelectedProducts || Boolean(scoped),
-    product_orders_available: !hasSelectedProducts || Boolean(scoped?.orders_available),
-    export_id: snapshot.export_id,
-    product_id: snapshot.product_id || null,
-    product_impressions: hasSelectedProducts ? scoped?.product_impressions || 0 : numberOrZero(snapshot.product_impressions),
-    product_clicks: hasSelectedProducts ? scoped?.product_clicks || 0 : numberOrZero(snapshot.product_clicks),
-    products: snapshot.raw_metrics?.list?.products || [],
-    video: snapshot.raw_metrics,
-  },
+    gross_gmv: grossGmv,
+    refunded_gmv: refundedGmv,
+    net_gmv: netGmv,
+    orders,
+    items_sold: itemsSold,
+    views: numberOrZero(snapshot.video_views),
+    ctr: hasSelectedProducts ? (scoped?.ctr ?? null) : productCtrOfSnapshot(snapshot),
+    currency: currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
+      || snapshot.raw_metrics?.list?.gmv?.currency
+      || null,
+    raw_metrics: {
+      source: 'AFFILIATE_VIDEO_PERFORMANCE',
+      metric_scope: hasSelectedProducts ? 'SELECTED_BOOKING_PRODUCTS' : 'ALL_VIDEO_PRODUCTS',
+      selected_product_ids: [...selectedProductIds],
+      product_metrics_available: !hasSelectedProducts || Boolean(scoped || hasOrderMetrics),
+      product_orders_available: !hasSelectedProducts || Boolean(scoped?.orders_available || hasOrderMetrics),
+      order_ledger_used: Boolean(orderMetrics),
+      order_metrics: orderMetrics || null,
+      export_id: snapshot.export_id,
+      product_id: snapshot.product_id || null,
+      product_impressions: hasSelectedProducts ? scoped?.product_impressions || 0 : numberOrZero(snapshot.product_impressions),
+      product_clicks: hasSelectedProducts ? scoped?.product_clicks || 0 : numberOrZero(snapshot.product_clicks),
+      products: snapshot.raw_metrics?.list?.products || [],
+      video: snapshot.raw_metrics,
+    },
   };
 };
 
@@ -214,12 +404,55 @@ const loadAffiliateVideoPerformance = async (shopId, videoId) => {
   return (await findSnapshot(30)) || findSnapshot(7);
 };
 
-const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()) => {
+const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set(), orderMetrics = null) => {
   const source = snapshot.raw_metrics?.list || {};
   const breakdowns = snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.breakdowns || [];
   const scoped = scopedMetricsOfSnapshot(snapshot, selectedProductIds);
   const hasSelectedProducts = selectedProductIds.size > 0;
   const postedAt = postedAtOf({ video_post_time: snapshot.post_date, post_time: snapshot.post_date });
+
+  let grossGmv;
+  let refundedGmv;
+  let netGmv;
+  let orders;
+  let itemsSold;
+  let currency;
+
+  if (hasSelectedProducts) {
+    if (orderMetrics) {
+      grossGmv = numberOrZero(orderMetrics.gross_gmv);
+      refundedGmv = orderMetrics.refunded_gmv !== null && orderMetrics.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
+      netGmv = orderMetrics.net_gmv !== null && orderMetrics.net_gmv !== undefined ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
+      orders = numberOrZero(orderMetrics.orders);
+      itemsSold = numberOrZero(orderMetrics.items_sold);
+      currency = orderMetrics.currency || null;
+    } else if (scoped) {
+      grossGmv = scoped.amount;
+      refundedGmv = null;
+      netGmv = null;
+      orders = scoped.orders;
+      itemsSold = scoped.items_sold;
+      currency = scoped.currency;
+    } else {
+      grossGmv = 0;
+      refundedGmv = null;
+      netGmv = null;
+      orders = 0;
+      itemsSold = 0;
+      currency = null;
+    }
+  } else {
+    grossGmv = numberOrZero(snapshot.creator_attributed_gmv);
+    orders = numberOrZero(snapshot.attributed_orders);
+    itemsSold = numberOrZero(snapshot.attributed_items_sold);
+    refundedGmv = orderMetrics?.refunded_gmv !== null && orderMetrics?.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
+    netGmv = refundedGmv !== null ? grossGmv - refundedGmv : null;
+    currency = scoped?.currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
+      || source.gmv?.currency
+      || orderMetrics?.currency
+      || null;
+  }
+
   return {
     id: String(snapshot.video_id),
     title: snapshot.video_title || source.title || snapshot.video_id,
@@ -227,23 +460,22 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
     posted_at: postedAt,
     video_url: snapshot.video_link || null,
     gmv: {
-      amount: hasSelectedProducts ? scoped?.amount || 0 : numberOrZero(snapshot.creator_attributed_gmv),
-      currency: scoped?.currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
-        || source.gmv?.currency
-        || null,
+      amount: grossGmv,
+      currency: currency || source.gmv?.currency || null,
     },
     views: numberOrZero(snapshot.video_views),
-    orders: hasSelectedProducts ? scoped?.orders || 0 : numberOrZero(snapshot.attributed_orders),
-    items_sold: hasSelectedProducts ? scoped?.items_sold || 0 : numberOrZero(snapshot.attributed_items_sold),
+    orders,
+    items_sold: itemsSold,
     ctr: hasSelectedProducts ? scoped?.ctr ?? null : productCtrOfSnapshot(snapshot),
     product_impressions: hasSelectedProducts ? scoped?.product_impressions || 0 : numberOrZero(snapshot.product_impressions),
     product_clicks: hasSelectedProducts ? scoped?.product_clicks || 0 : numberOrZero(snapshot.product_clicks),
-    product_metrics_available: !hasSelectedProducts || Boolean(scoped),
-    product_orders_available: !hasSelectedProducts || Boolean(scoped?.orders_available),
+    product_metrics_available: !hasSelectedProducts || Boolean(scoped || orderMetrics),
+    product_orders_available: !hasSelectedProducts || Boolean(scoped?.orders_available || orderMetrics),
     product_id: snapshot.product_id || null,
     products: [
       ...(Array.isArray(source.products) ? source.products : []),
       ...(Array.isArray(breakdowns) ? breakdowns : []),
+      ...(orderMetrics?.product_ids ? orderMetrics.product_ids.map((id) => ({ id })) : []),
     ],
   };
 };
@@ -272,8 +504,17 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
     order: [['post_date', 'DESC'], ['id', 'DESC']],
   });
   const selectedProductIds = selectedProductIdsOfBooking(booking);
+  const videoIds = snapshots.map((s) => String(s.video_id));
+  const orderMetricsMap = await loadOrderMetricsForVideos({
+    shopId: booking.target_shop_id,
+    videoIds,
+  });
   const candidates = snapshots
-    .map((snapshot) => affiliateCandidateFromSnapshot(snapshot, selectedProductIds))
+    .map((snapshot) => {
+      const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${snapshot.video_id}`);
+      const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
+      return affiliateCandidateFromSnapshot(snapshot, selectedProductIds, orderMetrics);
+    })
     .filter((candidate) => matchesBookingProducts(booking, candidate));
   if (!candidates.length) return { status: 'no_match', candidate_count: 0 };
   const selected = candidates[0];
@@ -343,20 +584,34 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
       throw new Error('Video is not available in the latest Affiliate Video Performance snapshots.');
     }
     const sourceVideo = affiliateSnapshot.raw_metrics?.list || {};
-    const metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIdsOfBooking(booking));
     const detectedPostedAt = postedAtOf({
       video_post_time: affiliateSnapshot.post_date,
       post_time: affiliateSnapshot.post_date,
     });
+    const effectiveAttributionStart = detectedPostedAt
+      ? dateOnly(detectedPostedAt)
+      : bookingVideo.attribution_start;
+    const effectiveAttributionEnd = detectedPostedAt
+      ? shiftDate(detectedPostedAt, 30)
+      : bookingVideo.attribution_end;
+
+    const selectedProductIds = selectedProductIdsOfBooking(booking);
+    const orderMetricsMap = await loadOrderMetricsForVideos({
+      shopId: shop.id,
+      videoIds: [bookingVideo.platform_video_id],
+      startDate: effectiveAttributionStart,
+      endDate: effectiveAttributionEnd,
+    });
+    const videoData = orderMetricsMap.get(`${shop.id}:${bookingVideo.platform_video_id}`);
+    const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
+    const metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIds, orderMetrics);
+
     await BookingVideoPerformanceSnapshot.upsert({
       booking_video_id: bookingVideo.id,
       snapshot_date: dateOnly(now),
       ...metrics,
       synced_at: now,
     });
-    const effectiveAttributionEnd = detectedPostedAt
-      ? shiftDate(detectedPostedAt, 30)
-      : bookingVideo.attribution_end;
     const isCompleted = effectiveAttributionEnd && dateOnly(now) > effectiveAttributionEnd;
     await bookingVideo.update({
       creator_username: usernameOf(sourceVideo) || bookingVideo.creator_username,
@@ -477,6 +732,8 @@ module.exports = {
   syncActiveBookingVideos,
   syncBookingVideo,
   selectedProductIdsOfBooking,
+  loadOrderMetricsForVideos,
+  resolveOrderMetricsForVideo,
   __test: {
     dateOnly,
     shiftDate,
@@ -489,5 +746,7 @@ module.exports = {
     selectedProductIdsOfBooking,
     scopedMetricsOfSnapshot,
     latestSnapshot,
+    loadOrderMetricsForVideos,
+    resolveOrderMetricsForVideo,
   },
 };

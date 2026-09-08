@@ -3,6 +3,7 @@ require('dotenv').config();
 const { QueryTypes } = require('sequelize');
 const { TikTokChannel, sequelize } = require('../models');
 const { syncTiktokChannel } = require('../controllers/channelController');
+const { withMonitorContext } = require('../services/scheduledRunMonitorService');
 
 const JOB_LOCK_KEY = 'report:tiktok-daily-sync';
 const configuredConcurrency = Number(process.env.TIKTOK_SYNC_CONCURRENCY || 3);
@@ -54,7 +55,7 @@ const run = async ({ closeConnection = true } = {}) => {
 
       await runWithConcurrency(channels, SYNC_CONCURRENCY, async (channel) => {
         try {
-          const summary = await syncTiktokChannel(channel);
+          const summary = await withMonitorContext({ channel_id: channel.id }, () => syncTiktokChannel(channel));
           results.push({ channelId: channel.id, status: 'success', total: summary.total });
           console.info('[TikTok Sync Job] Channel synced', { channelId: channel.id, ...summary });
         } catch (error) {

@@ -1,11 +1,15 @@
+const { Op } = require('sequelize');
 const {
   User,
   Role,
   ContentTeam,
   UserContentAttribution,
+  Booking,
+  TikTokShop,
   sequelize,
 } = require('../models');
 const { hashPassword } = require('../lib/password');
+const { delByPattern } = require('../lib/redis');
 const MIN_PASSWORD_LENGTH = 8;
 
 const roleExists = async (role) => Boolean(await Role.findByPk(role));
@@ -260,10 +264,101 @@ const deleteUser = async (req, res) => {
   }
 };
 
+// Get bookings assigned to user
+const getUserBookings = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+    const user = await User.findByPk(userId, { attributes: ['id', 'name', 'email', 'avatar_url'] });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const bookings = await Booking.findAll({
+      where: { staff_id: userId },
+      include: [
+        { model: TikTokShop, as: 'target_shop', attributes: ['id', 'name', 'code', 'region'] },
+      ],
+      order: [['id', 'DESC']],
+    });
+    res.json({
+      user,
+      bookings,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// Unassign or reassign bookings from user
+const unassignUserBookings = async (req, res) => {
+  try {
+    const userId = Number(req.params.id);
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const { booking_ids, target_staff_id } = req.body || {};
+
+    let targetStaff = null;
+    if (target_staff_id !== undefined && target_staff_id !== null && target_staff_id !== '' && target_staff_id !== 'unassigned') {
+      const targetId = Number(target_staff_id);
+      if (!Number.isInteger(targetId)) {
+        return res.status(400).json({ message: 'Select a valid target managing user.' });
+      }
+      targetStaff = await User.findByPk(targetId, { attributes: ['id', 'name'] });
+      if (!targetStaff) {
+        return res.status(404).json({ message: 'Target managing user not found.' });
+      }
+    }
+
+    const whereClause = { staff_id: userId };
+    if (Array.isArray(booking_ids) && booking_ids.length > 0) {
+      const validIds = booking_ids.map(Number).filter(Number.isInteger);
+      if (validIds.length > 0) {
+        whereClause.id = { [Op.in]: validIds };
+      }
+    }
+
+    const updatePayload = {
+      staff_id: targetStaff ? targetStaff.id : null,
+      staff_name: targetStaff ? targetStaff.name : null,
+      updated_at: new Date(),
+    };
+
+    const [updatedCount] = await Booking.update(updatePayload, {
+      where: whereClause,
+    });
+
+    await Promise.all([
+      delByPattern('bookings:*'),
+      delByPattern('dashboard:*'),
+      delByPattern('report:*'),
+    ]).catch(() => {});
+
+    res.json({
+      success: true,
+      message: targetStaff
+        ? `Đã chuyển ${updatedCount} booking sang ${targetStaff.name}`
+        : `Đã gỡ nhân sự khỏi ${updatedCount} booking`,
+      updatedCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   getUsers,
   getUserById,
   createUser,
   updateUser,
-  deleteUser
+  deleteUser,
+  getUserBookings,
+  unassignUserBookings,
 };

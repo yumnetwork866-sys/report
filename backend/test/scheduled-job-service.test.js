@@ -15,7 +15,89 @@ const {
   DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS,
   configuredAffiliateVideoShopDelayMs,
   formatCompassWindowOverview,
+  dispatchPendingCompassRetries,
+  processScheduledJobRun,
 } = require('../src/services/scheduledJobService');
+
+test('pending retry dispatch is idempotent and preserves run and shop scope', async () => {
+  const queued = [];
+  const due = new Date('2026-09-09T03:00:00Z');
+  const run = { id: 77, scheduled_job_id: 1, next_retry_at: due, summary: { retry_scope: { shop_id: 9 } } };
+  const dependencies = {
+    RunModel: { findAll: async (options) => {
+      assert.equal(options.where.status, 'RETRY_PENDING');
+      return [run];
+    } },
+    JobModel: { findByPk: async () => ({ id: 1, job_key: 'tiktok_creator_performance' }) },
+    enqueue: async (...args) => { queued.push(args); },
+  };
+  await dispatchPendingCompassRetries(due, dependencies);
+  await dispatchPendingCompassRetries(due, dependencies);
+  assert.equal(queued[0][2].jobId, queued[1][2].jobId);
+  assert.equal(queued[0][1].runId, 77);
+  assert.equal(queued[0][1].shopId, 9);
+  dependencies.enqueue = async () => { throw new Error('Redis unavailable'); };
+  await assert.rejects(dispatchPendingCompassRetries(due, dependencies), /Redis unavailable/);
+  assert.equal(run.next_retry_at, due, 'failed dispatch must leave the retry recoverable');
+});
+
+const runFixture = () => {
+  const stored = { id: 91, status: 'PROCESSING', summary: null, next_retry_at: null };
+  const run = { ...stored, async reload() { Object.assign(this, stored); return this; } };
+  const RunModel = {
+    async update(fields, { where }) {
+      if (stored.status !== where.status) return [0];
+      if (where.next_retry_at && String(stored.next_retry_at) !== String(where.next_retry_at)) return [0];
+      Object.assign(stored, JSON.parse(JSON.stringify(fields)));
+      return [1];
+    },
+  };
+  return { stored, run, RunModel };
+};
+
+test('a scheduled run persists retry state and resumes the same run after its due time', async () => {
+  const { stored, run, RunModel } = runFixture();
+  const job = { job_key: 'tiktok_creator_performance' };
+  const state = { shops: [{ shop_id: 9, end_day: 20260906 }] };
+  const until = Date.now() + 900000;
+  await processScheduledJobRun(job, run, { shopId: 9 }, {
+    RunModel, monitor: (_fields, operation) => operation(),
+    runHandler: async ({ checkpoint }) => {
+      await checkpoint({ compass_state: state });
+      throw Object.assign(new Error('Waiting for Compass'), {
+        code: 'TIKTOK_COMPASS_RETRY_PENDING', nextRetryAt: until, summary: { compass_state: state },
+      });
+    },
+  });
+  assert.equal(stored.status, 'RETRY_PENDING');
+  assert.equal(new Date(stored.next_retry_at).getTime(), until);
+  assert.equal(stored.completed_at, null);
+  await processScheduledJobRun(job, run, {}, { RunModel, runHandler: () => assert.fail('early retry') });
+  stored.next_retry_at = new Date(Date.now() - 1000).toISOString();
+  await processScheduledJobRun(job, run, {}, {
+    RunModel, monitor: (_fields, operation) => operation(),
+    runHandler: async ({ shopId, resumeState }) => {
+      assert.equal(shopId, 9);
+      assert.deepEqual(resumeState, state);
+      return { succeeded: 1, failed: 0, total: 1 };
+    },
+  });
+  assert.equal(stored.status, 'SUCCEEDED');
+  assert.equal(stored.next_retry_at, null);
+});
+
+test('cancellation during a checkpoint cannot be overwritten by retry/completion', async () => {
+  const { stored, run, RunModel } = runFixture();
+  await processScheduledJobRun({ job_key: 'tiktok_creator_performance' }, run, {}, {
+    RunModel, monitor: (_fields, operation) => operation(),
+    runHandler: async ({ checkpoint }) => {
+      stored.status = 'CANCELLED';
+      await checkpoint({ compass_state: {} });
+      assert.fail('cancelled checkpoint must stop the handler');
+    },
+  });
+  assert.equal(stored.status, 'CANCELLED');
+});
 
 test('creator daily backfill selects only the newest missing historical date', () => {
   const dates = creatorDailyBackfillDates('2026-08-07', [

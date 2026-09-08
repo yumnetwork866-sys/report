@@ -5,6 +5,7 @@ const {
   calculateActualPerformance,
   __test: {
     affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingProducts, metricOfAffiliateSnapshot,
+    resolveOrderMetricsForVideo,
   },
 } = require('../src/services/bookingVideoPerformanceService');
 
@@ -147,4 +148,85 @@ test('actual booking performance calculates Net ROAS only with complete refund d
   assert.equal(result.gross_roas, 6);
   assert.equal(result.net_roas, 5.4);
   assert.equal(result.status, 'FINALIZED');
+});
+
+test('resolveOrderMetricsForVideo aggregates order ledger data by selected products', () => {
+  const videoData = {
+    shop_id: 1,
+    video_id: '7123456789',
+    by_product: new Map([
+      ['prod-1', { product_id: 'prod-1', currency: 'VND', orders: 5, items_sold: 8, refunded_quantity: 1, gross_gmv: 500000, refunded_gmv: 50000, net_gmv: 450000 }],
+      ['prod-2', { product_id: 'prod-2', currency: 'VND', orders: 3, items_sold: 4, refunded_quantity: 0, gross_gmv: 300000, refunded_gmv: 0, net_gmv: 300000 }],
+    ]),
+    products: ['prod-1', 'prod-2'],
+  };
+
+  // 1. Scoped to prod-1
+  const scopedProd1 = resolveOrderMetricsForVideo(videoData, new Set(['prod-1']));
+  assert.equal(scopedProd1.has_data, true);
+  assert.equal(scopedProd1.gross_gmv, 500000);
+  assert.equal(scopedProd1.refunded_gmv, 50000);
+  assert.equal(scopedProd1.net_gmv, 450000);
+  assert.equal(scopedProd1.orders, 5);
+  assert.equal(scopedProd1.items_sold, 8);
+  assert.deepEqual(scopedProd1.product_ids, ['prod-1']);
+
+  // 2. Scoped to an unassociated product
+  const scopedUnmatched = resolveOrderMetricsForVideo(videoData, new Set(['prod-999']));
+  assert.equal(scopedUnmatched.has_data, false);
+  assert.equal(scopedUnmatched.gross_gmv, 0);
+  assert.equal(scopedUnmatched.orders, 0);
+
+  // 3. All products (no filter)
+  const allProducts = resolveOrderMetricsForVideo(videoData, new Set());
+  assert.equal(allProducts.has_data, true);
+  assert.equal(allProducts.gross_gmv, 800000);
+  assert.equal(allProducts.refunded_gmv, 50000);
+  assert.equal(allProducts.net_gmv, 750000);
+  assert.equal(allProducts.orders, 8);
+  assert.equal(allProducts.items_sold, 12);
+});
+
+test('metricOfAffiliateSnapshot uses order ledger metrics when video detail is omitted', () => {
+  const snapshotWithoutDetail = {
+    export_id: 101,
+    creator_attributed_gmv: '800000',
+    attributed_orders: 8,
+    attributed_items_sold: 12,
+    video_views: 5000,
+    product_impressions: 0,
+    product_clicks: 0,
+    product_id: 'prod-1, prod-2',
+    raw_metrics: {
+      source: 'TIKTOK_SHOP_ANALYTICS_API',
+      list: {
+        id: '7123456789',
+        products: [{ id: 'prod-1' }, { id: 'prod-2' }],
+        gmv: { amount: '800000', currency: 'VND' },
+      },
+      detail: null,
+    },
+  };
+
+  const orderMetrics = {
+    has_data: true,
+    gross_gmv: 500000,
+    refunded_gmv: 50000,
+    net_gmv: 450000,
+    orders: 5,
+    items_sold: 8,
+    currency: 'VND',
+    product_ids: ['prod-1'],
+  };
+
+  const result = metricOfAffiliateSnapshot(snapshotWithoutDetail, new Set(['prod-1']), orderMetrics);
+  assert.equal(result.gross_gmv, 500000);
+  assert.equal(result.refunded_gmv, 50000);
+  assert.equal(result.net_gmv, 450000);
+  assert.equal(result.orders, 5);
+  assert.equal(result.items_sold, 8);
+  assert.equal(result.views, 5000);
+  assert.equal(result.currency, 'VND');
+  assert.equal(result.raw_metrics.order_ledger_used, true);
+  assert.equal(result.raw_metrics.product_metrics_available, true);
 });

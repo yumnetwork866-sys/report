@@ -20,10 +20,6 @@ const {
   DEFAULT_CREATOR_PROFILE_TTL_MS,
   DEFAULT_CREATOR_PROFILE_REQUEST_INTERVAL_MS,
   createCreatorPerformanceExportWithFallback,
-  COMPASS_COOLDOWN_NAMESPACE,
-  persistCompassCooldown,
-  runCompassRequest,
-  configuredCompassRateLimitCooldownMs,
   DEFAULT_COMPASS_FALLBACK_DELAY_MS,
   configuredCompassFallbackDelayMs,
   DEFAULT_COMPASS_END_DAY_OFFSET,
@@ -146,97 +142,6 @@ test('Compass export stops immediately on rate limit instead of retrying or fall
   }
 });
 
-test('Compass requests persist a shop cooldown after rate limiting and block calls during it', async () => {
-  const now = Date.parse('2026-08-17T03:00:00.000Z');
-  let persisted;
-  const rateLimitError = new Error('Too many requests');
-  rateLimitError.tiktokCode = 36009037;
-
-  await assert.rejects(runCompassRequest({ id: 7 }, async () => {
-    throw rateLimitError;
-  }, {
-    loadCooldown: async () => 0,
-    persistCooldown: async (details) => { persisted = details; },
-    cooldownMs: 60 * 60 * 1000,
-    now: () => now,
-  }), (error) => error === rateLimitError);
-  assert.equal(persisted.shopId, 7);
-  assert.equal(persisted.cooldownUntil, now + 60 * 60 * 1000);
-
-  let called = false;
-  await assert.rejects(runCompassRequest({ id: 7 }, async () => {
-    called = true;
-  }, {
-    loadCooldown: async () => persisted.cooldownUntil,
-    now: () => now,
-  }), (error) => error.code === 'TIKTOK_COMPASS_COOLDOWN');
-  assert.equal(called, false);
-
-  let stored;
-  await persistCompassCooldown({ shopId: 7, cooldownUntil: persisted.cooldownUntil, reason: 'limited' }, {
-    upsert: async (row) => { stored = row; },
-  });
-  assert.equal(stored.namespace, COMPASS_COOLDOWN_NAMESPACE);
-});
-
-test('Compass rate-limit cooldown escalates 15m, 30m, 1h and persists the streak', async (t) => {
-  const originalBase = process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_BASE_COOLDOWN_MS;
-  const originalMax = process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_MAX_COOLDOWN_MS;
-  const originalLegacy = process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_COOLDOWN_MS;
-  t.after(() => {
-    if (originalBase === undefined) delete process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_BASE_COOLDOWN_MS;
-    else process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_BASE_COOLDOWN_MS = originalBase;
-    if (originalMax === undefined) delete process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_MAX_COOLDOWN_MS;
-    else process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_MAX_COOLDOWN_MS = originalMax;
-    if (originalLegacy === undefined) delete process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_COOLDOWN_MS;
-    else process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_COOLDOWN_MS = originalLegacy;
-  });
-  process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_BASE_COOLDOWN_MS = String(15 * 60 * 1000);
-  process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_MAX_COOLDOWN_MS = String(60 * 60 * 1000);
-  delete process.env.TIKTOK_CREATOR_PERFORMANCE_RATE_LIMIT_COOLDOWN_MS;
-
-  let fakeNow = Date.parse('2026-08-17T03:00:00.000Z');
-  let state = { cooldownUntil: 0, consecutiveRateLimits: 0 };
-  const durations = [];
-  for (const expectedMs of [15 * 60 * 1000, 30 * 60 * 1000, 60 * 60 * 1000, 60 * 60 * 1000]) {
-    const error = new Error('Too many requests');
-    error.tiktokCode = 36009037;
-    await assert.rejects(runCompassRequest({ id: 7 }, async () => {
-      throw error;
-    }, {
-      loadCooldownState: async () => state,
-      persistCooldown: async (details) => {
-        durations.push(details.cooldownUntil - fakeNow);
-        state = {
-          cooldownUntil: details.cooldownUntil,
-          consecutiveRateLimits: details.consecutiveRateLimits,
-        };
-      },
-      now: () => fakeNow,
-    }), (caught) => caught === error);
-    assert.equal(error.cooldownMs, expectedMs);
-    fakeNow = state.cooldownUntil + 1;
-  }
-  assert.deepEqual(durations, [15, 30, 60, 60].map((minutes) => minutes * 60 * 1000));
-  assert.equal(state.consecutiveRateLimits, 4);
-  assert.equal(configuredCompassRateLimitCooldownMs(3), 60 * 60 * 1000);
-});
-
-test('Compass cooldown honors a longer Retry-After value', async () => {
-  const now = Date.parse('2026-08-17T03:00:00.000Z');
-  const error = new Error('Too many requests');
-  error.tiktokCode = 36009037;
-  error.retryAfterMs = 2 * 60 * 60 * 1000;
-  let persisted;
-  await assert.rejects(runCompassRequest({ id: 7 }, async () => {
-    throw error;
-  }, {
-    loadCooldownState: async () => ({ cooldownUntil: 0, consecutiveRateLimits: 0 }),
-    persistCooldown: async (details) => { persisted = details; },
-    now: () => now,
-  }));
-  assert.equal(persisted.cooldownUntil, now + 2 * 60 * 60 * 1000);
-});
 
 test('Creator List workbook maps to Creator Performance fields', () => {
   const workbook = XLSX.utils.book_new();
