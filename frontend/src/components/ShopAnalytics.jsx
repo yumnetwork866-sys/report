@@ -25,6 +25,12 @@ import { useI18n } from '../lib/language';
 import { formatDateOnly, parseDateOnly } from '../lib/date';
 import { useMoneyFormatter } from '../lib/currency';
 import ShopDropdown from './ShopDropdown';
+import {
+  getStoredSelectedShopId,
+  resolveSelectedShopId,
+  setStoredSelectedShopId,
+  subscribeSelectedShop,
+} from '../lib/shopSelection';
 import Pagination from './Pagination';
 import AppAvatar from './AppAvatar';
 import DatePickerInput from './DatePickerInput';
@@ -485,7 +491,7 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
   const initialRange = useMemo(() => rangeForDays(7), []);
   const [shops, setShops] = useState([]);
   const [connections, setConnections] = useState([]);
-  const [selectedShopId, setSelectedShopId] = useState('');
+  const [selectedShopId, setSelectedShopId] = useState(getStoredSelectedShopId);
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [periodPreset, setPeriodPreset] = useState('7d');
@@ -570,9 +576,29 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
   }, [t]);
 
   useEffect(() => {
+    if (!shops.length) return;
     setSelectedShopId((current) => {
-      if (shops.some((shop) => String(shop.id) === String(current))) return current;
-      return shops[0]?.id ? String(shops[0].id) : '';
+      const preferred = current || getStoredSelectedShopId();
+      const resolved = resolveSelectedShopId(shops, preferred);
+      if (resolved && resolved !== getStoredSelectedShopId()) {
+        setStoredSelectedShopId(resolved);
+      }
+      return resolved;
+    });
+  }, [shops]);
+
+  useEffect(() => {
+    return subscribeSelectedShop((event) => {
+      const nextId = event?.detail ?? getStoredSelectedShopId();
+      if (!nextId) return;
+      setSelectedShopId((current) => {
+        if (String(nextId) === String(current)) return current;
+        if (shops.length && !shops.some((shop) => String(shop.id) === String(nextId))) return current;
+        setSnapshot(null);
+        setVideoCreator('');
+        setVideoPage(1);
+        return String(nextId);
+      });
     });
   }, [shops]);
 
@@ -1066,6 +1092,7 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
     setVideoCreator('');
     setVideoPage(1);
     setSelectedShopId(nextShopId);
+    setStoredSelectedShopId(nextShopId);
   };
 
   const changePeriodPreset = (event) => {

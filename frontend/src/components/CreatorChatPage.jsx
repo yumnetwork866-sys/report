@@ -12,6 +12,12 @@ import {
   isCreatorMessagingNotice,
 } from '../lib/tiktokCreatorMessaging';
 import ShopDropdown from './ShopDropdown';
+import {
+  getStoredSelectedShopId,
+  resolveSelectedShopId,
+  setStoredSelectedShopId,
+  subscribeSelectedShop,
+} from '../lib/shopSelection';
 import AppAvatar from './AppAvatar';
 
 const MESSAGES_SCOPE = 'seller.affiliate_messages.write';
@@ -41,7 +47,7 @@ const CreatorChatPage = () => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const [shops, setShops] = useState([]);
-  const [shopId, setShopId] = useState('');
+  const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [creators, setCreators] = useState([]);
   const [selectedCreator, setSelectedCreator] = useState(null);
   const [conversation, setConversation] = useState(null);
@@ -67,8 +73,16 @@ const CreatorChatPage = () => {
     const controller = new AbortController();
     fetchTikTokShops(controller.signal)
       .then((items) => {
-        setShops(items);
-        setShopId(items[0]?.id ? String(items[0].id) : '');
+        const list = Array.isArray(items) ? items : [];
+        setShops(list);
+        setShopId((current) => {
+          const preferred = current || getStoredSelectedShopId();
+          const resolved = resolveSelectedShopId(list, preferred);
+          if (resolved && resolved !== getStoredSelectedShopId()) {
+            setStoredSelectedShopId(resolved);
+          }
+          return resolved;
+        });
       })
       .catch((requestError) => {
         if (requestError.name !== 'AbortError') setError(requestError.message);
@@ -78,6 +92,20 @@ const CreatorChatPage = () => {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    return subscribeSelectedShop((event) => {
+      const nextId = event?.detail ?? getStoredSelectedShopId();
+      if (!nextId) return;
+      setShopId((current) => {
+        if (String(nextId) === String(current)) return current;
+        if (shops.length && !shops.some((shop) => String(shop.id) === String(nextId))) return current;
+        setSelectedCreator(null);
+        setConversation(null);
+        return String(nextId);
+      });
+    });
+  }, [shops]);
 
   useEffect(() => {
     if (!shopId || !hasAccess) {
@@ -189,7 +217,7 @@ const CreatorChatPage = () => {
     <div className="page creator-chat">
       <section className="page__hero creator-chat__hero">
         <div><h1 className="page__title">{t('creatorChat.title')}</h1></div>
-        <div className="field creator-chat__shop"><label htmlFor="creator-chat-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="creator-chat-shop" shops={shops} value={shopId} onChange={(value) => { setShopId(value); setSelectedCreator(null); setConversation(null); }} disabled={!shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
+        <div className="field creator-chat__shop"><label htmlFor="creator-chat-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="creator-chat-shop" shops={shops} value={shopId} onChange={(value) => { setShopId(value); setStoredSelectedShopId(value); setSelectedCreator(null); setConversation(null); }} disabled={!shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
       </section>
 
       {error ? <div className="creator-chat__notice" role="alert">{error}<button type="button" onClick={() => setError('')} aria-label={t('common.close')}>×</button></div> : null}

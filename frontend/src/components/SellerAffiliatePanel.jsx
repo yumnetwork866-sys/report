@@ -32,6 +32,12 @@ import {
   normalizeEngagementPercentage,
 } from '../lib/sellerAffiliate';
 import ShopDropdown from './ShopDropdown';
+import {
+  getStoredSelectedShopId,
+  resolveSelectedShopId,
+  setStoredSelectedShopId,
+  subscribeSelectedShop,
+} from '../lib/shopSelection';
 import Pagination from './Pagination';
 import AppAvatar from './AppAvatar';
 import DatePickerInput from './DatePickerInput';
@@ -409,7 +415,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
   const [shops, setShops] = useState([]);
-  const [shopId, setShopId] = useState('');
+  const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [section, setSection] = useState(ordersOnly ? 'orders' : initialSection);
   const [orderMode, setOrderMode] = useState('orders');
   const [orderCategories, setOrderCategories] = useState([]);
@@ -471,6 +477,9 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   });
   const [contactNotice, setContactNotice] = useState(null);
   const marketplaceSearchKey = useRef('');
+  const resetMarketplaceSearch = useCallback(() => {
+    marketplaceSearchKey.current = '';
+  }, []);
 
   const selectedShop = useMemo(() => shops.find((shop) => String(shop.id) === String(shopId)), [shopId, shops]);
   const scopes = Array.isArray(selectedShop?.authorization?.granted_scopes) ? selectedShop.authorization.granted_scopes : [];
@@ -532,13 +541,36 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     setLoading(true);
     fetchTikTokShops(controller.signal)
       .then((items) => {
-        setShops(items);
-        setShopId((current) => current || (items[0]?.id ? String(items[0].id) : ''));
+        const list = Array.isArray(items) ? items : [];
+        setShops(list);
+        setShopId((current) => {
+          const preferred = current || getStoredSelectedShopId();
+          const resolved = resolveSelectedShopId(list, preferred);
+          if (resolved && resolved !== getStoredSelectedShopId()) {
+            setStoredSelectedShopId(resolved);
+          }
+          return resolved;
+        });
       })
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    return subscribeSelectedShop((event) => {
+      const nextId = event?.detail ?? getStoredSelectedShopId();
+      if (!nextId) return;
+      setShopId((current) => {
+        if (String(nextId) === String(current)) return current;
+        if (shops.length && !shops.some((shop) => String(shop.id) === String(nextId))) return current;
+        resetMarketplaceSearch();
+        setPageTokens([]);
+        setData({});
+        return String(nextId);
+      });
+    });
+  }, [resetMarketplaceSearch, shops]);
 
   useEffect(() => {
     if (!ordersOnly || orderMode !== 'management') return undefined;
@@ -1065,7 +1097,6 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
           : formatNumber(value),
       ])
     : [];
-  const resetMarketplaceSearch = () => { marketplaceSearchKey.current = ''; };
   const changeSection = (value) => { resetMarketplaceSearch(); setSection(value); setStatus(value === 'target' ? 'ONGOING' : ''); setKeyword(''); setSubmittedKeyword(''); setPageTokens([]); setData({}); setError(''); };
   const submitSearch = (event) => {
     event.preventDefault();
@@ -1356,7 +1387,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
       ) : null}
       <section className={`section-card seller-affiliate__controls${ordersOnly && orderMode === 'management' ? ' seller-affiliate__controls--management' : ''}`}>
         <div className="seller-affiliate__filter-grid">
-          <div className="field"><label htmlFor="affiliate-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="affiliate-shop" shops={shops} value={shopId} onChange={(nextShopId) => { resetMarketplaceSearch(); setShopId(nextShopId); setPageTokens([]); setData({}); }} disabled={loading || !shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
+          <div className="field"><label htmlFor="affiliate-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="affiliate-shop" shops={shops} value={shopId} onChange={(nextShopId) => { resetMarketplaceSearch(); setShopId(nextShopId); setStoredSelectedShopId(nextShopId); setPageTokens([]); setData({}); }} disabled={loading || !shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
           {(!ordersOnly || orderMode === 'orders') ? <form className="seller-affiliate__search" onSubmit={submitSearch}>
             <div className="field seller-affiliate__search-field">
               <label htmlFor="affiliate-search">{t(section === 'orders' ? 'sellerAffiliate.orderId' : 'common.search')}</label>
