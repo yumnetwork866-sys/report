@@ -17,6 +17,7 @@ const {
   formatCompassWindowOverview,
   dispatchPendingCompassRetries,
   processScheduledJobRun,
+  resolveCreatorPerformanceEndDayOffset,
 } = require('../src/services/scheduledJobService');
 
 test('pending retry dispatch is idempotent and preserves run and shop scope', async () => {
@@ -301,5 +302,56 @@ test('processScheduledJobRun handles execution when managesRunStatus handler is 
   );
   assert.equal(ran, true);
   assert.equal(stored.status, 'SUCCEEDED');
+});
+
+test('resolveCreatorPerformanceEndDayOffset handles manual and automated triggers', () => {
+  const job = {
+    timezone: 'Asia/Ho_Chi_Minh',
+    run_times: ['14:30'],
+  };
+
+  // 1. Automated run (SCHEDULED or CATCH_UP) respects env offset
+  const originalEnv = process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+  try {
+    delete process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+    assert.equal(resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'SCHEDULED' }), -2);
+    assert.equal(resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'CATCH_UP' }), -2);
+
+    process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = '-3';
+    assert.equal(resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'SCHEDULED' }), -3);
+    assert.equal(resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'CATCH_UP' }), -3);
+
+    process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = '-1';
+    assert.equal(resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'SCHEDULED' }), -1);
+  } finally {
+    if (originalEnv === undefined) {
+      delete process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET;
+    } else {
+      process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET = originalEnv;
+    }
+  }
+
+  // 2. Manual run before scheduled run time (e.g. 10:00 < 14:30) -> T-3
+  // 10:00 Asia/Ho_Chi_Minh is 03:00 UTC
+  const morning = new Date('2026-09-09T03:00:00.000Z');
+  assert.equal(
+    resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'MANUAL', now: morning }),
+    -3,
+  );
+
+  // 3. Manual run at or after scheduled run time (e.g. 14:30 >= 14:30, 15:00 >= 14:30) -> T-2
+  // 14:30 Asia/Ho_Chi_Minh is 07:30 UTC
+  const exactlyScheduled = new Date('2026-09-09T07:30:00.000Z');
+  assert.equal(
+    resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'MANUAL', now: exactlyScheduled }),
+    -2,
+  );
+
+  // 15:00 Asia/Ho_Chi_Minh is 08:00 UTC
+  const afternoon = new Date('2026-09-09T08:00:00.000Z');
+  assert.equal(
+    resolveCreatorPerformanceEndDayOffset({ job, triggerType: 'MANUAL', now: afternoon }),
+    -2,
+  );
 });
 

@@ -154,9 +154,11 @@ const exportDateRange = (windowType, endDay) => {
 
 const DEFAULT_COMPASS_END_DAY_OFFSET = -2;
 
-const latestCompassEndDay = (region = 'MY', now = new Date()) => {
+const latestCompassEndDay = (region = 'MY', now = new Date(), offsetOverride = null) => {
   const configuredOffset = Number(process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET);
-  const offset = Number.isInteger(configuredOffset) ? configuredOffset : DEFAULT_COMPASS_END_DAY_OFFSET;
+  const offset = Number.isInteger(offsetOverride)
+    ? offsetOverride
+    : (Number.isInteger(configuredOffset) ? configuredOffset : DEFAULT_COMPASS_END_DAY_OFFSET);
   const timezone = REGION_TIMEZONE[String(region || '').toUpperCase()] || 'UTC';
   const localParts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',

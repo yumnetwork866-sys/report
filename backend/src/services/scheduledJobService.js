@@ -19,6 +19,7 @@ const {
   processBasePerformanceExport,
   shiftEndDay,
   latestCompassEndDay,
+  DEFAULT_COMPASS_END_DAY_OFFSET,
 } = require('./tiktokCreatorPerformanceService');
 const {
   scheduledAnalyticsRange,
@@ -158,6 +159,34 @@ const latestScheduledSlot = (job, now = new Date()) => {
     scheduledAt: zonedScheduleDate(date, time, job.timezone),
     scheduledKey: `SCHEDULED:${date}:${time}`,
   };
+};
+
+const resolveCreatorPerformanceEndDayOffset = ({
+  job,
+  triggerType = 'SCHEDULED',
+  now = new Date(),
+} = {}) => {
+  const isManual = String(triggerType || '').toUpperCase() === 'MANUAL';
+  if (!isManual) {
+    const configuredOffset = Number(process.env.TIKTOK_CREATOR_PERFORMANCE_END_DAY_OFFSET);
+    return Number.isInteger(configuredOffset) ? configuredOffset : DEFAULT_COMPASS_END_DAY_OFFSET;
+  }
+
+  const timezone = job?.timezone || 'Asia/Ho_Chi_Minh';
+  const local = localScheduleParts(now, timezone);
+  let runTimes = job?.run_times;
+  if (typeof runTimes === 'string') {
+    try {
+      runTimes = JSON.parse(runTimes);
+    } catch {
+      runTimes = null;
+    }
+  }
+  const times = (Array.isArray(runTimes) && runTimes.length > 0)
+    ? normalizeRunTimes(runTimes)
+    : ['14:30'];
+  const scheduledTime = times[0];
+  return local.time < scheduledTime ? -3 : -2;
 };
 
 const connectedShops = (targetShopId = null) => TikTokShop.findAll({
@@ -654,10 +683,37 @@ const _refreshSixMonthPerformanceIfNeeded = async (shop, effectiveEndDay, signal
 };
 
 const jobHandlers = {
-  tiktok_creator_performance: async ({ signal, shopId, resumeState, checkpoint } = {}) => {
-    const shops = await connectedShops(shopId);
+  tiktok_creator_performance: async ({
+    signal, shopId, resumeState, checkpoint, job, run, triggerType,
+  } = {}, dependencies = {}) => {
+    const shops = await (dependencies.connectedShops || connectedShops)(shopId);
     if (!shops.length && shopId) throw new Error('Shop not found or not connected.');
-    return runResumableCompassSync({ shops, signal, resumeState, checkpoint });
+
+    let effectiveJob = job;
+    if (!effectiveJob && ScheduledJob) {
+      effectiveJob = await ScheduledJob.findOne({ where: { job_key: 'tiktok_creator_performance' } }).catch(() => null);
+    }
+    const effectiveTriggerType = triggerType || run?.trigger_type || 'SCHEDULED';
+    const offset = (dependencies.resolveOffset || resolveCreatorPerformanceEndDayOffset)({
+      job: effectiveJob,
+      triggerType: effectiveTriggerType,
+      now: dependencies.now ? new Date(dependencies.now()) : new Date(),
+    });
+    console.info('[TikTok Creator Performance] Resolved end_day offset', {
+      jobKey: 'tiktok_creator_performance',
+      triggerType: effectiveTriggerType,
+      offset,
+      scheduledTimes: effectiveJob?.run_times,
+    });
+    const endDayForShop = dependencies.endDayForShop || ((region) => latestCompassEndDay(
+      region,
+      dependencies.now ? new Date(dependencies.now()) : new Date(),
+      offset,
+    ));
+
+    return (dependencies.runCompassSync || runResumableCompassSync)({
+      shops, signal, resumeState, checkpoint,
+    }, { endDayForShop });
   },
   tiktok_creator_performance_backfill: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const dailyBackfill = await backfillCreatorDailyPerformance(
@@ -761,6 +817,9 @@ const processScheduledJobRun = async (job, run, { shopId = null } = {}, {
           throwIfAborted(controller.signal);
         }
       },
+      job,
+      run,
+      triggerType: run?.trigger_type,
     });
     await run.reload();
     if (run.status !== 'PROCESSING') return run;
@@ -1032,4 +1091,5 @@ module.exports = {
   registerActiveRunController,
   unregisterActiveRunController,
   abortActiveRun,
+  resolveCreatorPerformanceEndDayOffset,
 };
