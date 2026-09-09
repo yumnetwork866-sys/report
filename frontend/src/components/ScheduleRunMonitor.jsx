@@ -34,7 +34,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
   const active = isMonitorActive(run.status);
   const runId = initialRun.id;
   const filters = { status: filter, shop_id: shopId, q: query };
-  const label = (status) => t(`schedule.monitor.statuses.${String(status).toLowerCase()}`);
+  const label = (status) => t(`schedule.monitor.statuses.${String(status || 'UNKNOWN').toLowerCase()}`);
 
   useEffect(() => {
     const timer = setTimeout(() => setQuery(search.trim()), 300);
@@ -116,7 +116,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
         <h2>{t('schedule.monitor.title')} <span>#{run.id}</span></h2>
         <p>{t(`schedule.jobs.${initialRun.job_key}.name`)} · {timestamp(run.started_at, locale)}</p></div>
       <div className="run-monitor__actions">
-        <span className={`monitor-status is-${run.status.toLowerCase()}`}>{label(run.status)}</span>
+        <span className={`monitor-status is-${String(run.status || '').toLowerCase()}`}>{label(run.status)}</span>
         <label className="run-monitor__live"><input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} /><Radio size={15} />{t('schedule.monitor.live')}</label>
         <button type="button" className="button button--ghost" onClick={() => setRefreshKey((key) => key + 1)} aria-label={t('schedule.refresh')}><RefreshCw size={16} /></button>
       </div>
@@ -131,9 +131,24 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
       <summary>{t('schedule.monitor.progress')}</summary>
       <div>{run.summary.results.map((shop, index) => <article key={shop.shop_id || shop.channelId || index}>
         <header><strong>{shop.shop_name || (shop.shop_id ? `Shop #${shop.shop_id}` : `Channel #${shop.channelId || index + 1}`)}</strong><span className={`monitor-status is-${String(shop.status).toLowerCase()}`}>{label(String(shop.status).toUpperCase() === 'SUCCESS' ? 'SUCCEEDED' : shop.status)}</span></header>
-        <div className="run-monitor__windows">{shop.windows?.map((window) => <span key={`${window.module_type}-${window.window_type}`} className={`monitor-status is-${window.status.toLowerCase()}`} title={`${window.module_type} · ${label(window.status)} · ${t('schedule.monitor.retries')}: ${window.retry_count}`}>
-          {window.module_type} · {window.window_type.replace('PAST_', '').replace('_DAYS', 'd')} · {label(window.status)}
-        </span>)}</div>
+        <div className="run-monitor__windows">{shop.windows?.map((window, wIdx) => {
+          const status = String(window.status || shop.status || 'SUCCEEDED');
+          const windowType = String(window.window_type || (window.days ? `PAST_${window.days}_DAYS` : '') || '');
+          const windowLabel = windowType ? windowType.replace('PAST_', '').replace('_DAYS', 'd') : (window.days ? `${window.days}d` : '');
+          const moduleType = window.module_type || (window.row_count !== undefined ? 'VIDEO' : '');
+          const rowInfo = window.row_count !== undefined ? `${window.row_count} rows` : '';
+          const parts = [moduleType, windowLabel, rowInfo, label(status)].filter(Boolean);
+          const titleParts = [moduleType, label(status), window.retry_count !== undefined ? `${t('schedule.monitor.retries')}: ${window.retry_count}` : ''].filter(Boolean);
+          return (
+            <span
+              key={`${moduleType}-${windowType || wIdx}`}
+              className={`monitor-status is-${status.toLowerCase()}`}
+              title={titleParts.join(' · ')}
+            >
+              {parts.join(' · ')}
+            </span>
+          );
+        })}</div>
         {shop.next_retry_at ? <small>{t('schedule.nextRetry')}: {timestamp(shop.next_retry_at, locale)}</small> : null}
         {shop.error ? <p>{shop.error}</p> : null}
       </article>)}</div>
@@ -152,11 +167,11 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
           <tbody>{events.map((event) => <tr key={event.id} className={String(event.id) === String(selectedId) ? 'is-selected' : ''}>
             <td><time title={timestamp(event.started_at, locale)}>{new Date(event.started_at).toLocaleTimeString(locale, { hour12: false })}</time><small>#{event.id}</small></td>
             <td><button type="button" onClick={() => { setSelectedId(event.id); setTab(event.event_type === 'API_REQUEST' ? 'response_data' : 'request_data'); }}>
-              <strong>{event.method ? `${event.method} ${event.endpoint?.replace(/^https?:\/\/[^/]+/, '')}` : t(`schedule.monitor.events.${event.event_type.toLowerCase()}`)}</strong>
+              <strong>{event.method ? `${event.method} ${event.endpoint?.replace(/^https?:\/\/[^/]+/, '')}` : t(`schedule.monitor.events.${String(event.event_type || 'API_REQUEST').toLowerCase()}`)}</strong>
               <span>{[event.shop_name || (event.shop_id ? `Shop #${event.shop_id}` : event.channel_id ? `Channel #${event.channel_id}` : ''), event.module_type, event.window_type].filter(Boolean).join(' · ')}</span>
               {event.request_id ? <code>{event.request_id}</code> : null}
             </button></td>
-            <td><span className={`monitor-status is-${event.status.toLowerCase()}`}>{event.http_status ? `${event.http_status} · ` : ''}{label(event.status)}</span>{event.tiktok_code && event.tiktok_code !== '0' && event.tiktok_code !== 'ok' ? <small>Code {event.tiktok_code}</small> : null}</td>
+            <td><span className={`monitor-status is-${String(event.status || '').toLowerCase()}`}>{event.http_status ? `${event.http_status} · ` : ''}{label(event.status)}</span>{event.tiktok_code && event.tiktok_code !== '0' && event.tiktok_code !== 'ok' ? <small>Code {event.tiktok_code}</small> : null}</td>
             <td>{formatMonitorDuration(event.duration_ms)}</td>
           </tr>)}</tbody></table></div>
         {!events.length ? <p className="run-monitor__empty">{loading ? t('schedule.monitor.loading') : stats.last_activity_at ? t('schedule.monitor.noMatches') : t('schedule.monitor.noEvents')}</p> : null}
@@ -164,7 +179,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
       </section>
       <aside className="run-monitor__detail" aria-label={t('schedule.monitor.detail')}>
         {!selectedId ? <p className="run-monitor__empty">{t('schedule.monitor.selectEvent')}</p> : detail ? <>
-          <header><h3>{t('schedule.monitor.detail')} #{detail.id}</h3><span className={`monitor-status is-${detail.status.toLowerCase()}`}>{label(detail.status)}</span></header>
+          <header><h3>{t('schedule.monitor.detail')} #{detail.id}</h3><span className={`monitor-status is-${String(detail.status || '').toLowerCase()}`}>{label(detail.status)}</span></header>
           <dl>{[
             ['Request ID', detail.request_id], ['Task ID', detail.task_id], [t('schedule.monitor.endpoint'), detail.endpoint],
             [t('schedule.monitor.started'), timestamp(detail.started_at, locale)], [t('schedule.monitor.completed'), timestamp(detail.completed_at, locale)],

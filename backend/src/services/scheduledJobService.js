@@ -717,7 +717,13 @@ const jobHandlers = {
         currency: 'LOCAL',
         signal,
       });
-      windows.push({ days, ...result });
+      windows.push({
+        module_type: 'VIDEO',
+        window_type: `PAST_${days}_DAYS`,
+        status: 'SUCCEEDED',
+        days,
+        ...result,
+      });
     }
     return { windows };
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
