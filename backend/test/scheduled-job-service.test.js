@@ -282,3 +282,24 @@ test('affiliate video shop delay defaults to 30s and respects environment overri
     }
   }
 });
+
+test('processScheduledJobRun handles execution when managesRunStatus handler is invoked', async () => {
+  const { stored, run, RunModel } = runFixture();
+  let ran = false;
+  await processScheduledJobRun(
+    { job_key: 'tiktok_creator_performance' },
+    run,
+    {},
+    {
+      RunModel,
+      monitor: (_fields, op) => op(),
+      runHandler: async () => {
+        ran = true;
+        return { total: 1, succeeded: 1 };
+      },
+    },
+  );
+  assert.equal(ran, true);
+  assert.equal(stored.status, 'SUCCEEDED');
+});
+

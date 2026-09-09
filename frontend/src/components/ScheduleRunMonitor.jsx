@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Copy, RefreshCw, Radio, Search } from 'lucide-react';
+import { ArrowLeft, Copy, Search } from 'lucide-react';
 import { fetchScheduleRunEvents, fetchScheduleRunEvent } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { formatMonitorDuration, isMonitorActive, mergeMonitorEvents } from '../lib/runMonitor';
@@ -22,8 +22,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
   const [shopId, setShopId] = useState('');
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshKey, setRefreshKey] = useState(0);
+  const autoRefresh = true;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
@@ -70,7 +69,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
     };
     load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [runId, filter, shopId, query, autoRefresh, active, refreshKey, initialRun]);
+  }, [runId, filter, shopId, query, autoRefresh, active, initialRun]);
 
   useEffect(() => {
     if (!selectedId) return undefined;
@@ -89,7 +88,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
     };
     load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [runId, selectedId, autoRefresh, active, refreshKey]);
+  }, [runId, selectedId, autoRefresh, active]);
 
   const loadMore = async () => {
     const currentGeneration = generation.current;
@@ -115,11 +114,6 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
       <div><button type="button" className="button button--ghost" onClick={onBack}><ArrowLeft size={16} />{t('schedule.monitor.back')}</button>
         <h2>{t('schedule.monitor.title')} <span>#{run.id}</span></h2>
         <p>{t(`schedule.jobs.${initialRun.job_key}.name`)} · {timestamp(run.started_at, locale)}</p></div>
-      <div className="run-monitor__actions">
-        <span className={`monitor-status is-${String(run.status || '').toLowerCase()}`}>{label(run.status)}</span>
-        <label className="run-monitor__live"><input type="checkbox" checked={autoRefresh} onChange={(e) => setAutoRefresh(e.target.checked)} /><Radio size={15} />{t('schedule.monitor.live')}</label>
-        <button type="button" className="button button--ghost" onClick={() => setRefreshKey((key) => key + 1)} aria-label={t('schedule.refresh')}><RefreshCw size={16} /></button>
-      </div>
     </header>
     <div className="run-monitor__metrics">
       {[[t('schedule.monitor.requests'), stats.requests ?? 0], [t('schedule.monitor.success'), stats.succeeded ?? 0], [t('schedule.monitor.errors'), stats.failed ?? 0], [t('schedule.monitor.inFlight'), stats.in_flight ?? 0], [t('schedule.duration'), formatMonitorDuration(runElapsed)]].map(([name, value]) => <div key={name}><span>{name}</span><strong>{value}</strong></div>)}

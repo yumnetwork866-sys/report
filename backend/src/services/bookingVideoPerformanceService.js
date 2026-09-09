@@ -4,7 +4,6 @@ const {
   Booking,
   BookingVideo,
   BookingVideoPerformanceSnapshot,
-  TikTokAffiliateOrderSku,
   TikTokCreatorPerformanceExport,
   TikTokShop,
   TikTokVideoPerformanceSnapshot,
@@ -412,8 +411,6 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
   const postedAt = postedAtOf({ video_post_time: snapshot.post_date, post_time: snapshot.post_date });
 
   let grossGmv;
-  let refundedGmv;
-  let netGmv;
   let orders;
   let itemsSold;
   let currency;
@@ -421,22 +418,16 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
   if (hasSelectedProducts) {
     if (orderMetrics) {
       grossGmv = numberOrZero(orderMetrics.gross_gmv);
-      refundedGmv = orderMetrics.refunded_gmv !== null && orderMetrics.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
-      netGmv = orderMetrics.net_gmv !== null && orderMetrics.net_gmv !== undefined ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
       orders = numberOrZero(orderMetrics.orders);
       itemsSold = numberOrZero(orderMetrics.items_sold);
       currency = orderMetrics.currency || null;
     } else if (scoped) {
       grossGmv = scoped.amount;
-      refundedGmv = null;
-      netGmv = null;
       orders = scoped.orders;
       itemsSold = scoped.items_sold;
       currency = scoped.currency;
     } else {
       grossGmv = 0;
-      refundedGmv = null;
-      netGmv = null;
       orders = 0;
       itemsSold = 0;
       currency = null;
@@ -445,8 +436,6 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
     grossGmv = numberOrZero(snapshot.creator_attributed_gmv);
     orders = numberOrZero(snapshot.attributed_orders);
     itemsSold = numberOrZero(snapshot.attributed_items_sold);
-    refundedGmv = orderMetrics?.refunded_gmv !== null && orderMetrics?.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
-    netGmv = refundedGmv !== null ? grossGmv - refundedGmv : null;
     currency = scoped?.currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
       || source.gmv?.currency
       || orderMetrics?.currency

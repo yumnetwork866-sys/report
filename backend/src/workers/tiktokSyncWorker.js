@@ -87,7 +87,7 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
       const controller = new AbortController();
       let result;
       try {
-        if (runId) {
+        if (runId && !handler.managesRunStatus) {
           const { registerActiveRunController } = require('../services/scheduledJobService');
           registerActiveRunController(runId, controller);
         }
@@ -118,7 +118,7 @@ const startTiktokSyncWorker = (handlers = {}, options = {}) => {
         }
         throw err;
       } finally {
-        if (runId) {
+        if (runId && !handler.managesRunStatus) {
           const { unregisterActiveRunController } = require('../services/scheduledJobService');
           unregisterActiveRunController(runId);
         }

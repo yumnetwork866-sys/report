@@ -414,7 +414,48 @@ const ScheduleManagement = () => {
                   const errorMessages = getRunErrorMessages(run, shopNames).map((message) => formatErrorDates(message));
                   const errorText = errorMessages.join('\n');
                   const errorExpanded = expandedErrorRuns.has(String(run.id));
-                  return <tr key={run.id}><td>{formatDateTime(run.started_at, locale)}<button type="button" className="schedule-log-open" onClick={() => setMonitorRun(run)}>#{run.id} · {t('schedule.monitor.open')}</button></td><td><strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>{run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}</td><td>{triggerLabel(run.trigger_type)}</td><td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td><td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td><td>{resultLabel(run)}</td><td>{errorMessages.length ? <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}><pre title={errorExpanded ? '' : errorText}>{errorText}</pre><button type="button" aria-expanded={errorExpanded} aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')} onClick={() => toggleRunError(run.id)}><ChevronDown aria-hidden="true" /></button></div> : <span className="schedule-log-error-empty">—</span>}</td></tr>;
+                  return (
+                    <tr
+                      key={run.id}
+                      className="schedule-logs__row"
+                      onClick={() => setMonitorRun(run)}
+                      title={t('schedule.monitor.open')}
+                    >
+                      <td>
+                        <div>{formatDateTime(run.started_at, locale)}</div>
+                        <span className="schedule-log-run-id">#{run.id}</span>
+                      </td>
+                      <td>
+                        <strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>
+                        {run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}
+                      </td>
+                      <td>{triggerLabel(run.trigger_type)}</td>
+                      <td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td>
+                      <td>{durationInSeconds(run) === null ? '—' : `${durationInSeconds(run)}s`}</td>
+                      <td>{resultLabel(run)}</td>
+                      <td onClick={(e) => { if (errorMessages.length) e.stopPropagation(); }}>
+                        {errorMessages.length ? (
+                          <div className={`schedule-log-error${errorExpanded ? ' is-expanded' : ''}`}>
+                            <pre title={errorExpanded ? '' : errorText}>{errorText}</pre>
+                            <button
+                              type="button"
+                              aria-expanded={errorExpanded}
+                              aria-label={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')}
+                              title={t(errorExpanded ? 'schedule.collapseError' : 'schedule.expandError')}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRunError(run.id);
+                              }}
+                            >
+                              <ChevronDown aria-hidden="true" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="schedule-log-error-empty">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
                 })}
                 {!filteredRuns.length ? <tr><td colSpan="7"><div className="empty-state empty-state--compact">{t('schedule.noLogs')}</div></td></tr> : null}
               </tbody>
