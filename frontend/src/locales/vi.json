@@ -577,7 +577,6 @@
     "videoProgress": "{{current}}/{{target}} video",
     "committedVideos": "Số video cam kết",
     "committedVideosPlaceholder": "Ví dụ: 1, 2...",
-    "bookingMonthTitle": "Tháng {{month}}",
     "bookingInstance": "Lần book #{{id}}",
     "committedCompleted": "Đủ cam kết",
     "committedPending": "Chờ video",

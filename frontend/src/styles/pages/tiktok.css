@@ -3499,12 +3499,6 @@
   flex-wrap: wrap;
 }
 
-.booking-month-card__month-title {
-  font-size: 0.92rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .booking-month-card__date-range {
   font-size: 0.74rem;
   color: var(--text-secondary);

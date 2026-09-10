@@ -740,14 +740,6 @@ const TargetKocCombobox = ({
   );
 };
 
-const bookingMonthLabel = (booking) => {
-  const dateStr = booking.start_date || booking.end_date || booking.deadline || booking.created_at;
-  if (!dateStr) return '—';
-  const parts = String(dateStr).slice(0, 7).split('-');
-  if (parts.length < 2) return '—';
-  return `${parts[1]}/${parts[0]}`;
-};
-
 const BookingMonthCard = ({
   booking,
   isSelected,
@@ -757,7 +749,7 @@ const BookingMonthCard = ({
   editableCurrencyAmount,
   formatMoney,
   formatNumber,
-  formatRate,
+  formatRatio,
   formatDate,
   updatingId,
   deletingId,
@@ -799,13 +791,15 @@ const BookingMonthCard = ({
     });
   };
 
-  const monthStr = bookingMonthLabel(booking);
   const cardVideos = bookingVideosOf(booking);
   const videoCount = cardVideos.length || Number(booking.actual_performance?.video_count || 0);
   const targetVideos = booking.committed_videos || 1;
   const actualGmv = Number(booking.actual_performance?.gross_gmv || booking.actual_performance?.affiliate_gmv || 0);
+  const performanceCurrency = booking.actual_performance?.currency || booking.currency;
   const numCost = Number(booking.total_cost ?? booking.booking_cost ?? 0);
-  const ratio = (actualGmv > 0 && numCost > 0) ? (numCost / actualGmv) : null;
+  const convertedCost = convertAmount(numCost, booking.currency);
+  const convertedGmv = convertAmount(actualGmv, performanceCurrency);
+  const ratio = (convertedGmv > 0 && convertedCost !== null) ? (convertedCost / convertedGmv) : null;
   const itemsSold = booking.actual_performance?.items_sold;
 
   const selectedProductsList = useMemo(() => {
@@ -826,13 +820,9 @@ const BookingMonthCard = ({
     <article className={`booking-month-card${isSelected ? ' booking-month-card--active' : ''}`}>
       <div className="booking-month-card__header" onClick={() => setIsEditing((prev) => !prev)}>
         <div className="booking-month-card__header-left">
-          <span className="booking-month-card__month-title">
-            {t('booking.bookingMonthTitle', { month: monthStr })}
-          </span>
           <span className="booking-month-card__date-range">
-            ({formatDate(booking.start_date)} → {formatDate(booking.end_date || booking.deadline)})
+            {formatDate(booking.start_date)} → {formatDate(booking.end_date || booking.deadline)}
           </span>
-          <span className="chip chip--compact">#{booking.id}</span>
         </div>
         <div className="booking-month-card__header-badges">
           {videoCount >= targetVideos ? (
@@ -859,11 +849,11 @@ const BookingMonthCard = ({
           </div>
           <div className="booking-month-card__metric-item">
             <span>GMV</span>
-            <strong>{actualGmv > 0 ? formatMoney(actualGmv, booking.currency) : '—'}</strong>
+            <strong>{actualGmv > 0 ? formatMoney(actualGmv, performanceCurrency) : '—'}</strong>
           </div>
           <div className="booking-month-card__metric-item">
             <span>{t('booking.costRevenueRatio')}</span>
-            <strong>{ratio !== null ? formatRate(ratio) : '—'}</strong>
+            <strong>{formatRatio(ratio)}</strong>
           </div>
           <div className="booking-month-card__metric-item">
             <span>{t('booking.videoItemsSold')}</span>
@@ -1172,6 +1162,10 @@ const BookingManagement = ({
     const rate = optionalNumber(value);
     if (rate === null) return '—';
     return `${formatNumber(rate <= 1 ? rate * 100 : rate, { maximumFractionDigits: 2 })}%`;
+  };
+  const formatRatio = (value) => {
+    const ratio = optionalNumber(value);
+    return ratio === null ? '—' : `${formatNumber(ratio * 100, { maximumFractionDigits: 2 })}%`;
   };
   useEffect(() => {
     const previousCurrency = costInputCurrencyRef.current;
@@ -1979,7 +1973,7 @@ const BookingManagement = ({
           <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('booking.totalCost')}</p><p className="stat-card__value">{formatMoney(stats.totalCost, selectedCurrency)}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('booking.totalRevenue')}</p><p className="stat-card__value">{formatMoney(stats.totalRevenue, selectedCurrency)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{stats.totalRevenue > 0 ? formatRate(stats.totalCost / stats.totalRevenue) : '—'}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{formatRatio(stats.totalRevenue > 0 ? stats.totalCost / stats.totalRevenue : null)}</p></article>
         </div>
       </section>
 
@@ -2269,7 +2263,7 @@ const BookingManagement = ({
                         <td className="cell-number">{bookingTab === 'product' ? formatNumber(group.videoCount) : `${formatNumber(group.videoCount)} / ${formatNumber(group.committedVideos || group.bookings.length)}`}</td>
                         <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                         <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>
-                        <td className="cell-number">{group.totalRevenue > 0 ? formatRate(group.totalCost / group.totalRevenue) : '—'}</td>
+                        <td className="cell-number">{formatRatio(group.totalRevenue > 0 ? group.totalCost / group.totalRevenue : null)}</td>
                       </tr>
                       {isExpanded ? (
                         <tr className="member-detail-row">
@@ -2526,7 +2520,7 @@ const BookingManagement = ({
                     editableCurrencyAmount={editableCurrencyAmount}
                     formatMoney={formatMoney}
                     formatNumber={formatNumber}
-                    formatRate={formatRate}
+                    formatRatio={formatRatio}
                     formatDate={formatDate}
                     updatingId={updatingId}
                     deletingId={deletingId}

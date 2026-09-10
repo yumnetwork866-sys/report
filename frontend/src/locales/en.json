@@ -582,7 +582,6 @@
     "videoProgress": "{{current}}/{{target}} videos",
     "committedVideos": "Committed videos",
     "committedVideosPlaceholder": "e.g. 1, 2...",
-    "bookingMonthTitle": "Month {{month}}",
     "bookingInstance": "Booking #{{id}}",
     "committedCompleted": "Target reached",
     "committedPending": "Pending video",
