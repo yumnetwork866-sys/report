@@ -1087,6 +1087,8 @@ const BookingManagement = ({
   const [expandedBookingId, setExpandedBookingId] = useState(() => bookingUiSession().expandedBookingId ?? null);
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [creatorDeleteConfirmOpen, setCreatorDeleteConfirmOpen] = useState(false);
+  const [bookingDeleteConfirm, setBookingDeleteConfirm] = useState(null);
   const [detailCost, setDetailCost] = useState('');
   const [detailCommittedVideos, setDetailCommittedVideos] = useState(1);
   const [detailStartDate, setDetailStartDate] = useState('');
@@ -1110,6 +1112,8 @@ const BookingManagement = ({
     if (embeddedMode === 'create') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
   const closeBookingDetail = useCallback(() => {
+    setCreatorDeleteConfirmOpen(false);
+    setBookingDeleteConfirm(null);
     setSelectedBooking(null);
     if (embeddedMode === 'detail') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
@@ -1946,7 +1950,6 @@ const BookingManagement = ({
   };
 
   const handleDeleteCard = async (booking) => {
-    if (!window.confirm(t('booking.deleteConfirm', { id: booking.id }))) return;
     try {
       setDeletingId(booking.id);
       setError('');
@@ -1965,6 +1968,37 @@ const BookingManagement = ({
       setError(err.message || t('booking.errorDelete'));
     } finally {
       setDeletingId(null);
+      setBookingDeleteConfirm(null);
+    }
+  };
+
+  const handleDeleteCreatorBookings = async () => {
+    if (!creatorBookings.length || !selectedBooking) return;
+    const bookingsToDelete = [...creatorBookings];
+    try {
+      setDeletingId('creator');
+      setError('');
+      const results = await Promise.allSettled(bookingsToDelete.map(async (booking) => {
+        await deleteBooking(booking.id);
+        return booking.id;
+      }));
+      const deletedIds = new Set(results
+        .filter((result) => result.status === 'fulfilled')
+        .map((result) => result.value));
+      setBookings((items) => items.filter((item) => !deletedIds.has(item.id)));
+      const remaining = bookingsToDelete.filter((booking) => !deletedIds.has(booking.id));
+      setCreatorBookings(remaining);
+      if (remaining.length) {
+        setSelectedBooking(remaining[0]);
+        setError(t('booking.errorDelete'));
+      } else {
+        closeBookingDetail();
+      }
+    } catch (err) {
+      setError(err.message || t('booking.errorDelete'));
+    } finally {
+      setDeletingId(null);
+      setCreatorDeleteConfirmOpen(false);
     }
   };
 
@@ -2584,7 +2618,22 @@ const BookingManagement = ({
       {selectedBooking ? (() => {
         return <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
-            <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button></div>
+            <div className="koc-drawer__header">
+              <div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div>
+              <div className="booking-detail-drawer__header-actions">
+                <button
+                  className="button button--ghost booking-detail-drawer__delete"
+                  type="button"
+                  disabled={deletingId === 'creator' || !creatorBookings.length}
+                  aria-label={t(deletingId === 'creator' ? 'booking.deleting' : 'booking.deleteCreatorBookings')}
+                  title={t(deletingId === 'creator' ? 'booking.deleting' : 'booking.deleteCreatorBookings')}
+                  onClick={() => setCreatorDeleteConfirmOpen(true)}
+                >
+                  <Trash2 size={18} aria-hidden="true" />
+                </button>
+                <button className="button button--ghost booking-detail-drawer__close" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button>
+              </div>
+            </div>
             <div className="koc-drawer__body">
               <div className="booking-detail-summary">
                 <article className="booking-detail-summary__card">
@@ -2621,7 +2670,7 @@ const BookingManagement = ({
                     updatingId={updatingId}
                     deletingId={deletingId}
                     onSave={handleSaveCard}
-                    onDelete={handleDeleteCard}
+                    onDelete={(booking) => setBookingDeleteConfirm(booking)}
                     allShopProducts={detailProducts}
                     productsLoading={detailProductsLoading}
                     t={t}
@@ -2635,6 +2684,69 @@ const BookingManagement = ({
           </aside>
         </div>;
       })() : null}
+
+      {creatorDeleteConfirmOpen && selectedBooking ? createPortal(
+        <div
+          className="booking-delete-confirm-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingId !== 'creator') {
+              setCreatorDeleteConfirmOpen(false);
+            }
+          }}
+        >
+          <div className="booking-delete-confirm" role="alertdialog" aria-modal="true" aria-describedby="booking-delete-confirm-message">
+            <div className="booking-delete-confirm__content">
+              <div className="booking-delete-confirm__icon" aria-hidden="true"><Trash2 size={22} /></div>
+              <strong id="booking-delete-confirm-message">
+                {t('booking.deleteCreatorBookingsConfirm', {
+                  name: selectedBooking.creator_name || `@${selectedBooking.creator_username}`,
+                  count: creatorBookings.length,
+                })}
+              </strong>
+            </div>
+            <div className="booking-delete-confirm__actions">
+              <button className="button button--ghost" type="button" disabled={deletingId === 'creator'} onClick={() => setCreatorDeleteConfirmOpen(false)}>
+                {t('common.cancel')}
+              </button>
+              <button className="button button--danger" type="button" disabled={deletingId === 'creator'} onClick={handleDeleteCreatorBookings}>
+                {deletingId === 'creator' ? t('booking.deleting') : t('booking.delete')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {bookingDeleteConfirm ? createPortal(
+        <div
+          className="booking-delete-confirm-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingId !== bookingDeleteConfirm.id) {
+              setBookingDeleteConfirm(null);
+            }
+          }}
+        >
+          <div className="booking-delete-confirm" role="alertdialog" aria-modal="true" aria-describedby="booking-card-delete-confirm-message">
+            <div className="booking-delete-confirm__content">
+              <div className="booking-delete-confirm__icon" aria-hidden="true"><Trash2 size={22} /></div>
+              <strong id="booking-card-delete-confirm-message">
+                {t('booking.deleteConfirm', { id: bookingDeleteConfirm.id })}
+              </strong>
+            </div>
+            <div className="booking-delete-confirm__actions">
+              <button className="button button--ghost" type="button" disabled={deletingId === bookingDeleteConfirm.id} onClick={() => setBookingDeleteConfirm(null)}>
+                {t('common.cancel')}
+              </button>
+              <button className="button button--danger" type="button" disabled={deletingId === bookingDeleteConfirm.id} onClick={() => handleDeleteCard(bookingDeleteConfirm)}>
+                {deletingId === bookingDeleteConfirm.id ? t('booking.deleting') : t('booking.delete')}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </div>
   );
 };

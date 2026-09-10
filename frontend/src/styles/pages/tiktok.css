@@ -3744,6 +3744,93 @@
   padding: 14px 16px;
 }
 
+.booking-detail-drawer__header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.booking-detail-drawer__delete,
+.booking-detail-drawer__close {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  place-items: center;
+}
+
+.booking-detail-drawer__delete {
+  color: var(--color-danger, #dc2626);
+}
+
+.booking-detail-drawer__delete:hover:not(:disabled) {
+  background: #fef2f2;
+  color: var(--color-danger, #dc2626);
+}
+
+.booking-detail-drawer__close {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.booking-delete-confirm-backdrop {
+  position: fixed;
+  z-index: 1100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.booking-delete-confirm {
+  display: grid;
+  width: min(420px, 100%);
+  justify-items: center;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+  text-align: center;
+  animation: booking-modal-in 180ms ease-out;
+}
+
+.booking-delete-confirm__icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 50%;
+  background: #fef2f2;
+  color: var(--color-danger, #dc2626);
+}
+
+.booking-delete-confirm__content {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+  text-align: left;
+}
+
+.booking-delete-confirm__content strong {
+  color: var(--color-text);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.booking-delete-confirm__actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+
 .booking-detail-drawer__heading {
   display: flex;
   align-items: center;

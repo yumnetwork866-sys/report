@@ -746,6 +746,8 @@
     "delete": "Xóa",
     "deleting": "Đang xóa",
     "deleteConfirm": "Xóa booking #{{id}}?",
+    "deleteCreatorBookings": "Xóa booking của KOC này",
+    "deleteCreatorBookingsConfirm": "Xóa toàn bộ {{count}} booking của {{name}}?",
     "noVideo": "Chưa có video link",
     "errorLoad": "Không tải được danh sách booking",
     "errorCreate": "Không tạo được booking",

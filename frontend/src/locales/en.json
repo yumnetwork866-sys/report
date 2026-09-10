@@ -746,6 +746,8 @@
     "delete": "Delete",
     "deleting": "Deleting",
     "deleteConfirm": "Delete booking #{{id}}?",
+    "deleteCreatorBookings": "Delete this creator's bookings",
+    "deleteCreatorBookingsConfirm": "Delete all {{count}} bookings for {{name}}?",
     "noVideo": "No video link yet",
     "errorLoad": "Failed to load booking list",
     "errorCreate": "Failed to create booking",
