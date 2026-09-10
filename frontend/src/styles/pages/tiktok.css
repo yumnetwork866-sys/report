@@ -3465,20 +3465,6 @@
   padding-bottom: 16px;
 }
 
-.booking-cards-list__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-block: 4px 2px;
-}
-
-.booking-cards-list__header h3 {
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-}
-
 .booking-month-card {
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 12px;
@@ -3649,8 +3635,9 @@
 
 .booking-month-card__actions {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  gap: 8px;
   margin-top: 2px;
 }
 

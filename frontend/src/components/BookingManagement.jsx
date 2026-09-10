@@ -115,7 +115,6 @@ const targetKocKey = (creator) => {
   return `${creator.shop_id}:${identity}`;
 };
 const snapshotOf = (booking) => booking?.evaluation_snapshot || {};
-const collaborationOf = (booking) => snapshotOf(booking).collaboration || {};
 const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
 const bookingProductsOf = (booking) => {
   const snapshot = snapshotOf(booking);
@@ -1174,10 +1173,6 @@ const BookingManagement = ({
     if (rate === null) return '—';
     return `${formatNumber(rate <= 1 ? rate * 100 : rate, { maximumFractionDigits: 2 })}%`;
   };
-  const formatCollaborationStatus = (value) => value
-    ? t(`booking.collaborationStatuses.${String(value).toUpperCase()}`)
-    : '—';
-
   useEffect(() => {
     const previousCurrency = costInputCurrencyRef.current;
     if (previousCurrency === selectedCurrency) return;
@@ -2514,17 +2509,12 @@ const BookingManagement = ({
       ) : null}
 
       {selectedBooking ? (() => {
-        const collaboration = collaborationOf(selectedBooking);
         return <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
             <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button></div>
             <div className="koc-drawer__body">
-              <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}{selectedBooking.target_shop?.name ? <div><span>{t('booking.partnerShop')}</span><strong>{selectedBooking.target_shop.name}</strong></div> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} products={bookingProductsOf(selectedBooking)} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
+              <section className="drawer-section"><div className="booking-detail-grid"><div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} products={bookingProductsOf(selectedBooking)} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
               <div className="booking-cards-list">
-                <div className="booking-cards-list__header">
-                  <h3>{t('booking.monthBookings')}</h3>
-                  <span className="chip chip--compact">{t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</span>
-                </div>
                 {creatorBookings.map((b) => (
                   <BookingMonthCard
                     key={b.id}
