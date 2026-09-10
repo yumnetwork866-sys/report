@@ -215,7 +215,6 @@
     "dashboard": "Dashboard",
     "channelOverview": "Overview",
     "affiliate": "Affiliate marketing",
-    "creatorChat": "Creator Chat",
     "kocPerformance": "KOC performance",
     "shopAnalytics": "Shop analytics",
     "videoAnalytics": "Video Analytics",
@@ -889,16 +888,6 @@
     "oauthRedirecting": "Redirecting to TikTok for authorization…",
     "oauthLoadingProfile": "Loading the TikTok profile and Showcase…",
     "retry": "Retry"
-  },
-  "creatorChat": {
-    "title": "Creator Chat",
-    "creators": "Creators",
-    "searchPlaceholder": "Search by name or @username",
-    "noCreators": "No creators found.",
-    "selectCreator": "Select a creator",
-    "selectCreatorMeta": "Choose a creator from the list to view and send messages.",
-    "missingScope": "This Shop cannot message creators",
-    "missingScopeMeta": "Grant Marketplace and Affiliate Messages permissions, then reconnect TikTok Shop."
   },
   "sellerAffiliate": {
     "tab": "Seller affiliate",

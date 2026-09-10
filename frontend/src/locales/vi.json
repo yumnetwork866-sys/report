@@ -215,7 +215,6 @@
     "dashboard": "Bảng tổng quan",
     "channelOverview": "Tổng quan",
     "affiliate": "Tiếp thị liên kết",
-    "creatorChat": "Chat với Creator",
     "kocPerformance": "Hiệu quả KOC",
     "shopAnalytics": "Tổng quan",
     "videoAnalytics": "Phân tích video",
@@ -889,16 +888,6 @@
     "oauthRedirecting": "Đang chuyển đến TikTok để cấp quyền…",
     "oauthLoadingProfile": "Đang lấy hồ sơ và gian trưng bày từ TikTok…",
     "retry": "Thử lại"
-  },
-  "creatorChat": {
-    "title": "Chat với Creator",
-    "creators": "Nhà sáng tạo",
-    "searchPlaceholder": "Tìm theo tên hoặc @username",
-    "noCreators": "Không tìm thấy nhà sáng tạo.",
-    "selectCreator": "Chọn một nhà sáng tạo",
-    "selectCreatorMeta": "Chọn nhà sáng tạo ở danh sách bên trái để xem và gửi tin nhắn.",
-    "missingScope": "Cửa hàng chưa có quyền nhắn tin với nhà sáng tạo",
-    "missingScopeMeta": "Cấp quyền Marketplace và Affiliate Messages, sau đó kết nối lại TikTok Shop."
   },
   "sellerAffiliate": {
     "tab": "Tiếp thị liên kết",
