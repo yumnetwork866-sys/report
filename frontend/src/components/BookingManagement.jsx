@@ -515,71 +515,6 @@ const BookingDetailProduct = ({ product, onRemove }) => {
   );
 };
 
-const BookingDetailProducts = ({ shopId, videos = [], products: initialProducts, label, formatNumber }) => {
-  const sourceProducts = useMemo(() => {
-    const byId = new Map();
-    if (Array.isArray(initialProducts) && initialProducts.length) {
-      for (const p of initialProducts) {
-        const id = String(p.id || p.product_id || '').trim();
-        if (!id) continue;
-        byId.set(id, {
-          id,
-          name: p.name || p.title || p.product_name || null,
-          thumbnailUrl: p.imageUrl || p.thumbnailUrl || p.image_url || p.main_image_url || p.thumbnail_url || null,
-        });
-      }
-    }
-    for (const video of videos || []) {
-      const snapshot = latestBookingVideoSnapshot(video);
-      for (const product of productsOfBookingVideo(video, snapshot)) {
-        const existing = byId.get(product.id) || {};
-        byId.set(product.id, {
-          id: product.id,
-          name: product.name || existing.name || null,
-          thumbnailUrl: product.thumbnailUrl || existing.thumbnailUrl || null,
-        });
-      }
-    }
-    return [...byId.values()];
-  }, [initialProducts, videos]);
-  const [products, setProducts] = useState(sourceProducts);
-
-  useEffect(() => {
-    setProducts(sourceProducts);
-    if (!shopId || !sourceProducts.length) return undefined;
-    const missing = sourceProducts.filter((product) => !product.name || !product.thumbnailUrl);
-    if (!missing.length) return undefined;
-    let active = true;
-    Promise.all(missing.map(async (product) => {
-      try {
-        const payload = await cachedBookingResource(`video-product:${shopId}:${product.id}`, () => (
-          fetchTikTokSellerOpenCollaborations(shopId, { pageSize: 20, keyword: product.id })
-        ));
-        const row = (payload?.open_collaborations || []).find((item) => String(item?.product?.id) === product.id);
-        return row?.product ? {
-          id: product.id,
-          name: row.product.title || product.name,
-          thumbnailUrl: row.product.main_image_url || product.thumbnailUrl,
-        } : product;
-      } catch {
-        return product;
-      }
-    })).then((resolved) => {
-      if (active) setProducts(resolved);
-    });
-    return () => { active = false; };
-  }, [shopId, sourceProducts]);
-
-  return (
-    <>
-      <span>{label} ({formatNumber(products.length)})</span>
-      {products.length
-        ? <div className="booking-detail-products">{products.map((product) => <BookingDetailProduct product={product} key={product.id} />)}</div>
-        : <strong>—</strong>}
-    </>
-  );
-};
-
 const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
   const products = useMemo(
     () => bookingProductOrderBreakdown(booking, orders),
@@ -1089,16 +1024,10 @@ const BookingManagement = ({
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [creatorDeleteConfirmOpen, setCreatorDeleteConfirmOpen] = useState(false);
   const [bookingDeleteConfirm, setBookingDeleteConfirm] = useState(null);
-  const [detailCost, setDetailCost] = useState('');
-  const [detailCommittedVideos, setDetailCommittedVideos] = useState(1);
-  const [detailStartDate, setDetailStartDate] = useState('');
-  const [detailEndDate, setDetailEndDate] = useState('');
-  const [detailProductIds, setDetailProductIds] = useState([]);
   const [detailProducts, setDetailProducts] = useState([]);
   const [detailProductsLoading, setDetailProductsLoading] = useState(false);
-  const [detailProductPickerOpen, setDetailProductPickerOpen] = useState(false);
   const [creatorBookings, setCreatorBookings] = useState([]);
-  const [creatorBookingsLoading, setCreatorBookingsLoading] = useState(false);
+  const [, setCreatorBookingsLoading] = useState(false);
   const [error, setError] = useState('');
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
@@ -1232,10 +1161,6 @@ const BookingManagement = ({
       const converted = convertAmount(current.total_cost, previousCurrency);
       return { ...current, total_cost: editableCurrencyAmount(converted, selectedCurrency) };
     });
-    setDetailCost((current) => {
-      if (current === '') return current;
-      return editableCurrencyAmount(convertAmount(current, previousCurrency), selectedCurrency);
-    });
     costInputCurrencyRef.current = selectedCurrency;
   }, [convertAmount, selectedCurrency]);
 
@@ -1272,7 +1197,6 @@ const BookingManagement = ({
     if (!selectedBooking?.target_shop_id) {
       setDetailProducts([]);
       setDetailProductsLoading(false);
-      setDetailProductPickerOpen(false);
       return undefined;
     }
     const controller = new AbortController();
@@ -1309,16 +1233,6 @@ const BookingManagement = ({
       setCreatorBookings([]);
       return undefined;
     }
-    setDetailProductIds(bookingProductsOf(selectedBooking).map((product) => String(product.id || product.product_id)));
-    const rawCost = selectedBooking.total_cost ?? selectedBooking.booking_cost;
-    setDetailCost(editableCurrencyAmount(
-      convertAmount(rawCost, selectedBooking.currency) ?? rawCost,
-      selectedCurrency,
-    ));
-    setDetailCommittedVideos(selectedBooking.committed_videos ?? 1);
-    setDetailStartDate(selectedBooking.start_date ? String(selectedBooking.start_date).slice(0, 10) : '');
-    setDetailEndDate(selectedBooking.end_date ? String(selectedBooking.end_date).slice(0, 10) : (selectedBooking.deadline ? String(selectedBooking.deadline).slice(0, 10) : ''));
-
     const localMatches = bookings.filter((b) => (
       (selectedBooking.creator_open_id && b.creator_open_id === selectedBooking.creator_open_id)
       || (selectedBooking.creator_username && String(b.creator_username || '').toLowerCase() === String(selectedBooking.creator_username || '').toLowerCase())
@@ -1975,31 +1889,6 @@ const BookingManagement = ({
       setError(err.message || t('booking.videoMatchError'));
     } finally {
       setMatchingVideoId(null);
-    }
-  };
-
-  const loadVideoCandidates = findBookingVideo;
-
-  const saveCost = async (event) => {
-    event.preventDefault();
-    try {
-      setUpdatingId(selectedBooking.id);
-      const updated = await updateBooking(selectedBooking.id, {
-        total_cost: Number(detailCost),
-        committed_videos: Math.max(1, Number.parseInt(detailCommittedVideos, 10) || 1),
-        start_date: detailStartDate || null,
-        end_date: detailEndDate || null,
-        deadline: detailEndDate || null,
-        currency: selectedCurrency,
-        product_ids: detailProductIds,
-        products: detailProducts.filter((product) => detailProductIds.includes(product.id)),
-      });
-      replaceBooking(updated);
-      onEmbeddedChanged?.(updated);
-    } catch (err) {
-      setError(err.message || t('booking.errorUpdate'));
-    } finally {
-      setUpdatingId(null);
     }
   };
 
