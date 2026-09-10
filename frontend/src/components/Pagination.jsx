@@ -10,11 +10,12 @@ const Pagination = ({
   nextLabel,
   ariaLabel,
   className = '',
+  alwaysVisible = false,
 }) => {
   const total = Math.max(1, Number(totalPages) || 1);
   const current = Math.min(total, Math.max(1, Number(currentPage) || 1));
 
-  if (total <= 1) return null;
+  if (total <= 1 && !alwaysVisible) return null;
 
   return (
     <nav className={`pagination ${className}`.trim()} aria-label={ariaLabel}>

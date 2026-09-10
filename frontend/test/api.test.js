@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -123,6 +123,29 @@ test('TikTok Shop API helpers preserve analytics filters, sync payload and abort
     assert.deepEqual(JSON.parse(calls[5].options.body), {
       start_date: '2026-06-01', end_date: '2026-07-01', currency: 'LOCAL',
     });
+  });
+});
+
+test('affiliate order helper preserves date range and cursor pagination filters', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify({ orders: [], next_page_token: '' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchTikTokSellerAffiliateOrders(7, {
+      startTime: 1788195600,
+      endTime: 1790874000,
+      pageSize: 20,
+      pageToken: 'next-page',
+      orderId: 'order-123',
+    });
+
+    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&create_time_ge=1788195600&create_time_lt=1790874000&order_id=order-123');
   });
 });
 

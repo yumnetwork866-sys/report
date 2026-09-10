@@ -20,6 +20,7 @@ import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
+import { Plus } from 'lucide-react';
 
 const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
 const generateBookingMonthOptions = (count = 12) => {
@@ -476,12 +477,13 @@ const BookingVideoProduct = ({ product }) => {
   );
 };
 
-const BookingDetailProduct = ({ product }) => {
+const BookingDetailProduct = ({ product, onRemove }) => {
   const [imageFailed, setImageFailed] = useState(false);
   const source = product?.product || product || {};
   const name = source.title || source.name || source.product_name || source.id || source.product_id || '—';
   const id = source.id || source.product_id || null;
-  const thumbnailUrl = source.main_image_url
+  const thumbnailUrl = source.imageUrl
+    || source.main_image_url
     || source.thumbnail_url
     || source.thumbnailUrl
     || source.image_url
@@ -490,19 +492,45 @@ const BookingDetailProduct = ({ product }) => {
     || null;
   useEffect(() => setImageFailed(false), [thumbnailUrl]);
   return (
-    <div className="booking-detail-product">
+    <div className={`booking-detail-product${onRemove ? ' booking-detail-product--removable' : ''}`}>
       {thumbnailUrl && !imageFailed
         ? <img src={thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
         : <span className="booking-detail-product__placeholder" aria-hidden="true">P</span>}
       <span><strong title={name}>{name}</strong>{id && String(id) !== String(name) ? <small>{id}</small> : null}</span>
+      {onRemove && id ? (
+        <button
+          type="button"
+          className="booking-detail-product__remove"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRemove(id);
+          }}
+          title="Xóa"
+          aria-label="Xóa"
+        >
+          ×
+        </button>
+      ) : null}
     </div>
   );
 };
 
-const BookingDetailProducts = ({ shopId, videos, label, formatNumber }) => {
+const BookingDetailProducts = ({ shopId, videos = [], products: initialProducts, label, formatNumber }) => {
   const sourceProducts = useMemo(() => {
     const byId = new Map();
-    for (const video of videos) {
+    if (Array.isArray(initialProducts) && initialProducts.length) {
+      for (const p of initialProducts) {
+        const id = String(p.id || p.product_id || '').trim();
+        if (!id) continue;
+        byId.set(id, {
+          id,
+          name: p.name || p.title || p.product_name || null,
+          thumbnailUrl: p.imageUrl || p.thumbnailUrl || p.image_url || p.main_image_url || p.thumbnail_url || null,
+        });
+      }
+    }
+    for (const video of videos || []) {
       const snapshot = latestBookingVideoSnapshot(video);
       for (const product of productsOfBookingVideo(video, snapshot)) {
         const existing = byId.get(product.id) || {};
@@ -514,7 +542,7 @@ const BookingDetailProducts = ({ shopId, videos, label, formatNumber }) => {
       }
     }
     return [...byId.values()];
-  }, [videos]);
+  }, [initialProducts, videos]);
   const [products, setProducts] = useState(sourceProducts);
 
   useEffect(() => {
@@ -781,6 +809,20 @@ const BookingMonthCard = ({
   const ratio = (actualGmv > 0 && numCost > 0) ? (numCost / actualGmv) : null;
   const itemsSold = booking.actual_performance?.items_sold;
 
+  const selectedProductsList = useMemo(() => {
+    const shopProductsById = new Map((allShopProducts || []).map((p) => [String(p.id), p]));
+    const bookingProductsById = new Map(bookingProductsOf(booking).map((p) => [String(p.id || p.product_id), p]));
+    return productIds.map((id) => {
+      const sp = shopProductsById.get(String(id));
+      const bp = bookingProductsById.get(String(id));
+      return {
+        id: String(id),
+        name: sp?.name || bp?.name || bp?.title || bp?.product_name || id,
+        imageUrl: sp?.imageUrl || bp?.imageUrl || bp?.thumbnailUrl || bp?.image_url || bp?.main_image_url || bp?.thumbnail_url || null,
+      };
+    });
+  }, [allShopProducts, booking, productIds]);
+
   return (
     <article className={`booking-month-card${isSelected ? ' booking-month-card--active' : ''}`}>
       <div className="booking-month-card__header" onClick={() => setIsEditing((prev) => !prev)}>
@@ -807,9 +849,6 @@ const BookingMonthCard = ({
               🎬 {videoCount}/{targetVideos} video
             </span>
           )}
-          <span className="button button--ghost button--small" style={{ padding: '2px 6px', fontSize: '0.72rem' }}>
-            {isEditing ? t('booking.bookingCardCollapse') : t('booking.bookingCardEdit')}
-          </span>
         </div>
       </div>
 
@@ -833,56 +872,75 @@ const BookingMonthCard = ({
           </div>
         </div>
 
+        <div className="booking-month-card__products-section">
+          <div className="booking-month-card__products-header">
+            <span className="booking-month-card__products-label">
+              {t('booking.products')} {selectedProductsList.length ? `(${selectedProductsList.length})` : ''}
+            </span>
+            {isEditing ? (
+              <button
+                className="booking-month-card__add-product-btn"
+                type="button"
+                aria-expanded={productPickerOpen}
+                disabled={productsLoading}
+                onClick={() => setProductPickerOpen((prev) => !prev)}
+              >
+                <Plus size={14} aria-hidden="true" />
+                <span>{t('booking.addProduct')}</span>
+              </button>
+            ) : null}
+          </div>
+
+          {isEditing && productPickerOpen ? (
+            <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
+              {allShopProducts.length ? (
+                allShopProducts.map((product) => (
+                  <label className="booking-product-picker__option" key={product.id}>
+                    <input
+                      type="checkbox"
+                      checked={productIds.includes(product.id)}
+                      onChange={() => setProductIds((current) => (
+                        current.includes(product.id)
+                          ? current.filter((id) => id !== product.id)
+                          : [...current, product.id]
+                      ))}
+                    />
+                    <span>
+                      {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
+                      <span>
+                        <strong>{product.name}</strong>
+                        <small>{product.id}</small>
+                      </span>
+                    </span>
+                  </label>
+                ))
+              ) : (
+                <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>
+              )}
+            </div>
+          ) : null}
+
+          {selectedProductsList.length ? (
+            <div className="booking-detail-products">
+              {selectedProductsList.map((product) => (
+                <BookingDetailProduct
+                  key={product.id}
+                  product={product}
+                  onRemove={isEditing ? (idToRemove) => {
+                    setProductIds((curr) => curr.filter((id) => String(id) !== String(idToRemove)));
+                  } : null}
+                />
+              ))}
+            </div>
+          ) : (
+            isEditing && !productPickerOpen ? (
+              <p className="booking-month-card__products-empty">{t('booking.noAttachedProducts')}</p>
+            ) : null
+          )}
+        </div>
+
         {isEditing ? (
           <form className="booking-month-card__form" onSubmit={handleFormSubmit}>
-            <div className="field booking-product-picker-field booking-detail-product-picker-field">
-              <span>{t('booking.selectedProducts')}</span>
-              <div className="booking-product-picker">
-                <button
-                  className="booking-product-picker__trigger"
-                  type="button"
-                  aria-expanded={productPickerOpen}
-                  disabled={productsLoading}
-                  onClick={() => setProductPickerOpen((prev) => !prev)}
-                >
-                  <span>
-                    {productIds.length
-                      ? t('booking.productsSelected', { count: productIds.length })
-                      : (productsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}
-                  </span>
-                  <span className="sidebar__chevron" aria-hidden="true" />
-                </button>
-                {productPickerOpen ? (
-                  <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
-                    {allShopProducts.length ? (
-                      allShopProducts.map((product) => (
-                        <label className="booking-product-picker__option" key={product.id}>
-                          <input
-                            type="checkbox"
-                            checked={productIds.includes(product.id)}
-                            onChange={() => setProductIds((current) => (
-                              current.includes(product.id)
-                                ? current.filter((id) => id !== product.id)
-                                : [...current, product.id]
-                            ))}
-                          />
-                          <span>
-                            {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
-                            <span>
-                              <strong>{product.name}</strong>
-                              <small>{product.id}</small>
-                            </span>
-                          </span>
-                        </label>
-                      ))
-                    ) : (
-                      <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
             <div className="field booking-modal-date-range">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="field" style={{ margin: 0 }}>
@@ -1947,7 +2005,56 @@ const BookingManagement = ({
             <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
               <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
               {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
-              <div className="field booking-product-picker-field"><label>{t('booking.products')}</label><div className="booking-product-picker"><button className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}><span>{form.product_ids.length ? t('booking.productsSelected', { count: form.product_ids.length }) : (channelProductsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}</span><span className="sidebar__chevron" aria-hidden="true" /></button>{productPickerOpen ? <div className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>{channelProductsLoading ? <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div> : bookingProducts.length ? bookingProducts.map((product) => <label className="booking-product-picker__option" key={product.id}><input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} /><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}<span><strong>{product.name}</strong><small>{product.id}</small></span></span></label>) : null}</div> : null}</div></div>
+              <div className="field booking-product-picker-field">
+                <label>{t('booking.products')}</label>
+                <div className="booking-product-picker">
+                  <button className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      <Plus size={14} aria-hidden="true" />
+                      <span>{t('booking.addProduct')}</span>
+                      {form.product_ids.length ? <span className="chip chip--compact">{form.product_ids.length}</span> : null}
+                    </span>
+                    <span className="sidebar__chevron" aria-hidden="true" />
+                  </button>
+                  {productPickerOpen ? (
+                    <div className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
+                      {channelProductsLoading ? (
+                        <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div>
+                      ) : bookingProducts.length ? (
+                        bookingProducts.map((product) => (
+                          <label className="booking-product-picker__option" key={product.id}>
+                            <input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} />
+                            <span>
+                              {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
+                              <span><strong>{product.name}</strong><small>{product.id}</small></span>
+                            </span>
+                          </label>
+                        ))
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+                {form.product_ids.length ? (
+                  <div style={{ marginTop: '8px' }}>
+                    <div className="booking-detail-products">
+                      {form.product_ids.map((id) => {
+                        const p = bookingProducts.find((item) => String(item.id) === String(id)) || {};
+                        return (
+                          <BookingDetailProduct
+                            key={id}
+                            product={{
+                              id,
+                              name: p.name || id,
+                              imageUrl: p.imageUrl || null,
+                            }}
+                            onRemove={() => toggleBookingProduct(id)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
               <div className="field booking-modal-date-range">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div className="field" style={{ margin: 0 }}>
@@ -2412,7 +2519,7 @@ const BookingManagement = ({
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
             <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button></div>
             <div className="koc-drawer__body">
-              <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}{selectedBooking.target_shop?.name ? <div><span>{t('booking.partnerShop')}</span><strong>{selectedBooking.target_shop.name}</strong></div> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
+              <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}{selectedBooking.target_shop?.name ? <div><span>{t('booking.partnerShop')}</span><strong>{selectedBooking.target_shop.name}</strong></div> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} products={bookingProductsOf(selectedBooking)} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
               <div className="booking-cards-list">
                 <div className="booking-cards-list__header">
                   <h3>{t('booking.monthBookings')}</h3>

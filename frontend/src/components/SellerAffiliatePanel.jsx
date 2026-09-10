@@ -418,6 +418,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
   const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [section, setSection] = useState(ordersOnly ? 'orders' : initialSection);
   const [orderMode, setOrderMode] = useState('orders');
+  const [orderRange, setOrderRange] = useState(() => defaultStatisticsRange(30));
   const [orderCategories, setOrderCategories] = useState([]);
   const [orderCatalogProducts, setOrderCatalogProducts] = useState([]);
   const [categoryName, setCategoryName] = useState('');
@@ -628,6 +629,10 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
         pageSize: PAGE_SIZE,
         pageToken: currentPageToken,
         keyword: submittedKeyword,
+        ...(ordersOnly && section === 'orders' ? {
+          startTime: localDateUnix(orderRange.start),
+          endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+        } : {}),
         ...(section === 'discover' && marketplaceSearchKey.current
           ? { searchKey: marketplaceSearchKey.current }
           : {}),
@@ -695,7 +700,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [currentPageToken, hasMarketplaceScope, hasScope, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
+  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -941,7 +946,14 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
         } else if (section === 'creators') {
           intermediate = await fetchTikTokSellerAffiliateCreators(shopId, { ...filters, status });
         } else {
-          intermediate = await fetchTikTokSellerAffiliateOrders(shopId, { ...filters, orderId: submittedKeyword });
+          intermediate = await fetchTikTokSellerAffiliateOrders(shopId, {
+            ...filters,
+            orderId: submittedKeyword,
+            ...(ordersOnly ? {
+              startTime: localDateUnix(orderRange.start),
+              endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+            } : {}),
+          });
         }
         cursor = intermediate?.next_page_token || '';
       }
@@ -1385,7 +1397,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
           {['open', 'target', 'discover', 'performance', 'creators', 'orders'].map((value) => <button className={section === value ? 'is-active' : ''} type="button" role="tab" aria-selected={section === value} onClick={() => changeSection(value)} key={value}>{t(`sellerAffiliate.${value}Tab`)}</button>)}
         </div>
       ) : null}
-      <section className={`section-card seller-affiliate__controls${ordersOnly && orderMode === 'management' ? ' seller-affiliate__controls--management' : ''}`}>
+      <section className={`section-card seller-affiliate__controls${ordersOnly && orderMode === 'management' ? ' seller-affiliate__controls--management' : ''}${ordersOnly && orderMode === 'orders' ? ' seller-affiliate__controls--orders' : ''}`}>
         <div className="seller-affiliate__filter-grid">
           <div className="field"><label htmlFor="affiliate-shop">{t('sellerAffiliate.shop')}</label><ShopDropdown id="affiliate-shop" shops={shops} value={shopId} onChange={(nextShopId) => { resetMarketplaceSearch(); setShopId(nextShopId); setStoredSelectedShopId(nextShopId); setPageTokens([]); setData({}); }} disabled={loading || !shops.length} placeholder={t('sellerAffiliate.selectShop')} unknownLabel={t('common.unknown')} /></div>
           {(!ordersOnly || orderMode === 'orders') ? <form className="seller-affiliate__search" onSubmit={submitSearch}>
@@ -1400,6 +1412,10 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
               </button>
             </div>
           </form> : null}
+          {ordersOnly && orderMode === 'orders' ? <>
+            <div className="field"><label htmlFor="affiliate-orders-start">{t('sellerAffiliate.startDate')}</label><DatePickerInput id="affiliate-orders-start" label={t('sellerAffiliate.startDate')} value={orderRange.start} max={orderRange.end} onChange={(value) => { setOrderRange((current) => ({ ...current, start: value })); setPageTokens([]); }} /></div>
+            <div className="field"><label htmlFor="affiliate-orders-end">{t('sellerAffiliate.endDate')}</label><DatePickerInput id="affiliate-orders-end" label={t('sellerAffiliate.endDate')} value={orderRange.end} min={orderRange.start} max={new Date().toISOString().slice(0, 10)} onChange={(value) => { setOrderRange((current) => ({ ...current, end: value })); setPageTokens([]); }} /></div>
+          </> : null}
           {section === 'target' || section === 'creators' ? <div className="field"><label htmlFor="affiliate-status">{t('sellerAffiliate.status')}</label><select id="affiliate-status" value={status} onChange={(event) => { setStatus(event.target.value); setPageTokens([]); }}>{section === 'creators' ? <option value="">{t('sellerAffiliate.allStatuses')}</option> : null}{(section === 'target' ? ['ONGOING', 'EXPIRING', 'VALID', 'CANCELING', 'COMPLETED'] : ['PENDING', 'AWAITING_SHIPMENT', 'SHIPPED', 'CONTENT_PENDING', 'COMPLETED', 'REJECT_CANCELLED']).map((value) => <option value={value} key={value}>{value}</option>)}</select></div> : null}
           {section === 'performance' ? <div className="field"><label htmlFor="creator-performance-window">{t('sellerAffiliate.performanceWindow')}</label><select id="creator-performance-window" value={performanceWindow} onChange={(event) => { setPerformanceWindow(event.target.value); setPageTokens([]); }}><option value="PAST_24H">{t('sellerAffiliate.past24h')}</option><option value="PAST_7_DAYS">{t('sellerAffiliate.past7Days')}</option><option value="PAST_30_DAYS">{t('sellerAffiliate.past30Days')}</option></select></div> : null}
           {ordersOnly && orderMode === 'management' ? <div className="seller-affiliate__management-filters">
@@ -1493,6 +1509,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
             previousLabel={t('common.previous')}
             nextLabel={t('common.next')}
             ariaLabel={t('sellerAffiliate.page', { page: currentPage })}
+            alwaysVisible={ordersOnly && orderMode === 'orders'}
           />
         </section> : null}
       </> : null}
