@@ -97,16 +97,6 @@ export function fetchBookings(signal, { windowType, startDate, endDate, month, c
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }
 
-export function fetchStaffEvaluationsBeta({ startDate, endDate, staffId, shopId, signal } = {}) {
-  const params = new URLSearchParams();
-  if (startDate) params.set('startDate', startDate);
-  if (endDate) params.set('endDate', endDate);
-  if (staffId) params.set('staffId', String(staffId));
-  if (shopId) params.set('shopId', String(shopId));
-  const query = params.toString();
-  return apiRequest(`/bookings/evaluations/beta${query ? `?${query}` : ''}`, { signal });
-}
-
 export function fetchBookingTargetKocs({ keyword, page = 1, pageSize = 20, signal } = {}) {
   const params = new URLSearchParams({
     page: String(page),

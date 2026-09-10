@@ -5,7 +5,6 @@ export const ChannelReport = lazy(() => import('../components/ChannelReport'));
 export const ChatbotManagement = lazy(() => import('../components/ChatbotManagement'));
 export const CreatorChatPage = lazy(() => import('../components/CreatorChatPage'));
 export const BookingManagement = lazy(() => import('../components/BookingManagement'));
-export const StaffEvaluationBeta = lazy(() => import('../components/StaffEvaluationBeta'));
 export const Dashboard = lazy(() => import('../components/Dashboard'));
 export const EmployeeTable = lazy(() => import('../components/EmployeeTable'));
 export const KOCPerformance = lazy(() => import('../components/KOCPerformance'));

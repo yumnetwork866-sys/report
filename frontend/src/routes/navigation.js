@@ -157,15 +157,6 @@ export const protectedRouteCards = [
     },
   },
   {
-    path: '/test',
-    component: 'StaffEvaluationBeta',
-    permission: 'tiktok',
-    props: {
-      heroTitle: 'Đánh giá nhân viên (Beta)',
-      heroSubtitle: 'Đánh giá toàn diện tiến độ, kỷ luật thực thi và hiệu quả kinh doanh theo nhân viên',
-    },
-  },
-  {
     path: '/orders',
     component: 'SellerAffiliatePanel',
     permission: 'tiktok',

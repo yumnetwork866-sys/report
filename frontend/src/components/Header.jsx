@@ -204,7 +204,6 @@ const Header = () => {
         '/manage/shop-analytics',
         '/manage/video-analytics',
         '/bookings',
-        '/test',
         '/reports',
       ].some((prefix) => location.pathname.startsWith(prefix));
     }
