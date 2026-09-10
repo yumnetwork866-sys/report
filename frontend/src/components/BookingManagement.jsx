@@ -2366,16 +2366,16 @@ const BookingManagement = ({
                                           <SortIcon active={bookingSort.key === 'videos'} direction={bookingSort.direction} />
                                         </button>
                                       </th>
-                                      <th className="cell-number booking-refunds-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('refunds')}>
-                                          <span>{t('booking.refunds')}</span>
-                                          <SortIcon active={bookingSort.key === 'refunds'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
                                       <th className="cell-number sortable-th">
                                         <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('items_sold')}>
                                           <span>{t('booking.products')}</span>
                                           <SortIcon active={bookingSort.key === 'items_sold'} direction={bookingSort.direction} />
+                                        </button>
+                                      </th>
+                                      <th className="cell-number booking-refunds-column sortable-th">
+                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('refunds')}>
+                                          <span>{t('booking.refunds')}</span>
+                                          <SortIcon active={bookingSort.key === 'refunds'} direction={bookingSort.direction} />
                                         </button>
                                       </th>
                                       <th className="cell-number booking-samples-column sortable-th">
@@ -2408,8 +2408,8 @@ const BookingManagement = ({
                                             <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
                                             <td className="cell-number booking-total-cost-column"><strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong></td>
                                             <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videoProgress', { current: videoCount, target: booking.committed_videos || 1 })}</strong></span></td>
-                                            <td className="cell-number booking-refunds-column">{creatorMetric(performance, 'refunded_gmv', { money: true })}</td>
                                             <td className="cell-number"><div className="booking-product-summary"><strong>{creatorMetric(performance, 'items_sold')} <span>{t('booking.itemsSold')}</span></strong><small>{creatorMetric(performance, 'items_refunded')} {t('booking.refundedShort')}</small></div></td>
+                                            <td className="cell-number booking-refunds-column">{creatorMetric(performance, 'refunded_gmv', { money: true })}</td>
                                             <td className="cell-number booking-samples-column">{bookingTab === 'product' ? '—' : creatorMetric(performance, 'samples_shipped')}</td>
                                             <td className="cell-number">{creatorMetric(performance, 'estimated_commission', { money: true })}</td>
                                             <td className="cell-actions">
@@ -2521,8 +2521,8 @@ const BookingManagement = ({
         </div>
       ) : null}
 
-      {selectedBooking ? (() => {
-        return <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
+      {selectedBooking ? createPortal(
+        <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
             <div className="koc-drawer__header">
               <div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div>
@@ -2588,8 +2588,9 @@ const BookingManagement = ({
               </div>
             </div>
           </aside>
-        </div>;
-      })() : null}
+        </div>,
+        document.body,
+      ) : null}
 
       {creatorDeleteConfirmOpen && selectedBooking ? createPortal(
         <div
