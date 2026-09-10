@@ -85,13 +85,26 @@ export function fetchContentTeams(signal) {
   return apiRequest('/content-teams', { signal });
 }
 
-export function fetchBookings(signal, { windowType, startDate, endDate } = {}) {
+export function fetchBookings(signal, { windowType, startDate, endDate, month, creatorUsername, creatorOpenId } = {}) {
   const params = new URLSearchParams();
   if (windowType) params.set('window_type', windowType);
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
+  if (month && month !== 'all') params.set('month', month);
+  if (creatorUsername) params.set('creator_username', creatorUsername);
+  if (creatorOpenId) params.set('creator_open_id', creatorOpenId);
   const query = params.toString();
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
+}
+
+export function fetchStaffEvaluationsBeta({ startDate, endDate, staffId, shopId, signal } = {}) {
+  const params = new URLSearchParams();
+  if (startDate) params.set('startDate', startDate);
+  if (endDate) params.set('endDate', endDate);
+  if (staffId) params.set('staffId', String(staffId));
+  if (shopId) params.set('shopId', String(shopId));
+  const query = params.toString();
+  return apiRequest(`/bookings/evaluations/beta${query ? `?${query}` : ''}`, { signal });
 }
 
 export function fetchBookingTargetKocs({ keyword, page = 1, pageSize = 20, signal } = {}) {

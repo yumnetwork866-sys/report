@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   createBooking,
   deleteBooking,
@@ -8,7 +9,6 @@ import {
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokSellerAffiliateOrders,
-  fetchTikTokShopVideoThumbnail,
   fetchUsers,
   matchBookingVideo,
   updateBooking,
@@ -18,10 +18,24 @@ import { useMoneyFormatter } from '../lib/currency';
 import { hasPermission } from '../lib/session';
 import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
+import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
 
-const initialForm = { creator_key: '', staff_id: '', total_cost: '', product_ids: [] };
-const DEFAULT_PERFORMANCE_WINDOW = 'PAST_30_DAYS';
+const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
+const generateBookingMonthOptions = (count = 12) => {
+  const options = [{ value: 'all', labelKey: 'booking.allMonths' }];
+  const d = new Date();
+  for (let i = 0; i < count; i += 1) {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    options.push({
+      value: `${year}-${month}`,
+      label: `Tháng ${month}/${year}`,
+    });
+    d.setMonth(d.getMonth() - 1);
+  }
+  return options;
+};
 const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
 const BOOKING_UI_SESSION_KEY = 'booking-management-ui';
 const PRODUCT_ORDERS_CACHE_SESSION_KEY = 'booking-product-orders-cache';
@@ -73,6 +87,19 @@ const shiftDateInputValue = (value, days) => {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 };
+const defaultBookingForm = () => {
+  const today = dateInputValue(new Date());
+  return {
+    creator_key: '',
+    staff_id: '',
+    total_cost: '',
+    committed_videos: 1,
+    product_ids: [],
+    start_date: today,
+    end_date: shiftDateInputValue(today, 7),
+  };
+};
+const initialForm = defaultBookingForm();
 const defaultCustomRange = () => {
   const end = new Date();
   end.setDate(end.getDate() - 1);
@@ -341,45 +368,6 @@ const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, load
         </div>
       ) : null}
     </div>
-  );
-};
-
-const BookingVideoThumbnail = ({ shopId, video, snapshot, index }) => {
-  const rawVideo = snapshot?.raw_metrics?.video || snapshot?.raw_metrics || {};
-  const listVideo = rawVideo?.list || rawVideo;
-  const directThumbnail = video?.thumbnail_url
-    || listVideo?.thumbnail_url
-    || listVideo?.cover_image_url
-    || listVideo?.cover_url
-    || rawVideo?.thumbnail_url
-    || rawVideo?.cover_image_url
-    || rawVideo?.cover_url
-    || null;
-  const [thumbnail, setThumbnail] = useState(directThumbnail);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    setThumbnail(directThumbnail);
-    setFailed(false);
-    if (directThumbnail || !shopId || !video?.platform_video_id || !video?.creator_username) return undefined;
-    let active = true;
-    const cacheKey = `thumbnail:${shopId}:${video.platform_video_id}:${video.creator_username}`;
-    cachedBookingResource(cacheKey, () => (
-      fetchTikTokShopVideoThumbnail(shopId, video.platform_video_id, video.creator_username)
-    ))
-      .then((payload) => { if (active) setThumbnail(payload?.thumbnail_url || null); })
-      .catch(() => { if (active) setFailed(true); });
-    return () => { active = false; };
-  }, [directThumbnail, shopId, video?.creator_username, video?.platform_video_id]);
-
-  const content = thumbnail && !failed
-    ? <img src={thumbnail} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
-    : <span className="booking-video-expansion__thumbnail-placeholder" aria-hidden="true">▶</span>;
-  return (
-    <span className="booking-video-expansion__thumbnail">
-      {video?.video_url ? <a href={video.video_url} target="_blank" rel="noreferrer" tabIndex={-1}>{content}</a> : content}
-      <span className="booking-video-expansion__index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
-    </span>
   );
 };
 
@@ -725,16 +713,274 @@ const TargetKocCombobox = ({
   );
 };
 
-const BookingManagement = ({ heroTitle }) => {
+const bookingMonthLabel = (booking) => {
+  const dateStr = booking.start_date || booking.end_date || booking.deadline || booking.created_at;
+  if (!dateStr) return '—';
+  const parts = String(dateStr).slice(0, 7).split('-');
+  if (parts.length < 2) return '—';
+  return `${parts[1]}/${parts[0]}`;
+};
+
+const BookingMonthCard = ({
+  booking,
+  isSelected,
+  selectedCurrency,
+  currencyLabel,
+  convertAmount,
+  editableCurrencyAmount,
+  formatMoney,
+  formatNumber,
+  formatRate,
+  formatDate,
+  updatingId,
+  deletingId,
+  onSave,
+  onDelete,
+  allShopProducts,
+  productsLoading,
+  t,
+}) => {
+  const [isEditing, setIsEditing] = useState(isSelected);
+  const [startDate, setStartDate] = useState(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
+  const [endDate, setEndDate] = useState(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
+  const rawCost = booking.total_cost ?? booking.booking_cost;
+  const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
+  const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
+  const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+
+  useEffect(() => {
+    setStartDate(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
+    setEndDate(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
+    const rCost = booking.total_cost ?? booking.booking_cost;
+    setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
+    setCommittedVideos(booking.committed_videos || 1);
+    setProductIds(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
+  }, [booking, convertAmount, editableCurrencyAmount, selectedCurrency]);
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    await onSave(booking.id, {
+      total_cost: Number(cost),
+      committed_videos: Math.max(1, Number.parseInt(committedVideos, 10) || 1),
+      start_date: startDate || null,
+      end_date: endDate || null,
+      deadline: endDate || null,
+      currency: selectedCurrency,
+      product_ids: productIds,
+      products: (allShopProducts || []).filter((p) => productIds.includes(p.id)),
+    });
+  };
+
+  const monthStr = bookingMonthLabel(booking);
+  const cardVideos = bookingVideosOf(booking);
+  const videoCount = cardVideos.length || Number(booking.actual_performance?.video_count || 0);
+  const targetVideos = booking.committed_videos || 1;
+  const actualGmv = Number(booking.actual_performance?.gross_gmv || booking.actual_performance?.affiliate_gmv || 0);
+  const numCost = Number(booking.total_cost ?? booking.booking_cost ?? 0);
+  const ratio = (actualGmv > 0 && numCost > 0) ? (numCost / actualGmv) : null;
+  const itemsSold = booking.actual_performance?.items_sold;
+
+  return (
+    <article className={`booking-month-card${isSelected ? ' booking-month-card--active' : ''}`}>
+      <div className="booking-month-card__header" onClick={() => setIsEditing((prev) => !prev)}>
+        <div className="booking-month-card__header-left">
+          <span className="booking-month-card__month-title">
+            {t('booking.bookingMonthTitle', { month: monthStr })}
+          </span>
+          <span className="booking-month-card__date-range">
+            ({formatDate(booking.start_date)} → {formatDate(booking.end_date || booking.deadline)})
+          </span>
+          <span className="chip chip--compact">#{booking.id}</span>
+        </div>
+        <div className="booking-month-card__header-badges">
+          {videoCount >= targetVideos ? (
+            <span className="booking-month-card__badge booking-month-card__badge--success">
+              ✓ {videoCount}/{targetVideos} {t('booking.committedCompleted')}
+            </span>
+          ) : videoCount === 0 ? (
+            <span className="booking-month-card__badge booking-month-card__badge--pending">
+              ⏳ 0/{targetVideos} {t('booking.committedPending')}
+            </span>
+          ) : (
+            <span className="booking-month-card__badge booking-month-card__badge--info">
+              🎬 {videoCount}/{targetVideos} video
+            </span>
+          )}
+          <span className="button button--ghost button--small" style={{ padding: '2px 6px', fontSize: '0.72rem' }}>
+            {isEditing ? t('booking.bookingCardCollapse') : t('booking.bookingCardEdit')}
+          </span>
+        </div>
+      </div>
+
+      <div className="booking-month-card__body">
+        <div className="booking-month-card__metrics">
+          <div className="booking-month-card__metric-item">
+            <span>{t('booking.totalCost')}</span>
+            <strong>{formatMoney(numCost, booking.currency)}</strong>
+          </div>
+          <div className="booking-month-card__metric-item">
+            <span>GMV</span>
+            <strong>{actualGmv > 0 ? formatMoney(actualGmv, booking.currency) : '—'}</strong>
+          </div>
+          <div className="booking-month-card__metric-item">
+            <span>{t('booking.costRevenueRatio')}</span>
+            <strong>{ratio !== null ? formatRate(ratio) : '—'}</strong>
+          </div>
+          <div className="booking-month-card__metric-item">
+            <span>{t('booking.videoItemsSold')}</span>
+            <strong>{itemsSold !== undefined && itemsSold !== null ? formatNumber(itemsSold) : '—'}</strong>
+          </div>
+        </div>
+
+        {isEditing ? (
+          <form className="booking-month-card__form" onSubmit={handleFormSubmit}>
+            <div className="field booking-product-picker-field booking-detail-product-picker-field">
+              <span>{t('booking.selectedProducts')}</span>
+              <div className="booking-product-picker">
+                <button
+                  className="booking-product-picker__trigger"
+                  type="button"
+                  aria-expanded={productPickerOpen}
+                  disabled={productsLoading}
+                  onClick={() => setProductPickerOpen((prev) => !prev)}
+                >
+                  <span>
+                    {productIds.length
+                      ? t('booking.productsSelected', { count: productIds.length })
+                      : (productsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}
+                  </span>
+                  <span className="sidebar__chevron" aria-hidden="true" />
+                </button>
+                {productPickerOpen ? (
+                  <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
+                    {allShopProducts.length ? (
+                      allShopProducts.map((product) => (
+                        <label className="booking-product-picker__option" key={product.id}>
+                          <input
+                            type="checkbox"
+                            checked={productIds.includes(product.id)}
+                            onChange={() => setProductIds((current) => (
+                              current.includes(product.id)
+                                ? current.filter((id) => id !== product.id)
+                                : [...current, product.id]
+                            ))}
+                          />
+                          <span>
+                            {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
+                            <span>
+                              <strong>{product.name}</strong>
+                              <small>{product.id}</small>
+                            </span>
+                          </span>
+                        </label>
+                      ))
+                    ) : (
+                      <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="field booking-modal-date-range">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor={`start-date-${booking.id}`}>{t('booking.startDate')}</label>
+                  <DatePickerInput
+                    id={`start-date-${booking.id}`}
+                    label={t('booking.startDate')}
+                    value={startDate}
+                    max={endDate || undefined}
+                    onChange={(val) => setStartDate(val)}
+                  />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor={`end-date-${booking.id}`}>{t('booking.endDate')}</label>
+                  <DatePickerInput
+                    id={`end-date-${booking.id}`}
+                    label={t('booking.endDate')}
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(val) => setEndDate(val)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="field booking-modal-cost-videos">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor={`cost-${booking.id}`}>{t('booking.totalCost')} ({currencyLabel})</label>
+                  <input
+                    id={`cost-${booking.id}`}
+                    type="number"
+                    min="0"
+                    step={selectedCurrency === 'VND' ? '1' : '0.01'}
+                    value={cost}
+                    onChange={(e) => setCost(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor={`committed-${booking.id}`}>{t('booking.committedVideos')}</label>
+                  <input
+                    id={`committed-${booking.id}`}
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={committedVideos}
+                    onChange={(e) => setCommittedVideos(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="booking-month-card__actions">
+              <button
+                className="button button--ghost button--danger button--small"
+                type="button"
+                disabled={deletingId === booking.id}
+                onClick={() => onDelete(booking)}
+              >
+                {deletingId === booking.id ? t('booking.deleting') : t('booking.delete')}
+              </button>
+              <button
+                className="button button--small"
+                type="submit"
+                disabled={updatingId === booking.id}
+              >
+                {updatingId === booking.id ? t('common.loading') : t('booking.saveChanges')}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </div>
+    </article>
+  );
+};
+
+const BookingManagement = ({
+  heroTitle,
+  embeddedMode = null,
+  embeddedBookingId = null,
+  initialStaffId = '',
+  onEmbeddedClose,
+  onEmbeddedChanged,
+}) => {
   const { t, language } = useI18n();
   const session = useSession();
   const canManageUsers = hasPermission(session, 'users');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
+  const [selectedMonth, setSelectedMonth] = useState('all');
+  const monthOptions = useMemo(() => generateBookingMonthOptions(), []);
   const [bookingTab, setBookingTab] = useState(() => (
     bookingUiSession().bookingTab === 'product' ? 'product' : 'video'
   ));
@@ -752,11 +998,11 @@ const BookingManagement = ({ heroTitle }) => {
   const [targetKocPagination, setTargetKocPagination] = useState({ page: 1, total_pages: 1 });
   const [targetKocsLoading, setTargetKocsLoading] = useState(false);
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
-  const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(false);
+  const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create');
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const [channelProducts, setChannelProducts] = useState([]);
   const [channelProductsLoading, setChannelProductsLoading] = useState(false);
-  const [form, setForm] = useState(initialForm);
+  const [form, setForm] = useState(() => ({ ...initialForm, staff_id: initialStaffId ? String(initialStaffId) : '' }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -767,10 +1013,15 @@ const BookingManagement = ({ heroTitle }) => {
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [detailCost, setDetailCost] = useState('');
+  const [detailCommittedVideos, setDetailCommittedVideos] = useState(1);
+  const [detailStartDate, setDetailStartDate] = useState('');
+  const [detailEndDate, setDetailEndDate] = useState('');
   const [detailProductIds, setDetailProductIds] = useState([]);
   const [detailProducts, setDetailProducts] = useState([]);
   const [detailProductsLoading, setDetailProductsLoading] = useState(false);
   const [detailProductPickerOpen, setDetailProductPickerOpen] = useState(false);
+  const [creatorBookings, setCreatorBookings] = useState([]);
+  const [creatorBookingsLoading, setCreatorBookingsLoading] = useState(false);
   const [error, setError] = useState('');
   const [openActions, setOpenActions] = useState({
     id: null,
@@ -779,6 +1030,14 @@ const BookingManagement = ({ heroTitle }) => {
     bottom: 0,
     right: 0,
   });
+  const closeCreateBooking = useCallback(() => {
+    setIsCreateBookingOpen(false);
+    if (embeddedMode === 'create') onEmbeddedClose?.();
+  }, [embeddedMode, onEmbeddedClose]);
+  const closeBookingDetail = useCallback(() => {
+    setSelectedBooking(null);
+    if (embeddedMode === 'detail') onEmbeddedClose?.();
+  }, [embeddedMode, onEmbeddedClose]);
   const toggleBookingRow = (event, bookingId) => {
     if (event.target.closest('button, a, input, select, textarea, label')) return;
     setExpandedBookingId((current) => String(current) === String(bookingId) ? null : bookingId);
@@ -883,7 +1142,7 @@ const BookingManagement = ({ heroTitle }) => {
     }
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape' && !saving) setIsCreateBookingOpen(false);
+      if (event.key === 'Escape' && !saving) closeCreateBooking();
     };
     document.body.style.overflow = 'hidden';
     document.addEventListener('keydown', closeOnEscape);
@@ -891,7 +1150,7 @@ const BookingManagement = ({ heroTitle }) => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', closeOnEscape);
     };
-  }, [isCreateBookingOpen, saving]);
+  }, [closeCreateBooking, isCreateBookingOpen, saving]);
 
   useEffect(() => {
     if (!selectedBooking?.target_shop_id) {
@@ -928,6 +1187,53 @@ const BookingManagement = ({ heroTitle }) => {
     });
     return () => controller.abort();
   }, [selectedBooking, t]);
+
+  useEffect(() => {
+    if (!selectedBooking) {
+      setCreatorBookings([]);
+      return undefined;
+    }
+    setDetailProductIds(bookingProductsOf(selectedBooking).map((product) => String(product.id || product.product_id)));
+    const rawCost = selectedBooking.total_cost ?? selectedBooking.booking_cost;
+    setDetailCost(editableCurrencyAmount(
+      convertAmount(rawCost, selectedBooking.currency) ?? rawCost,
+      selectedCurrency,
+    ));
+    setDetailCommittedVideos(selectedBooking.committed_videos ?? 1);
+    setDetailStartDate(selectedBooking.start_date ? String(selectedBooking.start_date).slice(0, 10) : '');
+    setDetailEndDate(selectedBooking.end_date ? String(selectedBooking.end_date).slice(0, 10) : (selectedBooking.deadline ? String(selectedBooking.deadline).slice(0, 10) : ''));
+
+    const localMatches = bookings.filter((b) => (
+      (selectedBooking.creator_open_id && b.creator_open_id === selectedBooking.creator_open_id)
+      || (selectedBooking.creator_username && String(b.creator_username || '').toLowerCase() === String(selectedBooking.creator_username || '').toLowerCase())
+    ));
+    if (!localMatches.some((b) => b.id === selectedBooking.id)) {
+      localMatches.push(selectedBooking);
+    }
+    localMatches.sort((a, b) => new Date(b.start_date || b.deadline || b.created_at || 0) - new Date(a.start_date || a.deadline || a.created_at || 0));
+    setCreatorBookings(localMatches);
+
+    const controller = new AbortController();
+    setCreatorBookingsLoading(true);
+    fetchBookings(controller.signal, {
+      creatorUsername: selectedBooking.creator_username,
+      creatorOpenId: selectedBooking.creator_open_id,
+      month: 'all',
+      windowType: performanceWindow,
+    })
+      .then((items) => {
+        if (!controller.signal.aborted && Array.isArray(items) && items.length) {
+          items.sort((a, b) => new Date(b.start_date || b.deadline || b.created_at || 0) - new Date(a.start_date || a.deadline || a.created_at || 0));
+          setCreatorBookings(items);
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) setCreatorBookingsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [bookings, convertAmount, performanceWindow, selectedBooking, selectedCurrency]);
 
   useEffect(() => {
     const closeActions = (event) => {
@@ -996,12 +1302,51 @@ const BookingManagement = ({ heroTitle }) => {
     fetchBookings(controller.signal, {
       windowType: performanceWindow,
       ...(performanceWindow === 'CUSTOM' ? { startDate: customRange.start, endDate: customRange.end } : {}),
+      month: selectedMonth,
     })
       .then((loadedBookings) => setBookings(loadedBookings))
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [customRange.end, customRange.start, performanceWindow, t]);
+  }, [customRange.end, customRange.start, performanceWindow, selectedMonth, t]);
+
+  useEffect(() => {
+    if (loading) return;
+    const action = searchParams.get('action');
+    const requestedBookingId = searchParams.get('booking');
+    const requestedStaffId = searchParams.get('staff');
+    if (action === 'create') setIsCreateBookingOpen(true);
+    if (requestedStaffId && canManageUsers) {
+      const groupKey = `id:${requestedStaffId}`;
+      setSelectedManagerKey(groupKey);
+      setExpandedGroupKeys(new Set([groupKey]));
+    }
+    if (requestedBookingId) {
+      const booking = bookings.find((item) => String(item.id) === requestedBookingId);
+      if (booking) {
+        setSelectedBooking(booking);
+        const staffId = booking.staff_id ? String(booking.staff_id) : '';
+        const staffName = String(booking.staff_name || booking.staff?.name || '').trim();
+        const groupKey = staffId ? `id:${staffId}` : staffName ? `name:${staffName.toLocaleLowerCase()}` : 'unassigned';
+        setSelectedManagerKey(canManageUsers ? groupKey : '');
+        setExpandedGroupKeys(new Set([groupKey]));
+        setExpandedBookingId(booking.id);
+      }
+    }
+    if (action || requestedBookingId || requestedStaffId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      next.delete('booking');
+      next.delete('staff');
+      setSearchParams(next, { replace: true });
+    }
+  }, [bookings, canManageUsers, loading, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (embeddedMode !== 'detail' || !embeddedBookingId || loading) return;
+    const booking = bookings.find((item) => String(item.id) === String(embeddedBookingId));
+    if (booking) setSelectedBooking(booking);
+  }, [bookings, embeddedBookingId, embeddedMode, loading]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1101,7 +1446,16 @@ const BookingManagement = ({ heroTitle }) => {
       username: selectedKocSummary.username,
       signal: controller.signal,
     })
-      .then((creator) => setSelectedKocDetail({ key: form.creator_key, creator }))
+      .then((creator) => {
+        setSelectedKocDetail({ key: form.creator_key, creator });
+        if (creator?.collaboration?.start_at || creator?.collaboration?.end_at) {
+          setForm((current) => ({
+            ...current,
+            start_date: creator.collaboration?.start_at ? creator.collaboration.start_at.slice(0, 10) : current.start_date,
+            end_date: creator.collaboration?.end_at ? creator.collaboration.end_at.slice(0, 10) : current.end_date,
+          }));
+        }
+      })
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
   }, [form.creator_key, selectedKocSummary, t]);
@@ -1174,11 +1528,12 @@ const BookingManagement = ({ heroTitle }) => {
     result.total += 1;
     result.totalCost += convertedCost ?? rawCost;
     result.totalRevenue += convertedRevenue ?? rawRevenue;
+    result.committedVideos += Number(booking.committed_videos || 1);
     result.videoCount += bookingTab === 'product'
       ? finiteNumber(tabPerformance?.affiliate_orders)
       : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
     return result;
-  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking]);
+  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking]);
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
@@ -1202,6 +1557,7 @@ const BookingManagement = ({ heroTitle }) => {
           totalCost: 0,
           totalRevenue: 0,
           videoCount: 0,
+          committedVideos: 0,
         });
       }
       const group = groups.get(key);
@@ -1215,6 +1571,7 @@ const BookingManagement = ({ heroTitle }) => {
       group.bookings.push(booking);
       group.totalCost += convertedCost;
       group.totalRevenue += convertedRevenue;
+      group.committedVideos += Number(booking.committed_videos || 1);
       group.videoCount += bookingTab === 'product'
         ? finiteNumber(tabPerformance?.affiliate_orders)
         : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
@@ -1377,6 +1734,10 @@ const BookingManagement = ({ heroTitle }) => {
         creator_username: selectedKoc.username,
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
+        committed_videos: Math.max(1, Number.parseInt(form.committed_videos, 10) || 1),
+        start_date: form.start_date || undefined,
+        end_date: form.end_date || undefined,
+        deadline: form.end_date || undefined,
         product_ids: form.product_ids,
         products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
       });
@@ -1387,9 +1748,11 @@ const BookingManagement = ({ heroTitle }) => {
           startDate: customRange.start,
           endDate: customRange.end,
         } : {}),
+        month: selectedMonth,
       }).then(setBookings).catch(() => {});
       setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
-      setIsCreateBookingOpen(false);
+      onEmbeddedChanged?.(created);
+      closeCreateBooking();
     } catch (err) {
       setError(err.message || t('booking.errorCreate'));
     } finally {
@@ -1404,7 +1767,7 @@ const BookingManagement = ({ heroTitle }) => {
       setError('');
       await deleteBooking(booking.id);
       setBookings((items) => items.filter((item) => item.id !== booking.id));
-      if (selectedBooking?.id === booking.id) setSelectedBooking(null);
+      if (selectedBooking?.id === booking.id) closeBookingDetail();
     } catch (err) {
       setError(err.message || t('booking.errorDelete'));
     } finally {
@@ -1421,6 +1784,14 @@ const BookingManagement = ({ heroTitle }) => {
           : {}),
       }
       : item));
+    setCreatorBookings((items) => items.map((item) => item.id === updated.id
+      ? {
+        ...updated,
+        ...(Object.prototype.hasOwnProperty.call(item, 'reference_performance')
+          ? { reference_performance: item.reference_performance }
+          : {}),
+      }
+      : item));
     setSelectedBooking((current) => current?.id === updated.id
       ? {
         ...updated,
@@ -1429,6 +1800,43 @@ const BookingManagement = ({ heroTitle }) => {
           : {}),
       }
       : current);
+  };
+
+  const handleSaveCard = async (bookingId, payload) => {
+    try {
+      setUpdatingId(bookingId);
+      setError('');
+      const updated = await updateBooking(bookingId, payload);
+      replaceBooking(updated);
+      onEmbeddedChanged?.(updated);
+    } catch (err) {
+      setError(err.message || t('booking.errorUpdate'));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleDeleteCard = async (booking) => {
+    if (!window.confirm(t('booking.deleteConfirm', { id: booking.id }))) return;
+    try {
+      setDeletingId(booking.id);
+      setError('');
+      await deleteBooking(booking.id);
+      setBookings((items) => items.filter((item) => item.id !== booking.id));
+      setCreatorBookings((items) => items.filter((item) => item.id !== booking.id));
+      if (selectedBooking?.id === booking.id) {
+        const remaining = creatorBookings.filter((item) => item.id !== booking.id);
+        if (remaining.length) {
+          setSelectedBooking(remaining[0]);
+        } else {
+          closeBookingDetail();
+        }
+      }
+    } catch (err) {
+      setError(err.message || t('booking.errorDelete'));
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const findBookingVideo = async (booking, videoId, videoUrl) => {
@@ -1459,17 +1867,24 @@ const BookingManagement = ({ heroTitle }) => {
     }
   };
 
+  const loadVideoCandidates = findBookingVideo;
+
   const saveCost = async (event) => {
     event.preventDefault();
     try {
       setUpdatingId(selectedBooking.id);
       const updated = await updateBooking(selectedBooking.id, {
         total_cost: Number(detailCost),
+        committed_videos: Math.max(1, Number.parseInt(detailCommittedVideos, 10) || 1),
+        start_date: detailStartDate || null,
+        end_date: detailEndDate || null,
+        deadline: detailEndDate || null,
         currency: selectedCurrency,
         product_ids: detailProductIds,
         products: detailProducts.filter((product) => detailProductIds.includes(product.id)),
       });
       replaceBooking(updated);
+      onEmbeddedChanged?.(updated);
     } catch (err) {
       setError(err.message || t('booking.errorUpdate'));
     } finally {
@@ -1503,7 +1918,7 @@ const BookingManagement = ({ heroTitle }) => {
   };
 
   return (
-    <div className="page">
+    <div className={`page${embeddedMode ? ' booking-management--embedded' : ''}`}>
       <section className="page__hero booking-page-hero">
         <div><h1 className="page__title">{t('booking.heroTitle') || heroTitle}</h1></div>
         <div className="page__stats booking-stats booking-stats--evaluation">
@@ -1526,21 +1941,152 @@ const BookingManagement = ({ heroTitle }) => {
       </section>
 
       {isCreateBookingOpen ? createPortal(
-        <div className="booking-create-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setIsCreateBookingOpen(false); }}>
+        <div className="booking-create-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) closeCreateBooking(); }}>
           <section className="booking-create-modal" role="dialog" aria-modal="true" aria-labelledby="booking-create-modal-title">
-            <header className="booking-create-modal__header"><div><h2 id="booking-create-modal-title">{t('booking.createEvaluation')}</h2></div><button className="button button--ghost" type="button" aria-label={t('common.close')} disabled={saving} onClick={() => setIsCreateBookingOpen(false)}>×</button></header>
+            <header className="booking-create-modal__header"><div><h2 id="booking-create-modal-title">{t('booking.createEvaluation')}</h2></div><button className="button button--ghost" type="button" aria-label={t('common.close')} disabled={saving} onClick={closeCreateBooking}>×</button></header>
             <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
               <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
               {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
               <div className="field booking-product-picker-field"><label>{t('booking.products')}</label><div className="booking-product-picker"><button className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}><span>{form.product_ids.length ? t('booking.productsSelected', { count: form.product_ids.length }) : (channelProductsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}</span><span className="sidebar__chevron" aria-hidden="true" /></button>{productPickerOpen ? <div className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>{channelProductsLoading ? <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div> : bookingProducts.length ? bookingProducts.map((product) => <label className="booking-product-picker__option" key={product.id}><input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} /><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}<span><strong>{product.name}</strong><small>{product.id}</small></span></span></label>) : null}</div> : null}</div></div>
-              <div className="field"><label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label><input id="total_cost" type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} inputMode="decimal" value={form.total_cost} onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))} required /></div>
-              <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={() => setIsCreateBookingOpen(false)}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
+              <div className="field booking-modal-date-range">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="booking-form-start-date">{t('booking.startDate')}</label>
+                    <DatePickerInput
+                      id="booking-form-start-date"
+                      label={t('booking.startDate')}
+                      value={form.start_date}
+                      max={form.end_date || undefined}
+                      onChange={(value) => setForm((current) => ({ ...current, start_date: value }))}
+                    />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="booking-form-end-date">{t('booking.endDate')}</label>
+                    <DatePickerInput
+                      id="booking-form-end-date"
+                      label={t('booking.endDate')}
+                      value={form.end_date}
+                      min={form.start_date || undefined}
+                      onChange={(value) => setForm((current) => ({ ...current, end_date: value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="field booking-modal-cost-videos">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label>
+                    <input
+                      id="total_cost"
+                      type="number"
+                      min="0"
+                      step={selectedCurrency === 'VND' ? '1' : '0.01'}
+                      inputMode="decimal"
+                      value={form.total_cost}
+                      onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="field" style={{ margin: 0 }}>
+                    <label htmlFor="committed_videos">{t('booking.committedVideos')}</label>
+                    <input
+                      id="committed_videos"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={form.committed_videos}
+                      onChange={(event) => setForm((current) => ({ ...current, committed_videos: event.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+              <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={closeCreateBooking}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id || !form.start_date || !form.end_date}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
             </form>
           </section>
         </div>, document.body,
       ) : null}
       <section className="section-card" id="booking-list-panel" role="tabpanel">
-        <div className="section-card__header booking-evaluation-list-header"><div className="booking-performance-controls">{bookingGroups.length ? <div className="field booking-manager-filter"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))} value={bookingManagerFilterValue} onChange={(value) => { setSelectedManagerKey(value); setExpandedBookingId(null); if (value !== 'all') { setExpandedGroupKeys(new Set([value])); } else { setExpandedGroupKeys(new Set()); } }} placeholder={t('booking.selectStaff')} allLabel={t('booking.allStaff')} showAll={canManageUsers} loading={false} loadingLabel={t('booking.loading')} /></div> : null}<div className="field booking-performance-period"><label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label><select id="booking-performance-window" value={performanceWindow} onChange={(event) => setPerformanceWindow(event.target.value)}><option value="PAST_7_DAYS">{t('booking.period7Days')}</option><option value="PAST_30_DAYS">{t('booking.period30Days')}</option>{bookingTab === 'product' ? <option value="CUSTOM">{t('booking.periodCustom')}</option> : null}</select></div>{performanceWindow === 'CUSTOM' ? <><div className="field booking-performance-date"><label htmlFor="booking-performance-start">{t('booking.startDate')}</label><DatePickerInput id="booking-performance-start" label={t('booking.startDate')} value={customRange.start} min={earliestCustomStart} max={customRange.end || latestCompleteDate} onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))} /></div><div className="field booking-performance-date"><label htmlFor="booking-performance-end">{t('booking.endDate')}</label><DatePickerInput id="booking-performance-end" label={t('booking.endDate')} value={customRange.end} min={customRange.start || undefined} max={latestCustomEnd} onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))} /></div></> : null}</div></div>
+        <div className="section-card__header booking-evaluation-list-header">
+          <div className="booking-performance-controls">
+            {bookingGroups.length ? (
+              <div className="field booking-manager-filter">
+                <label>{t('booking.bookingStaff')}</label>
+                <BookingStaffSelect
+                  users={bookingGroups.map((group) => ({ id: group.key, ...group.manager }))}
+                  value={bookingManagerFilterValue}
+                  onChange={(value) => {
+                    setSelectedManagerKey(value);
+                    setExpandedBookingId(null);
+                    if (value !== 'all') {
+                      setExpandedGroupKeys(new Set([value]));
+                    } else {
+                      setExpandedGroupKeys(new Set());
+                    }
+                  }}
+                  placeholder={t('booking.selectStaff')}
+                  allLabel={t('booking.allStaff')}
+                  showAll={canManageUsers}
+                  loading={false}
+                  loadingLabel={t('booking.loading')}
+                />
+              </div>
+            ) : null}
+            <div className="field booking-month-filter">
+              <label htmlFor="booking-month-select">{t('booking.bookingMonth')}</label>
+              <select
+                id="booking-month-select"
+                value={selectedMonth}
+                onChange={(event) => setSelectedMonth(event.target.value)}
+              >
+                {monthOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.labelKey ? t(opt.labelKey) : opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field booking-performance-period">
+              <label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label>
+              <select
+                id="booking-performance-window"
+                value={performanceWindow}
+                onChange={(event) => setPerformanceWindow(event.target.value)}
+              >
+                <option value="LIFETIME">{t('booking.periodLifetime')}</option>
+                <option value="PAST_30_DAYS">{t('booking.period30Days')}</option>
+                <option value="PAST_7_DAYS">{t('booking.period7Days')}</option>
+                {bookingTab === 'product' ? <option value="CUSTOM">{t('booking.periodCustom')}</option> : null}
+              </select>
+            </div>
+            {performanceWindow === 'CUSTOM' ? (
+              <>
+                <div className="field booking-performance-date">
+                  <label htmlFor="booking-performance-start">{t('booking.startDate')}</label>
+                  <DatePickerInput
+                    id="booking-performance-start"
+                    label={t('booking.startDate')}
+                    value={customRange.start}
+                    min={earliestCustomStart}
+                    max={customRange.end || latestCompleteDate}
+                    onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
+                  />
+                </div>
+                <div className="field booking-performance-date">
+                  <label htmlFor="booking-performance-end">{t('booking.endDate')}</label>
+                  <DatePickerInput
+                    id="booking-performance-end"
+                    label={t('booking.endDate')}
+                    value={customRange.end}
+                    min={customRange.start || undefined}
+                    max={latestCustomEnd}
+                    onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
+                  />
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
         {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
         {incompleteCustomCoverage && bookingTab === 'video' ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
           available: incompleteCustomCoverage.available_days,
@@ -1618,7 +2164,7 @@ const BookingManagement = ({ heroTitle }) => {
                           </button>
                         </td>
                         <td className="cell-number">{formatNumber(group.bookings.length)}</td>
-                        <td className="cell-number">{formatNumber(group.videoCount)}</td>
+                        <td className="cell-number">{bookingTab === 'product' ? formatNumber(group.videoCount) : `${formatNumber(group.videoCount)} / ${formatNumber(group.committedVideos || group.bookings.length)}`}</td>
                         <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                         <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>
                         <td className="cell-number">{group.totalRevenue > 0 ? formatRate(group.totalCost / group.totalRevenue) : '—'}</td>
@@ -1696,7 +2242,7 @@ const BookingManagement = ({ heroTitle }) => {
                                             <td className="booking-koc-column"><div className="booking-koc-identity"><TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} /><span><strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong><small>@{booking.creator_username}</small></span></div></td>
                                             <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
                                             <td className="cell-number booking-total-cost-column"><strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong></td>
-                                            <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videosCount', { count: videoCount })}</strong></span></td>
+                                            <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videoProgress', { current: videoCount, target: booking.committed_videos || 1 })}</strong></span></td>
                                             <td className="cell-number booking-refunds-column">{creatorMetric(performance, 'refunded_gmv', { money: true })}</td>
                                             <td className="cell-number"><div className="booking-product-summary"><strong>{creatorMetric(performance, 'items_sold')} <span>{t('booking.itemsSold')}</span></strong><small>{creatorMetric(performance, 'items_refunded')} {t('booking.refundedShort')}</small></div></td>
                                             <td className="cell-number booking-samples-column">{bookingTab === 'product' ? '—' : creatorMetric(performance, 'samples_shipped')}</td>
@@ -1735,6 +2281,9 @@ const BookingManagement = ({ heroTitle }) => {
                                                         setDetailProductPickerOpen(false);
                                                         const rawCost = booking.total_cost ?? booking.booking_cost;
                                                         setDetailCost(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
+                                                        setDetailCommittedVideos(booking.committed_videos ?? 1);
+                                                        setDetailStartDate(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
+                                                        setDetailEndDate(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
                                                       }}
                                                     >
                                                       {t('booking.details')}
@@ -1859,21 +2408,39 @@ const BookingManagement = ({ heroTitle }) => {
 
       {selectedBooking ? (() => {
         const collaboration = collaborationOf(selectedBooking);
-        return <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedBooking(null); }}>
+        return <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
-            <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{t('booking.detailTitle', { id: selectedBooking.id })}</h2><p>{selectedBooking.creator_name || selectedBooking.creator_username} · @{selectedBooking.creator_username}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={() => setSelectedBooking(null)}>×</button></div>
+            <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button></div>
             <div className="koc-drawer__body">
               <section className="drawer-section"><div className="booking-detail-grid">{collaboration.id ? <><div><span>{t('booking.partnerStatus')}</span><strong>{formatCollaborationStatus(collaboration.status)}</strong></div><div><span>{t('booking.validUntil')}</span><strong>{formatDate(collaboration.end_at)}</strong></div></> : null}{selectedBooking.target_shop?.name ? <div><span>{t('booking.partnerShop')}</span><strong>{selectedBooking.target_shop.name}</strong></div> : null}<div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
-              <form className="booking-detail-form" onSubmit={saveCost}>
-                <div className="field booking-product-picker-field booking-detail-product-picker-field">
-                  <span>{t('booking.selectedProducts')}</span>
-                  <div className="booking-product-picker">
-                    <button className="booking-product-picker__trigger" type="button" aria-expanded={detailProductPickerOpen} disabled={detailProductsLoading} onClick={() => setDetailProductPickerOpen((current) => !current)}><span>{detailProductIds.length ? t('booking.productsSelected', { count: detailProductIds.length }) : (detailProductsLoading ? t('booking.loadingProducts') : t('booking.selectProducts'))}</span><span className="sidebar__chevron" aria-hidden="true" /></button>
-                    {detailProductPickerOpen ? <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox" aria-label={t('booking.selectedProducts')}>{detailProducts.length ? detailProducts.map((product) => <label className="booking-product-picker__option" key={product.id}><input type="checkbox" checked={detailProductIds.includes(product.id)} onChange={() => setDetailProductIds((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id])} /><span>{product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}<span><strong>{product.name}</strong><small>{product.id}</small></span></span></label>) : <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>}</div> : null}
-                  </div>
+              <div className="booking-cards-list">
+                <div className="booking-cards-list__header">
+                  <h3>{t('booking.monthBookings')}</h3>
+                  <span className="chip chip--compact">{t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</span>
                 </div>
-                <div className="booking-detail-form__cost-row"><label className="field"><span>{t('booking.totalCost')} ({currencyLabel})</span><input type="number" min="0" step={selectedCurrency === 'VND' ? '1' : '0.01'} value={detailCost} onChange={(event) => setDetailCost(event.target.value)} required /></label><button className="button" type="submit" disabled={updatingId === selectedBooking.id}>{updatingId === selectedBooking.id ? t('common.loading') : t('booking.saveChanges')}</button></div>
-              </form>
+                {creatorBookings.map((b) => (
+                  <BookingMonthCard
+                    key={b.id}
+                    booking={b}
+                    isSelected={b.id === selectedBooking.id}
+                    selectedCurrency={selectedCurrency}
+                    currencyLabel={currencyLabel}
+                    convertAmount={convertAmount}
+                    editableCurrencyAmount={editableCurrencyAmount}
+                    formatMoney={formatMoney}
+                    formatNumber={formatNumber}
+                    formatRate={formatRate}
+                    formatDate={formatDate}
+                    updatingId={updatingId}
+                    deletingId={deletingId}
+                    onSave={handleSaveCard}
+                    onDelete={handleDeleteCard}
+                    allShopProducts={detailProducts}
+                    productsLoading={detailProductsLoading}
+                    t={t}
+                  />
+                ))}
+              </div>
             </div>
           </aside>
         </div>;

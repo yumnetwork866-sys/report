@@ -137,6 +137,7 @@ const getQueueEvents = (queueName) => {
   const events = new QueueEvents(queueName, {
     connection: redisConnection,
     prefix: QUEUE_PREFIX,
+    skipEvictionPolicyCheck: true,
   });
 
   events.on('error', (err) => {

@@ -4,6 +4,8 @@ const {
   Booking,
   BookingVideo,
   BookingVideoPerformanceSnapshot,
+  ShopVideo,
+  ShopVideoPerformanceSnapshot,
   TikTokCreatorPerformanceExport,
   TikTokShop,
   TikTokVideoPerformanceSnapshot,
@@ -61,14 +63,73 @@ const productIdsOfVideo = (video) => {
     video?.product_id,
     video?.products,
     video?.affiliate_products,
+    video?.raw_data?.product_id,
+    video?.raw_data?.products,
+    video?.raw_data?.video?.products,
+    video?.order_metrics?.product_ids,
     ...rawSources,
   );
 };
 const matchesBookingProducts = (booking, video) => {
+  const videoIds = productIdsOfVideo(video);
+  if (!videoIds.size) return false;
   const selectedIds = selectedProductIdsOfBooking(booking);
   if (!selectedIds.size) return true;
-  const videoIds = productIdsOfVideo(video);
   return [...selectedIds].some((id) => videoIds.has(id));
+};
+const matchesBookingDateRange = (booking, video, now = new Date()) => {
+  if (!video) return false;
+  const rawPostDate = video.posted_at || video.video_post_time || video.post_date || video.post_time;
+  if (!rawPostDate) return true;
+  const postDate = dateOnly(rawPostDate);
+  const startDate = booking?.start_date ? dateOnly(booking.start_date) : null;
+  if (startDate && postDate < startDate) return false;
+  const today = dateOnly(now);
+  if (postDate > today) return false;
+  return true;
+};
+const normalizeCachedVideoCandidate = (videoInstance, orderMetrics = null) => {
+  const video = typeof videoInstance?.toJSON === 'function' ? videoInstance.toJSON() : videoInstance;
+  const latest = [...(video?.performance_snapshots || [])].sort((left, right) => (
+    String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
+    || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
+  ))[0] || {};
+  const hasOrderMetrics = orderMetrics && (orderMetrics.has_data || orderMetrics.orders > 0 || orderMetrics.gross_gmv > 0);
+  const grossGmv = hasOrderMetrics ? numberOrZero(orderMetrics.gross_gmv) : Number(latest.gross_gmv || 0);
+  const refundedGmv = hasOrderMetrics && orderMetrics.refunded_gmv !== null && orderMetrics.refunded_gmv !== undefined
+    ? numberOrZero(orderMetrics.refunded_gmv) : null;
+  const netGmv = hasOrderMetrics && orderMetrics.net_gmv !== null && orderMetrics.net_gmv !== undefined
+    ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
+  const orders = hasOrderMetrics ? numberOrZero(orderMetrics.orders) : Number(latest.orders || 0);
+  const itemsSold = hasOrderMetrics ? numberOrZero(orderMetrics.items_sold) : Number(latest.items_sold || 0);
+  const currency = (hasOrderMetrics ? orderMetrics.currency : null) || latest.currency || null;
+
+  return {
+    id: String(video.platform_video_id),
+    title: video.title || video.platform_video_id,
+    username: String(video.creator_username || '').trim().replace(/^@+/, '').toLowerCase(),
+    posted_at: video.posted_at || null,
+    video_url: video.video_url || null,
+    gmv: {
+      amount: grossGmv,
+      currency,
+    },
+    refunded_gmv: refundedGmv,
+    net_gmv: netGmv,
+    views: Number(latest.views || 0),
+    orders,
+    items_sold: itemsSold,
+    ctr: Number(latest.ctr || 0),
+    product_id: latest.raw_metrics?.product_id || video.raw_data?.product_id || null,
+    products: [
+      ...(Array.isArray(video.raw_data?.products) ? video.raw_data.products : []),
+      ...(Array.isArray(latest.raw_metrics?.products) ? latest.raw_metrics.products : []),
+      ...(orderMetrics?.product_ids ? orderMetrics.product_ids.map((id) => ({ id })) : []),
+    ],
+    cached_catalog: true,
+    catalog_synced_at: latest.synced_at || video.last_seen_at || null,
+    order_metrics: orderMetrics || null,
+  };
 };
 const salesOfSnapshot = (snapshot) => snapshot?.raw_metrics?.detail?.performance?.intervals?.[0]?.sales || {};
 const scopedMetricsOfSnapshot = (snapshot, selectedProductIds = new Set()) => {
@@ -357,13 +418,13 @@ const recordBookingVideoMatch = async (booking, candidate, source, now = new Dat
     updated_at: now,
   }, { returning: true });
 
-  if (!candidate.manually_confirmed && !candidate.cached_catalog) {
+  if (!candidate.manually_confirmed) {
     await BookingVideoPerformanceSnapshot.upsert({
       booking_video_id: video.id,
       snapshot_date: dateOnly(now),
       gross_gmv: numberOrZero(candidate.gmv?.amount),
-      refunded_gmv: null,
-      net_gmv: null,
+      refunded_gmv: candidate.refunded_gmv ?? null,
+      net_gmv: candidate.net_gmv ?? null,
       orders: numberOrZero(candidate.orders),
       items_sold: numberOrZero(candidate.items_sold),
       views: numberOrZero(candidate.views),
@@ -472,43 +533,96 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
 const autoLinkBookingVideos = async (booking, now = new Date()) => {
   const username = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
   if (!username || !booking.target_shop_id) return { status: 'missing_identity' };
-  const recentExports = await TikTokCreatorPerformanceExport.findAll({
-    where: {
-      shop_id: booking.target_shop_id,
-      module_type: 'VIDEO_API',
-      status: 'SUCCEEDED',
-    },
-    attributes: ['id', 'start_date', 'end_date'],
-    order: [['end_date', 'DESC'], ['created_at', 'DESC']],
-    limit: 20,
-  });
-  const exportRecord = recentExports.find((record) => exportDurationDays(record) === 30)
-    || recentExports.find((record) => exportDurationDays(record) === 7);
-  if (!exportRecord) return { status: 'missing_snapshot' };
-  const snapshots = await TikTokVideoPerformanceSnapshot.findAll({
-    where: {
-      export_id: exportRecord.id,
-      video_link: { [Op.iLike]: `%/@${username}/video/%` },
-    },
-    order: [['post_date', 'DESC'], ['id', 'DESC']],
-  });
+
   const selectedProductIds = selectedProductIdsOfBooking(booking);
-  const videoIds = snapshots.map((s) => String(s.video_id));
-  const orderMetricsMap = await loadOrderMetricsForVideos({
-    shopId: booking.target_shop_id,
-    videoIds,
-  });
-  const candidates = snapshots
-    .map((snapshot) => {
-      const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${snapshot.video_id}`);
-      const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
-      return affiliateCandidateFromSnapshot(snapshot, selectedProductIds, orderMetrics);
-    })
-    .filter((candidate) => matchesBookingProducts(booking, candidate));
+  let candidates = [];
+  let mappingSource = 'SHOP_VIDEO_CATALOG';
+
+  if (ShopVideo?.findAll) {
+    const cachedVideos = await ShopVideo.findAll({
+      where: {
+        shop_id: booking.target_shop_id,
+        [Op.or]: [
+          { creator_username: { [Op.iLike]: username } },
+          { creator_username: { [Op.iLike]: `@${username}` } },
+        ],
+      },
+      include: [{
+        model: ShopVideoPerformanceSnapshot,
+        as: 'performance_snapshots',
+        required: false,
+      }],
+      order: [['posted_at', 'DESC']],
+    });
+
+    if (cachedVideos.length) {
+      const videoIds = cachedVideos.map((v) => String(v.platform_video_id));
+      const orderMetricsMap = await loadOrderMetricsForVideos({
+        shopId: booking.target_shop_id,
+        videoIds,
+      });
+
+      const catalogCandidates = cachedVideos.map((video) => {
+        const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${video.platform_video_id}`);
+        const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
+        return normalizeCachedVideoCandidate(video, orderMetrics);
+      }).filter((candidate) => matchesBookingProducts(booking, candidate) && matchesBookingDateRange(booking, candidate));
+
+      if (catalogCandidates.length) {
+        candidates = catalogCandidates;
+      }
+    }
+  }
+
+  if (!candidates.length && TikTokCreatorPerformanceExport?.findAll && TikTokVideoPerformanceSnapshot?.findAll) {
+    const recentExports = await TikTokCreatorPerformanceExport.findAll({
+      where: {
+        shop_id: booking.target_shop_id,
+        module_type: 'VIDEO_API',
+        status: 'SUCCEEDED',
+      },
+      attributes: ['id', 'start_date', 'end_date'],
+      order: [['end_date', 'DESC'], ['created_at', 'DESC']],
+      limit: 20,
+    });
+    const exportRecord = recentExports.find((record) => exportDurationDays(record) === 30)
+      || recentExports.find((record) => exportDurationDays(record) === 7);
+
+    if (exportRecord) {
+      const snapshots = await TikTokVideoPerformanceSnapshot.findAll({
+        where: {
+          export_id: exportRecord.id,
+          video_link: { [Op.iLike]: `%/@${username}/video/%` },
+        },
+        order: [['post_date', 'DESC'], ['id', 'DESC']],
+      });
+
+      if (snapshots.length) {
+        const videoIds = snapshots.map((s) => String(s.video_id));
+        const orderMetricsMap = await loadOrderMetricsForVideos({
+          shopId: booking.target_shop_id,
+          videoIds,
+        });
+        const exportCandidates = snapshots
+          .map((snapshot) => {
+            const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${snapshot.video_id}`);
+            const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
+            return affiliateCandidateFromSnapshot(snapshot, selectedProductIds, orderMetrics);
+          })
+          .filter((candidate) => matchesBookingProducts(booking, candidate) && matchesBookingDateRange(booking, candidate));
+
+        if (exportCandidates.length) {
+          candidates = exportCandidates;
+          mappingSource = 'AFFILIATE_VIDEO_PERFORMANCE';
+        }
+      }
+    }
+  }
+
   if (!candidates.length) return { status: 'no_match', candidate_count: 0 };
+
   const selected = candidates[0];
-  const mappingSource = 'AFFILIATE_VIDEO_PERFORMANCE';
-  await booking.update({
+  const updatePayload = {
     video_platform_id: selected.id,
     video_url: selected.video_url,
     posted_at: selected.posted_at,
@@ -522,7 +636,14 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
       },
     },
     updated_at: now,
-  });
+  };
+
+  if (['draft', 'booked', 'waiting_video'].includes(booking.status)) {
+    updatePayload.status = 'video_posted';
+  }
+
+  await booking.update(updatePayload);
+
   for (const candidate of candidates) {
     await recordBookingVideoMatch(booking, candidate, mappingSource, now);
   }
@@ -559,8 +680,21 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
   const shop = suppliedShop || await TikTokShop.findByPk(booking?.target_shop_id);
   if (!shop) throw new Error('Booking is not linked to a TikTok Shop.');
   try {
-    const affiliateSnapshot = await loadAffiliateVideoPerformance(shop.id, bookingVideo.platform_video_id);
-    if (!affiliateSnapshot) {
+    const shopVideo = ShopVideo?.findOne ? await ShopVideo.findOne({
+      where: {
+        shop_id: shop.id,
+        platform_video_id: String(bookingVideo.platform_video_id),
+      },
+      include: [{
+        model: ShopVideoPerformanceSnapshot,
+        as: 'performance_snapshots',
+        required: false,
+      }],
+    }) : null;
+
+    const affiliateSnapshot = await loadAffiliateVideoPerformance(shop.id, bookingVideo.platform_video_id).catch(() => null);
+
+    if (!shopVideo && !affiliateSnapshot) {
       if (bookingVideo.attribution_end && dateOnly(now) > bookingVideo.attribution_end) {
         await bookingVideo.update({
           status: 'FINALIZED',
@@ -570,19 +704,17 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
         });
         return { booking_video_id: bookingVideo.id, platform_video_id: bookingVideo.platform_video_id, status: 'SUCCEEDED' };
       }
-      throw new Error('Video is not available in the latest Affiliate Video Performance snapshots.');
     }
-    const sourceVideo = affiliateSnapshot.raw_metrics?.list || {};
+
     const detectedPostedAt = postedAtOf({
-      video_post_time: affiliateSnapshot.post_date,
-      post_time: affiliateSnapshot.post_date,
-    });
+      video_post_time: affiliateSnapshot?.post_date || shopVideo?.posted_at,
+      post_time: affiliateSnapshot?.post_date || shopVideo?.posted_at,
+    }) || (shopVideo?.posted_at ? new Date(shopVideo.posted_at).toISOString() : null);
+
     const effectiveAttributionStart = detectedPostedAt
       ? dateOnly(detectedPostedAt)
       : bookingVideo.attribution_start;
-    const effectiveAttributionEnd = detectedPostedAt
-      ? shiftDate(detectedPostedAt, 30)
-      : bookingVideo.attribution_end;
+    const effectiveAttributionEnd = dateOnly(now);
 
     const selectedProductIds = selectedProductIdsOfBooking(booking);
     const orderMetricsMap = await loadOrderMetricsForVideos({
@@ -593,7 +725,59 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
     });
     const videoData = orderMetricsMap.get(`${shop.id}:${bookingVideo.platform_video_id}`);
     const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
-    const metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIds, orderMetrics);
+
+    const latestShopSnapshot = [...(shopVideo?.performance_snapshots || [])].sort((left, right) => (
+      String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
+      || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
+    ))[0] || {};
+
+    let metrics;
+    if (affiliateSnapshot) {
+      metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIds, orderMetrics);
+      if (latestShopSnapshot.views) {
+        metrics.views = Math.max(metrics.views, numberOrZero(latestShopSnapshot.views));
+      }
+    } else if (shopVideo || orderMetrics?.has_data) {
+      const hasSelected = selectedProductIds.size > 0;
+      const grossGmv = orderMetrics ? numberOrZero(orderMetrics.gross_gmv) : numberOrZero(latestShopSnapshot.gross_gmv);
+      const refundedGmv = orderMetrics?.refunded_gmv !== null && orderMetrics?.refunded_gmv !== undefined
+        ? numberOrZero(orderMetrics.refunded_gmv) : null;
+      const netGmv = orderMetrics?.net_gmv !== null && orderMetrics?.net_gmv !== undefined
+        ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
+      const orders = orderMetrics ? numberOrZero(orderMetrics.orders) : numberOrZero(latestShopSnapshot.orders);
+      const itemsSold = orderMetrics ? numberOrZero(orderMetrics.items_sold) : numberOrZero(latestShopSnapshot.items_sold);
+      const views = numberOrZero(latestShopSnapshot.views);
+      const ctr = latestShopSnapshot.ctr !== null && latestShopSnapshot.ctr !== undefined ? Number(latestShopSnapshot.ctr) : null;
+      const currency = orderMetrics?.currency || latestShopSnapshot.currency || 'VND';
+
+      metrics = {
+        gross_gmv: grossGmv,
+        refunded_gmv: refundedGmv,
+        net_gmv: netGmv,
+        orders,
+        items_sold: itemsSold,
+        views,
+        ctr,
+        currency,
+        raw_metrics: {
+          source: 'SHOP_VIDEO_CATALOG',
+          metric_scope: hasSelected ? 'SELECTED_BOOKING_PRODUCTS' : 'ALL_VIDEO_PRODUCTS',
+          selected_product_ids: [...selectedProductIds],
+          product_metrics_available: !hasSelected || Boolean(orderMetrics?.has_data),
+          product_orders_available: !hasSelected || Boolean(orderMetrics?.has_data),
+          order_ledger_used: Boolean(orderMetrics),
+          order_metrics: orderMetrics || null,
+          product_id: latestShopSnapshot.raw_metrics?.product_id || shopVideo?.raw_data?.product_id || null,
+          products: [
+            ...(Array.isArray(shopVideo?.raw_data?.products) ? shopVideo.raw_data.products : []),
+            ...(orderMetrics?.product_ids ? orderMetrics.product_ids.map((id) => ({ id })) : []),
+          ],
+          video: shopVideo?.raw_data || null,
+        },
+      };
+    } else {
+      throw new Error('Video metrics are not available in Shop Video Catalog or Affiliate Orders yet.');
+    }
 
     await BookingVideoPerformanceSnapshot.upsert({
       booking_video_id: bookingVideo.id,
@@ -601,16 +785,16 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
       ...metrics,
       synced_at: now,
     });
-    const isCompleted = effectiveAttributionEnd && dateOnly(now) > effectiveAttributionEnd;
+    const sourceVideo = affiliateSnapshot?.raw_metrics?.list || shopVideo?.raw_data || {};
     await bookingVideo.update({
-      creator_username: usernameOf(sourceVideo) || bookingVideo.creator_username,
-      title: affiliateSnapshot.video_title || sourceVideo.title || bookingVideo.title,
+      creator_username: usernameOf(sourceVideo) || shopVideo?.creator_username || bookingVideo.creator_username,
+      title: affiliateSnapshot?.video_title || sourceVideo.title || shopVideo?.title || bookingVideo.title,
       posted_at: detectedPostedAt || bookingVideo.posted_at,
       ...(detectedPostedAt ? {
         attribution_start: dateOnly(detectedPostedAt),
         attribution_end: effectiveAttributionEnd,
       } : {}),
-      status: isCompleted ? 'FINALIZED' : 'COLLECTING',
+      status: 'COLLECTING',
       last_synced_at: now,
       last_sync_error: null,
       updated_at: now,
@@ -713,6 +897,7 @@ module.exports = {
   autoLinkBookingVideos,
   bookingVideoInclude,
   calculateActualPerformance,
+  matchesBookingDateRange,
   matchesBookingProducts,
   metricOfAffiliateSnapshot,
   productIdsOfVideo,
@@ -730,6 +915,8 @@ module.exports = {
     productCtrOfSnapshot,
     exportDurationDays,
     affiliateCandidateFromSnapshot,
+    normalizeCachedVideoCandidate,
+    matchesBookingDateRange,
     matchesBookingProducts,
     productIdsOfVideo,
     selectedProductIdsOfBooking,

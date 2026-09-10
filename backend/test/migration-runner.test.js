@@ -79,6 +79,8 @@ const defaultMigrationNames = [
   '070_update_creator_performance_schedule',
   '071_create_compass_request_state',
   '072_create_scheduled_run_events',
+  '073_add_booking_start_end_dates',
+  '074_add_booking_committed_videos',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

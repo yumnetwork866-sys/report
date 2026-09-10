@@ -28,6 +28,7 @@ const loadController = (
     mockModule(require.resolve('../src/services/bookingVideoPerformanceService'), {
       autoLinkBookingVideos: async () => ({ status: 'no_match' }),
       calculateActualPerformance: (booking) => booking.actual_performance || {},
+      matchesBookingDateRange: () => true,
       matchesBookingProducts: () => true,
       productIdsOfVideo: () => new Set(),
       recordBookingVideoMatch: async () => {},
@@ -530,6 +531,7 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(createdPayload.staff_id, 7);
   assert.equal(createdPayload.staff_name, 'Account manager');
   assert.equal(createdPayload.deadline, null);
+  assert.equal(createdPayload.committed_videos, 1);
   assert.equal(createdPayload.evaluation_snapshot.collaboration, null);
   assert.deepEqual(createdPayload.evaluation_snapshot.performance, performanceData);
   assert.deepEqual(createdPayload.evaluation_snapshot.product_ids, ['product-1']);
@@ -542,3 +544,92 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(performanceQueries[1].where.window_type, 'PAST_30_DAYS');
   assert.equal(autoLinkedBooking.id, 12);
 });
+
+test('updateBooking updates committed_videos, start_date, and end_date', async (t) => {
+  let updatedPayload;
+  const mockBooking = {
+    id: 15,
+    target_shop_id: 3,
+    start_date: '2026-03-01',
+    end_date: '2026-03-31',
+    deadline: '2026-03-31',
+    committed_videos: 1,
+  };
+  const { updateBooking } = loadController(t, {
+    Booking: {
+      update: async (payload, options) => {
+        updatedPayload = payload;
+        return [1];
+      },
+      findByPk: async () => {
+        const item = { ...mockBooking, ...updatedPayload };
+        return { ...item, toJSON: () => item };
+      },
+    },
+  });
+
+  let statusCode;
+  let response;
+  await updateBooking(
+    {
+      params: { id: 15 },
+      body: {
+        committed_videos: 3,
+        start_date: '2026-03-05',
+        end_date: '2026-04-10',
+      },
+    },
+    {
+      status: (value) => {
+        statusCode = value;
+        return { json: (body) => { response = body; } };
+      },
+      json: (body) => { response = body; },
+    },
+  );
+
+  assert.equal(updatedPayload.committed_videos, 3);
+  assert.equal(updatedPayload.start_date, '2026-03-05');
+  assert.equal(updatedPayload.end_date, '2026-04-10');
+  assert.equal(updatedPayload.deadline, '2026-04-10');
+  assert.equal(response.committed_videos, 3);
+});
+
+test('getBookings filters by creator_username', async (t) => {
+  let queryOptions;
+  const mockBooking = {
+    id: 20,
+    creator_username: 'koc_alice',
+    evaluation_snapshot: { dummy: true },
+    toJSON: () => mockBooking,
+  };
+  const { getBookings } = loadController(t, {
+    Booking: {
+      findAll: async (options) => {
+        queryOptions = options;
+        return [mockBooking];
+      },
+    },
+  }, {
+    getOrSetCache: async (_key, _ttl, loader) => ({ data: await loader(), hit: false }),
+  });
+
+  let result;
+  await getBookings(
+    {
+      query: {
+        creator_username: '@koc_alice',
+        month: 'all',
+      },
+    },
+    {
+      json: (data) => { result = data; },
+      status: () => ({ json: (data) => { result = data; } }),
+    },
+  );
+
+  assert.ok(queryOptions.where.creator_username);
+  assert.equal(result.length, 1);
+  assert.equal(result[0].creator_username, 'koc_alice');
+});
+

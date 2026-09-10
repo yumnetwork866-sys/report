@@ -15,7 +15,9 @@ const {
   disconnectTikTokPartner,
   getTikTokPartnerCreatorOverview,
 } = require('../controllers/bookingController');
+const { getStaffEvaluationsBeta } = require('../controllers/staffEvaluationController');
 
+router.get('/evaluations/beta', getStaffEvaluationsBeta);
 router.get('/', getBookings);
 router.get('/target-kocs', getTargetKocs);
 router.get('/target-kocs/detail', getTargetKocDetail);

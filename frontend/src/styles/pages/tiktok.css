@@ -274,6 +274,118 @@
   .koc-toast { align-items: flex-start; }
 }
 
+/* Staff evaluation beta */
+.staff-evaluation-page { display: grid; gap: 18px; }
+
+.staff-evaluation-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; background: linear-gradient(135deg, var(--color-surface) 55%, var(--color-accent-soft)); }
+.staff-evaluation-hero h2 { margin: 7px 0 5px; font-size: clamp(1.35rem, 2.5vw, 1.85rem); }
+.staff-evaluation-hero p,
+.staff-evaluation-commercial header p,
+.staff-evaluation-ranking header p,
+.staff-evaluation-details header p { margin: 0; color: var(--color-muted); }
+.staff-evaluation-beta-label { display: inline-flex; padding: 3px 8px; border-radius: var(--radius-pill); background: var(--color-accent-soft); color: var(--color-primary-strong); font-size: .68rem; font-weight: 800; letter-spacing: .08em; }
+.staff-evaluation-hero__actions { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.staff-evaluation-hero__actions .button { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.booking-management--embedded > :not(.koc-drawer-backdrop) { display: none !important; }
+.staff-evaluation-filters { display: grid; grid-template-columns: minmax(390px, 1.4fr) repeat(4, minmax(145px, .55fr)); align-items: end; gap: 14px; padding: 16px 18px; }
+.staff-evaluation-filters > label { display: grid; gap: 6px; min-width: 0; color: var(--color-muted-strong); font-size: .75rem; font-weight: 700; }
+.staff-evaluation-filters select { width: 100%; min-height: 40px; padding: 8px 34px 8px 11px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text); }
+.staff-evaluation-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.staff-evaluation-presets > span { width: 100%; color: var(--color-muted-strong); font-size: .75rem; font-weight: 700; }
+.staff-evaluation-presets button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); color: var(--color-text-soft); cursor: pointer; font-weight: 650; }
+.staff-evaluation-presets button:hover { border-color: var(--color-primary); color: var(--color-primary-strong); }
+.staff-evaluation-presets button.is-active { border-color: var(--color-primary); background: var(--color-primary); color: #fff; }
+.staff-evaluation-filters .channel-report-date-picker { width: 100%; }
+.staff-evaluation-filters .channel-report-date-picker__value { width: 100%; min-height: 40px; }
+
+.staff-evaluation-notice { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid #f0d88a; border-radius: var(--radius-md); background: #fff9e7; color: #75530a; font-size: .82rem; line-height: 1.5; }
+.staff-evaluation-notice svg { flex: 0 0 auto; margin-top: 1px; }
+.staff-evaluation-notice.is-error { border-color: rgba(220, 38, 38, .25); background: var(--color-danger-soft); color: var(--color-danger-strong); }
+
+.staff-evaluation-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.staff-evaluation-metrics article,
+.staff-evaluation-commercial article { display: grid; align-content: start; gap: 6px; min-width: 0; padding: 17px; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
+.staff-evaluation-metrics article > span,
+.staff-evaluation-commercial article > span { color: var(--color-muted); font-size: .74rem; font-weight: 700; text-transform: uppercase; letter-spacing: .035em; }
+.staff-evaluation-metrics article strong,
+.staff-evaluation-commercial article strong { overflow: hidden; color: var(--color-text); font-size: clamp(1.25rem, 2vw, 1.75rem); font-variant-numeric: tabular-nums; text-overflow: ellipsis; }
+.staff-evaluation-metrics article small,
+.staff-evaluation-commercial article small { color: var(--color-muted); font-size: .72rem; line-height: 1.4; }
+.staff-evaluation-metrics article.is-danger { border-color: rgba(220, 38, 38, .24); background: var(--color-danger-soft); }
+.staff-evaluation-metrics article.is-danger strong { color: var(--color-danger-strong); }
+
+.staff-evaluation-commercial > header,
+.staff-evaluation-ranking > header,
+.staff-evaluation-details > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.staff-evaluation-commercial > header { justify-content: flex-start; }
+.staff-evaluation-commercial h3,
+.staff-evaluation-ranking h3,
+.staff-evaluation-details h3 { margin: 0 0 3px; font-size: 1rem; }
+.staff-evaluation-commercial > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.staff-evaluation-commercial article { background: var(--color-surface-muted); }
+
+.staff-evaluation-ranking,
+.staff-evaluation-details { min-width: 0; }
+.staff-evaluation-ranking .data-table { min-width: 1120px; }
+.staff-evaluation-ranking td > small,
+.staff-evaluation-details td > small { display: block; margin-top: 3px; color: var(--color-muted); font-size: .69rem; }
+.staff-evaluation-staff-row { cursor: pointer; }
+.staff-evaluation-staff-row.is-expanded > td { background: var(--color-accent-soft); }
+.staff-evaluation-bookings-row > td { padding: 0 !important; background: var(--color-surface-muted); }
+.staff-evaluation-bookings-row:hover { box-shadow: none !important; }
+.staff-evaluation-bookings { display: grid; gap: 12px; padding: 16px 18px 18px 34px; border-left: 3px solid var(--color-primary); }
+.staff-evaluation-bookings__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.staff-evaluation-bookings__header > div { display: grid; gap: 2px; }
+.staff-evaluation-bookings__header span { color: var(--color-muted); font-size: .75rem; }
+.staff-evaluation-bookings__header > a,
+.staff-evaluation-booking-link,
+.staff-evaluation-booking-actions { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; text-decoration: none; }
+.staff-evaluation-bookings__header > button { display: inline-flex; align-items: center; gap: 5px; }
+.staff-evaluation-booking-row { cursor: pointer; }
+.staff-evaluation-booking-link { padding: 0; border: 0; background: transparent; color: var(--color-primary-strong); cursor: pointer; }
+.staff-evaluation-bookings .data-table { min-width: 980px; }
+.staff-evaluation-bookings .data-table th { position: static; }
+.staff-evaluation-booking-actions { justify-content: flex-end; white-space: nowrap; }
+.staff-evaluation-booking-actions a { display: inline-flex; align-items: center; color: var(--color-primary-strong); text-decoration: none; }
+.staff-evaluation-booking-actions button { padding: 0; border: 0; background: transparent; color: var(--color-primary-strong); cursor: pointer; font: inherit; font-weight: 700; }
+.staff-evaluation-rate { color: var(--color-primary-strong); font-weight: 800; }
+.staff-evaluation-danger { color: var(--color-danger-strong) !important; font-weight: 800; }
+.staff-evaluation-expand { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--color-primary-strong); cursor: pointer; font-weight: 700; }
+.staff-evaluation-expand[aria-expanded='true'] svg { transform: rotate(180deg); }
+.staff-evaluation-expand svg { transition: transform var(--transition-fast); }
+.staff-evaluation-status { display: inline-flex; padding: 4px 8px; border-radius: var(--radius-pill); background: var(--color-surface-muted); color: var(--color-muted-strong); font-size: .7rem; font-weight: 750; white-space: nowrap; }
+.staff-evaluation-status.is-on_time { background: #e9f8ef; color: #167044; }
+.staff-evaluation-status.is-late { background: #fff4d8; color: #8a5b00; }
+.staff-evaluation-status.is-overdue,
+.staff-evaluation-status.is-carryover_overdue,
+.staff-evaluation-status.is-late_carryover { background: var(--color-danger-soft); color: var(--color-danger-strong); }
+.staff-evaluation-video-link { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
+.staff-evaluation-empty { padding: 32px; color: var(--color-muted); text-align: center; }
+
+@media (max-width: 1280px) {
+  .staff-evaluation-filters { grid-template-columns: repeat(4, minmax(145px, 1fr)); }
+  .staff-evaluation-presets { grid-column: 1 / -1; }
+  .staff-evaluation-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .staff-evaluation-hero { align-items: stretch; flex-direction: column; }
+  .staff-evaluation-hero__actions { justify-content: stretch; }
+  .staff-evaluation-hero__actions .button { flex: 1 1 auto; justify-content: center; }
+  .staff-evaluation-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .staff-evaluation-filters > label:nth-last-child(-n + 2) { grid-column: span 1; }
+  .staff-evaluation-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .staff-evaluation-commercial > div { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .staff-evaluation-filters,
+  .staff-evaluation-metrics { grid-template-columns: 1fr; }
+  .staff-evaluation-filters > label { grid-column: 1 !important; }
+  .staff-evaluation-presets button { flex: 1 1 calc(50% - 6px); }
+  .staff-evaluation-bookings { padding-left: 12px; }
+}
+
 
 @media (max-width: 400px) {
 .koc-tab-panel > .page__stats { grid-template-columns: 1fr; }
@@ -3431,7 +3543,236 @@
 .booking-deadline.is-overdue small { color: var(--color-danger-strong); }
 .booking-deadline.is-soon,
 .booking-deadline.is-soon small { color: #9a6500; }
-.booking-detail-drawer { width: min(520px, 94vw); }
+.booking-detail-drawer { width: min(600px, 95vw); }
+
+.booking-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 16px;
+}
+
+.booking-cards-list__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-block: 4px 2px;
+}
+
+.booking-cards-list__header h3 {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.booking-month-card {
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  background: var(--surface-primary, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.booking-month-card--active {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.booking-month-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f8fafc;
+  border-bottom: 1px solid #edf2f7;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.booking-month-card__header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.booking-month-card__month-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.booking-month-card__date-range {
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+}
+
+.booking-month-card__header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.booking-month-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.booking-month-card__badge--success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.booking-month-card__badge--pending {
+  background: #fffbeb;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.booking-month-card__badge--info {
+  background: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.booking-month-card__body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.booking-month-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  background: #f8fafc;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid #f1f5f9;
+}
+
+.booking-month-card__metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.booking-month-card__metric-item span {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.booking-month-card__metric-item strong {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.booking-month-card__videos-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.booking-month-card__videos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.booking-month-card__videos-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.booking-month-card__video-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  border: 1px solid #eef2f6;
+  gap: 8px;
+}
+
+.booking-month-card__video-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.booking-month-card__video-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.booking-month-card__video-title a,
+.booking-month-card__video-title strong {
+  font-size: 0.78rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 250px;
+  color: var(--text-primary);
+}
+
+.booking-month-card__video-title small {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.booking-month-card__video-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  white-space: nowrap;
+}
+
+.booking-month-card__video-stats strong {
+  font-size: 0.8rem;
+  color: var(--color-success, #059669);
+}
+
+.booking-month-card__video-stats small {
+  font-size: 0.68rem;
+  color: var(--text-secondary);
+}
+
+.booking-month-card__form {
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.booking-month-card__actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+}
 
 .booking-detail-drawer .koc-drawer__header {
   align-items: center;

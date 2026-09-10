@@ -165,9 +165,22 @@ const Booking = sequelize.define('Booking', {
       isIn: [['draft', 'booked', 'waiting_video', 'video_posted', 'done', 'cancelled']],
     },
   },
+  start_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  end_date: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
   deadline: {
     type: DataTypes.DATEONLY,
     allowNull: true,
+  },
+  committed_videos: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 1,
   },
   note: {
     type: DataTypes.TEXT,
@@ -195,6 +208,8 @@ const Booking = sequelize.define('Booking', {
     { fields: ['creator_id'] },
     { fields: ['status'] },
     { fields: ['deadline'] },
+    { fields: ['start_date'] },
+    { fields: ['end_date'] },
   ],
 });
 

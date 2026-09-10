@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { LoginRoute, RequirePermission } from './guards';
 import {
   BookingManagement,
+  StaffEvaluationBeta,
   ChannelManagement,
   ChannelReport,
   ChatbotManagement,
@@ -32,6 +33,7 @@ const componentMap = {
   ScheduleManagement,
   QueueManagement,
   BookingManagement,
+  StaffEvaluationBeta,
   ChannelManagement,
   ChannelReport,
   ChatbotManagement,

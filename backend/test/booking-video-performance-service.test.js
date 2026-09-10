@@ -4,7 +4,8 @@ const test = require('node:test');
 const {
   calculateActualPerformance,
   __test: {
-    affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingProducts, metricOfAffiliateSnapshot,
+    affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingDateRange, matchesBookingProducts, metricOfAffiliateSnapshot,
+    normalizeCachedVideoCandidate, productIdsOfVideo,
     resolveOrderMetricsForVideo,
   },
 } = require('../src/services/bookingVideoPerformanceService');
@@ -73,9 +74,29 @@ test('booking video must contain at least one product selected by the user', () 
     product_id: 'other-product',
     products: [{ id: 'another-product' }],
   }), false);
+  assert.equal(matchesBookingProducts(booking, {
+    product_id: null,
+    products: [],
+  }), false);
   assert.equal(matchesBookingProducts({ evaluation_snapshot: {} }, {
-    products: [{ id: 'any-product' }],
-  }), true);
+    products: [],
+  }), false);
+});
+
+test('booking video must match booking start_date and end_date range', () => {
+  const booking = {
+    start_date: '2026-09-01',
+    end_date: '2026-09-15',
+  };
+  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-09-05T12:00:00.000Z' }), true);
+  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-08-31T23:59:59.000Z' }), false);
+  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-09-16T00:00:01.000Z' }), false);
+
+  const legacyBooking = {
+    deadline: '2026-09-10',
+  };
+  assert.equal(matchesBookingDateRange(legacyBooking, { posted_at: '2026-09-10T10:00:00.000Z' }), true);
+  assert.equal(matchesBookingDateRange(legacyBooking, { posted_at: '2026-09-11T00:00:00.000Z' }), false);
 });
 
 test('booking performance only counts the selected product breakdown', () => {
@@ -230,3 +251,66 @@ test('metricOfAffiliateSnapshot uses order ledger metrics when video detail is o
   assert.equal(result.raw_metrics.order_ledger_used, true);
   assert.equal(result.raw_metrics.product_metrics_available, true);
 });
+
+test('productIdsOfVideo extracts product IDs from raw_data and order_metrics', () => {
+  const video = {
+    raw_data: {
+      products: [{ id: 'prod-catalog-1' }, { id: 'prod-catalog-2' }],
+    },
+    order_metrics: {
+      product_ids: ['prod-order-1'],
+    },
+  };
+  const ids = productIdsOfVideo(video);
+  assert.equal(ids.has('prod-catalog-1'), true);
+  assert.equal(ids.has('prod-catalog-2'), true);
+  assert.equal(ids.has('prod-order-1'), true);
+  assert.equal(ids.has('prod-nonexistent'), false);
+});
+
+test('normalizeCachedVideoCandidate merges order ledger metrics into catalog candidate', () => {
+  const shopVideo = {
+    platform_video_id: '7999888777',
+    title: 'Review serum',
+    creator_username: '@koc.beauty',
+    posted_at: '2026-09-02T10:00:00.000Z',
+    video_url: 'https://www.tiktok.com/@koc.beauty/video/7999888777',
+    raw_data: {
+      products: [{ id: 'prod-serum', title: 'Serum Tri Nam' }],
+    },
+    performance_snapshots: [
+      {
+        snapshot_date: '2026-09-03',
+        views: 25000,
+        gross_gmv: 0,
+        orders: 0,
+        ctr: 0.05,
+        currency: 'VND',
+      },
+    ],
+  };
+
+  const orderMetrics = {
+    has_data: true,
+    gross_gmv: 1500000,
+    refunded_gmv: 150000,
+    net_gmv: 1350000,
+    orders: 10,
+    items_sold: 12,
+    currency: 'VND',
+    product_ids: ['prod-serum'],
+  };
+
+  const candidate = normalizeCachedVideoCandidate(shopVideo, orderMetrics);
+  assert.equal(candidate.id, '7999888777');
+  assert.equal(candidate.username, 'koc.beauty');
+  assert.equal(candidate.gmv.amount, 1500000);
+  assert.equal(candidate.refunded_gmv, 150000);
+  assert.equal(candidate.net_gmv, 1350000);
+  assert.equal(candidate.orders, 10);
+  assert.equal(candidate.items_sold, 12);
+  assert.equal(candidate.views, 25000);
+  assert.equal(candidate.cached_catalog, true);
+  assert.equal(candidate.products[0].id, 'prod-serum');
+});
+

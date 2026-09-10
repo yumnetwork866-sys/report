@@ -80,6 +80,8 @@ const migrations = [
   require('./070_update_creator_performance_schedule'),
   require('./071_create_compass_request_state'),
   require('./072_create_scheduled_run_events'),
+  require('./073_add_booking_start_end_dates'),
+  require('./074_add_booking_committed_videos'),
 ];
 
 const createMigrationRunner = ({

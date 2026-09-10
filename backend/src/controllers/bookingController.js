@@ -28,6 +28,7 @@ const {
   autoLinkBookingVideos,
   calculateActualPerformance,
   loadOrderMetricsForVideos,
+  matchesBookingDateRange,
   matchesBookingProducts,
   metricOfAffiliateSnapshot,
   productIdsOfVideo,
@@ -48,7 +49,7 @@ const {
 
 const ALLOWED_STATUSES = new Set(['draft', 'booked', 'waiting_video', 'video_posted', 'done', 'cancelled']);
 const BOOKING_PERFORMANCE_WINDOWS = new Set([
-  'PAST_7_DAYS', 'PAST_30_DAYS', 'PAST_60_DAYS', 'PAST_90_DAYS',
+  'LIFETIME', 'PAST_7_DAYS', 'PAST_30_DAYS', 'PAST_60_DAYS', 'PAST_90_DAYS',
   'PAST_120_DAYS', 'PAST_150_DAYS', 'PAST_180_DAYS', 'CUSTOM',
 ]);
 const AGGREGATE_BOOKING_WINDOW_DAYS = new Set([60, 90, 120, 150]);
@@ -201,7 +202,10 @@ const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((bookin
     ...(booking.evaluation_snapshot?.product_ids || []),
     ...(booking.evaluation_snapshot?.products || []).map((product) => product?.id || product?.product_id),
   ].map((value) => String(value || '').trim()).filter(Boolean));
-  const matchingVideos = originalVideos.filter((video) => matchesBookingProducts(booking, video));
+  const matchingVideos = originalVideos.filter((video) => (
+    matchesBookingProducts(booking, video)
+    && matchesBookingDateRange(booking, video)
+  ));
   booking.booking_videos = matchingVideos;
   booking.video_match_status = matchingVideos.length
     ? 'MATCHED'
@@ -426,15 +430,30 @@ const normalizeCachedVideoCandidate = (videoInstance) => {
 const bookingVideoDateRange = (booking, now = new Date()) => {
   const earliest = new Date(now);
   earliest.setUTCDate(earliest.getUTCDate() - 89);
-  const bookingDate = new Date(
-    booking.evaluation_snapshot?.collaboration?.start_at
-      || booking.created_at
-      || booking.evaluation_snapshot?.recorded_at
-      || earliest,
-  );
-  const start = bookingDate > earliest ? bookingDate : earliest;
-  const end = new Date(now);
+  let start;
+  if (booking?.start_date) {
+    const d = new Date(booking.start_date);
+    start = Number.isNaN(d.getTime()) ? earliest : d;
+  } else {
+    const bookingDate = new Date(
+      booking?.evaluation_snapshot?.collaboration?.start_at
+        || booking?.created_at
+        || booking?.evaluation_snapshot?.recorded_at
+        || earliest,
+    );
+    start = bookingDate > earliest ? bookingDate : earliest;
+  }
+  let end = new Date(now);
   end.setUTCDate(end.getUTCDate() + 1);
+  if (booking?.end_date || booking?.deadline) {
+    const rawEnd = booking?.end_date || booking?.deadline;
+    const d = new Date(rawEnd);
+    if (!Number.isNaN(d.getTime())) {
+      const candidateEnd = new Date(d);
+      candidateEnd.setUTCDate(candidateEnd.getUTCDate() + 1);
+      if (candidateEnd > end) end = candidateEnd;
+    }
+  }
   return { startDate: dateOnly(start), endDate: dateOnly(end) };
 };
 
@@ -476,14 +495,17 @@ const findBookingVideoCandidates = async (booking) => {
     });
     if (cached.length) {
       const normalized = cached.map(normalizeCachedVideoCandidate);
-      const candidates = normalized.filter((candidate) => matchesBookingProducts(booking, candidate));
+      const candidates = normalized.filter((candidate) => (
+        matchesBookingProducts(booking, candidate)
+        && matchesBookingDateRange(booking, candidate)
+      ));
       const productDataComplete = normalized.every((candidate) => productIdsOfVideo(candidate).size > 0);
       if (candidates.length || productDataComplete) {
-      return {
-        candidates,
-        range,
-        source: 'SHOP_VIDEO_CATALOG',
-      };
+        return {
+          candidates,
+          range,
+          source: 'SHOP_VIDEO_CATALOG',
+        };
       }
     }
   }
@@ -525,7 +547,7 @@ const findBookingVideoCandidates = async (booking) => {
   videos
     .filter((video) => videoUsername(video) === username)
     .map(normalizeVideoCandidate)
-    .filter((video) => matchesBookingProducts(booking, video))
+    .filter((video) => matchesBookingProducts(booking, video) && matchesBookingDateRange(booking, video))
     .filter((video) => video.id)
     .forEach((video) => candidatesById.set(video.id, video));
   return {
@@ -1111,6 +1133,9 @@ const getBookings = async (req, res) => {
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
+    const requestedMonth = String(req.query?.month || '').trim();
+    const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
+    const requestedOpenId = String(req.query?.creator_open_id || '').trim();
     const customRange = requestedWindow === 'CUSTOM'
       ? customPerformanceRange(startDate, endDate)
       : {};
@@ -1120,12 +1145,43 @@ const getBookings = async (req, res) => {
       });
     }
 
-    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${startDate || 'none'}:${endDate || 'none'}`;
+    let creatorWhere = {};
+    if (requestedOpenId) {
+      creatorWhere = { creator_open_id: requestedOpenId };
+    } else if (requestedUsername) {
+      creatorWhere = { creator_username: { [Op.iLike]: requestedUsername } };
+    }
+
+    let monthWhere = {};
+    if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+      const monthStart = `${requestedMonth}-01`;
+      const [y, m] = requestedMonth.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const monthEnd = `${requestedMonth}-${String(lastDay).padStart(2, '0')}`;
+      monthWhere = {
+        [Op.or]: [
+          { start_date: { [Op.between]: [monthStart, monthEnd] } },
+          {
+            start_date: null,
+            [Op.or]: [
+              { deadline: { [Op.between]: [monthStart, monthEnd] } },
+              { created_at: { [Op.between]: [`${monthStart}T00:00:00.000Z`, `${monthEnd}T23:59:59.999Z`] } },
+            ],
+          },
+        ],
+      };
+    }
+
+    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await Booking.findAll({
-        where: { evaluation_snapshot: { [Op.not]: null } },
+        where: {
+          evaluation_snapshot: { [Op.not]: null },
+          ...monthWhere,
+          ...creatorWhere,
+        },
         include: bookingInclude,
-        order: [['deadline', 'ASC'], ['id', 'DESC']],
+        order: [['start_date', 'DESC'], ['deadline', 'DESC'], ['id', 'DESC']],
       });
       const serialized = await applyBookingVideoPerformanceWindow(
         await serializeBookingsWithFreshCreatorAvatars(bookings),
@@ -1198,6 +1254,19 @@ const createBooking = async (req, res) => {
       } : null,
       performance,
     };
+    const targetStartDate = req.body.start_date
+      ? String(req.body.start_date).slice(0, 10)
+      : (collaboration?.start_at ? new Date(collaboration.start_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const targetEndDate = req.body.end_date
+      ? String(req.body.end_date).slice(0, 10)
+      : (req.body.deadline
+        ? String(req.body.deadline).slice(0, 10)
+        : (collaboration?.end_at ? new Date(collaboration.end_at).toISOString().slice(0, 10) : null));
+
+    const committedVideos = req.body.committed_videos !== undefined
+      ? Math.max(1, Number.parseInt(req.body.committed_videos, 10) || 1)
+      : 1;
+
     const payload = compactPayload({
       staff_id: staff?.id || null,
       staff_name: staff?.name || null,
@@ -1212,9 +1281,12 @@ const createBooking = async (req, res) => {
       booking_cost: cost,
       total_cost: cost,
       cost_note: String(req.body.cost_note || '').trim() || null,
+      committed_videos: committedVideos,
       currency: String(req.body.currency || performance?.currency || 'MYR').trim().toUpperCase(),
       status: 'draft',
-      deadline: collaboration?.end_at ? new Date(collaboration.end_at).toISOString().slice(0, 10) : null,
+      start_date: targetStartDate,
+      end_date: targetEndDate,
+      deadline: targetEndDate,
       note: req.body.note || null,
       updated_at: new Date(),
     });
@@ -1234,9 +1306,34 @@ const createBooking = async (req, res) => {
       console.warn(`Unable to cache product thumbnails for booking ${booking.id}: ${error.message}`);
     });
     try {
-      await autoLinkBookingVideos(booking);
+      const linkResult = await autoLinkBookingVideos(booking);
+      if (linkResult?.status !== 'matched') {
+        const { candidates } = await findBookingVideoCandidates(booking);
+        if (candidates.length > 0) {
+          const selected = candidates[0];
+          const mappingSource = selected.cached_catalog ? 'SHOP_VIDEO_CATALOG' : 'TIKTOK_SHOP_VIDEO_PERFORMANCE';
+          await booking.update({
+            video_platform_id: selected.id,
+            video_url: selected.video_url,
+            posted_at: selected.posted_at,
+            evaluation_snapshot: {
+              ...booking.evaluation_snapshot,
+              video_match: {
+                source: mappingSource,
+                matched_at: new Date().toISOString(),
+                video_count: candidates.length,
+                ...selected,
+              },
+            },
+            updated_at: new Date(),
+          });
+          for (const candidate of candidates) {
+            await recordBookingVideoMatch(booking, candidate, mappingSource);
+          }
+        }
+      }
     } catch (error) {
-      console.warn(`Unable to auto-link Affiliate videos for booking ${booking.id}: ${error.message}`);
+      console.warn(`Unable to auto-link videos for booking ${booking.id}: ${error.message}`);
     }
     const createdBooking = await Booking.findByPk(booking.id, { include: bookingInclude });
     const [serialized] = await serializeBookingsWithFreshCreatorAvatars([createdBooking]);
@@ -1298,15 +1395,34 @@ const updateBooking = async (req, res) => {
       }
     }
 
+    const targetEndDate = req.body.end_date !== undefined
+      ? (req.body.end_date ? String(req.body.end_date).slice(0, 10) : null)
+      : (req.body.deadline !== undefined ? (req.body.deadline ? String(req.body.deadline).slice(0, 10) : null) : undefined);
+    const targetStartDate = req.body.start_date !== undefined
+      ? (req.body.start_date ? String(req.body.start_date).slice(0, 10) : null)
+      : undefined;
+
+    let targetCommittedVideos;
+    if (req.body.committed_videos !== undefined) {
+      const parsed = Number.parseInt(req.body.committed_videos, 10);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        return res.status(400).json({ message: 'Committed videos must be an integer of 1 or greater.' });
+      }
+      targetCommittedVideos = parsed;
+    }
+
     const payload = compactPayload({
       ...staffUpdate,
       creator_id: req.body.creator_id,
       booking_cost: req.body.booking_cost,
       total_cost: req.body.total_cost,
       cost_note: req.body.cost_note === undefined ? undefined : String(req.body.cost_note || '').trim() || null,
+      committed_videos: targetCommittedVideos,
       currency: req.body.currency === undefined ? undefined : String(req.body.currency || 'MYR').trim().toUpperCase(),
       status: req.body.status,
-      deadline: req.body.deadline,
+      start_date: targetStartDate,
+      end_date: targetEndDate,
+      deadline: targetEndDate !== undefined ? targetEndDate : req.body.deadline,
       note: req.body.note,
       video_platform_id: req.body.video_platform_id,
       video_url: normalizeBookingVideoUrl(req.body.video_url),
