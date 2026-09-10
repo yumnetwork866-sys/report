@@ -3996,7 +3996,11 @@
 }
 
 .seller-affiliate__controls--orders .seller-affiliate__filter-grid {
-  grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.35fr) repeat(2, minmax(170px, .7fr));
+  grid-template-columns: minmax(180px, .8fr) minmax(260px, 1.35fr) minmax(170px, .7fr);
+}
+
+.seller-affiliate__controls--orders-custom .seller-affiliate__filter-grid {
+  grid-template-columns: minmax(170px, .75fr) minmax(240px, 1.2fr) repeat(3, minmax(155px, .65fr));
 }
 
 .seller-affiliate__controls--orders .channel-report-date-picker,
@@ -5548,6 +5552,7 @@
 @media (max-width: 820px) {
 .seller-affiliate__filter-grid,
   .seller-affiliate__controls--orders .seller-affiliate__filter-grid,
+  .seller-affiliate__controls--orders-custom .seller-affiliate__filter-grid,
   .seller-affiliate__summary {
     grid-template-columns: 1fr;
   }
