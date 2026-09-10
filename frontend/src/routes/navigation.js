@@ -145,7 +145,7 @@ export const protectedRouteCards = [
     component: 'BookingManagement',
     permission: 'tiktok',
     props: {
-      heroTitle: 'Booking management',
+      heroTitle: 'Booking',
       heroSubtitle: '',
     },
   },

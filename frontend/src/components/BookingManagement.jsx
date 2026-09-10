@@ -31,7 +31,7 @@ const generateBookingMonthOptions = (count = 12) => {
     const month = String(d.getMonth() + 1).padStart(2, '0');
     options.push({
       value: `${year}-${month}`,
-      label: `Tháng ${month}/${year}`,
+      label: `${month}/${year}`,
     });
     d.setMonth(d.getMonth() - 1);
   }
@@ -986,7 +986,7 @@ const BookingManagement = ({
   const [usersLoading, setUsersLoading] = useState(true);
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
-  const [performanceWindow, setPerformanceWindow] = useState(DEFAULT_PERFORMANCE_WINDOW);
+  const performanceWindow = DEFAULT_PERFORMANCE_WINDOW;
   const [selectedMonth, setSelectedMonth] = useState('all');
   const monthOptions = useMemo(() => generateBookingMonthOptions(), []);
   const [bookingTab, setBookingTab] = useState(() => (
@@ -1717,12 +1717,7 @@ const BookingManagement = ({
       setExpandedGroupKeys(new Set([bookingGroups[0].key]));
     }
   }, [canManageUsers, bookingGroups]);
-  const incompleteCustomCoverage = performanceWindow === 'CUSTOM'
-    ? bookings
-      .map((booking) => booking.reference_performance_coverage)
-      .filter((coverage) => coverage && !coverage.complete)
-      .sort((left, right) => Number(left.available_days) - Number(right.available_days))[0] || null
-    : null;
+
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -2095,57 +2090,9 @@ const BookingManagement = ({
                 ))}
               </select>
             </div>
-            <div className="field booking-performance-period">
-              <label htmlFor="booking-performance-window">{t('booking.performancePeriod')}</label>
-              <select
-                id="booking-performance-window"
-                value={performanceWindow}
-                onChange={(event) => setPerformanceWindow(event.target.value)}
-              >
-                <option value="LIFETIME">{t('booking.periodLifetime')}</option>
-                <option value="PAST_7_DAYS">{t('booking.period7Days')}</option>
-                <option value="PAST_30_DAYS">{t('booking.period30Days')}</option>
-                <option value="PAST_60_DAYS">{t('booking.period60Days')}</option>
-                <option value="PAST_90_DAYS">{t('booking.period90Days')}</option>
-                <option value="PAST_120_DAYS">{t('booking.period120Days')}</option>
-                <option value="PAST_150_DAYS">{t('booking.period150Days')}</option>
-                <option value="PAST_180_DAYS">{t('booking.period180Days')}</option>
-                <option value="CUSTOM">{t('booking.periodCustom')}</option>
-              </select>
-            </div>
-            {performanceWindow === 'CUSTOM' ? (
-              <>
-                <div className="field booking-performance-date">
-                  <label htmlFor="booking-performance-start">{t('booking.startDate')}</label>
-                  <DatePickerInput
-                    id="booking-performance-start"
-                    label={t('booking.startDate')}
-                    value={customRange.start}
-                    min={earliestCustomStart}
-                    max={customRange.end || latestCompleteDate}
-                    onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
-                  />
-                </div>
-                <div className="field booking-performance-date">
-                  <label htmlFor="booking-performance-end">{t('booking.endDate')}</label>
-                  <DatePickerInput
-                    id="booking-performance-end"
-                    label={t('booking.endDate')}
-                    value={customRange.end}
-                    min={customRange.start || undefined}
-                    max={latestCustomEnd}
-                    onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
-                  />
-                </div>
-              </>
-            ) : null}
           </div>
         </div>
         {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
-        {incompleteCustomCoverage && bookingTab === 'video' ? <p className="form-error" role="status">{t('booking.customCoverageIncomplete', {
-          available: incompleteCustomCoverage.available_days,
-          requested: incompleteCustomCoverage.requested_days,
-        })}</p> : null}
         {loading || (bookingTab === 'product' && productOrdersLoading) ? (
           <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div>
         ) : bookingGroupsToRender.length ? (
