@@ -216,29 +216,42 @@ const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((bookin
   return booking;
 });
 
-const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) => {
-  const days = Number(String(performanceWindow || '').match(/^PAST_(7|30)_DAYS$/)?.[1]);
-  if (!days || !bookings.length || !TikTokCreatorPerformanceExport?.findAll || !TikTokVideoPerformanceSnapshot?.findAll) {
+const shiftDateString = (dateStr, days) => {
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, customRange = {}) => {
+  const days = Number(String(performanceWindow || '').match(/^PAST_(\d+)_DAYS$/)?.[1]);
+  const isCustomRange = performanceWindow === 'CUSTOM'
+    && customRange.startDate
+    && customRange.endDate;
+
+  const videoIds = [...new Set(bookings.flatMap((booking) => (
+    (booking.booking_videos || []).map((video) => String(video.platform_video_id || '').trim())
+  )).filter(Boolean))];
+
+  if ((!days && !isCustomRange) || !bookings.length || !videoIds.length) {
     return bookings;
   }
   const shopIds = [...new Set(bookings.map((booking) => Number(booking.target_shop_id)).filter(Number.isInteger))];
-  const exports = await TikTokCreatorPerformanceExport.findAll({
+  const exports = (days && TikTokCreatorPerformanceExport?.findAll) ? await TikTokCreatorPerformanceExport.findAll({
     where: { shop_id: { [Op.in]: shopIds }, module_type: 'VIDEO_API', status: 'SUCCEEDED' },
     attributes: ['id', 'shop_id', 'start_date', 'end_date', 'completed_at', 'created_at'],
     order: [['end_date', 'DESC'], ['completed_at', 'DESC'], ['created_at', 'DESC'], ['id', 'DESC']],
-  });
+  }) : [];
   const selectedExportByShop = new Map();
-  for (const record of exports) {
-    const start = Date.parse(`${record.start_date}T00:00:00.000Z`);
-    const end = Date.parse(`${record.end_date}T00:00:00.000Z`);
-    if (Math.round((end - start) / 86400000) !== days || selectedExportByShop.has(Number(record.shop_id))) continue;
-    selectedExportByShop.set(Number(record.shop_id), record);
+  if (days) {
+    for (const record of exports) {
+      const start = Date.parse(`${record.start_date}T00:00:00.000Z`);
+      const end = Date.parse(`${record.end_date}T00:00:00.000Z`);
+      if (Math.round((end - start) / 86400000) !== days || selectedExportByShop.has(Number(record.shop_id))) continue;
+      selectedExportByShop.set(Number(record.shop_id), record);
+    }
   }
   const exportIds = [...selectedExportByShop.values()].map((record) => record.id);
-  const videoIds = [...new Set(bookings.flatMap((booking) => (
-    (booking.booking_videos || []).map((video) => String(video.platform_video_id))
-  )))];
-  const snapshots = exportIds.length && videoIds.length ? await TikTokVideoPerformanceSnapshot.findAll({
+  const snapshots = exportIds.length && videoIds.length && TikTokVideoPerformanceSnapshot?.findAll ? await TikTokVideoPerformanceSnapshot.findAll({
     where: { export_id: { [Op.in]: exportIds }, video_id: { [Op.in]: videoIds } },
   }) : [];
   const snapshotByExportAndVideo = new Map(snapshots.map((snapshot) => [
@@ -248,11 +261,25 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
 
   const orderMetricsByShopAndVideo = new Map();
   const windows = new Map();
-  for (const [shopId, record] of selectedExportByShop.entries()) {
-    const key = `${record.start_date}:${record.end_date}`;
-    if (!windows.has(key)) windows.set(key, { startDate: record.start_date, endDate: record.end_date, shopIds: [] });
-    windows.get(key).shopIds.push(shopId);
+  const yesterday = new Date();
+  yesterday.setUTCHours(0, 0, 0, 0);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  const fallbackEndDate = yesterday.toISOString().slice(0, 10);
+
+  if (isCustomRange) {
+    const key = `${customRange.startDate}:${customRange.endDate}`;
+    windows.set(key, { startDate: customRange.startDate, endDate: customRange.endDate, shopIds: [...shopIds] });
+  } else if (days) {
+    for (const shopId of shopIds) {
+      const record = selectedExportByShop.get(shopId);
+      const endDate = record?.end_date || fallbackEndDate;
+      const startDate = record?.start_date || shiftDateString(endDate, -days);
+      const key = `${startDate}:${endDate}`;
+      if (!windows.has(key)) windows.set(key, { startDate, endDate, shopIds: [] });
+      windows.get(key).shopIds.push(shopId);
+    }
   }
+
   for (const win of windows.values()) {
     const metricsMap = await loadOrderMetricsForVideos({
       shopIds: win.shopIds,
@@ -268,6 +295,13 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
   for (const booking of bookings) {
     const exportRecord = selectedExportByShop.get(Number(booking.target_shop_id));
     const selectedIds = selectedProductIdsOfBooking(booking);
+    const windowEndDate = isCustomRange
+      ? customRange.endDate
+      : (exportRecord?.end_date || fallbackEndDate);
+    const windowStartDate = isCustomRange
+      ? customRange.startDate
+      : (exportRecord?.start_date || (days ? shiftDateString(windowEndDate, -days) : null));
+
     for (const video of booking.booking_videos || []) {
       const snapshot = exportRecord
         ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
@@ -278,8 +312,8 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
         snapshot_date: exportRecord.end_date,
         ...metricOfAffiliateSnapshot(snapshot, selectedIds, orderMetrics),
         synced_at: snapshot.synced_at || exportRecord.completed_at || exportRecord.created_at,
-      }] : exportRecord ? [{
-        snapshot_date: exportRecord.end_date,
+      }] : (exportRecord || isCustomRange || days) ? [{
+        snapshot_date: windowEndDate,
         gross_gmv: orderMetrics?.gross_gmv || 0,
         refunded_gmv: orderMetrics?.refunded_gmv ?? null,
         net_gmv: orderMetrics?.net_gmv ?? null,
@@ -296,14 +330,14 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow) =
           order_ledger_used: Boolean(orderMetrics),
           order_metrics: orderMetrics || null,
         },
-        synced_at: exportRecord.completed_at || exportRecord.created_at,
+        synced_at: exportRecord?.completed_at || exportRecord?.created_at || new Date().toISOString(),
       }] : [];
     }
     booking.actual_performance = {
       ...calculateActualPerformance(booking),
       window_type: performanceWindow,
-      start_date: exportRecord?.start_date || null,
-      end_date: exportRecord?.end_date || null,
+      start_date: windowStartDate,
+      end_date: windowEndDate,
     };
   }
   return bookings;
@@ -1186,6 +1220,7 @@ const getBookings = async (req, res) => {
       const serialized = await applyBookingVideoPerformanceWindow(
         await serializeBookingsWithFreshCreatorAvatars(bookings),
         requestedWindow,
+        customRange,
       );
       return addReferencePerformance(serialized, requestedWindow, customRange);
     });

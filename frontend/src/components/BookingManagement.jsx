@@ -1195,11 +1195,6 @@ const BookingManagement = ({
     }
   }, [bookingTab, expandedBookingId, selectedManagerKey]);
 
-  useEffect(() => {
-    if (bookingTab === 'video' && performanceWindow === 'CUSTOM') {
-      setPerformanceWindow('PAST_30_DAYS');
-    }
-  }, [bookingTab, performanceWindow]);
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatNumber = (value, options) => finiteNumber(value).toLocaleString(locale, options);
@@ -2219,9 +2214,14 @@ const BookingManagement = ({
                 onChange={(event) => setPerformanceWindow(event.target.value)}
               >
                 <option value="LIFETIME">{t('booking.periodLifetime')}</option>
-                <option value="PAST_30_DAYS">{t('booking.period30Days')}</option>
                 <option value="PAST_7_DAYS">{t('booking.period7Days')}</option>
-                {bookingTab === 'product' ? <option value="CUSTOM">{t('booking.periodCustom')}</option> : null}
+                <option value="PAST_30_DAYS">{t('booking.period30Days')}</option>
+                <option value="PAST_60_DAYS">{t('booking.period60Days')}</option>
+                <option value="PAST_90_DAYS">{t('booking.period90Days')}</option>
+                <option value="PAST_120_DAYS">{t('booking.period120Days')}</option>
+                <option value="PAST_150_DAYS">{t('booking.period150Days')}</option>
+                <option value="PAST_180_DAYS">{t('booking.period180Days')}</option>
+                <option value="CUSTOM">{t('booking.periodCustom')}</option>
               </select>
             </div>
             {performanceWindow === 'CUSTOM' ? (

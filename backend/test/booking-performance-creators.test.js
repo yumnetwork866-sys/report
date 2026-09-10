@@ -31,6 +31,8 @@ const loadController = (
       matchesBookingDateRange: () => true,
       matchesBookingProducts: () => true,
       productIdsOfVideo: () => new Set(),
+      selectedProductIdsOfBooking: () => new Set(),
+      resolveOrderMetricsForVideo: (videoData) => videoData?.order_metrics || null,
       recordBookingVideoMatch: async () => {},
       serializeBookingWithActual: (booking) => (
         typeof booking?.toJSON === 'function' ? booking.toJSON() : booking
@@ -557,7 +559,7 @@ test('updateBooking updates committed_videos, start_date, and end_date', async (
   };
   const { updateBooking } = loadController(t, {
     Booking: {
-      update: async (payload, options) => {
+      update: async (payload, _options) => {
         updatedPayload = payload;
         return [1];
       },
@@ -568,7 +570,6 @@ test('updateBooking updates committed_videos, start_date, and end_date', async (
     },
   });
 
-  let statusCode;
   let response;
   await updateBooking(
     {
@@ -580,10 +581,7 @@ test('updateBooking updates committed_videos, start_date, and end_date', async (
       },
     },
     {
-      status: (value) => {
-        statusCode = value;
-        return { json: (body) => { response = body; } };
-      },
+      status: () => ({ json: (body) => { response = body; } }),
       json: (body) => { response = body; },
     },
   );
@@ -633,3 +631,73 @@ test('getBookings filters by creator_username', async (t) => {
   assert.equal(result[0].creator_username, 'koc_alice');
 });
 
+test('getBookings applies video performance for CUSTOM range and multi-month windows', async (t) => {
+  const mockBooking = {
+    id: 40,
+    target_shop_id: 1,
+    creator_username: 'koc_multi',
+    booking_videos: [{
+      platform_video_id: 'vid-999',
+      status: 'FINALIZED',
+    }],
+    evaluation_snapshot: { dummy: true },
+    toJSON: () => mockBooking,
+  };
+  let orderQueryArgs;
+  const { getBookings } = loadController(t, {
+    Booking: {
+      findAll: async () => [mockBooking],
+    },
+    TikTokCreatorPerformanceSnapshot: {},
+    sequelize: {
+      query: async () => [],
+    },
+  }, {}, {
+    loadOrderMetricsForVideos: async (args) => {
+      orderQueryArgs = args;
+      const metricsByVideo = new Map();
+      metricsByVideo.set('1:vid-999', {
+        shop_id: 1,
+        video_id: 'vid-999',
+        gross_gmv: 500,
+        refunded_gmv: 50,
+        orders: 10,
+        items_sold: 12,
+        currency: 'MYR',
+        has_data: true,
+      });
+      return metricsByVideo;
+    },
+    resolveOrderMetricsForVideo: (videoData) => videoData || null,
+    calculateActualPerformance: (booking) => {
+      const snap = booking.booking_videos?.[0]?.performance_snapshots?.[0] || {};
+      return {
+        gross_gmv: snap.gross_gmv || 0,
+        orders: snap.orders || 0,
+      };
+    },
+  });
+
+  let result;
+  await getBookings(
+    {
+      query: {
+        window_type: 'CUSTOM',
+        start_date: '2026-06-01',
+        end_date: '2026-08-31',
+      },
+    },
+    {
+      json: (data) => { result = data; },
+      status: () => ({ json: (data) => { result = data; } }),
+    },
+  );
+  assert.equal(orderQueryArgs.startDate, '2026-06-01');
+  assert.equal(orderQueryArgs.endDate, '2026-08-31');
+  assert.equal(result[0].booking_videos[0].performance_snapshots[0].gross_gmv, 500);
+  assert.equal(result[0].booking_videos[0].performance_snapshots[0].orders, 10);
+  assert.equal(result[0].actual_performance.gross_gmv, 500);
+  assert.equal(result[0].actual_performance.orders, 10);
+  assert.equal(result[0].actual_performance.start_date, '2026-06-01');
+  assert.equal(result[0].actual_performance.end_date, '2026-08-31');
+});
