@@ -20,7 +20,7 @@ import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { ChevronLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 
 const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
 const generateBookingMonthOptions = (count = 12) => {
@@ -1100,13 +1100,6 @@ const BookingManagement = ({
   const [creatorBookings, setCreatorBookings] = useState([]);
   const [creatorBookingsLoading, setCreatorBookingsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [openActions, setOpenActions] = useState({
-    id: null,
-    direction: 'down',
-    top: 0,
-    bottom: 0,
-    right: 0,
-  });
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
     if (embeddedMode === 'create') onEmbeddedClose?.();
@@ -1269,6 +1262,18 @@ const BookingManagement = ({
   }, [closeCreateBooking, isCreateBookingOpen, saving]);
 
   useEffect(() => {
+    if (!selectedBooking) return undefined;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [selectedBooking]);
+
+  useEffect(() => {
     if (!selectedBooking?.target_shop_id) {
       setDetailProducts([]);
       setDetailProductsLoading(false);
@@ -1350,43 +1355,6 @@ const BookingManagement = ({
 
     return () => controller.abort();
   }, [bookings, convertAmount, performanceWindow, selectedBooking, selectedCurrency]);
-
-  useEffect(() => {
-    const closeActions = (event) => {
-      if (event.type === 'keydown' && event.key !== 'Escape') return;
-      if (event.type === 'click' && event.target.closest('.booking-action-menu')) return;
-      setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-    };
-    document.addEventListener('click', closeActions);
-    document.addEventListener('keydown', closeActions);
-    window.addEventListener('resize', closeActions);
-    window.addEventListener('scroll', closeActions, true);
-    return () => {
-      document.removeEventListener('click', closeActions);
-      document.removeEventListener('keydown', closeActions);
-      window.removeEventListener('resize', closeActions);
-      window.removeEventListener('scroll', closeActions, true);
-    };
-  }, []);
-
-  const toggleActionsMenu = (bookingId, triggerElement) => {
-    setOpenActions((current) => {
-      if (current.id === bookingId) {
-        return { id: null, direction: 'down', top: 0, bottom: 0, right: 0 };
-      }
-      const rect = triggerElement.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const direction = spaceBelow < 150 && spaceAbove > spaceBelow ? 'up' : 'down';
-      return {
-        id: bookingId,
-        direction,
-        top: Math.min(window.innerHeight - 12, rect.bottom + 8),
-        bottom: Math.max(12, window.innerHeight - (rect.top - 8)),
-        right: Math.max(12, window.innerWidth - rect.right),
-      };
-    });
-  };
 
   useEffect(() => {
     if (!canManageUsers) {
@@ -1890,21 +1858,6 @@ const BookingManagement = ({
       setError(err.message || t('booking.errorCreate'));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleDelete = async (booking) => {
-    if (!window.confirm(t('booking.deleteConfirm', { id: booking.id }))) return;
-    try {
-      setDeletingId(booking.id);
-      setError('');
-      await deleteBooking(booking.id);
-      setBookings((items) => items.filter((item) => item.id !== booking.id));
-      if (selectedBooking?.id === booking.id) closeBookingDetail();
-    } catch (err) {
-      setError(err.message || t('booking.errorDelete'));
-    } finally {
-      setDeletingId(null);
     }
   };
 
@@ -2460,62 +2413,15 @@ const BookingManagement = ({
                                             <td className="cell-number booking-samples-column">{bookingTab === 'product' ? '—' : creatorMetric(performance, 'samples_shipped')}</td>
                                             <td className="cell-number">{creatorMetric(performance, 'estimated_commission', { money: true })}</td>
                                             <td className="cell-actions">
-                                              <div className="action-menu booking-action-menu">
-                                                <button
-                                                  className="action-menu__trigger"
-                                                  type="button"
-                                                  aria-haspopup="menu"
-                                                  aria-expanded={openActions.id === booking.id}
-                                                  aria-label={t('booking.actionsColumn')}
-                                                  onClick={(event) => toggleActionsMenu(booking.id, event.currentTarget)}
-                                                >
-                                                  •••
-                                                </button>
-                                                {openActions.id === booking.id ? createPortal(
-                                                  <div
-                                                    className={`action-menu__panel booking-action-menu booking-action-menu__popover action-menu__panel--${openActions.direction}`}
-                                                    role="menu"
-                                                    style={{
-                                                      position: 'fixed',
-                                                      right: `${openActions.right}px`,
-                                                      top: openActions.direction === 'down' ? `${openActions.top}px` : 'auto',
-                                                      bottom: openActions.direction === 'up' ? `${openActions.bottom}px` : 'auto',
-                                                    }}
-                                                  >
-                                                    <button
-                                                      type="button"
-                                                      className="action-menu__item"
-                                                      role="menuitem"
-                                                      onClick={() => {
-                                                        setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                                                        setSelectedBooking(booking);
-                                                        setDetailProductIds(bookingProductsOf(booking).map((product) => String(product.id || product.product_id)));
-                                                        setDetailProductPickerOpen(false);
-                                                        const rawCost = booking.total_cost ?? booking.booking_cost;
-                                                        setDetailCost(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
-                                                        setDetailCommittedVideos(booking.committed_videos ?? 1);
-                                                        setDetailStartDate(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
-                                                        setDetailEndDate(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
-                                                      }}
-                                                    >
-                                                      {t('booking.details')}
-                                                    </button>
-                                                    <button
-                                                      type="button"
-                                                      className="action-menu__item action-menu__item--danger"
-                                                      disabled={deletingId === booking.id}
-                                                      role="menuitem"
-                                                      onClick={() => {
-                                                        setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                                                        handleDelete(booking);
-                                                      }}
-                                                    >
-                                                      {deletingId === booking.id ? t('booking.deleting') : t('booking.delete')}
-                                                    </button>
-                                                  </div>,
-                                                  document.body,
-                                                ) : null}
-                                              </div>
+                                              <button
+                                                className="booking-action-open"
+                                                type="button"
+                                                aria-label={t('booking.details')}
+                                                title={t('booking.details')}
+                                                onClick={() => setSelectedBooking(booking)}
+                                              >
+                                                <ChevronLeft size={18} aria-hidden="true" />
+                                              </button>
                                             </td>
                                           </tr>
                                           {expanded ? (
