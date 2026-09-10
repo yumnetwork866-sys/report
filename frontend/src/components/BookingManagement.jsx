@@ -20,7 +20,7 @@ import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
 const generateBookingMonthOptions = (count = 12) => {
@@ -759,7 +759,7 @@ const BookingMonthCard = ({
   productsLoading,
   t,
 }) => {
-  const [isEditing, setIsEditing] = useState(isSelected);
+  const [isEditing, setIsEditing] = useState(false);
   const [startDate, setStartDate] = useState(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
   const [endDate, setEndDate] = useState(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
   const rawCost = booking.total_cost ?? booking.booking_cost;
@@ -767,6 +767,19 @@ const BookingMonthCard = ({
   const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
   const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
   const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const productPickerTriggerRef = useRef(null);
+  const productPickerMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!productPickerOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (productPickerTriggerRef.current?.contains(event.target)
+        || productPickerMenuRef.current?.contains(event.target)) return;
+      setProductPickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [productPickerOpen]);
 
   useEffect(() => {
     setStartDate(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
@@ -818,7 +831,7 @@ const BookingMonthCard = ({
 
   return (
     <article className={`booking-month-card${isSelected ? ' booking-month-card--active' : ''}`}>
-      <div className="booking-month-card__header" onClick={() => setIsEditing((prev) => !prev)}>
+      <div className="booking-month-card__header">
         <div className="booking-month-card__header-left">
           <span className="booking-month-card__date-range">
             {formatDate(booking.start_date)} → {formatDate(booking.end_date || booking.deadline)}
@@ -827,24 +840,44 @@ const BookingMonthCard = ({
         <div className="booking-month-card__header-badges">
           {videoCount >= targetVideos ? (
             <span className="booking-month-card__badge booking-month-card__badge--success">
-              ✓ {videoCount}/{targetVideos} {t('booking.committedCompleted')}
+              {videoCount}/{targetVideos}
             </span>
           ) : videoCount === 0 ? (
             <span className="booking-month-card__badge booking-month-card__badge--pending">
-              ⏳ 0/{targetVideos} {t('booking.committedPending')}
+              0/{targetVideos}
             </span>
           ) : (
             <span className="booking-month-card__badge booking-month-card__badge--info">
-              🎬 {videoCount}/{targetVideos} video
+              {videoCount}/{targetVideos}
             </span>
           )}
+          <button
+            className="booking-month-card__edit"
+            type="button"
+            aria-pressed={isEditing}
+            aria-label={t(isEditing ? 'booking.bookingCardCollapse' : 'booking.bookingCardEdit')}
+            title={t(isEditing ? 'booking.bookingCardCollapse' : 'booking.bookingCardEdit')}
+            onClick={() => setIsEditing((current) => !current)}
+          >
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+          <button
+            className="booking-month-card__edit booking-month-card__delete"
+            type="button"
+            disabled={deletingId === booking.id}
+            aria-label={t(deletingId === booking.id ? 'booking.deleting' : 'booking.delete')}
+            title={t(deletingId === booking.id ? 'booking.deleting' : 'booking.delete')}
+            onClick={() => onDelete(booking)}
+          >
+            <Trash2 size={15} aria-hidden="true" />
+          </button>
         </div>
       </div>
 
       <div className="booking-month-card__body">
         <div className="booking-month-card__metrics">
           <div className="booking-month-card__metric-item">
-            <span>{t('booking.totalCost')}</span>
+            <span>{t('booking.cost')}</span>
             <strong>{formatMoney(numCost, booking.currency)}</strong>
           </div>
           <div className="booking-month-card__metric-item">
@@ -868,6 +901,7 @@ const BookingMonthCard = ({
             </span>
             {isEditing ? (
               <button
+                ref={productPickerTriggerRef}
                 className="booking-month-card__add-product-btn"
                 type="button"
                 aria-expanded={productPickerOpen}
@@ -881,7 +915,7 @@ const BookingMonthCard = ({
           </div>
 
           {isEditing && productPickerOpen ? (
-            <div className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
+            <div ref={productPickerMenuRef} className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
               {allShopProducts.length ? (
                 allShopProducts.map((product) => (
                   <label className="booking-product-picker__option" key={product.id}>
@@ -986,14 +1020,6 @@ const BookingMonthCard = ({
 
             <div className="booking-month-card__actions">
               <button
-                className="button button--ghost button--danger button--small"
-                type="button"
-                disabled={deletingId === booking.id}
-                onClick={() => onDelete(booking)}
-              >
-                {deletingId === booking.id ? t('booking.deleting') : t('booking.delete')}
-              </button>
-              <button
                 className="button button--small"
                 type="submit"
                 disabled={updatingId === booking.id}
@@ -1047,6 +1073,8 @@ const BookingManagement = ({
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
   const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create');
   const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const createProductPickerTriggerRef = useRef(null);
+  const createProductPickerMenuRef = useRef(null);
   const [channelProducts, setChannelProducts] = useState([]);
   const [channelProductsLoading, setChannelProductsLoading] = useState(false);
   const [form, setForm] = useState(() => ({ ...initialForm, staff_id: initialStaffId ? String(initialStaffId) : '' }));
@@ -1085,6 +1113,43 @@ const BookingManagement = ({
     setSelectedBooking(null);
     if (embeddedMode === 'detail') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
+  useEffect(() => {
+    if (!productPickerOpen) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (createProductPickerTriggerRef.current?.contains(event.target)
+        || createProductPickerMenuRef.current?.contains(event.target)) return;
+      setProductPickerOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
+  }, [productPickerOpen]);
+  const openCreateBookingFromDrawer = () => {
+    if (!selectedBooking) return;
+    const creator = {
+      shop_id: selectedBooking.target_shop_id,
+      shop_name: selectedBooking.target_shop?.name,
+      creator_open_id: selectedBooking.creator_open_id,
+      username: selectedBooking.creator_username,
+      nickname: selectedBooking.creator_name,
+      avatar_url: selectedBooking.creator_avatar_url,
+    };
+    const creatorKey = targetKocKey(creator);
+    setTargetKocs((current) => current.some((item) => targetKocKey(item) === creatorKey)
+      ? current
+      : [creator, ...current]);
+    setTargetKocQuery('');
+    setTargetKocPage(1);
+    setSelectedKocDetail(null);
+    setProductPickerOpen(false);
+    setForm({
+      ...defaultBookingForm(),
+      creator_key: creatorKey,
+      staff_id: selectedBooking.staff_id
+        ? String(selectedBooking.staff_id)
+        : canManageUsers ? '' : String(session?.user?.id || ''),
+    });
+    setIsCreateBookingOpen(true);
+  };
   const toggleBookingRow = (event, bookingId) => {
     if (event.target.closest('button, a, input, select, textarea, label')) return;
     setExpandedBookingId((current) => String(current) === String(bookingId) ? null : bookingId);
@@ -1581,6 +1646,17 @@ const BookingManagement = ({
       : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
     return result;
   }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking]);
+  const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
+    const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+    const convertedCost = convertAmount(rawCost, booking.currency);
+    const performance = booking.actual_performance || {};
+    const rawGmv = finiteNumber(performance.gross_gmv || performance.affiliate_gmv);
+    const convertedGmv = convertAmount(rawGmv, performance.currency || booking.currency);
+    result.totalCost += convertedCost ?? rawCost;
+    result.totalGmv += convertedGmv ?? rawGmv;
+    result.itemsSold += finiteNumber(performance.items_sold);
+    return result;
+  }, { totalCost: 0, totalGmv: 0, itemsSold: 0 }), [creatorBookings, convertAmount]);
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
@@ -1789,6 +1865,12 @@ const BookingManagement = ({
         products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
       });
       setBookings((items) => [created, ...items]);
+      if (selectedBooking && (
+        (selectedBooking.creator_open_id && selectedBooking.creator_open_id === created.creator_open_id)
+        || String(selectedBooking.creator_username || '').toLocaleLowerCase() === String(created.creator_username || '').toLocaleLowerCase()
+      )) {
+        setCreatorBookings((items) => [created, ...items.filter((item) => item.id !== created.id)]);
+      }
       fetchBookings(undefined, {
         windowType: performanceWindow,
         ...(performanceWindow === 'CUSTOM' ? {
@@ -1997,7 +2079,7 @@ const BookingManagement = ({
               <div className="field booking-product-picker-field">
                 <label>{t('booking.products')}</label>
                 <div className="booking-product-picker">
-                  <button className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
+                  <button ref={createProductPickerTriggerRef} className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <Plus size={14} aria-hidden="true" />
                       <span>{t('booking.addProduct')}</span>
@@ -2006,7 +2088,7 @@ const BookingManagement = ({
                     <span className="sidebar__chevron" aria-hidden="true" />
                   </button>
                   {productPickerOpen ? (
-                    <div className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
+                    <div ref={createProductPickerMenuRef} className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
                       {channelProductsLoading ? (
                         <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div>
                       ) : bookingProducts.length ? (
@@ -2507,7 +2589,24 @@ const BookingManagement = ({
           <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
             <div className="koc-drawer__header"><div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button></div>
             <div className="koc-drawer__body">
-              <section className="drawer-section"><div className="booking-detail-grid"><div className="booking-detail-grid__wide"><BookingDetailProducts shopId={selectedBooking.target_shop_id} products={bookingProductsOf(selectedBooking)} videos={bookingVideosOf(selectedBooking)} label={t('booking.products')} formatNumber={formatNumber} /></div></div></section>
+              <div className="booking-detail-summary">
+                <article className="booking-detail-summary__card">
+                  <span>{t('booking.totalCost')}</span>
+                  <strong>{formatMoney(creatorBookingStats.totalCost, selectedCurrency)}</strong>
+                </article>
+                <article className="booking-detail-summary__card">
+                  <span>{t('booking.totalGmv')}</span>
+                  <strong>{formatMoney(creatorBookingStats.totalGmv, selectedCurrency)}</strong>
+                </article>
+                <article className="booking-detail-summary__card">
+                  <span>{t('booking.totalCostRevenueRatio')}</span>
+                  <strong>{formatRatio(creatorBookingStats.totalGmv > 0 ? creatorBookingStats.totalCost / creatorBookingStats.totalGmv : null)}</strong>
+                </article>
+                <article className="booking-detail-summary__card">
+                  <span>{t('booking.totalItemsSold')}</span>
+                  <strong>{formatNumber(creatorBookingStats.itemsSold)}</strong>
+                </article>
+              </div>
               <div className="booking-cards-list">
                 {creatorBookings.map((b) => (
                   <BookingMonthCard
@@ -2531,6 +2630,9 @@ const BookingManagement = ({
                     t={t}
                   />
                 ))}
+                <button className="booking-cards-list__add" type="button" onClick={openCreateBookingFromDrawer} aria-label={t('booking.addBooking')}>
+                  <Plus size={20} aria-hidden="true" />
+                </button>
               </div>
             </div>
           </aside>
