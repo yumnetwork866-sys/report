@@ -577,6 +577,7 @@
       "FINALIZED": "Finalized"
     },
     "matchedVideo": "Booking video",
+    "noMatchedVideo": "No video",
     "costRevenueRatio": "Cost / Revenue",
     "videosCount": "{{count}} videos",
     "videoProgress": "{{current}}/{{target}} videos",

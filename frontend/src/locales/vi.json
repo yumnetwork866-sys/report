@@ -572,6 +572,7 @@
       "FINALIZED": "Đã chốt"
     },
     "matchedVideo": "Video booking",
+    "noMatchedVideo": "Không có video",
     "costRevenueRatio": "Chi phí / Doanh thu",
     "videosCount": "{{count}} video",
     "videoProgress": "{{current}}/{{target}} video",

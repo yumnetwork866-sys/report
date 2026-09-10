@@ -2538,9 +2538,6 @@ const BookingManagement = ({
                                                     ) : (
                                                       <div className="booking-video-expansion__empty">
                                                         <p>{t('booking.noMatchedVideo')}</p>
-                                                        <button className="button button--small button--ghost" type="button" onClick={() => loadVideoCandidates(booking)}>
-                                                          {t('booking.matchVideo')}
-                                                        </button>
                                                       </div>
                                                     )}
                                                   </div>
