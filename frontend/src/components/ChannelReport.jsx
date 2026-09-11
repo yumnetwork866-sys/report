@@ -261,6 +261,8 @@ const ChannelReport = () => {
   const [selectedChannelId, setSelectedChannelId] = useState('all');
   const [activeReportTab, setActiveReportTab] = useState('teams');
   const [comparisonMetric, setComparisonMetric] = useState('views');
+  const [productTeamFilter, setProductTeamFilter] = useState('all');
+  const [productSearchQuery, setProductSearchQuery] = useState('');
   const [expandedMemberIds, setExpandedMemberIds] = useState(() => new Set());
   const [memberDetails, setMemberDetails] = useState({});
   const [memberTabs, setMemberTabs] = useState({});
@@ -392,15 +394,87 @@ const ChannelReport = () => {
     : teams[0] ? String(teams[0].id) : '';
   const visibleGroups = groups.filter((group) => group.key === resolvedSelectedTeamId);
 
-  const comparisonData = groups.map((group) => ({
-    name: group.label,
-    videos: Number(group.videos || 0),
-    views: Number(group.views || 0),
-    orders: Number(group.orders || 0),
-    revenue: Number(group.revenue || 0),
-    revenueAvailable: Boolean(group.revenueAvailable),
-    currency: group.currency,
-  }));
+  const comparisonData = groups.map((group) => {
+    const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
+    return {
+      key: group.key,
+      name: group.label,
+      videos: Number(group.videos || 0),
+      views: Number(group.views || 0),
+      orders: Number(group.orders || revenueGroup.orders || 0),
+      revenue: Number(revenueGroup.revenue || group.revenue || 0),
+      revenueAvailable: Boolean(group.revenueAvailable || revenueGroup.revenueAvailable),
+      currency: group.currency || revenueGroup.currency,
+    };
+  });
+
+  const allTeamOrders = useMemo(() => {
+    const targetReport = revenueReport || report;
+    const teamsList = targetReport?.revenue?.teams || [];
+    return teamsList.reduce((sum, t) => sum + Number(t.orders || 0), 0);
+  }, [report, revenueReport]);
+
+  const teamProductsData = useMemo(() => {
+    const targetReport = revenueReport || report;
+    if (!targetReport?.revenue) return [];
+
+    let list = [];
+    if (productTeamFilter === 'all') {
+      if (Array.isArray(targetReport.revenue.products) && targetReport.revenue.products.length) {
+        list = targetReport.revenue.products;
+      } else {
+        const map = new Map();
+        const teamsList = targetReport.revenue.teams || [];
+        for (const t of teamsList) {
+          for (const p of (t.products || [])) {
+            const existing = map.get(p.id);
+            if (!existing) {
+              map.set(p.id, {
+                ...p,
+                teams: [{ team_id: t.key, team_name: t.label, orders: Number(p.orders || 0), quantity: Number(p.quantity || 0), revenue: Number(p.revenue || 0) }],
+              });
+            } else {
+              existing.orders += Number(p.orders || 0);
+              existing.quantity += Number(p.quantity || 0);
+              existing.revenue += Number(p.revenue || 0);
+              existing.teams.push({ team_id: t.key, team_name: t.label, orders: Number(p.orders || 0), quantity: Number(p.quantity || 0), revenue: Number(p.revenue || 0) });
+            }
+          }
+        }
+        list = [...map.values()];
+      }
+    } else {
+      const matchedTeam = (targetReport.revenue.teams || []).find((t) => String(t.key) === String(productTeamFilter));
+      list = matchedTeam?.products || [];
+    }
+
+    if (productSearchQuery.trim()) {
+      const q = productSearchQuery.trim().toLowerCase();
+      list = list.filter((p) => (p.name || '').toLowerCase().includes(q) || String(p.id || '').toLowerCase().includes(q));
+    }
+
+    return [...list].sort((a, b) => (Number(b.orders || 0) - Number(a.orders || 0)) || (Number(b.revenue || 0) - Number(a.revenue || 0)));
+  }, [productSearchQuery, productTeamFilter, report, revenueReport]);
+
+  const teamProductsSummary = useMemo(() => {
+    let totalOrders = 0;
+    let totalItems = 0;
+    let totalRevenue = 0;
+    let currency = null;
+    for (const p of teamProductsData) {
+      totalOrders += Number(p.orders || 0);
+      totalItems += Number(p.quantity || 0);
+      totalRevenue += Number(p.revenue || 0);
+      if (!currency && p.currency) currency = p.currency;
+    }
+    return {
+      totalOrders,
+      totalItems,
+      totalRevenue,
+      currency,
+      productCount: teamProductsData.length,
+    };
+  }, [teamProductsData]);
   const comparisonMetricLabel = {
     videos: 'Video',
     views: 'Lượt xem',
@@ -790,46 +864,152 @@ const ChannelReport = () => {
           </div>
         ) : (
           <>
-            {activeReportTab === 'comparison' && comparisonData.length ? (
-              <section
+            {activeReportTab === 'comparison' ? (
+              <div
                 id="channel-report-comparison-panel"
-                className="team-comparison"
+                className="channel-report-comparison-content"
                 role="tabpanel"
                 aria-labelledby="channel-report-comparison-tab"
               >
-                <div className="team-comparison__header">
-                  <div>
-                    <h3 id="team-comparison-title">Thống kê các team</h3>
+
+                <section className="team-orders-card" aria-labelledby="team-orders-title">
+                  <div className="team-orders-card__header">
+                    <div>
+                      <h3 id="team-orders-title">Đơn hàng theo sản phẩm</h3>
+                    </div>
+                    <div className="team-orders-card__controls">
+                      <div className="field team-orders-card__search">
+                        <input
+                          type="search"
+                          placeholder="Tìm tên hoặc ID sản phẩm..."
+                          value={productSearchQuery}
+                          onChange={(e) => setProductSearchQuery(e.target.value)}
+                        />
+                      </div>
+                      <div className="field team-orders-card__team-select">
+                        <label htmlFor="team-orders-team-select">Team</label>
+                        <select
+                          id="team-orders-team-select"
+                          value={productTeamFilter}
+                          onChange={(e) => setProductTeamFilter(e.target.value)}
+                        >
+                          <option value="all">Tất cả team ({formatNumber(allTeamOrders)} đơn)</option>
+                          {teams.map((team) => {
+                            const teamRevGroup = revenueGroups.find((g) => g.key === String(team.id)) || groups.find((g) => g.key === String(team.id));
+                            const orderCount = teamRevGroup?.orders || 0;
+                            return (
+                              <option key={team.id} value={String(team.id)}>
+                                {team.name} ({formatNumber(orderCount)} đơn)
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    </div>
                   </div>
-                  <div className="field team-comparison__metric">
-                    <label htmlFor="team-comparison-metric">Chỉ số</label>
-                    <select
-                      id="team-comparison-metric"
-                      value={comparisonMetric}
-                      onChange={(event) => setComparisonMetric(event.target.value)}
-                    >
-                      <option value="views">Lượt xem</option>
-                      <option value="videos">Video</option>
-                      <option value="orders">Đơn hàng</option>
-                      <option value="revenue">Doanh số</option>
-                    </select>
+
+                  <div className="team-orders-card__kpis">
+                    <div className="team-orders-card__kpi">
+                      <small>Tổng đơn hàng</small>
+                      <strong>{formatNumber(teamProductsSummary.totalOrders)}</strong>
+                    </div>
+                    <div className="team-orders-card__kpi">
+                      <small>Tổng sản phẩm bán</small>
+                      <strong>{formatNumber(teamProductsSummary.totalItems)}</strong>
+                    </div>
+                    <div className="team-orders-card__kpi">
+                      <small>Doanh số (GMV)</small>
+                      <strong>
+                        {teamProductsSummary.currency
+                          ? formatRevenue(teamProductsSummary.totalRevenue, teamProductsSummary.currency)
+                          : (teamProductsSummary.totalRevenue ? formatNumber(teamProductsSummary.totalRevenue) : '—')}
+                      </strong>
+                    </div>
+                    <div className="team-orders-card__kpi">
+                      <small>Số mặt hàng</small>
+                      <strong>{formatNumber(teamProductsSummary.productCount)}</strong>
+                    </div>
                   </div>
-                </div>
-                <div className="team-comparison__chart" role="img" aria-label={`Biểu đồ so sánh ${comparisonMetricLabel.toLowerCase()} giữa các team`}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={comparisonData} barSize={42} margin={{ top: 20, right: 12, bottom: 4, left: 4 }}>
-                      <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
-                      <XAxis dataKey="name" height={44} interval={0} tickLine={false} axisLine={false} tick={chartTick} />
-                      <YAxis width={62} tickLine={false} axisLine={false} allowDecimals={false} tick={chartTick} tickFormatter={compactNumber} />
-                      <Tooltip
-                        cursor={{ fill: 'var(--color-accent-soft)' }}
-                        content={<TeamComparisonTooltip formatNumber={formatNumber} formatRevenue={formatRevenue} />}
-                      />
-                      <Bar dataKey={comparisonMetric} fill="var(--color-primary)" radius={[7, 7, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </section>
+
+                  {teamProductsData.length ? (
+                    <div className="table-wrap team-orders-card__table-wrap">
+                      <table className="data-table data-table--compact team-orders-card__table">
+                        <thead>
+                          <tr>
+                            <th>Sản phẩm</th>
+                            {productTeamFilter === 'all' ? <th>Team bán</th> : null}
+                            <th className="cell-number">Số đơn hàng</th>
+                            <th className="cell-number">Số lượng bán</th>
+                            <th className="cell-number">Doanh số</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {teamProductsData.map((product) => (
+                            <tr key={`${product.id}-${product.name}`}>
+                              <td>
+                                <div className="team-orders-card__product-cell">
+                                  <div className="team-orders-card__product-thumb">
+                                    {product.image_url ? (
+                                      <img src={product.image_url} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                                    ) : (
+                                      <span className="team-orders-card__product-thumb-fallback" aria-hidden="true">
+                                        {(product.name || 'P').trim().charAt(0).toUpperCase()}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="team-orders-card__product-info">
+                                    <strong className="team-orders-card__product-name" title={product.name}>
+                                      {compactProductName(product.name)}
+                                    </strong>
+                                    {product.id && product.id !== 'unknown' ? (
+                                      <span className="team-orders-card__product-id">ID: {product.id}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </td>
+                              {productTeamFilter === 'all' ? (
+                                <td>
+                                  <div className="team-orders-card__teams-list">
+                                    {Array.isArray(product.teams) && product.teams.length ? (
+                                      product.teams.map((t) => (
+                                        <button
+                                          type="button"
+                                          key={t.team_id}
+                                          className="team-orders-card__team-badge"
+                                          title={`Xem chi tiết ${t.team_name}: ${t.orders} đơn`}
+                                          onClick={() => setProductTeamFilter(String(t.team_id))}
+                                        >
+                                          {t.team_name}: <strong>{t.orders} đơn</strong>
+                                        </button>
+                                      ))
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
+                                </td>
+                              ) : null}
+                              <td className="cell-number">
+                                <span className="team-orders-card__order-badge">
+                                  {formatNumber(product.orders)} đơn
+                                </span>
+                              </td>
+                              <td className="cell-number">{formatNumber(product.quantity)}</td>
+                              <td className="cell-number">
+                                {product.revenue ? formatRevenue(product.revenue, product.currency || teamProductsSummary.currency) : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="team-orders-card__empty">
+                      <strong>Chưa có đơn hàng nào</strong>
+                      <span>Không phát sinh đơn hàng cho sản phẩm nào của team trong kỳ đã chọn.</span>
+                    </div>
+                  )}
+                </section>
+              </div>
             ) : null}
             {activeReportTab === 'teams' || activeReportTab === 'revenue' ? <div
               id={activeReportTab === 'revenue' ? 'channel-report-revenue-panel' : 'channel-report-teams-panel'}

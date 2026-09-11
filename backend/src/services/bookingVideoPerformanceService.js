@@ -84,6 +84,8 @@ const matchesBookingDateRange = (booking, video, now = new Date()) => {
   const postDate = dateOnly(rawPostDate);
   const startDate = booking?.start_date ? dateOnly(booking.start_date) : null;
   if (startDate && postDate < startDate) return false;
+  const endDate = booking?.end_date ? dateOnly(booking.end_date) : (booking?.deadline ? dateOnly(booking.deadline) : null);
+  if (endDate && postDate > endDate) return false;
   const today = dateOnly(now);
   if (postDate > today) return false;
   return true;

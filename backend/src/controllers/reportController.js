@@ -365,7 +365,7 @@ const getChannelReport = async (req, res) => {
       }))),
     };
     replacements.metric = metric;
-    const [aggregateRows, teamRows, videoRows] = await Promise.all([
+    const [aggregateRows, teamRows, videoRows, productRows] = await Promise.all([
       sequelize.query(`${channelReportBaseSql}
         /* channel-report-summary */
         SELECT
@@ -526,6 +526,76 @@ const getChannelReport = async (req, res) => {
         },
         type: QueryTypes.SELECT,
       }),
+      sequelize.query(`${channelReportBaseSql}
+        /* channel-report-team-products */
+        , attributed_video_teams AS (
+          SELECT DISTINCT
+            video.platform_video_id,
+            (attr.value ->> 'team_id')::int AS team_id
+          FROM filtered_videos video
+          CROSS JOIN LATERAL jsonb_array_elements(video.attributions) attr(value)
+          WHERE NULLIF(attr.value ->> 'team_id', '') IS NOT NULL
+            AND (CAST(:teamId AS integer) IS NULL OR (attr.value ->> 'team_id')::int = CAST(:teamId AS integer))
+        ),
+        raw_product_rows AS (
+          SELECT
+            avt.team_id,
+            COALESCE(NULLIF(p.value ->> 'id', ''), 'unknown') AS product_id,
+            COALESCE(NULLIF(p.value ->> 'name', ''), NULLIF(p.value ->> 'title', ''), tsp.title, p.value ->> 'id') AS product_name,
+            COALESCE(
+              tsp.image_url,
+              NULLIF(p.value ->> 'main_image_url', ''),
+              NULLIF(p.value ->> 'thumbnail_url', ''),
+              NULLIF(p.value ->> 'image_url', '')
+            ) AS image_url,
+            d.currency,
+            COALESCE(NULLIF(d.raw_metrics ->> 'sku_orders', '')::numeric, NULLIF(d.raw_metrics ->> 'orders', '')::numeric, 0)::bigint AS sku_orders,
+            COALESCE(NULLIF(d.raw_metrics ->> 'items_sold', '')::numeric, 0)::bigint AS items_sold,
+            d.revenue
+          FROM attributed_video_teams avt
+          JOIN channel_report_video_revenue_daily d ON d.platform_video_id = avt.platform_video_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(d.raw_metrics -> 'products') = 'array' THEN d.raw_metrics -> 'products' ELSE '[]'::jsonb END
+          ) p(value)
+          LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = p.value ->> 'id'
+          WHERE d.metric_date >= CAST(:startDate AS DATE)
+            AND d.metric_date < CAST(:endDateExclusive AS DATE)
+            AND (
+              COALESCE(NULLIF(d.raw_metrics ->> 'sku_orders', '')::numeric, NULLIF(d.raw_metrics ->> 'orders', '')::numeric, 0) > 0
+              OR d.revenue > 0
+            )
+          UNION ALL
+          SELECT
+            avt.team_id,
+            sku.product_id,
+            COALESCE(NULLIF(sku.product_name, ''), tsp.title, sku.product_id) AS product_name,
+            tsp.image_url,
+            sku.currency,
+            1::bigint AS sku_orders,
+            sku.quantity::bigint AS items_sold,
+            (sku.price * sku.quantity) AS revenue
+          FROM attributed_video_teams avt
+          JOIN tiktok_affiliate_order_skus sku ON sku.content_id = avt.platform_video_id AND UPPER(sku.content_type) = 'VIDEO'
+          JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
+          LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = sku.product_id
+          WHERE o.create_time >= CAST(:startDate AS DATE)
+            AND o.create_time < CAST(:endDateExclusive AS DATE)
+        )
+        SELECT
+          r.team_id,
+          t.name AS team_name,
+          r.product_id,
+          MIN(r.product_name) AS product_name,
+          MIN(r.image_url) AS image_url,
+          MIN(r.currency) AS currency,
+          SUM(r.sku_orders)::bigint AS orders,
+          SUM(r.items_sold)::bigint AS quantity,
+          SUM(r.revenue) AS revenue
+        FROM raw_product_rows r
+        JOIN content_teams t ON t.id = r.team_id
+        GROUP BY r.team_id, t.name, r.product_id
+        ORDER BY r.team_id, orders DESC, revenue DESC
+      `, { replacements, type: QueryTypes.SELECT }),
     ]);
 
     const summary = aggregateRows.find((row) => row.row_type === 'summary') || {};
@@ -564,6 +634,37 @@ const getChannelReport = async (req, res) => {
         });
       }
     }
+    const productsByTeam = new Map();
+    const allProductsMap = new Map();
+    for (const row of (productRows || [])) {
+      const teamKey = String(row.team_id);
+      if (!productsByTeam.has(teamKey)) {
+        productsByTeam.set(teamKey, []);
+      }
+      const item = {
+        id: String(row.product_id),
+        name: row.product_name,
+        image_url: row.image_url || null,
+        orders: number(row.orders),
+        quantity: number(row.quantity),
+        revenue: number(row.revenue),
+        currency: row.currency || null,
+      };
+      productsByTeam.get(teamKey).push(item);
+
+      const existing = allProductsMap.get(item.id);
+      if (!existing) {
+        allProductsMap.set(item.id, {
+          ...item,
+          teams: [{ team_id: Number(row.team_id), team_name: row.team_name, orders: item.orders, quantity: item.quantity, revenue: item.revenue }],
+        });
+      } else {
+        existing.orders += item.orders;
+        existing.quantity += item.quantity;
+        existing.revenue += item.revenue;
+        existing.teams.push({ team_id: Number(row.team_id), team_name: row.team_name, orders: item.orders, quantity: item.quantity, revenue: item.revenue });
+      }
+    }
     const teams = [];
     for (const row of teamRows) {
       if (userId !== null && Number(row.user_id) !== userId) continue;
@@ -579,6 +680,7 @@ const getChannelReport = async (req, res) => {
           currency: row.team_currency || null,
           orders: number(row.team_orders),
           members: [],
+          products: productsByTeam.get(String(row.team_id)) || [],
         };
         teams.push(team);
       }
@@ -645,6 +747,7 @@ const getChannelReport = async (req, res) => {
       },
       revenue: {
         teams,
+        products: [...allProductsMap.values()].sort((a, b) => b.orders - a.orders || b.revenue - a.revenue),
         channels: aggregateRows
           .filter((row) => row.row_type === 'channel')
           .map((row) => ({

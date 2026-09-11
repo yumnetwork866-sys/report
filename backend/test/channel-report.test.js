@@ -117,6 +117,19 @@ test('channel report aggregates server-side and returns only one video page', as
         team_currency: 'MYR',
       }];
     }
+    if (sql.includes('channel-report-team-products')) {
+      return [{
+        team_id: 4,
+        team_name: 'Content',
+        product_id: 'prod-1',
+        product_name: 'Product 1',
+        image_url: '/prod1.jpg',
+        currency: 'MYR',
+        orders: '5',
+        quantity: '6',
+        revenue: '100',
+      }];
+    }
     return [{
       id: '88',
       platform: 'tiktok',
@@ -156,7 +169,7 @@ test('channel report aggregates server-side and returns only one video page', as
     startDate: '2026-07-01',
     endDate: '2026-08-01',
   });
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   calls.forEach((call) => {
     assert.equal(call.replacements.startDate, '2026-07-01');
     assert.equal(call.replacements.endDateExclusive, '2026-08-01');
@@ -221,7 +234,7 @@ test('channel report attributes adjacent and multiple hashtags without duplicati
   await getChannelReport({ query: { month: '2026-07' } }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   for (const sql of calls) {
     assert.ok(sql.includes('regexp_matches('));
     assert.ok(sql.includes("'(#[[:alnum:]_]+)'"));
@@ -252,7 +265,7 @@ test('channel revenue report falls back to connected channel catalog videos with
   }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   for (const sql of calls) {
     assert.match(sql, /revenue_catalog_videos AS MATERIALIZED/);
     assert.match(sql, /FROM shop_videos shop_video/);
@@ -353,7 +366,7 @@ test('channel report accepts an inclusive custom date range', async (t) => {
   }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
   calls.forEach((call) => {
     assert.equal(call.replacements.startDate, '2026-07-05');
     assert.equal(call.replacements.endDateExclusive, '2026-07-13');
