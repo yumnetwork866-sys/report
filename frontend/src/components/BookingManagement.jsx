@@ -20,10 +20,11 @@ import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
+import { formatDateOnly } from '../lib/date';
 import { ChevronLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 
 const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
-const generateBookingMonthOptions = (count = 12) => {
+const generateBookingMonthOptions = (count = 3) => {
   const options = [{ value: 'all', labelKey: 'booking.allMonths' }];
   const d = new Date();
   for (let i = 0; i < count; i += 1) {
@@ -35,6 +36,7 @@ const generateBookingMonthOptions = (count = 12) => {
     });
     d.setMonth(d.getMonth() - 1);
   }
+  options.push({ value: 'custom', labelKey: 'booking.periodCustom' });
   return options;
 };
 const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -1284,7 +1286,7 @@ const BookingManagement = ({
   }, [canManageUsers, session, t]);
 
   useEffect(() => {
-    if (performanceWindow === 'CUSTOM' && (!customRange.start || !customRange.end || customRange.start > customRange.end)) {
+    if (selectedMonth === 'custom' && (!customRange.start || !customRange.end || customRange.start > customRange.end)) {
       setLoading(false);
       setError(t('booking.invalidCustomRange'));
       return undefined;
@@ -1294,7 +1296,7 @@ const BookingManagement = ({
     setError('');
     fetchBookings(controller.signal, {
       windowType: performanceWindow,
-      ...(performanceWindow === 'CUSTOM' ? { startDate: customRange.start, endDate: customRange.end } : {}),
+      ...(selectedMonth === 'custom' ? { startDate: customRange.start, endDate: customRange.end } : {}),
       month: selectedMonth,
     })
       .then((loadedBookings) => setBookings(loadedBookings))
@@ -1749,7 +1751,7 @@ const BookingManagement = ({
       }
       fetchBookings(undefined, {
         windowType: performanceWindow,
-        ...(performanceWindow === 'CUSTOM' ? {
+        ...(selectedMonth === 'custom' ? {
           startDate: customRange.start,
           endDate: customRange.end,
         } : {}),
@@ -2090,6 +2092,30 @@ const BookingManagement = ({
                 ))}
               </select>
             </div>
+            {selectedMonth === 'custom' ? (
+              <>
+                <div className="field booking-month-custom-date">
+                  <label htmlFor="booking-custom-start">{t('booking.startDate')}</label>
+                  <DatePickerInput
+                    id="booking-custom-start"
+                    label={t('booking.startDate')}
+                    value={customRange.start}
+                    max={customRange.end || undefined}
+                    onChange={(value) => setCustomRange((current) => ({ ...current, start: value }))}
+                  />
+                </div>
+                <div className="field booking-month-custom-date">
+                  <label htmlFor="booking-custom-end">{t('booking.endDate')}</label>
+                  <DatePickerInput
+                    id="booking-custom-end"
+                    label={t('booking.endDate')}
+                    value={customRange.end}
+                    min={customRange.start || undefined}
+                    onChange={(value) => setCustomRange((current) => ({ ...current, end: value }))}
+                  />
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
         {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
@@ -2235,12 +2261,40 @@ const BookingManagement = ({
                                         ? productPerformanceByBooking.get(String(booking.id))
                                         : booking.actual_performance;
                                       const bookingVideos = bookingVideosByRevenue(bookingVideosOf(booking));
+                                      const postedVideos = bookingVideos.filter((v) => v.posted_at).sort((a, b) => new Date(a.posted_at) - new Date(b.posted_at));
+                                      const firstPostedDate = postedVideos[0]?.posted_at;
+                                      const startDate = booking.start_date || booking.created_at;
+                                      const deadlineDate = booking.end_date || booking.deadline;
                                       const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
                                       const expanded = String(expandedBookingId) === String(booking.id);
                                       return (
                                         <React.Fragment key={booking.id}>
                                           <tr className={expanded ? 'booking-row booking-row--expanded' : 'booking-row'} onClick={(event) => toggleBookingRow(event, booking.id)}>
-                                            <td className="booking-koc-column"><div className="booking-koc-identity"><TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} /><span><strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong><small>@{booking.creator_username}</small></span></div></td>
+                                            <td className="booking-koc-column">
+                                              <div className="booking-koc-identity">
+                                                <TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} />
+                                                <span>
+                                                  <strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong>
+                                                  <small>@{booking.creator_username}</small>
+                                                  <div className="booking-row-timeline">
+                                                    {startDate ? (
+                                                      <span className="booking-row-timeline__item" title={t('booking.bookDate')}>
+                                                        📅 {formatDateOnly(startDate)}
+                                                      </span>
+                                                    ) : null}
+                                                    {firstPostedDate ? (
+                                                      <span className="booking-row-timeline__item booking-row-timeline__item--posted" title={t('booking.postedAt')}>
+                                                        🎬 {formatDateOnly(firstPostedDate)}
+                                                      </span>
+                                                     ) : deadlineDate ? (
+                                                       <span className="booking-row-timeline__item booking-row-timeline__item--deadline" title={t('booking.deadline')}>
+                                                         ⏰ {formatDateOnly(deadlineDate)}
+                                                       </span>
+                                                     ) : null}
+                                                    </div>
+                                                </span>
+                                              </div>
+                                            </td>
                                             <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
                                             <td className="cell-number booking-total-cost-column"><strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong></td>
                                             <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videoProgress', { current: videoCount, target: booking.committed_videos || 1 })}</strong></span></td>

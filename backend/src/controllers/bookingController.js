@@ -1187,7 +1187,30 @@ const getBookings = async (req, res) => {
     }
 
     let monthWhere = {};
-    if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+    if (requestedMonth === 'custom' && startDate && endDate && parseDateOnly(startDate) && parseDateOnly(endDate)) {
+      const rangeStart = startDate <= endDate ? startDate : endDate;
+      const rangeEnd = startDate <= endDate ? endDate : startDate;
+      monthWhere = {
+        [Op.or]: [
+          { start_date: { [Op.between]: [rangeStart, rangeEnd] } },
+          { end_date: { [Op.between]: [rangeStart, rangeEnd] } },
+          { deadline: { [Op.between]: [rangeStart, rangeEnd] } },
+          {
+            [Op.and]: [
+              { start_date: { [Op.lte]: rangeEnd } },
+              { end_date: { [Op.gte]: rangeStart } },
+            ],
+          },
+          {
+            start_date: null,
+            [Op.or]: [
+              { deadline: { [Op.between]: [rangeStart, rangeEnd] } },
+              { created_at: { [Op.between]: [`${rangeStart}T00:00:00.000Z`, `${rangeEnd}T23:59:59.999Z`] } },
+            ],
+          },
+        ],
+      };
+    } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
       const monthStart = `${requestedMonth}-01`;
       const [y, m] = requestedMonth.split('-').map(Number);
       const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -1195,6 +1218,14 @@ const getBookings = async (req, res) => {
       monthWhere = {
         [Op.or]: [
           { start_date: { [Op.between]: [monthStart, monthEnd] } },
+          { end_date: { [Op.between]: [monthStart, monthEnd] } },
+          { deadline: { [Op.between]: [monthStart, monthEnd] } },
+          {
+            [Op.and]: [
+              { start_date: { [Op.lte]: monthEnd } },
+              { end_date: { [Op.gte]: monthStart } },
+            ],
+          },
           {
             start_date: null,
             [Op.or]: [

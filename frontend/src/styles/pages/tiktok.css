@@ -2576,6 +2576,34 @@
   color: var(--color-text-soft);
 }
 
+.booking-row-timeline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 6px;
+  margin-top: 3px;
+  line-height: 1.25;
+}
+
+.booking-row-timeline__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--color-text-soft);
+  font-size: .69rem;
+  white-space: nowrap;
+}
+
+.booking-row-timeline__item--posted {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.booking-row-timeline__item--deadline {
+  color: #a16207;
+  font-weight: 600;
+}
+
 .booking-stats {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }

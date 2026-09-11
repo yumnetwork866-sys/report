@@ -537,6 +537,7 @@
     "invalidCustomRange": "Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.",
     "customCoverageIncomplete": "Dữ liệu ngày chưa đủ: hiện có {{available}}/{{requested}} ngày. Các số liệu đang hiển thị là dữ liệu một phần; hãy chạy backfill các ngày còn thiếu.",
     "bookingMonth": "Đợt booking",
+    "bookDate": "Book",
     "allMonths": "Toàn bộ",
     "periodLifetime": "Toàn bộ",
     "period30Days": "30 ngày",
