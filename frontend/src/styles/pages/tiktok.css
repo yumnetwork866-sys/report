@@ -911,11 +911,30 @@
 }
 
 
-.channel-report-page .page__hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 360px);
-  gap: 24px;
-  align-items: end;
+.channel-report-page .page__hero,
+.channel-report-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.channel-report-tabs {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .channel-report-page .page__hero,
+  .channel-report-hero {
+    align-items: stretch;
+  }
+
+  .channel-report-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
 }
 
 

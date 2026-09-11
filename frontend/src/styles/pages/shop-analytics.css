@@ -1555,7 +1555,7 @@
 }
 
 
-.app-shell__content .page__hero:not(.dashboard-hero):not(.shop-analytics__hero):not(.koc-hero):not(:has(.page__stats)) {
+.app-shell__content .page__hero:not(.dashboard-hero):not(.shop-analytics__hero):not(.koc-hero):not(.channel-report-hero):not(:has(.page__stats)) {
   grid-template-columns: minmax(0, 1fr);
 }
 

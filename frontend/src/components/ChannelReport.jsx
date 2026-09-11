@@ -188,7 +188,7 @@ const ChannelSelectDropdown = ({ channels, value, onChange }) => {
         onClick={() => setOpen((current) => !current)}
       >
         <span className="channel-report-channel-picker__current">
-          <ChannelAvatar channel={selectedChannel || { name: 'Tất cả' }} />
+          {selectedChannel ? <ChannelAvatar channel={selectedChannel} /> : null}
           <span title={label}>{channels.length ? label : 'Chưa có kênh'}</span>
         </span>
         <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
@@ -203,7 +203,6 @@ const ChannelSelectDropdown = ({ channels, value, onChange }) => {
             onClick={() => selectChannel('all')}
           >
             <span className="channel-report-channel-picker__copy">
-              <ChannelAvatar channel={{ name: 'Tất cả' }} />
               <span><strong>Tất cả kênh</strong><small>{channels.length} kênh</small></span>
             </span>
           </button>
@@ -742,7 +741,7 @@ const ChannelReport = () => {
 
   return (
     <div className="page channel-report-page">
-      <section className="page__hero">
+      <section className="page__hero koc-hero channel-report-hero">
         <div>
           <h1 className="page__title">Báo cáo</h1>
         </div>
@@ -757,7 +756,7 @@ const ChannelReport = () => {
             className={activeReportTab === 'teams' ? 'is-active' : ''}
             onClick={() => setActiveReportTab('teams')}
           >
-            Video và lượt xem
+            Video
           </button>
           <button
             id="channel-report-revenue-tab"
@@ -792,7 +791,7 @@ const ChannelReport = () => {
         <div className="section-card__header">
           <div>
             <h2 className="section-card__title">
-              {activeReportTab === 'comparison' ? 'Thống kê' : activeReportTab === 'revenue' ? 'Doanh thu' : 'Video và lượt xem'}
+              {activeReportTab === 'comparison' ? 'Thống kê' : activeReportTab === 'revenue' ? 'Doanh thu' : 'Video'}
             </h2>
 
           </div>
