@@ -75,7 +75,7 @@ const previousCustomRange = (startDate, endDate) => {
 
 const compactProductName = (value) => {
   const name = String(value || '').trim();
-  if (!name) return 'Chưa xác định sản phẩm';
+  if (!name) return 'Không gắn giỏ hàng';
   const brandCombo = name.match(/^([A-Z0-9]+)\s+(Kombo)\b/i);
   if (brandCombo) return `${brandCombo[1].toUpperCase()} ${brandCombo[2]}`;
   const headline = name.split(/\s+-\s+/)[0].trim();
@@ -145,6 +145,30 @@ const VideoProductThumb = ({ product }) => {
       >
         x{quantity}
       </span>
+    </span>
+  );
+};
+
+const ProductRowThumb = ({ product }) => {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = product?.image_url || product?.thumbnail_url || product?.thumbnailUrl || '';
+  useEffect(() => setFailed(false), [imageUrl]);
+
+  return (
+    <span className="member-detail__product-thumb">
+      {imageUrl && !failed ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="member-detail__product-thumb-fallback" aria-hidden="true">
+          {(product?.name || 'P').trim().charAt(0).toUpperCase() || 'P'}
+        </span>
+      )}
     </span>
   );
 };
@@ -720,14 +744,30 @@ const ChannelReport = () => {
         ) : (
           <div className="table-wrap member-detail__products">
             <table className="data-table data-table--compact">
-              <thead><tr><th>Sản phẩm</th><th className="cell-number">Video</th><th className="cell-number">Lượt xem</th><th className="cell-number">GMV</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Sản phẩm</th>
+                  <th className="cell-number">Video</th>
+                  <th className="cell-number">Lượt xem</th>
+                  <th className="cell-number">Số đơn</th>
+                  <th className="cell-number">GMV</th>
+                </tr>
+              </thead>
               <tbody>{products.map((product) => (
-                <tr key={product.id ?? 'unknown'}>
+                <tr key={product.id ?? product.name}>
                   <td>
-                    <strong className="member-detail__product-name" title={product.name}>{compactProductName(product.name)}</strong>
+                    <div className="member-detail__product-cell">
+                      <ProductRowThumb product={product} />
+                      <div className="member-detail__product-info">
+                        <strong className="member-detail__product-name" title={product.name}>
+                          {compactProductName(product.name)}
+                        </strong>
+                      </div>
+                    </div>
                   </td>
                   <td className="cell-number">{formatNumber(product.videos)}</td>
                   <td className="cell-number">{formatNumber(product.views)}</td>
+                  <td className="cell-number">{formatNumber(product.orders || 0)}</td>
                   <td className="cell-number">{product.revenue_available ? formatRevenue(product.revenue, product.currency) : '—'}</td>
                 </tr>
               ))}</tbody>

@@ -989,19 +989,31 @@ const getChannelReportMemberDetail = async (req, res) => {
             video.id AS video_id,
             video.views,
             video.revenue,
+            video.orders,
             video.currency,
             mapped.product_id,
-            mapped.name
+            mapped.name,
+            mapped.image_url
           FROM filtered_videos video
           LEFT JOIN LATERAL (
-            SELECT product.id::text AS product_id, product.name
+            SELECT
+              product.id::text AS product_id,
+              product.name,
+              tsp.image_url
             FROM video_products relation
             JOIN products product ON product.id = relation.product_id
+            LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = product.id::text
             WHERE relation.video_id = video.id
             UNION
             SELECT
               NULLIF(shop_product.value ->> 'id', '') AS product_id,
-              COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), shop_product.value ->> 'id') AS name
+              COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), tsp.title, shop_product.value ->> 'id') AS name,
+              COALESCE(
+                tsp.image_url,
+                NULLIF(shop_product.value ->> 'main_image_url', ''),
+                NULLIF(shop_product.value ->> 'thumbnail_url', ''),
+                NULLIF(shop_product.value ->> 'image_url', '')
+              ) AS image_url
             FROM shop_videos shop_video
             CROSS JOIN LATERAL jsonb_array_elements(
               CASE
@@ -1009,7 +1021,32 @@ const getChannelReportMemberDetail = async (req, res) => {
                 ELSE '[]'::jsonb
               END
             ) shop_product(value)
+            LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = NULLIF(shop_product.value ->> 'id', '')
             WHERE shop_video.platform_video_id = video.platform_video_id
+            UNION
+            SELECT
+              NULLIF(daily_product.value ->> 'id', '') AS product_id,
+              COALESCE(NULLIF(daily_product.value ->> 'name', ''), NULLIF(daily_product.value ->> 'title', ''), tsp.title, daily_product.value ->> 'id') AS name,
+              tsp.image_url
+            FROM channel_report_video_revenue_daily daily_row
+            CROSS JOIN LATERAL jsonb_array_elements(
+              CASE
+                WHEN jsonb_typeof(daily_row.raw_metrics -> 'products') = 'array' THEN daily_row.raw_metrics -> 'products'
+                ELSE '[]'::jsonb
+              END
+            ) daily_product(value)
+            LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = NULLIF(daily_product.value ->> 'id', '')
+            WHERE daily_row.platform_video_id = video.platform_video_id
+              AND NULLIF(daily_product.value ->> 'id', '') IS NOT NULL
+            UNION
+            SELECT
+              sku.product_id,
+              COALESCE(NULLIF(sku.product_name, ''), tsp.title, sku.product_id) AS name,
+              tsp.image_url
+            FROM tiktok_affiliate_order_skus sku
+            LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = sku.product_id
+            WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+              AND sku.content_id = video.platform_video_id
           ) mapped ON TRUE
         ),
         product_videos AS (
@@ -1020,15 +1057,17 @@ const getChannelReportMemberDetail = async (req, res) => {
         )
         SELECT
           product_id,
-          COALESCE(name, 'Chưa xác định sản phẩm') AS name,
+          COALESCE(name, 'Không gắn giỏ hàng') AS name,
+          COALESCE(MAX(image_url), NULL) AS image_url,
           COUNT(DISTINCT video_id)::bigint AS videos,
           COALESCE(SUM(views::numeric / product_count), 0) AS views,
           COALESCE(SUM(revenue / product_count), 0) AS revenue,
+          COALESCE(ROUND(SUM(orders::numeric / product_count)), 0)::bigint AS orders,
           COUNT(revenue) > 0 AS revenue_available,
           MIN(currency) AS currency
         FROM product_videos
         GROUP BY product_id, name
-        ORDER BY revenue_available DESC, revenue DESC, videos DESC, name ASC
+        ORDER BY revenue_available DESC, revenue DESC, orders DESC, videos DESC, name ASC
       `, { replacements, type: QueryTypes.SELECT }),
       ]);
 
@@ -1068,8 +1107,10 @@ const getChannelReportMemberDetail = async (req, res) => {
         products: productRows.map((row) => ({
           id: row.product_id === null ? null : String(row.product_id),
           name: row.name,
+          image_url: row.image_url || null,
           videos: number(row.videos),
           views: Math.round(number(row.views)),
+          orders: number(row.orders),
           revenue: number(row.revenue),
           revenue_available: Boolean(row.revenue_available),
           currency: row.currency || null,
