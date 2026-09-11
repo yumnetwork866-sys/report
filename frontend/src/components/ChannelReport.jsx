@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 
@@ -254,6 +254,123 @@ const ChannelSelectDropdown = ({ channels, value, onChange }) => {
   );
 };
 
+const TeamSelectDropdown = ({ teams, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  const isAll = value === 'all' || !Array.isArray(value);
+  const selectedSet = useMemo(() => {
+    if (isAll) return new Set(teams.map((team) => String(team.id)));
+    return new Set((value || []).map(String));
+  }, [isAll, value, teams]);
+
+  const allSelected = teams.length > 0 && teams.every((team) => selectedSet.has(String(team.id)));
+
+  let label = 'Tất cả team';
+  if (!allSelected && teams.length > 0) {
+    const selectedTeams = teams.filter((team) => selectedSet.has(String(team.id)));
+    if (selectedTeams.length === 0) {
+      label = 'Chưa chọn team';
+    } else if (selectedTeams.length === 1) {
+      label = selectedTeams[0].name;
+    } else {
+      label = `Đã chọn ${selectedTeams.length} team`;
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === 'Escape'
+        || (event.type === 'pointerdown' && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+
+  const toggleAll = () => {
+    if (allSelected) {
+      onChange([]);
+    } else {
+      onChange('all');
+    }
+  };
+
+  const toggleTeam = (teamId) => {
+    const idStr = String(teamId);
+    let next;
+    if (allSelected) {
+      next = teams.map((team) => String(team.id)).filter((id) => id !== idStr);
+    } else if (selectedSet.has(idStr)) {
+      next = [...selectedSet].filter((id) => id !== idStr);
+    } else {
+      next = [...selectedSet, idStr];
+    }
+    if (teams.length > 0 && next.length === teams.length) {
+      onChange('all');
+    } else {
+      onChange(next);
+    }
+  };
+
+  return (
+    <div className="channel-report-team-picker" ref={rootRef}>
+      <button
+        id="channel-report-team"
+        className="channel-report-team-picker__trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={!teams.length}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="channel-report-team-picker__current">
+          <span title={label}>{teams.length ? label : 'Chưa có team'}</span>
+        </span>
+        <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="channel-report-team-picker__menu" role="group">
+          <label className="channel-report-team-picker__option">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+            />
+            <span className="channel-report-team-picker__copy">
+              <strong>Tất cả team</strong>
+              <small>{teams.length} team</small>
+            </span>
+          </label>
+          <div className="channel-report-team-picker__divider" />
+          {teams.map((team) => {
+            const checked = selectedSet.has(String(team.id));
+            return (
+              <label className="channel-report-team-picker__option" key={team.id}>
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => toggleTeam(team.id)}
+                />
+                <span className="channel-report-team-picker__copy">
+                  <span>{team.name}</span>
+                  {team.member_count ? <small>{team.member_count} thành viên</small> : null}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const TeamComparisonTooltip = ({ active, payload, formatNumber, formatRevenue }) => {
   const team = payload?.[0]?.payload;
   if (!active || !team) return null;
@@ -280,13 +397,14 @@ const ChannelReport = () => {
   const initialRange = monthRange(currentMonthValue());
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
-  const [selectedTeamId, setSelectedTeamId] = useState('all');
+  const [selectedTeamIds, setSelectedTeamIds] = useState('all');
   const [selectedChannelId, setSelectedChannelId] = useState('all');
   const [activeReportTab, setActiveReportTab] = useState('teams');
   const [comparisonMetric, setComparisonMetric] = useState('views');
   const [productTeamFilter, setProductTeamFilter] = useState('all');
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [expandedMemberIds, setExpandedMemberIds] = useState(() => new Set());
+  const [tableSort, setTableSort] = useState({ key: null, direction: 'desc' });
   const [memberDetails, setMemberDetails] = useState({});
   const [memberTabs, setMemberTabs] = useState({});
   const memberRequestRef = useRef(new Map());
@@ -326,7 +444,9 @@ const ChannelReport = () => {
           ? { month: previousMonthValue(selectedMonth) }
           : previousCustomRange(startDate, endDate);
         const requestOptions = {
-          teamId: activeReportTab === 'comparison' ? 'all' : selectedTeamId,
+          teamIds: activeReportTab === 'comparison'
+            ? 'all'
+            : (Array.isArray(selectedTeamIds) ? (selectedTeamIds.length ? selectedTeamIds : 'none') : (selectedTeamIds || 'all')),
           channelId: selectedChannelId,
           page: 1,
           pageSize: 20,
@@ -349,16 +469,19 @@ const ChannelReport = () => {
     };
     load();
     return () => controller.abort();
-  }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamId, startDate]);
+  }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
 
   useEffect(() => {
-    if (activeReportTab !== 'teams' || !report) return;
+    if (!report) return;
     const availableTeams = report.filters?.teams || [];
-    if (!availableTeams.length) return;
-    if (!availableTeams.some((team) => String(team.id) === selectedTeamId)) {
-      setSelectedTeamId(String(availableTeams[0].id));
+    if (!availableTeams.length || selectedTeamIds === 'all') return;
+    if (Array.isArray(selectedTeamIds)) {
+      const valid = selectedTeamIds.filter((id) => availableTeams.some((team) => String(team.id) === String(id)));
+      if (valid.length !== selectedTeamIds.length) {
+        setSelectedTeamIds(valid.length ? valid : 'all');
+      }
     }
-  }, [activeReportTab, report, selectedTeamId]);
+  }, [report, selectedTeamIds]);
 
   useEffect(() => {
     if (selectedChannelId !== 'all'
@@ -377,9 +500,13 @@ const ChannelReport = () => {
     videoRevenueRequestRef.current?.abort();
     setVideoRevenueDetail(null);
     setExpandedRevenueDates(new Set());
-  }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamId, startDate]);
+  }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
 
   useEffect(() => () => videoRevenueRequestRef.current?.abort(), []);
+
+  useEffect(() => {
+    setTableSort({ key: null, direction: 'desc' });
+  }, [activeReportTab]);
 
   useEffect(() => {
     if (!videoRevenueDetail) return undefined;
@@ -412,10 +539,12 @@ const ChannelReport = () => {
   const channels = report?.filters?.channels || [];
   const groups = report?.revenue?.teams || [];
   const revenueGroups = revenueReport?.revenue?.teams || [];
-  const resolvedSelectedTeamId = teams.some((team) => String(team.id) === selectedTeamId)
-    ? selectedTeamId
-    : teams[0] ? String(teams[0].id) : '';
-  const visibleGroups = groups.filter((group) => group.key === resolvedSelectedTeamId);
+  const isAllTeams = selectedTeamIds === 'all' || !Array.isArray(selectedTeamIds);
+  const selectedTeamSet = useMemo(() => {
+    if (isAllTeams) return new Set(teams.map((t) => String(t.id)));
+    return new Set(selectedTeamIds.map(String));
+  }, [isAllTeams, selectedTeamIds, teams]);
+  const visibleGroups = isAllTeams ? groups : groups.filter((group) => selectedTeamSet.has(group.key));
 
   const comparisonData = groups.map((group) => {
     const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
@@ -524,6 +653,114 @@ const ChannelReport = () => {
     return <small className={`channel-report-metric-change channel-report-metric-change--${direction}`}>{change > 0 ? '↑' : change < 0 ? '↓' : '→'} {Math.abs(change).toLocaleString(locale, { maximumFractionDigits: 1 })}% so với kỳ trước</small>;
   };
 
+  const mergedMembers = useMemo(() => {
+    const list = [];
+    for (const group of visibleGroups) {
+      const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
+      for (const member of (group.members || [])) {
+        const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
+        const displayMember = activeReportTab === 'revenue' ? {
+          ...member,
+          teamKey: group.key,
+          teamName: group.label,
+          videos: Number(revenueMember.videos || 0),
+          views: Number(revenueMember.views || 0),
+          revenue: Number(revenueMember.revenue || 0),
+          revenueAvailable: Boolean(revenueMember.revenueAvailable),
+          currency: revenueMember.currency,
+          orders: Number(revenueMember.orders || 0),
+        } : {
+          ...member,
+          teamKey: group.key,
+          teamName: group.label,
+          videos: Number(member.videos || 0),
+          views: Number(member.views || 0),
+          revenue: Number(member.revenue || revenueMember.revenue || 0),
+          revenueAvailable: Boolean(member.revenueAvailable || revenueMember.revenueAvailable),
+          currency: member.currency || revenueMember.currency,
+          orders: Number(member.orders || revenueMember.orders || 0),
+        };
+        list.push(displayMember);
+      }
+    }
+    return list;
+  }, [activeReportTab, revenueGroups, visibleGroups]);
+
+  const mergedMetrics = useMemo(() => {
+    let videos = 0;
+    let views = 0;
+    let orders = 0;
+    let revenue = 0;
+    let revenueAvailable = false;
+    let currency = null;
+
+    for (const m of mergedMembers) {
+      videos += Number(m.videos || 0);
+      views += Number(m.views || 0);
+      orders += Number(m.orders || 0);
+      revenue += Number(m.revenue || 0);
+      if (m.revenueAvailable) revenueAvailable = true;
+      if (!currency && m.currency) currency = m.currency;
+    }
+
+    if (!videos && !views && !orders && !revenue) {
+      for (const group of visibleGroups) {
+        const revG = revenueGroups.find((g) => g.key === group.key) || {};
+        videos += Number(activeReportTab === 'revenue' ? (revG.videos || group.videos || 0) : (group.videos || 0));
+        views += Number(activeReportTab === 'revenue' ? (revG.views || group.views || 0) : (group.views || 0));
+        orders += Number(revG.orders || group.orders || 0);
+        revenue += Number(revG.revenue || group.revenue || 0);
+        if (revG.revenueAvailable || group.revenueAvailable) revenueAvailable = true;
+        if (!currency && (revG.currency || group.currency)) currency = revG.currency || group.currency;
+      }
+    }
+
+    let prevVideos = 0;
+    let prevViews = 0;
+    let prevOrders = 0;
+    let prevRevenue = 0;
+    let prevRevenueAvailable = false;
+
+    for (const group of visibleGroups) {
+      const prevG = previousGroups.find((item) => item.key === group.key);
+      const prevRevG = previousRevenueGroups.find((item) => item.key === group.key);
+      const targetPrev = activeReportTab === 'revenue' ? (prevRevG || prevG) : (prevG || prevRevG);
+      if (targetPrev) {
+        const pMems = targetPrev.members || [];
+        if (pMems.length) {
+          for (const pm of pMems) {
+            const revPm = prevRevG?.members?.find((m) => m.key === pm.key) || {};
+            prevVideos += Number(activeReportTab === 'revenue' ? (revPm.videos || pm.videos || 0) : (pm.videos || 0));
+            prevViews += Number(activeReportTab === 'revenue' ? (revPm.views || pm.views || 0) : (pm.views || 0));
+            prevOrders += Number(revPm.orders || pm.orders || 0);
+            prevRevenue += Number(revPm.revenue || pm.revenue || 0);
+            if (revPm.revenueAvailable || pm.revenueAvailable) prevRevenueAvailable = true;
+          }
+        } else {
+          prevVideos += Number(targetPrev.videos || 0);
+          prevViews += Number(targetPrev.views || 0);
+          prevOrders += Number(prevRevG?.orders || targetPrev.orders || 0);
+          prevRevenue += Number(prevRevG?.revenue || targetPrev.revenue || 0);
+          if (prevRevG?.revenueAvailable || targetPrev.revenueAvailable) prevRevenueAvailable = true;
+        }
+      }
+    }
+
+    return {
+      videos,
+      views,
+      orders,
+      revenue,
+      revenueAvailable: revenueAvailable || revenue > 0,
+      currency,
+      prevVideos,
+      prevViews,
+      prevOrders,
+      prevRevenue,
+      prevRevenueAvailable,
+    };
+  }, [activeReportTab, mergedMembers, previousGroups, previousRevenueGroups, revenueGroups, visibleGroups]);
+
   const changePeriodMode = (event) => {
     const nextMode = event.target.value;
     if (nextMode === 'custom') {
@@ -545,7 +782,7 @@ const ChannelReport = () => {
     try {
       const payload = await fetchChannelReportMemberDetail(memberId, {
         ...(periodMode === 'month' ? { month: selectedMonth } : { startDate, endDate }),
-        teamId: selectedTeamId,
+        teamIds: selectedTeamIds,
         channelId: selectedChannelId,
         metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
         page,
@@ -779,6 +1016,157 @@ const ChannelReport = () => {
     );
   };
 
+  const toggleTableSort = (key) => {
+    setTableSort((current) => {
+      if (current.key === key) {
+        return { key, direction: current.direction === 'desc' ? 'asc' : 'desc' };
+      }
+      return { key, direction: key === 'name' ? 'asc' : 'desc' };
+    });
+  };
+
+  const sortMark = (key) => {
+    const effectiveKey = tableSort.key || (activeReportTab === 'revenue' ? 'revenue' : 'views');
+    const effectiveDir = tableSort.key ? tableSort.direction : 'desc';
+    if (effectiveKey === key) {
+      return effectiveDir === 'asc' ? ' ↑' : ' ↓';
+    }
+    return '';
+  };
+
+  const sortMembers = useCallback((membersList) => {
+    return [...membersList].sort((a, b) => {
+      if (tableSort.key) {
+        const factor = tableSort.direction === 'asc' ? 1 : -1;
+        if (tableSort.key === 'name') {
+          return factor * a.name.localeCompare(b.name);
+        }
+        if (tableSort.key === 'avgViews') {
+          const avgA = a.views / Math.max(a.videos, 1);
+          const avgB = b.views / Math.max(b.videos, 1);
+          return factor * (avgA - avgB);
+        }
+        if (tableSort.key === 'avgRevenue') {
+          const avgA = a.revenue / Math.max(a.videos, 1);
+          const avgB = b.revenue / Math.max(b.videos, 1);
+          return factor * (avgA - avgB);
+        }
+        const valA = Number(a[tableSort.key] || 0);
+        const valB = Number(b[tableSort.key] || 0);
+        if (valA !== valB) return factor * (valA - valB);
+      }
+
+      if (activeReportTab === 'revenue') {
+        return (b.revenue - a.revenue)
+          || (b.orders - a.orders)
+          || (b.views - a.views)
+          || (b.videos - a.videos)
+          || a.name.localeCompare(b.name);
+      }
+      return (b.views - a.views)
+        || (b.videos - a.videos)
+        || (b.orders - a.orders)
+        || (b.revenue - a.revenue)
+        || a.name.localeCompare(b.name);
+    });
+  }, [activeReportTab, tableSort]);
+
+  const renderMembersTable = (membersList, showTeamBadge = false) => {
+    const sorted = sortMembers(membersList);
+    if (!sorted.length) {
+      return (
+        <div className="content-performance__group-empty">
+          <strong>Team chưa có nhân viên</strong>
+          <span>Gắn nhân viên vào team để bắt đầu thống kê.</span>
+          <Link to="/manage/users">Quản lý nhân viên →</Link>
+        </div>
+      );
+    }
+    return (
+      <div className="table-wrap">
+        <table className="data-table data-table--compact">
+          <thead>
+            <tr>
+              <th>
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('name')}>
+                  Thành viên{sortMark('name')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('videos')}>
+                  Video{sortMark('videos')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('views')}>
+                  Lượt xem{sortMark('views')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('avgViews')}>
+                  TB lượt xem/video{sortMark('avgViews')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('orders')}>
+                  Đơn hàng{sortMark('orders')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('revenue')}>
+                  Doanh số{sortMark('revenue')}
+                </button>
+              </th>
+              <th className="cell-number">
+                <button className="table-sort" type="button" onClick={() => toggleTableSort('avgRevenue')}>
+                  TB doanh số/video{sortMark('avgRevenue')}
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((member) => {
+              const rowId = `${member.teamKey || ''}-${member.key}`;
+              const expanded = expandedMemberIds.has(String(member.key));
+              return (
+                <React.Fragment key={rowId}>
+                  <tr
+                    className={expanded ? 'member-row member-row--expanded' : 'member-row'}
+                    onClick={(event) => {
+                      if (event.target.closest('button, a, input, select, textarea')) return;
+                      toggleMember(member);
+                    }}
+                  >
+                    <td>
+                      <button className="member-row__trigger" type="button" aria-expanded={expanded} onClick={() => toggleMember(member)}>
+                        <span className={`sidebar__chevron${expanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
+                        <strong>{member.name}</strong>
+                        {showTeamBadge && member.teamName ? (
+                          <span className="member-row__team-badge">{member.teamName}</span>
+                        ) : null}
+                      </button>
+                    </td>
+                    <td className="cell-number">{formatNumber(member.videos)}</td>
+                    <td className="cell-number">{formatNumber(member.views)}</td>
+                    <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
+                    <td className="cell-number">{formatNumber(member.orders || 0)}</td>
+                    <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td>
+                    <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue / Math.max(member.videos, 1), member.currency) : '—'}</td>
+                  </tr>
+                  {expanded ? (
+                    <tr className="member-detail-row">
+                      <td colSpan="7">{renderMemberDetail(member)}</td>
+                    </tr>
+                  ) : null}
+                </React.Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <div className="page channel-report-page">
       <section className="page__hero koc-hero channel-report-hero">
@@ -838,15 +1226,11 @@ const ChannelReport = () => {
           <div className="channel-report-filters">
             {activeReportTab !== 'comparison' ? <div className="field channel-report-team">
               <label htmlFor="channel-report-team">Team</label>
-              <select
-                id="channel-report-team"
-                value={resolvedSelectedTeamId}
-                onChange={(event) => setSelectedTeamId(event.target.value)}
-              >
-                {teams.map((team) => (
-                  <option value={String(team.id)} key={team.id}>{team.name}</option>
-                ))}
-              </select>
+              <TeamSelectDropdown
+                teams={teams}
+                value={selectedTeamIds}
+                onChange={setSelectedTeamIds}
+              />
             </div> : null}
             <div className="field channel-report-channel">
               <label htmlFor="channel-report-channel">Kênh</label>
@@ -965,7 +1349,7 @@ const ChannelReport = () => {
                       </strong>
                     </div>
                     <div className="team-orders-card__kpi">
-                      <small>Số mặt hàng</small>
+                      <small>Số sản phẩm</small>
                       <strong>{formatNumber(teamProductsSummary.productCount)}</strong>
                     </div>
                   </div>
@@ -1056,101 +1440,208 @@ const ChannelReport = () => {
               role="tabpanel"
               aria-labelledby={activeReportTab === 'revenue' ? 'channel-report-revenue-tab' : 'channel-report-teams-tab'}
             >
-              {visibleGroups.map((group) => {
-                const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
-                const previousGroup = previousGroups.find((item) => item.key === group.key);
-                const previousRevenueGroup = previousRevenueGroups.find((item) => item.key === group.key) || {};
-                const displayGroup = activeReportTab === 'revenue'
-                  ? {
-                    ...group,
-                    videos: revenueGroup.videos || 0,
-                    views: revenueGroup.views || 0,
-                    revenue: revenueGroup.revenue || 0,
-                    revenueAvailable: revenueGroup.revenueAvailable,
-                    currency: revenueGroup.currency,
-                    orders: revenueGroup.orders || 0,
-                  }
-                  : {
-                    ...group,
-                    orders: group.orders || revenueGroup.orders || 0,
-                  };
-                return <article className="content-performance__group" key={group.key}>
+              {visibleGroups.length >= 2 ? (
+                <article className="content-performance__group">
                   <div className="content-performance__group-header">
-                    <h3>{group.label}</h3>
-                    <span>{formatNumber(group.members.length)} thành viên</span>
+                    <h3>
+                      {isAllTeams
+                        ? 'Tất cả team'
+                        : (visibleGroups.length <= 3
+                          ? visibleGroups.map((g) => g.label).join(', ')
+                          : `${visibleGroups.length} team đã chọn`)}
+                    </h3>
+                    <span>{formatNumber(mergedMembers.length)} thành viên</span>
                   </div>
                   <div className="content-performance__metrics">
-                    <span><small>Video</small><strong>{formatNumber(displayGroup.videos)}</strong>{renderMetricChange(displayGroup.videos, activeReportTab === 'revenue' ? previousRevenueGroup.videos : previousGroup?.videos)}</span>
-                    <span><small>Lượt xem</small><strong>{formatNumber(displayGroup.views)}</strong>{renderMetricChange(displayGroup.views, activeReportTab === 'revenue' ? previousRevenueGroup.views : previousGroup?.views)}</span>
-                    <span><small>Đơn hàng</small><strong>{formatNumber(displayGroup.orders)}</strong>{renderMetricChange(displayGroup.orders, activeReportTab === 'revenue' ? previousRevenueGroup.orders : previousGroup?.orders)}</span>
-                    <span><small>Doanh số</small><strong>{displayGroup.revenueAvailable ? formatRevenue(displayGroup.revenue, displayGroup.currency) : '—'}</strong>{renderMetricChange(displayGroup.revenue, activeReportTab === 'revenue' ? previousRevenueGroup.revenue : previousGroup?.revenue, displayGroup.revenueAvailable && (activeReportTab === 'revenue' ? previousRevenueGroup : previousGroup)?.revenueAvailable)}</span>
+                    <span>
+                      <small>Video</small>
+                      <strong>{formatNumber(mergedMetrics.videos)}</strong>
+                      {renderMetricChange(mergedMetrics.videos, mergedMetrics.prevVideos)}
+                    </span>
+                    <span>
+                      <small>Lượt xem</small>
+                      <strong>{formatNumber(mergedMetrics.views)}</strong>
+                      {renderMetricChange(mergedMetrics.views, mergedMetrics.prevViews)}
+                    </span>
+                    <span>
+                      <small>Đơn hàng</small>
+                      <strong>{formatNumber(mergedMetrics.orders)}</strong>
+                      {renderMetricChange(mergedMetrics.orders, mergedMetrics.prevOrders)}
+                    </span>
+                    <span>
+                      <small>Doanh số</small>
+                      <strong>
+                        {mergedMetrics.revenueAvailable
+                          ? formatRevenue(mergedMetrics.revenue, mergedMetrics.currency)
+                          : '—'}
+                      </strong>
+                      {renderMetricChange(
+                        mergedMetrics.revenue,
+                        mergedMetrics.prevRevenue,
+                        mergedMetrics.revenueAvailable && mergedMetrics.prevRevenueAvailable
+                      )}
+                    </span>
                   </div>
-                  {group.members.length ? (
-                    <div className="table-wrap">
-                      <table className="data-table data-table--compact">
-                        <thead>
-                          <tr>
-                            <th>Thành viên</th>
-                            <th className="cell-number">Video</th>
-                            <th className="cell-number">Lượt xem</th>
-                            <th className="cell-number">TB lượt xem/video</th>
-                            <th className="cell-number">Đơn hàng</th>
-                            <th className="cell-number">Doanh số</th>
-                            <th className="cell-number">TB doanh số/video</th>
-                          </tr>
-                        </thead>
-                        <tbody>{group.members.map((member) => {
-                          const expanded = expandedMemberIds.has(String(member.key));
-                          const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
-                          const displayMember = activeReportTab === 'revenue' ? {
-                            ...member,
-                            videos: revenueMember.videos || 0,
-                            views: revenueMember.views || 0,
-                            revenue: revenueMember.revenue || 0,
-                            revenueAvailable: revenueMember.revenueAvailable,
-                            currency: revenueMember.currency,
-                            orders: revenueMember.orders || 0,
-                          } : {
-                            ...member,
-                            orders: member.orders || revenueMember.orders || 0,
-                          };
-                          return (
-                            <React.Fragment key={member.key}>
-                              <tr
-                                className={expanded ? 'member-row member-row--expanded' : 'member-row'}
-                                onClick={(event) => {
-                                  if (event.target.closest('button, a, input, select, textarea')) return;
-                                  toggleMember(member);
-                                }}
-                              >
-                                <td>
-                                  <button className="member-row__trigger" type="button" aria-expanded={expanded} onClick={() => toggleMember(member)}>
-                                    <span className={`sidebar__chevron${expanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
-                                    <strong>{member.name}</strong>
-                                  </button>
-                                </td>
-                                <td className="cell-number">{formatNumber(displayMember.videos)}</td>
-                                <td className="cell-number">{formatNumber(displayMember.views)}</td>
-                                <td className="cell-number">{formatNumber(Math.round(displayMember.views / Math.max(displayMember.videos, 1)))}</td>
-                                <td className="cell-number">{formatNumber(displayMember.orders || 0)}</td>
-                                <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue, displayMember.currency) : '—'}</td>
-                                <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue / displayMember.videos, displayMember.currency) : '—'}</td>
-                              </tr>
-                              {expanded ? <tr className="member-detail-row"><td colSpan="7">{renderMemberDetail(member)}</td></tr> : null}
-                            </React.Fragment>
-                          );
-                        })}</tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="content-performance__group-empty">
-                      <strong>Team chưa có nhân viên</strong>
-                      <span>Gắn nhân viên vào team để bắt đầu thống kê.</span>
-                      <Link to="/manage/users">Quản lý nhân viên →</Link>
-                    </div>
-                  )}
-                </article>;
-              })}
+                  {renderMembersTable(mergedMembers, true)}
+                </article>
+              ) : visibleGroups.length === 1 ? (
+                (() => {
+                  const group = visibleGroups[0];
+                  const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
+                  const previousGroup = previousGroups.find((item) => item.key === group.key);
+                  const previousRevenueGroup = previousRevenueGroups.find((item) => item.key === group.key) || {};
+                  const displayGroup = activeReportTab === 'revenue'
+                    ? {
+                      ...group,
+                      videos: revenueGroup.videos || 0,
+                      views: revenueGroup.views || 0,
+                      revenue: revenueGroup.revenue || 0,
+                      revenueAvailable: revenueGroup.revenueAvailable,
+                      currency: revenueGroup.currency,
+                      orders: revenueGroup.orders || 0,
+                    }
+                    : {
+                      ...group,
+                      orders: group.orders || revenueGroup.orders || 0,
+                    };
+                  const singleMembers = (group.members || []).map((m) => {
+                    const revenueMember = revenueGroup.members?.find((item) => item.key === m.key) || {};
+                    return activeReportTab === 'revenue' ? {
+                      ...m,
+                      teamKey: group.key,
+                      teamName: group.label,
+                      videos: Number(revenueMember.videos || 0),
+                      views: Number(revenueMember.views || 0),
+                      revenue: Number(revenueMember.revenue || 0),
+                      revenueAvailable: Boolean(revenueMember.revenueAvailable),
+                      currency: revenueMember.currency,
+                      orders: Number(revenueMember.orders || 0),
+                    } : {
+                      ...m,
+                      teamKey: group.key,
+                      teamName: group.label,
+                      videos: Number(m.videos || 0),
+                      views: Number(m.views || 0),
+                      revenue: Number(m.revenue || revenueMember.revenue || 0),
+                      revenueAvailable: Boolean(m.revenueAvailable || revenueMember.revenueAvailable),
+                      currency: m.currency || revenueMember.currency,
+                      orders: Number(m.orders || revenueMember.orders || 0),
+                    };
+                  });
+
+                  const singleSummary = (() => {
+                    let videos = 0;
+                    let views = 0;
+                    let orders = 0;
+                    let revenue = 0;
+                    let revenueAvailable = false;
+                    let currency = null;
+
+                    for (const m of singleMembers) {
+                      videos += Number(m.videos || 0);
+                      views += Number(m.views || 0);
+                      orders += Number(m.orders || 0);
+                      revenue += Number(m.revenue || 0);
+                      if (m.revenueAvailable) revenueAvailable = true;
+                      if (!currency && m.currency) currency = m.currency;
+                    }
+
+                    if (!videos && !views && !orders && !revenue) {
+                      videos = Number(activeReportTab === 'revenue' ? (revenueGroup.videos || group.videos || 0) : (group.videos || 0));
+                      views = Number(activeReportTab === 'revenue' ? (revenueGroup.views || group.views || 0) : (group.views || 0));
+                      orders = Number(revenueGroup.orders || group.orders || 0);
+                      revenue = Number(revenueGroup.revenue || group.revenue || 0);
+                      revenueAvailable = Boolean(revenueGroup.revenueAvailable || group.revenueAvailable);
+                      currency = revenueGroup.currency || group.currency;
+                    }
+
+                    const prevTarget = activeReportTab === 'revenue'
+                      ? (previousRevenueGroup || previousGroup)
+                      : (previousGroup || previousRevenueGroup);
+
+                    let prevVideos = 0;
+                    let prevViews = 0;
+                    let prevOrders = 0;
+                    let prevRevenue = 0;
+                    let prevRevenueAvailable = false;
+
+                    if (prevTarget) {
+                      const pMems = prevTarget.members || [];
+                      if (pMems.length) {
+                        for (const pm of pMems) {
+                          const revPm = previousRevenueGroup?.members?.find((m) => m.key === pm.key) || {};
+                          prevVideos += Number(activeReportTab === 'revenue' ? (revPm.videos || pm.videos || 0) : (pm.videos || 0));
+                          prevViews += Number(activeReportTab === 'revenue' ? (revPm.views || pm.views || 0) : (pm.views || 0));
+                          prevOrders += Number(revPm.orders || pm.orders || 0);
+                          prevRevenue += Number(revPm.revenue || pm.revenue || 0);
+                          if (revPm.revenueAvailable || pm.revenueAvailable) prevRevenueAvailable = true;
+                        }
+                      } else {
+                        prevVideos = Number(prevTarget.videos || 0);
+                        prevViews = Number(prevTarget.views || 0);
+                        prevOrders = Number(previousRevenueGroup?.orders || prevTarget.orders || 0);
+                        prevRevenue = Number(previousRevenueGroup?.revenue || prevTarget.revenue || 0);
+                        prevRevenueAvailable = Boolean(previousRevenueGroup?.revenueAvailable || prevTarget.revenueAvailable);
+                      }
+                    }
+
+                    return {
+                      videos,
+                      views,
+                      orders,
+                      revenue,
+                      revenueAvailable: revenueAvailable || revenue > 0,
+                      currency: currency || revenueGroup.currency || group.currency,
+                      prevVideos,
+                      prevViews,
+                      prevOrders,
+                      prevRevenue,
+                      prevRevenueAvailable,
+                    };
+                  })();
+
+                  return (
+                    <article className="content-performance__group" key={group.key}>
+                      <div className="content-performance__group-header">
+                        <h3>{group.label}</h3>
+                        <span>{formatNumber(group.members.length)} thành viên</span>
+                      </div>
+                      <div className="content-performance__metrics">
+                        <span>
+                          <small>Video</small>
+                          <strong>{formatNumber(singleSummary.videos)}</strong>
+                          {renderMetricChange(singleSummary.videos, singleSummary.prevVideos)}
+                        </span>
+                        <span>
+                          <small>Lượt xem</small>
+                          <strong>{formatNumber(singleSummary.views)}</strong>
+                          {renderMetricChange(singleSummary.views, singleSummary.prevViews)}
+                        </span>
+                        <span>
+                          <small>Đơn hàng</small>
+                          <strong>{formatNumber(singleSummary.orders)}</strong>
+                          {renderMetricChange(singleSummary.orders, singleSummary.prevOrders)}
+                        </span>
+                        <span>
+                          <small>Doanh số</small>
+                          <strong>{singleSummary.revenueAvailable ? formatRevenue(singleSummary.revenue, singleSummary.currency) : '—'}</strong>
+                          {renderMetricChange(
+                            singleSummary.revenue,
+                            singleSummary.prevRevenue,
+                            singleSummary.revenueAvailable && singleSummary.prevRevenueAvailable
+                          )}
+                        </span>
+                      </div>
+                      {renderMembersTable(singleMembers, false)}
+                    </article>
+                  );
+                })()
+              ) : (
+                <div className="content-performance__group-empty">
+                  <strong>Không tìm thấy team phù hợp</strong>
+                  <span>Vui lòng chọn team khác từ bộ lọc.</span>
+                </div>
+              )}
             </div> : null}
           </>
         )}

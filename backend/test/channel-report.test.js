@@ -435,3 +435,95 @@ test('channel report rejects incomplete and reversed custom ranges', async (t) =
   assert.equal(reversedResponse.statusCode, 400);
   assert.equal(queried, false);
 });
+
+test('channel report filters multiple teams via team_ids', async (t) => {
+  const calls = [];
+  const { getChannelReport } = loadController(t, async (sql, options) => {
+    calls.push({ sql, replacements: options.replacements });
+    if (sql.includes('channel-report-summary')) {
+      return [{
+        row_type: 'summary',
+        videos: '10',
+        views: '2000',
+        likes: '50',
+        comments: '5',
+        shares: '2',
+        channels: '1',
+        attributed_videos: '10',
+        unclassified_videos: '0',
+        revenue: '100',
+        revenue_available: true,
+        currency: 'VND',
+      }];
+    }
+    if (sql.includes('channel-report-teams')) {
+      return [
+        {
+          team_id: 4,
+          team_name: 'Team A',
+          user_id: 1,
+          member_name: 'User 1',
+          videos: '5',
+          views: '1000',
+          revenue: '50',
+          revenue_available: true,
+          currency: 'VND',
+          team_videos: '5',
+          team_views: '1000',
+          team_revenue: '50',
+          team_revenue_available: true,
+          team_currency: 'VND',
+        },
+        {
+          team_id: 5,
+          team_name: 'Team B',
+          user_id: 2,
+          member_name: 'User 2',
+          videos: '5',
+          views: '1000',
+          revenue: '50',
+          revenue_available: true,
+          currency: 'VND',
+          team_videos: '5',
+          team_views: '1000',
+          team_revenue: '50',
+          team_revenue_available: true,
+          team_currency: 'VND',
+        },
+        {
+          team_id: 6,
+          team_name: 'Team C',
+          user_id: 3,
+          member_name: 'User 3',
+          videos: '2',
+          views: '200',
+          revenue: '10',
+          revenue_available: true,
+          currency: 'VND',
+          team_videos: '2',
+          team_views: '200',
+          team_revenue: '10',
+          team_revenue_available: true,
+          team_currency: 'VND',
+        },
+      ];
+    }
+    return [];
+  });
+  const response = makeResponse();
+  await getChannelReport({
+    query: { month: '2026-08', team_ids: '4,5' },
+  }, response);
+
+  assert.equal(response.statusCode, 200);
+  calls.forEach((call) => {
+    assert.equal(call.replacements.filterTeams, true);
+    assert.deepEqual(JSON.parse(call.replacements.teamIds), [4, 5]);
+  });
+  assert.deepEqual(response.body.filters.team_ids, [4, 5]);
+  assert.equal(response.body.revenue.teams.length, 2);
+  assert.equal(response.body.revenue.teams[0].key, '4');
+  assert.equal(response.body.revenue.teams[1].key, '5');
+  assert.equal(response.body.filters.teams.length, 3);
+});
+

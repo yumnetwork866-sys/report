@@ -401,7 +401,7 @@ export async function fetchVideos(signalOrFilters) {
 }
 
 export function fetchChannelReport({
-  month, startDate, endDate, teamId, userId, channelId, metric, page = 1, pageSize = 20, signal,
+  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, page = 1, pageSize = 20, signal,
 } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -414,6 +414,10 @@ export function fetchChannelReport({
     params.set('month', month);
   }
   if (teamId && teamId !== 'all') params.set('team_id', teamId);
+  if (teamIds && teamIds !== 'all') {
+    const serialized = Array.isArray(teamIds) ? teamIds.join(',') : teamIds;
+    if (serialized) params.set('team_ids', serialized);
+  }
   if (userId && userId !== 'all') params.set('user_id', userId);
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
   if (metric) params.set('metric', metric);
@@ -421,7 +425,7 @@ export function fetchChannelReport({
 }
 
 export function fetchChannelReportMemberDetail(userId, {
-  month, startDate, endDate, teamId, channelId, metric, page = 1, pageSize = 20, signal,
+  month, startDate, endDate, teamId, teamIds, channelId, metric, page = 1, pageSize = 20, signal,
 } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -434,6 +438,10 @@ export function fetchChannelReportMemberDetail(userId, {
     params.set('month', month);
   }
   if (teamId && teamId !== 'all') params.set('team_id', teamId);
+  if (teamIds && teamIds !== 'all') {
+    const serialized = Array.isArray(teamIds) ? teamIds.join(',') : teamIds;
+    if (serialized) params.set('team_ids', serialized);
+  }
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
   if (metric) params.set('metric', metric);
   return apiRequest(`/reports/channel/members/${encodeURIComponent(userId)}?${params.toString()}`, { signal });

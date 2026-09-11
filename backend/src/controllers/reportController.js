@@ -106,13 +106,24 @@ const channelReportOptions = (query = {}) => {
     endDate = addUtcDays(new Date(Date.UTC(year, month, 1)).toISOString().slice(0, 10), -1);
   }
   const endDateExclusive = addUtcDays(endDate, 1);
-  const rawTeamId = String(query.team_id || '').trim();
-  const teamId = rawTeamId && rawTeamId !== 'all' ? Number(rawTeamId) : null;
-  if (teamId !== null && (!Number.isInteger(teamId) || teamId <= 0)) {
-    const error = new Error('Team báo cáo không hợp lệ.');
-    error.status = 400;
-    throw error;
+  const rawTeamIds = String(query.team_ids || query.team_id || '').trim();
+  let teamIds = null;
+  if (rawTeamIds && rawTeamIds !== 'all') {
+    if (rawTeamIds === 'none') {
+      teamIds = [];
+    } else {
+      const parts = rawTeamIds.split(',').map((value) => value.trim());
+      const parsed = parts.map(Number);
+      if (parts.some((value) => !value)
+        || parsed.some((value) => !Number.isInteger(value) || value <= 0)) {
+        const error = new Error('Team báo cáo không hợp lệ.');
+        error.status = 400;
+        throw error;
+      }
+      teamIds = [...new Set(parsed)];
+    }
   }
+  const teamId = teamIds && teamIds.length === 1 ? teamIds[0] : null;
   const rawUserId = String(query.user_id || '').trim();
   const userId = rawUserId && rawUserId !== 'all' ? Number(rawUserId) : null;
   if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
@@ -141,6 +152,7 @@ const channelReportOptions = (query = {}) => {
     endDate,
     endDateExclusive,
     teamId,
+    teamIds,
     userId,
     channelIds,
     metric,
@@ -304,12 +316,18 @@ const channelReportBaseSql = `
       ), '[]'::jsonb) AS attributions
     FROM report_videos video
     WHERE (
-      (CAST(:teamId AS integer) IS NULL AND CAST(:userId AS integer) IS NULL)
+      (CAST(:filterTeams AS boolean) = false AND CAST(:userId AS integer) IS NULL)
       OR EXISTS (
         SELECT 1
         FROM video_attributions attribution
         WHERE attribution.video_id = video.id
-          AND (CAST(:teamId AS integer) IS NULL OR attribution.team_id = CAST(:teamId AS integer))
+          AND (
+            CAST(:filterTeams AS boolean) = false
+            OR attribution.team_id IN (
+              SELECT value::integer
+              FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+            )
+          )
           AND (CAST(:userId AS integer) IS NULL OR attribution.user_id = CAST(:userId AS integer))
       )
     )
@@ -335,6 +353,7 @@ const getChannelReport = async (req, res) => {
       endDate,
       endDateExclusive,
       teamId,
+      teamIds,
       userId,
       channelIds,
       metric,
@@ -342,8 +361,9 @@ const getChannelReport = async (req, res) => {
       pageSize,
     } = options;
 
+    const teamKey = teamIds ? [...teamIds].sort().join(',') : 'all';
     const channelKey = channelIds ? [...channelIds].sort().join(',') : 'all';
-    const cacheKey = `report:channel:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamId || 'all'}:${userId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
+    const cacheKey = `report:channel:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamKey}:${userId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
       const monthlyRevenue = await loadMonthlyShopVideoRevenue({
@@ -353,6 +373,8 @@ const getChannelReport = async (req, res) => {
     const replacements = {
       startDate,
       endDateExclusive,
+      filterTeams: teamIds !== null,
+      teamIds: JSON.stringify(teamIds || []),
       teamId,
       userId,
       filterChannels: channelIds !== null,
@@ -469,7 +491,13 @@ const getChannelReport = async (req, res) => {
             FROM video_attributions attribution_match
             WHERE attribution_match.video_id = video.id
               AND attribution_match.user_id = app_user.id
-              AND (CAST(:teamId AS integer) IS NULL OR attribution_match.team_id = CAST(:teamId AS integer))
+              AND (
+                CAST(:filterTeams AS boolean) = false
+                OR attribution_match.team_id IN (
+                  SELECT value::integer
+                  FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+                )
+              )
               AND (CAST(:userId AS integer) IS NULL OR attribution_match.user_id = CAST(:userId AS integer))
           )
           GROUP BY team.id, team.name, app_user.id, app_user.name
@@ -535,7 +563,13 @@ const getChannelReport = async (req, res) => {
           FROM filtered_videos video
           CROSS JOIN LATERAL jsonb_array_elements(video.attributions) attr(value)
           WHERE NULLIF(attr.value ->> 'team_id', '') IS NOT NULL
-            AND (CAST(:teamId AS integer) IS NULL OR (attr.value ->> 'team_id')::int = CAST(:teamId AS integer))
+            AND (
+              CAST(:filterTeams AS boolean) = false
+              OR (attr.value ->> 'team_id')::int IN (
+                SELECT value::integer
+                FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+              )
+            )
         ),
         raw_product_rows AS (
           SELECT
@@ -667,6 +701,7 @@ const getChannelReport = async (req, res) => {
     }
     const teams = [];
     for (const row of teamRows) {
+      if (teamIds !== null && !teamIds.includes(Number(row.team_id))) continue;
       if (userId !== null && Number(row.user_id) !== userId) continue;
       let team = teams.find((item) => item.key === String(row.team_id));
       if (!team) {
@@ -758,6 +793,7 @@ const getChannelReport = async (req, res) => {
       },
       filters: {
         team_id: teamId,
+        team_ids: teamIds,
         user_id: userId,
         channel_ids: channelIds,
         teams: [...availableTeamsById.values()],
@@ -797,6 +833,7 @@ const getChannelReportMemberDetail = async (req, res) => {
       endDate,
       endDateExclusive,
       teamId,
+      teamIds,
       userId,
       channelIds,
       metric,
@@ -804,8 +841,9 @@ const getChannelReportMemberDetail = async (req, res) => {
       pageSize,
     } = options;
 
+    const teamKey = teamIds ? [...teamIds].sort().join(',') : 'all';
     const channelKey = channelIds ? [...channelIds].sort().join(',') : 'all';
-    const cacheKey = `report:member-detail:${userId}:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
+    const cacheKey = `report:member-detail:${userId}:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamKey}:${channelKey}:${metric}:${page}:${pageSize}`;
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
       const monthlyRevenue = await loadMonthlyShopVideoRevenue({
@@ -815,6 +853,8 @@ const getChannelReportMemberDetail = async (req, res) => {
       const replacements = {
         startDate,
         endDateExclusive,
+        filterTeams: teamIds !== null,
+        teamIds: JSON.stringify(teamIds || []),
         teamId,
         userId,
         filterChannels: channelIds !== null,

@@ -487,6 +487,7 @@
   },
 
   "dashboard": {
+    "totalVideos": "Total videos",
     "heroTitle": "Dashboard",
     "heroSubtitle": "Track TikTok video performance from OAuth, import, or crawler data.",
     "errorLoad": "Failed to load dashboard data",

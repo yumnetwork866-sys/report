@@ -482,6 +482,7 @@
   },
 
   "dashboard": {
+    "totalVideos": "Tổng video",
     "heroTitle": "Bảng tổng quan",
     "heroSubtitle": "Theo dõi hiệu suất video TikTok từ dữ liệu OAuth, import hoặc crawler.",
     "errorLoad": "Không tải được dữ liệu bảng tổng quan",
