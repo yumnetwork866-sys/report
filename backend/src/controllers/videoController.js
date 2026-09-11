@@ -40,6 +40,7 @@ const VIDEO_LIST_ATTRIBUTES = [
   'campaign',
   'content_type',
   'last_synced_at',
+  'status',
 ];
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const dateOnly = (value) => {

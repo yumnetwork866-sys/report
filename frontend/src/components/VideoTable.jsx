@@ -347,6 +347,14 @@ const VideoTable = ({
                                 src={video.thumbnail_url}
                                 alt={displayTitle}
                                 loading="lazy"
+                                decoding="async"
+                                referrerPolicy="no-referrer"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  if (e.currentTarget.parentElement?.nextElementSibling) {
+                                    e.currentTarget.parentElement.nextElementSibling.style.display = 'flex';
+                                  }
+                                }}
                               />
                             </a>
                           ) : (
@@ -355,15 +363,36 @@ const VideoTable = ({
                               src={video.thumbnail_url}
                               alt={displayTitle}
                               loading="lazy"
+                              decoding="async"
+                              referrerPolicy="no-referrer"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                if (e.currentTarget.nextElementSibling) {
+                                  e.currentTarget.nextElementSibling.style.display = 'flex';
+                                }
+                              }}
                             />
                           )
-                        ) : (
-                          <div className="video-cell__thumb video-cell__thumb--empty" aria-hidden="true">
-                            {t('videoLibrary.noThumbnail')}
-                          </div>
-                        )}
+                        ) : null}
+                        <div
+                          className="video-cell__thumb video-cell__thumb--empty"
+                          aria-hidden="true"
+                          style={{ display: video.thumbnail_url ? 'none' : 'flex' }}
+                        >
+                          {video.status === 'unavailable' ? 'Đã ẩn' : t('videoLibrary.noThumbnail')}
+                        </div>
                         <div className="video-cell__meta">
-                          <span className="row-title">{displayTitle}</span>
+                          <div className="video-cell__title-row">
+                            <span className="row-title">{displayTitle}</span>
+                            {video.status === 'unavailable' ? (
+                              <span
+                                className="video-status-badge video-status-badge--unavailable"
+                                title="Video không còn tồn tại trên TikTok (đã xóa hoặc đặt ở chế độ riêng tư)"
+                              >
+                                Đã ẩn / Xóa
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     </td>

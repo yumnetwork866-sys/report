@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
+import { EyeOff } from 'lucide-react';
 
 import {
   Bar,
@@ -896,6 +897,15 @@ const ChannelReport = () => {
         <div className="member-detail__tabs" role="tablist" aria-label={`Chi tiết ${member.name}`}>
           <button type="button" role="tab" aria-selected={activeTab === 'videos'} className={activeTab === 'videos' ? 'is-active' : ''} onClick={() => setMemberTabs((current) => ({ ...current, [memberId]: 'videos' }))}>
             Video <span>{formatNumber(pagination?.total)}</span>
+            {videos.some((v) => v.status === 'unavailable') ? (
+              <span
+                className="video-status-badge video-status-badge--unavailable"
+                style={{ marginLeft: 6 }}
+                title="Có video đã bị ẩn hoặc xóa trên TikTok"
+              >
+                {videos.filter((v) => v.status === 'unavailable').length} ẩn/xóa
+              </span>
+            ) : null}
           </button>
           <button type="button" role="tab" aria-selected={activeTab === 'products'} className={activeTab === 'products' ? 'is-active' : ''} onClick={() => setMemberTabs((current) => ({ ...current, [memberId]: 'products' }))}>
             Sản phẩm <span>{formatNumber(products.length)}</span>
@@ -911,7 +921,7 @@ const ChannelReport = () => {
 
               return (
                 <article
-                  className={`member-detail__video${canOpenDetail ? ' member-detail__video--revenue-clickable' : ''}`}
+                  className={`member-detail__video${canOpenDetail ? ' member-detail__video--revenue-clickable' : ''}${video.status === 'unavailable' ? ' member-detail__video--unavailable' : ''}`}
                   key={video.id}
                   role={canOpenDetail ? 'button' : undefined}
                   tabIndex={canOpenDetail ? 0 : undefined}
@@ -926,11 +936,40 @@ const ChannelReport = () => {
                     openVideoRevenueDetail(video);
                   }}
                 >
-                  {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" loading="lazy" /> : <div className="member-detail__video-placeholder">Video</div>}
+                  {video.thumbnail_url ? (
+                    <img
+                      src={video.thumbnail_url}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                        const placeholder = e.currentTarget.nextElementSibling;
+                        if (placeholder) placeholder.style.display = 'grid';
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="member-detail__video-placeholder"
+                    style={{ display: video.thumbnail_url ? 'none' : 'grid' }}
+                  >
+                    {video.status === 'unavailable' ? 'Đã ẩn' : 'Video'}
+                  </div>
                   <div className="member-detail__video-copy" title={fullTitle}>
-                    {video.video_url
-                      ? <a href={video.video_url} target="_blank" rel="noreferrer" title={fullTitle}>{displayTitle}</a>
-                      : <strong title={fullTitle}>{displayTitle}</strong>}
+                    <div className="member-detail__video-title-row">
+                      {video.video_url
+                        ? <a href={video.video_url} target="_blank" rel="noreferrer" title={fullTitle}>{displayTitle}</a>
+                        : <strong title={fullTitle}>{displayTitle}</strong>}
+                      {video.status === 'unavailable' ? (
+                        <span
+                          className="video-status-badge video-status-badge--unavailable"
+                          title="Video không còn tồn tại trên TikTok (đã xóa hoặc đặt ở chế độ riêng tư)"
+                        >
+                          Đã ẩn / Xóa
+                        </span>
+                      ) : null}
+                    </div>
                     <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
                     <small className="member-detail__video-posted-at" title="Thời gian đăng">
                       {video.published_at ? `${formatPublishedDate(video.published_at)} ${formatPublishedTime(video.published_at)}` : '—'}
@@ -1144,9 +1183,28 @@ const ChannelReport = () => {
                         {showTeamBadge && member.teamName ? (
                           <span className="member-row__team-badge">{member.teamName}</span>
                         ) : null}
+                        {Number(member.unavailableVideos) > 0 ? (
+                          <span
+                            className="video-status-badge video-status-badge--unavailable"
+                            title={`Có ${member.unavailableVideos} video của thành viên này đã bị ẩn hoặc xóa trên TikTok`}
+                          >
+                            {member.unavailableVideos} video ẩn/xóa
+                          </span>
+                        ) : null}
                       </button>
                     </td>
-                    <td className="cell-number">{formatNumber(member.videos)}</td>
+                    <td className="cell-number">
+                      <div>{formatNumber(member.videos)}</div>
+                      {Number(member.unavailableVideos) > 0 ? (
+                        <small
+                          className="member-row__unavailable-count"
+                          title={`${member.unavailableVideos} video đã bị ẩn hoặc xóa trên TikTok`}
+                          style={{ display: 'block', color: '#ea580c', fontSize: '0.72rem', fontWeight: 600 }}
+                        >
+                          ({member.unavailableVideos} ẩn/xóa)
+                        </small>
+                      ) : null}
+                    </td>
                     <td className="cell-number">{formatNumber(member.views)}</td>
                     <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
                     <td className="cell-number">{formatNumber(member.orders || 0)}</td>

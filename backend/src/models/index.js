@@ -1004,6 +1004,11 @@ const Video = sequelize.define('Video', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  status: {
+    type: DataTypes.STRING(32),
+    allowNull: false,
+    defaultValue: 'active',
+  },
 }, {
   tableName: 'videos',
   timestamps: false,
@@ -1011,6 +1016,7 @@ const Video = sequelize.define('Video', {
     { name: 'videos_platform_video_id_key', unique: true, fields: ['platform_video_id'] },
     { name: 'videos_published_at_idx', fields: ['published_at'] },
     { name: 'videos_channel_id_idx', fields: ['channel_id'] },
+    { name: 'videos_status_idx', fields: ['status'] },
   ],
 });
 

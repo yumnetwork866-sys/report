@@ -551,6 +551,9 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
   let created = 0;
   let updated = 0;
   let total = 0;
+  const returnedVideoPlatformIds = new Set();
+  let stoppedPrematurely = false;
+  let reachedEnd = false;
 
   while (pageCount < (Number.isFinite(TIKTOK_VIDEO_SYNC_MAX_PAGES) && TIKTOK_VIDEO_SYNC_MAX_PAGES > 0
     ? TIKTOK_VIDEO_SYNC_MAX_PAGES
@@ -560,15 +563,18 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
     const items = normalizeTiktokVideoItems(payload);
 
     if (!items.length) {
+      reachedEnd = true;
       break;
     }
 
     for (const item of items) {
+      returnedVideoPlatformIds.add(item.platform_video_id);
       const [video, wasCreated] = await Video.findOrCreate({
         where: { platform_video_id: item.platform_video_id },
         defaults: {
           ...item,
           channel_id: channel.id,
+          status: 'active',
           last_synced_at: new Date(),
         },
       });
@@ -577,6 +583,7 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
         await video.update({
           ...item,
           channel_id: channel.id,
+          status: 'active',
           last_synced_at: new Date(),
         });
       }
@@ -605,6 +612,9 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
     if (nextCursor === null || nextCursor === undefined || String(nextCursor).trim() === '') {
       if (hasMore === true) {
         console.info('[TikTok OAuth] Video list has_more=true but no cursor was returned, stopping pagination');
+        stoppedPrematurely = true;
+      } else {
+        reachedEnd = true;
       }
       break;
     }
@@ -612,7 +622,26 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
     cursor = nextCursor;
 
     if (hasMore === false) {
+      reachedEnd = true;
       break;
+    }
+  }
+
+  // When full channel sync finishes (meaning we fetched all available videos of the channel),
+  // any video in database for this channel that was not returned by TikTok is no longer available (deleted or set to private)
+  if (reachedEnd && !stoppedPrematurely) {
+    const [markedUnavailableCount] = await Video.update(
+      { status: 'unavailable' },
+      {
+        where: {
+          channel_id: channel.id,
+          platform_video_id: { [Op.notIn]: Array.from(returnedVideoPlatformIds) },
+          status: 'active',
+        },
+      },
+    );
+    if (markedUnavailableCount > 0) {
+      console.info(`[TikTok Sync] Marked ${markedUnavailableCount} missing videos as unavailable for channel ${channel.id}`);
     }
   }
 

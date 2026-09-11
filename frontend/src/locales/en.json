@@ -755,7 +755,6 @@
     "actionsColumn": "Actions",
     "details": "Edit",
     "detailTitle": "Booking #{{id}}",
-    "saveChanges": "Save changes",
     "openVideo": "Open video",
     "changeStatus": "Change status for booking #{{id}}",
     "delete": "Delete",
