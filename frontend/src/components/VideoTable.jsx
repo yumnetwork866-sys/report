@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Heart, MessageCircle, Share2 } from 'lucide-react';
+import { EyeOff, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { fetchChannels, fetchVideoPage } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
@@ -333,65 +333,70 @@ const VideoTable = ({
                   return <tr key={video.id}>
                     <td>
                       <div className="video-cell">
-                        {video.thumbnail_url ? (
-                          video.video_url ? (
-                            <a
-                              className="video-cell__thumb-link"
-                              href={video.video_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              aria-label={t('videoLibrary.openVideo', { title: displayTitle })}
+                        {video.status === 'unavailable' ? (
+                          <div
+                            className="video-cell__thumb video-cell__thumb--empty video-cell__thumb--unavailable"
+                            aria-hidden="true"
+                            title="Video đã bị ẩn hoặc xóa trên TikTok"
+                          >
+                            <EyeOff size={16} strokeWidth={2.2} aria-hidden="true" />
+                            <span>Đã ẩn</span>
+                          </div>
+                        ) : (
+                          <>
+                            {video.thumbnail_url ? (
+                              video.video_url ? (
+                                <a
+                                  className="video-cell__thumb-link"
+                                  href={video.video_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={t('videoLibrary.openVideo', { title: displayTitle })}
+                                >
+                                  <img
+                                    className="video-cell__thumb"
+                                    src={video.thumbnail_url}
+                                    alt={displayTitle}
+                                    loading="lazy"
+                                    decoding="async"
+                                    referrerPolicy="no-referrer"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = 'none';
+                                      if (e.currentTarget.parentElement?.nextElementSibling) {
+                                        e.currentTarget.parentElement.nextElementSibling.style.display = 'flex';
+                                      }
+                                    }}
+                                  />
+                                </a>
+                              ) : (
+                                <img
+                                  className="video-cell__thumb"
+                                  src={video.thumbnail_url}
+                                  alt={displayTitle}
+                                  loading="lazy"
+                                  decoding="async"
+                                  referrerPolicy="no-referrer"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    if (e.currentTarget.nextElementSibling) {
+                                      e.currentTarget.nextElementSibling.style.display = 'flex';
+                                    }
+                                  }}
+                                />
+                              )
+                            ) : null}
+                            <div
+                              className="video-cell__thumb video-cell__thumb--empty"
+                              aria-hidden="true"
+                              style={{ display: video.thumbnail_url ? 'none' : 'flex' }}
                             >
-                              <img
-                                className="video-cell__thumb"
-                                src={video.thumbnail_url}
-                                alt={displayTitle}
-                                loading="lazy"
-                                decoding="async"
-                                referrerPolicy="no-referrer"
-                                onError={(e) => {
-                                  e.currentTarget.style.display = 'none';
-                                  if (e.currentTarget.parentElement?.nextElementSibling) {
-                                    e.currentTarget.parentElement.nextElementSibling.style.display = 'flex';
-                                  }
-                                }}
-                              />
-                            </a>
-                          ) : (
-                            <img
-                              className="video-cell__thumb"
-                              src={video.thumbnail_url}
-                              alt={displayTitle}
-                              loading="lazy"
-                              decoding="async"
-                              referrerPolicy="no-referrer"
-                              onError={(e) => {
-                                e.currentTarget.style.display = 'none';
-                                if (e.currentTarget.nextElementSibling) {
-                                  e.currentTarget.nextElementSibling.style.display = 'flex';
-                                }
-                              }}
-                            />
-                          )
-                        ) : null}
-                        <div
-                          className="video-cell__thumb video-cell__thumb--empty"
-                          aria-hidden="true"
-                          style={{ display: video.thumbnail_url ? 'none' : 'flex' }}
-                        >
-                          {video.status === 'unavailable' ? 'Đã ẩn' : t('videoLibrary.noThumbnail')}
-                        </div>
+                              {t('videoLibrary.noThumbnail')}
+                            </div>
+                          </>
+                        )}
                         <div className="video-cell__meta">
                           <div className="video-cell__title-row">
                             <span className="row-title">{displayTitle}</span>
-                            {video.status === 'unavailable' ? (
-                              <span
-                                className="video-status-badge video-status-badge--unavailable"
-                                title="Video không còn tồn tại trên TikTok (đã xóa hoặc đặt ở chế độ riêng tư)"
-                              >
-                                Đã ẩn / Xóa
-                              </span>
-                            ) : null}
                           </div>
                         </div>
                       </div>
