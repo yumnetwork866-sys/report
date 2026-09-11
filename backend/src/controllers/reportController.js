@@ -154,11 +154,13 @@ const channelReportBaseSql = `
     SELECT
       platform_video_id,
       SUM(gross_gmv) AS revenue,
-      MIN(currency) AS currency
+      MIN(currency) AS currency,
+      SUM(orders) AS orders
     FROM jsonb_to_recordset(CAST(:revenueRows AS jsonb)) AS source(
       platform_video_id text,
       gross_gmv numeric,
-      currency text
+      currency text,
+      orders bigint
     )
     GROUP BY platform_video_id
   ),
@@ -200,7 +202,8 @@ const channelReportBaseSql = `
       channel.display_name AS channel_name,
       channel.avatar_url AS channel_avatar_url,
       revenue.revenue,
-      revenue.currency
+      revenue.currency,
+      COALESCE(revenue.orders, 0)::bigint AS orders
     FROM shop_videos shop_video
     JOIN platform_revenue revenue
       ON revenue.platform_video_id = shop_video.platform_video_id
@@ -245,7 +248,8 @@ const channelReportBaseSql = `
       channel.display_name AS channel_name,
       channel.avatar_url AS channel_avatar_url,
       revenue.revenue,
-      revenue.currency
+      revenue.currency,
+      COALESCE(revenue.orders, 0)::bigint AS orders
     FROM videos video
     LEFT JOIN tiktok_channels channel ON channel.id = video.channel_id
     LEFT JOIN platform_revenue revenue
@@ -357,6 +361,7 @@ const getChannelReport = async (req, res) => {
         platform_video_id: row.platform_video_id,
         gross_gmv: row.revenue,
         currency: row.currency,
+        orders: Number(row.orders) || 0,
       }))),
     };
     replacements.metric = metric;
@@ -378,7 +383,8 @@ const getChannelReport = async (req, res) => {
           COUNT(*) FILTER (WHERE jsonb_array_length(attributions) = 0)::bigint AS unclassified_videos,
           COALESCE(SUM(revenue), 0) AS revenue,
           COUNT(revenue) > 0 AS revenue_available,
-          MIN(currency) AS currency
+          MIN(currency) AS currency,
+          COALESCE(SUM(orders), 0)::bigint AS orders
         FROM filtered_videos
         UNION ALL
         SELECT
@@ -396,7 +402,8 @@ const getChannelReport = async (req, res) => {
           COUNT(*) FILTER (WHERE jsonb_array_length(attributions) = 0)::bigint AS unclassified_videos,
           COALESCE(SUM(revenue), 0) AS revenue,
           COUNT(revenue) > 0 AS revenue_available,
-          MIN(currency) AS currency
+          MIN(currency) AS currency,
+          COALESCE(SUM(orders), 0)::bigint AS orders
         FROM filtered_videos
         GROUP BY (published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
         UNION ALL
@@ -415,7 +422,8 @@ const getChannelReport = async (req, res) => {
           COUNT(*) FILTER (WHERE jsonb_array_length(attributions) = 0)::bigint AS unclassified_videos,
           COALESCE(SUM(revenue), 0) AS revenue,
           COUNT(revenue) > 0 AS revenue_available,
-          MIN(currency) AS currency
+          MIN(currency) AS currency,
+          COALESCE(SUM(orders), 0)::bigint AS orders
         FROM filtered_videos
         GROUP BY channel_id
         UNION ALL
@@ -434,7 +442,8 @@ const getChannelReport = async (req, res) => {
           0::bigint AS unclassified_videos,
           0::numeric AS revenue,
           false AS revenue_available,
-          NULL::text AS currency
+          NULL::text AS currency,
+          0::bigint AS orders
         FROM tiktok_channels channel
         ORDER BY row_type, bucket
       `, { replacements, type: QueryTypes.SELECT }),
@@ -450,7 +459,8 @@ const getChannelReport = async (req, res) => {
             COALESCE(SUM(video.views), 0)::bigint AS views,
             COALESCE(SUM(video.revenue), 0) AS revenue,
             COUNT(video.revenue) > 0 AS revenue_available,
-            MIN(video.currency) AS currency
+            MIN(video.currency) AS currency,
+            COALESCE(SUM(video.orders), 0)::bigint AS orders
           FROM content_teams team
           LEFT JOIN user_content_attributions attribution ON attribution.team_id = team.id
           LEFT JOIN users app_user ON app_user.id = attribution.user_id
@@ -474,11 +484,13 @@ const getChannelReport = async (req, res) => {
           revenue,
           revenue_available,
           currency,
+          orders,
           SUM(videos) OVER (PARTITION BY team_id)::bigint AS team_videos,
           SUM(views) OVER (PARTITION BY team_id)::bigint AS team_views,
           SUM(revenue) OVER (PARTITION BY team_id) AS team_revenue,
           BOOL_OR(revenue_available) OVER (PARTITION BY team_id) AS team_revenue_available,
-          MIN(currency) OVER (PARTITION BY team_id) AS team_currency
+          MIN(currency) OVER (PARTITION BY team_id) AS team_currency,
+          SUM(orders) OVER (PARTITION BY team_id)::bigint AS team_orders
         FROM member_metrics
         ORDER BY team_name ASC, views DESC, member_name ASC
       `, { replacements, type: QueryTypes.SELECT }),
@@ -501,7 +513,8 @@ const getChannelReport = async (req, res) => {
           channel_name,
           attributions,
           revenue,
-          currency
+          currency,
+          orders
         FROM filtered_videos
         ORDER BY published_at DESC, id DESC
         LIMIT :limit OFFSET :offset
@@ -528,6 +541,7 @@ const getChannelReport = async (req, res) => {
       revenue: number(row.revenue),
       revenue_available: Boolean(row.revenue_available),
       currency: row.currency || null,
+      orders: number(row.orders),
     });
     const availableTeamsById = new Map();
     const availableUsersById = new Map();
@@ -563,6 +577,7 @@ const getChannelReport = async (req, res) => {
           revenue: number(row.team_revenue),
           revenueAvailable: Boolean(row.team_revenue_available),
           currency: row.team_currency || null,
+          orders: number(row.team_orders),
           members: [],
         };
         teams.push(team);
@@ -576,6 +591,7 @@ const getChannelReport = async (req, res) => {
           revenue: number(row.revenue),
           revenueAvailable: Boolean(row.revenue_available),
           currency: row.currency || null,
+          orders: number(row.orders),
         });
       }
     }
@@ -617,6 +633,7 @@ const getChannelReport = async (req, res) => {
               amount: number(row.revenue),
               currency: row.currency || null,
             },
+            orders: number(row.orders),
           };
         }),
         pagination: {
@@ -703,6 +720,7 @@ const getChannelReportMemberDetail = async (req, res) => {
           platform_video_id: row.platform_video_id,
           gross_gmv: row.revenue,
           currency: row.currency,
+          orders: Number(row.orders) || 0,
         }))),
       };
       replacements.metric = metric;
@@ -725,27 +743,129 @@ const getChannelReportMemberDetail = async (req, res) => {
           video.channel_name,
           video.revenue,
           video.currency,
+          video.orders,
           COALESCE((
-            SELECT jsonb_agg(jsonb_build_object('id', mapped.product_id, 'name', mapped.name) ORDER BY mapped.name)
+            SELECT jsonb_agg(
+              jsonb_build_object(
+                'id', mapped.product_id,
+                'name', mapped.name,
+                'image_url', mapped.image_url,
+                'quantity', mapped.quantity
+              ) ORDER BY mapped.quantity DESC, mapped.name
+            )
             FROM (
-              SELECT product.id::text AS product_id, product.name
-              FROM video_products relation
-              JOIN products product ON product.id = relation.product_id
-              WHERE relation.video_id = video.id
-              UNION
-              SELECT
-                NULLIF(shop_product.value ->> 'id', '') AS product_id,
-                COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), shop_product.value ->> 'id') AS name
-              FROM shop_videos shop_video
-              CROSS JOIN LATERAL jsonb_array_elements(
-                CASE
-                  WHEN jsonb_typeof(shop_video.raw_data -> 'products') = 'array' THEN shop_video.raw_data -> 'products'
-                  ELSE '[]'::jsonb
-                END
-              ) shop_product(value)
-              WHERE shop_video.platform_video_id = video.platform_video_id
+              SELECT DISTINCT ON (raw_mapped.product_id)
+                raw_mapped.product_id,
+                raw_mapped.name,
+                raw_mapped.image_url,
+                COALESCE(
+                  pq.quantity,
+                  CASE
+                    WHEN (
+                      SELECT COUNT(DISTINCT sub_p.product_id)
+                      FROM (
+                        SELECT product.id::text AS product_id FROM video_products relation JOIN products product ON product.id = relation.product_id WHERE relation.video_id = video.id
+                        UNION
+                        SELECT NULLIF(sp.value ->> 'id', '') AS product_id FROM shop_videos sv CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sv.raw_data -> 'products') = 'array' THEN sv.raw_data -> 'products' ELSE '[]'::jsonb END) sp(value) WHERE sv.platform_video_id = video.platform_video_id AND NULLIF(sp.value ->> 'id', '') IS NOT NULL
+                        UNION
+                        SELECT NULLIF(dp.value ->> 'id', '') AS product_id FROM channel_report_video_revenue_daily dr CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(dr.raw_metrics -> 'products') = 'array' THEN dr.raw_metrics -> 'products' ELSE '[]'::jsonb END) dp(value) WHERE dr.platform_video_id = video.platform_video_id AND NULLIF(dp.value ->> 'id', '') IS NOT NULL
+                      ) sub_p
+                    ) <= 1 THEN (
+                      SELECT GREATEST(
+                        COALESCE(SUM(COALESCE(NULLIF(d.raw_metrics ->> 'items_sold', '')::numeric, 0))::bigint, 0),
+                        COALESCE(SUM(COALESCE(NULLIF(d.raw_metrics ->> 'sku_orders', '')::numeric, 0))::bigint, 0),
+                        video.orders
+                      )
+                      FROM channel_report_video_revenue_daily d
+                      WHERE d.platform_video_id = video.platform_video_id
+                        AND d.metric_date >= CAST(:startDate AS DATE)
+                        AND d.metric_date < CAST(:endDateExclusive AS DATE)
+                    )
+                    ELSE (
+                      SELECT COALESCE(SUM(COALESCE(NULLIF(d.raw_metrics ->> 'items_sold', '')::numeric, 0))::bigint, 0)
+                      FROM channel_report_video_revenue_daily d
+                      WHERE d.platform_video_id = video.platform_video_id
+                        AND d.metric_date >= CAST(:startDate AS DATE)
+                        AND d.metric_date < CAST(:endDateExclusive AS DATE)
+                        AND EXISTS (
+                          SELECT 1
+                          FROM jsonb_array_elements(
+                            CASE WHEN jsonb_typeof(d.raw_metrics -> 'products') = 'array' THEN d.raw_metrics -> 'products' ELSE '[]'::jsonb END
+                          ) p_item
+                          WHERE p_item ->> 'id' = raw_mapped.product_id
+                        )
+                    )
+                  END,
+                  0
+                )::bigint AS quantity
+              FROM (
+                SELECT
+                  product.id::text AS product_id,
+                  product.name,
+                  tsp.image_url
+                FROM video_products relation
+                JOIN products product ON product.id = relation.product_id
+                LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = product.id::text
+                WHERE relation.video_id = video.id
+                UNION ALL
+                SELECT
+                  NULLIF(shop_product.value ->> 'id', '') AS product_id,
+                  COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), tsp.title, shop_product.value ->> 'id') AS name,
+                  COALESCE(
+                    tsp.image_url,
+                    NULLIF(shop_product.value ->> 'main_image_url', ''),
+                    NULLIF(shop_product.value ->> 'thumbnail_url', ''),
+                    NULLIF(shop_product.value ->> 'image_url', '')
+                  ) AS image_url
+                FROM shop_videos shop_video
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  CASE
+                    WHEN jsonb_typeof(shop_video.raw_data -> 'products') = 'array' THEN shop_video.raw_data -> 'products'
+                    ELSE '[]'::jsonb
+                  END
+                ) shop_product(value)
+                LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = NULLIF(shop_product.value ->> 'id', '')
+                WHERE shop_video.platform_video_id = video.platform_video_id
+                UNION ALL
+                SELECT
+                  NULLIF(daily_product.value ->> 'id', '') AS product_id,
+                  COALESCE(NULLIF(daily_product.value ->> 'name', ''), NULLIF(daily_product.value ->> 'title', ''), tsp.title, daily_product.value ->> 'id') AS name,
+                  tsp.image_url
+                FROM channel_report_video_revenue_daily daily_row
+                CROSS JOIN LATERAL jsonb_array_elements(
+                  CASE
+                    WHEN jsonb_typeof(daily_row.raw_metrics -> 'products') = 'array' THEN daily_row.raw_metrics -> 'products'
+                    ELSE '[]'::jsonb
+                  END
+                ) daily_product(value)
+                LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = NULLIF(daily_product.value ->> 'id', '')
+                WHERE daily_row.platform_video_id = video.platform_video_id
+                  AND NULLIF(daily_product.value ->> 'id', '') IS NOT NULL
+                UNION ALL
+                SELECT
+                  sku.product_id,
+                  COALESCE(NULLIF(sku.product_name, ''), tsp.title, sku.product_id) AS name,
+                  tsp.image_url
+                FROM tiktok_affiliate_order_skus sku
+                LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = sku.product_id
+                WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+                  AND sku.content_id = video.platform_video_id
+              ) raw_mapped
+              LEFT JOIN (
+                SELECT
+                  sku.product_id,
+                  SUM(sku.quantity)::bigint AS quantity
+                FROM tiktok_affiliate_order_skus sku
+                JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
+                WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+                  AND sku.content_id = video.platform_video_id
+                  AND o.create_time >= CAST(:startDate AS DATE)
+                  AND o.create_time < CAST(:endDateExclusive AS DATE)
+                GROUP BY sku.product_id
+              ) pq ON pq.product_id = raw_mapped.product_id
+              WHERE raw_mapped.product_id IS NOT NULL
+              ORDER BY raw_mapped.product_id, raw_mapped.image_url NULLS LAST
             ) mapped
-            WHERE mapped.product_id IS NOT NULL
           ), '[]'::jsonb) AS products,
           COUNT(*) OVER()::bigint AS total_count
         FROM filtered_videos video
@@ -833,6 +953,7 @@ const getChannelReportMemberDetail = async (req, res) => {
               amount: number(row.revenue),
               currency: row.currency || null,
             },
+            orders: number(row.orders),
           })),
           pagination: {
             page,

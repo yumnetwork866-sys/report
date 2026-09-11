@@ -18,3 +18,23 @@ export function formatDateOnly(value, fallback = '') {
   const parts = parseDateOnly(value);
   return parts ? `${parts.day}/${parts.month}/${parts.year}` : fallback;
 }
+
+export function dateOnlyToUtcTimestamp(value) {
+  const parts = parseDateOnly(value);
+  if (!parts) return null;
+  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+}
+
+export function diffInDays(dateA, dateB) {
+  const tsA = dateOnlyToUtcTimestamp(dateA);
+  const tsB = dateOnlyToUtcTimestamp(dateB);
+  if (tsA === null || tsB === null) return null;
+  return Math.round((tsA - tsB) / (1000 * 60 * 60 * 24));
+}
+
+export function getTodayDateString(referenceDate = new Date()) {
+  const year = referenceDate.getFullYear();
+  const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
+  const day = String(referenceDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}

@@ -82,6 +82,13 @@ const compactProductName = (value) => {
   return headline.length > 42 ? `${headline.slice(0, 39).trim()}…` : headline;
 };
 
+const compactVideoTitle = (value, maxLength = 40) => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Video';
+  const clean = raw.replace(/\s+/g, ' ');
+  return clean.length > maxLength ? `${clean.slice(0, maxLength - 3).trim()}…` : clean;
+};
+
 const orderStatusLabel = (value) => {
   const status = String(value || '').trim().toUpperCase();
   return ({
@@ -100,6 +107,44 @@ const ChannelAvatar = ({ channel }) => {
       {avatarUrl && !failed
         ? <img src={avatarUrl} alt="" onError={() => setFailed(true)} />
         : String(channel?.name || 'TK').trim().charAt(0).toUpperCase()}
+    </span>
+  );
+};
+
+const VideoProductThumb = ({ product }) => {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = product?.image_url || product?.thumbnail_url || product?.thumbnailUrl || product?.main_image_url || '';
+  const quantity = Number(product?.quantity || 0);
+  useEffect(() => setFailed(false), [imageUrl]);
+
+  const tooltip = product.name
+    ? `${product.name} (Đã bán: ${quantity})`
+    : `Đã bán: ${quantity}`;
+
+  return (
+    <span
+      className="member-detail__video-order-thumb"
+      title={tooltip}
+    >
+      {imageUrl && !failed ? (
+        <img
+          src={imageUrl}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="member-detail__video-order-thumb-placeholder" aria-hidden="true">
+          {(product.name || 'P').trim().charAt(0).toUpperCase() || 'P'}
+        </span>
+      )}
+      <span
+        className={`member-detail__video-order-thumb-badge${quantity > 0 ? ' member-detail__video-order-thumb-badge--active' : ''}`}
+        aria-label={`Số lượng bán: ${quantity}`}
+      >
+        x{quantity}
+      </span>
     </span>
   );
 };
@@ -195,6 +240,7 @@ const TeamComparisonTooltip = ({ active, payload, formatNumber, formatRevenue })
       <strong>{team.name}</strong>
       <div><span>Video</span><b>{formatNumber(team.videos)}</b></div>
       <div><span>Lượt xem</span><b>{formatNumber(team.views)}</b></div>
+      <div><span>Đơn hàng</span><b>{formatNumber(team.orders || 0)}</b></div>
       <div><span>Doanh số</span><b>{team.revenueAvailable ? formatRevenue(team.revenue, team.currency) : '—'}</b></div>
     </div>
   );
@@ -350,6 +396,7 @@ const ChannelReport = () => {
     name: group.label,
     videos: Number(group.videos || 0),
     views: Number(group.views || 0),
+    orders: Number(group.orders || 0),
     revenue: Number(group.revenue || 0),
     revenueAvailable: Boolean(group.revenueAvailable),
     currency: group.currency,
@@ -357,6 +404,7 @@ const ChannelReport = () => {
   const comparisonMetricLabel = {
     videos: 'Video',
     views: 'Lượt xem',
+    orders: 'Đơn hàng',
     revenue: 'Doanh số',
   }[comparisonMetric];
   const compactNumber = (value) => Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
@@ -521,48 +569,74 @@ const ChannelReport = () => {
         </div>
         {activeTab === 'videos' ? (
           <div className="member-detail__videos">
-            {videos.map((video) => (
-              <article
-                className={`member-detail__video${activeReportTab === 'revenue' ? ' member-detail__video--revenue-clickable' : ''}`}
-                key={video.id}
-                role={activeReportTab === 'revenue' ? 'button' : undefined}
-                tabIndex={activeReportTab === 'revenue' ? 0 : undefined}
-                title={activeReportTab === 'revenue' ? 'Xem doanh thu video theo ngày' : undefined}
-                onClick={(event) => {
-                  if (activeReportTab !== 'revenue' || event.target.closest('a, button')) return;
-                  openVideoRevenueDetail(video);
-                }}
-                onKeyDown={(event) => {
-                  if (activeReportTab !== 'revenue' || !['Enter', ' '].includes(event.key)) return;
-                  event.preventDefault();
-                  openVideoRevenueDetail(video);
-                }}
-              >
-                {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" loading="lazy" /> : <div className="member-detail__video-placeholder">Video</div>}
-                <div className="member-detail__video-copy">
-                  {video.video_url
-                    ? <a href={video.video_url} target="_blank" rel="noreferrer">{video.title || `Video ${video.platform_video_id}`}</a>
-                    : <strong>{video.title || `Video ${video.platform_video_id}`}</strong>}
-                  <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
-                  <div className="member-detail__product-tags">
-                    {(video.products || []).slice(0, 2).map((product) => <span key={product.id} title={product.name}>{compactProductName(product.name)}</span>)}
-                    {video.products?.length > 2 ? <span>+{video.products.length - 2}</span> : null}
-                    {!video.products?.length ? <span>Chưa xác định sản phẩm</span> : null}
+            {videos.map((video) => {
+              const fullTitle = video.title || `Video ${video.platform_video_id}`;
+              const displayTitle = compactVideoTitle(fullTitle, 40);
+
+              const canOpenDetail = ['revenue', 'orders'].includes(activeReportTab) || Boolean(Number(video.orders) > 0 || (video.revenue && video.revenue.amount > 0));
+
+              return (
+                <article
+                  className={`member-detail__video${canOpenDetail ? ' member-detail__video--revenue-clickable' : ''}`}
+                  key={video.id}
+                  role={canOpenDetail ? 'button' : undefined}
+                  tabIndex={canOpenDetail ? 0 : undefined}
+                  title={canOpenDetail ? 'Xem chi tiết đơn hàng & doanh thu video' : undefined}
+                  onClick={(event) => {
+                    if (!canOpenDetail || event.target.closest('a, button')) return;
+                    openVideoRevenueDetail(video);
+                  }}
+                  onKeyDown={(event) => {
+                    if (!canOpenDetail || !['Enter', ' '].includes(event.key)) return;
+                    event.preventDefault();
+                    openVideoRevenueDetail(video);
+                  }}
+                >
+                  {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" loading="lazy" /> : <div className="member-detail__video-placeholder">Video</div>}
+                  <div className="member-detail__video-copy" title={fullTitle}>
+                    {video.video_url
+                      ? <a href={video.video_url} target="_blank" rel="noreferrer" title={fullTitle}>{displayTitle}</a>
+                      : <strong title={fullTitle}>{displayTitle}</strong>}
+                    <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
+                    <small className="member-detail__video-posted-at" title="Thời gian đăng">
+                      {video.published_at ? `${formatPublishedDate(video.published_at)} ${formatPublishedTime(video.published_at)}` : '—'}
+                    </small>
                   </div>
-                </div>
-                <div className="member-detail__video-posted">
-                  <small>Thời gian đăng</small>
-                  <strong>
-                    <span>{formatPublishedDate(video.published_at)}</span>
-                    <span>{formatPublishedTime(video.published_at)}</span>
-                  </strong>
-                </div>
-                <div className="member-detail__video-metrics">
-                  <span><small>Lượt xem</small><strong>{formatNumber(video.views)}</strong></span>
-                  <span><small>GMV</small><strong>{video.revenue ? formatRevenue(video.revenue.amount, video.revenue.currency) : '—'}</strong></span>
-                </div>
-              </article>
-            ))}
+                  <div className="member-detail__video-metrics">
+                    <div>
+                      <span>Lượt xem</span>
+                      <strong>{formatNumber(video.views)}</strong>
+                    </div>
+                    <div className="member-detail__video-metric-orders">
+                      <span>Đơn hàng</span>
+                      <div className="member-detail__video-orders-content">
+                        {video.products?.length ? (
+                          <div className="member-detail__video-order-thumbs">
+                            {video.products.slice(0, 4).map((product) => (
+                              <VideoProductThumb key={product.id || product.name} product={product} />
+                            ))}
+                            {video.products.length > 4 ? (
+                              <span
+                                className="member-detail__video-order-more"
+                                title={video.products.slice(4).map((p) => `${p.name} (x${Number(p.quantity || 0)})`).join(', ')}
+                              >
+                                +{video.products.length - 4}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <strong>—</strong>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <span>GMV</span>
+                      <strong>{video.revenue ? formatRevenue(video.revenue.amount, video.revenue.currency) : '—'}</strong>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
             {!videos.length ? <div className="member-detail__state">Không có video trong kỳ đã chọn.</div> : null}
             {pagination && pagination.page < pagination.total_pages ? (
               <button className="button button--small button--ghost member-detail__more" type="button" disabled={detail.loading} onClick={() => loadMemberDetail(memberId, pagination.page + 1, true)}>
@@ -736,6 +810,7 @@ const ChannelReport = () => {
                     >
                       <option value="views">Lượt xem</option>
                       <option value="videos">Video</option>
+                      <option value="orders">Đơn hàng</option>
                       <option value="revenue">Doanh số</option>
                     </select>
                   </div>
@@ -774,8 +849,12 @@ const ChannelReport = () => {
                     revenue: revenueGroup.revenue || 0,
                     revenueAvailable: revenueGroup.revenueAvailable,
                     currency: revenueGroup.currency,
+                    orders: revenueGroup.orders || 0,
                   }
-                  : group;
+                  : {
+                    ...group,
+                    orders: group.orders || revenueGroup.orders || 0,
+                  };
                 return <article className="content-performance__group" key={group.key}>
                   <div className="content-performance__group-header">
                     <h3>{group.label}</h3>
@@ -784,6 +863,7 @@ const ChannelReport = () => {
                   <div className="content-performance__metrics">
                     <span><small>Video</small><strong>{formatNumber(displayGroup.videos)}</strong>{renderMetricChange(displayGroup.videos, activeReportTab === 'revenue' ? previousRevenueGroup.videos : previousGroup?.videos)}</span>
                     <span><small>Lượt xem</small><strong>{formatNumber(displayGroup.views)}</strong>{renderMetricChange(displayGroup.views, activeReportTab === 'revenue' ? previousRevenueGroup.views : previousGroup?.views)}</span>
+                    <span><small>Đơn hàng</small><strong>{formatNumber(displayGroup.orders)}</strong>{renderMetricChange(displayGroup.orders, activeReportTab === 'revenue' ? previousRevenueGroup.orders : previousGroup?.orders)}</span>
                     <span><small>Doanh số</small><strong>{displayGroup.revenueAvailable ? formatRevenue(displayGroup.revenue, displayGroup.currency) : '—'}</strong>{renderMetricChange(displayGroup.revenue, activeReportTab === 'revenue' ? previousRevenueGroup.revenue : previousGroup?.revenue, displayGroup.revenueAvailable && (activeReportTab === 'revenue' ? previousRevenueGroup : previousGroup)?.revenueAvailable)}</span>
                   </div>
                   {group.members.length ? (
@@ -795,6 +875,7 @@ const ChannelReport = () => {
                             <th className="cell-number">Video</th>
                             <th className="cell-number">Lượt xem</th>
                             <th className="cell-number">TB lượt xem/video</th>
+                            <th className="cell-number">Đơn hàng</th>
                             <th className="cell-number">Doanh số</th>
                             <th className="cell-number">TB doanh số/video</th>
                           </tr>
@@ -809,7 +890,11 @@ const ChannelReport = () => {
                             revenue: revenueMember.revenue || 0,
                             revenueAvailable: revenueMember.revenueAvailable,
                             currency: revenueMember.currency,
-                          } : member;
+                            orders: revenueMember.orders || 0,
+                          } : {
+                            ...member,
+                            orders: member.orders || revenueMember.orders || 0,
+                          };
                           return (
                             <React.Fragment key={member.key}>
                               <tr
@@ -828,10 +913,11 @@ const ChannelReport = () => {
                                 <td className="cell-number">{formatNumber(displayMember.videos)}</td>
                                 <td className="cell-number">{formatNumber(displayMember.views)}</td>
                                 <td className="cell-number">{formatNumber(Math.round(displayMember.views / Math.max(displayMember.videos, 1)))}</td>
+                                <td className="cell-number">{formatNumber(displayMember.orders || 0)}</td>
                                 <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue, displayMember.currency) : '—'}</td>
                                 <td className="cell-number">{displayMember.revenueAvailable ? formatRevenue(displayMember.revenue / displayMember.videos, displayMember.currency) : '—'}</td>
                               </tr>
-                              {expanded ? <tr className="member-detail-row"><td colSpan="6">{renderMemberDetail(member)}</td></tr> : null}
+                              {expanded ? <tr className="member-detail-row"><td colSpan="7">{renderMemberDetail(member)}</td></tr> : null}
                             </React.Fragment>
                           );
                         })}</tbody>

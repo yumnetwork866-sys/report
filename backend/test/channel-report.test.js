@@ -168,6 +168,7 @@ test('channel report aggregates server-side and returns only one video page', as
       platform_video_id: 'video-88',
       gross_gmv: 12.5,
       currency: 'MYR',
+      orders: 0,
     }]);
   });
   const videoCall = calls.find((call) => call.sql.includes('channel-report-videos'));

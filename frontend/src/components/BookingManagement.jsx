@@ -21,6 +21,7 @@ import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
 import DatePickerInput from './DatePickerInput';
 import { formatDateOnly } from '../lib/date';
+import { computeBookingTimeline } from '../lib/bookingTimeline';
 import { ChevronLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 
 const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
@@ -2262,10 +2263,20 @@ const BookingManagement = ({
                                         : booking.actual_performance;
                                       const bookingVideos = bookingVideosByRevenue(bookingVideosOf(booking));
                                       const postedVideos = bookingVideos.filter((v) => v.posted_at).sort((a, b) => new Date(a.posted_at) - new Date(b.posted_at));
-                                      const firstPostedDate = postedVideos[0]?.posted_at;
+                                      const firstPostedDate = postedVideos[0]?.posted_at || booking.posted_at;
                                       const startDate = booking.start_date || booking.created_at;
                                       const deadlineDate = booking.end_date || booking.deadline;
                                       const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
+                                      const timeline = computeBookingTimeline({
+                                        startDate,
+                                        deadlineDate,
+                                        postedVideos,
+                                        firstPostedDate,
+                                        committedVideos: booking.committed_videos,
+                                        videoCount,
+                                        status: booking.status,
+                                        t,
+                                      });
                                       const expanded = String(expandedBookingId) === String(booking.id);
                                       return (
                                         <React.Fragment key={booking.id}>
@@ -2276,22 +2287,16 @@ const BookingManagement = ({
                                                 <span>
                                                   <strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong>
                                                   <small>@{booking.creator_username}</small>
-                                                  <div className="booking-row-timeline">
-                                                    {startDate ? (
-                                                      <span className="booking-row-timeline__item" title={t('booking.bookDate')}>
-                                                        📅 {formatDateOnly(startDate)}
+                                                  {timeline.badge ? (
+                                                    <div className="booking-row-timeline">
+                                                      <span
+                                                        className={`booking-row-timeline__badge booking-row-timeline__badge--${timeline.badge.type}`}
+                                                        title={timeline.badge.tooltip}
+                                                      >
+                                                        {timeline.badge.label}
                                                       </span>
-                                                    ) : null}
-                                                    {firstPostedDate ? (
-                                                      <span className="booking-row-timeline__item booking-row-timeline__item--posted" title={t('booking.postedAt')}>
-                                                        🎬 {formatDateOnly(firstPostedDate)}
-                                                      </span>
-                                                     ) : deadlineDate ? (
-                                                       <span className="booking-row-timeline__item booking-row-timeline__item--deadline" title={t('booking.deadline')}>
-                                                         ⏰ {formatDateOnly(deadlineDate)}
-                                                       </span>
-                                                     ) : null}
                                                     </div>
+                                                  ) : null}
                                                 </span>
                                               </div>
                                             </td>

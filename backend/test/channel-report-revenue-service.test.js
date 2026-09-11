@@ -28,7 +28,7 @@ test('channel report revenue reads and aggregates the selected daily range from 
   });
 
   assert.deepEqual(result, {
-    rows: [{ platform_video_id: 'video-1', revenue: 123.45, currency: 'MYR' }],
+    rows: [{ platform_video_id: 'video-1', revenue: 123.45, currency: 'MYR', orders: 0 }],
     errors: [],
   });
   assert.equal(calls.length, 1);

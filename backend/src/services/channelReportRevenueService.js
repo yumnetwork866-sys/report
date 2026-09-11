@@ -6,7 +6,12 @@ const loadMonthlyShopVideoRevenue = async ({ startDate, endDate }) => {
     SELECT
       platform_video_id,
       SUM(revenue) AS revenue,
-      MIN(currency) AS currency
+      MIN(currency) AS currency,
+      SUM(COALESCE(
+        NULLIF(raw_metrics ->> 'sku_orders', '')::numeric,
+        NULLIF(raw_metrics ->> 'orders', '')::numeric,
+        0
+      ))::bigint AS orders
     FROM channel_report_video_revenue_daily
     WHERE metric_date >= CAST(:startDate AS DATE)
       AND metric_date < CAST(:endDate AS DATE)
@@ -20,6 +25,7 @@ const loadMonthlyShopVideoRevenue = async ({ startDate, endDate }) => {
       platform_video_id: String(row.platform_video_id),
       revenue: Number(row.revenue) || 0,
       currency: row.currency || null,
+      orders: Number(row.orders) || 0,
     })),
     errors: [],
   };
