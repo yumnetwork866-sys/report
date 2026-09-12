@@ -545,30 +545,17 @@ const ChannelReport = () => {
     if (isAllTeams) return new Set(teams.map((t) => String(t.id)));
     return new Set(selectedTeamIds.map(String));
   }, [isAllTeams, selectedTeamIds, teams]);
-  const visibleGroups = isAllTeams ? groups : groups.filter((group) => selectedTeamSet.has(group.key));
-
-  const comparisonData = groups.map((group) => {
-    const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
-    return {
-      key: group.key,
-      name: group.label,
-      videos: Number(group.videos || 0),
-      views: Number(group.views || 0),
-      orders: Number(group.orders || revenueGroup.orders || 0),
-      revenue: Number(revenueGroup.revenue || group.revenue || 0),
-      revenueAvailable: Boolean(group.revenueAvailable || revenueGroup.revenueAvailable),
-      currency: group.currency || revenueGroup.currency,
-    };
-  });
+  const currentGroups = activeReportTab === 'revenue' ? revenueGroups : groups;
+  const visibleGroups = isAllTeams ? currentGroups : currentGroups.filter((group) => selectedTeamSet.has(group.key));
 
   const allTeamOrders = useMemo(() => {
-    const targetReport = revenueReport || report;
+    const targetReport = activeReportTab === 'revenue' ? revenueReport : report;
     const teamsList = targetReport?.revenue?.teams || [];
     return teamsList.reduce((sum, t) => sum + Number(t.orders || 0), 0);
-  }, [report, revenueReport]);
+  }, [activeReportTab, report, revenueReport]);
 
   const teamProductsData = useMemo(() => {
-    const targetReport = revenueReport || report;
+    const targetReport = activeReportTab === 'revenue' ? revenueReport : report;
     if (!targetReport?.revenue) return [];
 
     let list = [];
@@ -657,35 +644,22 @@ const ChannelReport = () => {
   const mergedMembers = useMemo(() => {
     const list = [];
     for (const group of visibleGroups) {
-      const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
       for (const member of (group.members || [])) {
-        const revenueMember = revenueGroup.members?.find((item) => item.key === member.key) || {};
-        const displayMember = activeReportTab === 'revenue' ? {
-          ...member,
-          teamKey: group.key,
-          teamName: group.label,
-          videos: Number(revenueMember.videos || 0),
-          views: Number(revenueMember.views || 0),
-          revenue: Number(revenueMember.revenue || 0),
-          revenueAvailable: Boolean(revenueMember.revenueAvailable),
-          currency: revenueMember.currency,
-          orders: Number(revenueMember.orders || 0),
-        } : {
+        list.push({
           ...member,
           teamKey: group.key,
           teamName: group.label,
           videos: Number(member.videos || 0),
           views: Number(member.views || 0),
-          revenue: Number(member.revenue || revenueMember.revenue || 0),
-          revenueAvailable: Boolean(member.revenueAvailable || revenueMember.revenueAvailable),
-          currency: member.currency || revenueMember.currency,
-          orders: Number(member.orders || revenueMember.orders || 0),
-        };
-        list.push(displayMember);
+          revenue: Number(member.revenue || 0),
+          revenueAvailable: Boolean(member.revenueAvailable),
+          currency: member.currency,
+          orders: Number(member.orders || 0),
+        });
       }
     }
     return list;
-  }, [activeReportTab, revenueGroups, visibleGroups]);
+  }, [visibleGroups]);
 
   const mergedMetrics = useMemo(() => {
     let videos = 0;
@@ -706,16 +680,16 @@ const ChannelReport = () => {
 
     if (!videos && !views && !orders && !revenue) {
       for (const group of visibleGroups) {
-        const revG = revenueGroups.find((g) => g.key === group.key) || {};
-        videos += Number(activeReportTab === 'revenue' ? (revG.videos || group.videos || 0) : (group.videos || 0));
-        views += Number(activeReportTab === 'revenue' ? (revG.views || group.views || 0) : (group.views || 0));
-        orders += Number(revG.orders || group.orders || 0);
-        revenue += Number(revG.revenue || group.revenue || 0);
-        if (revG.revenueAvailable || group.revenueAvailable) revenueAvailable = true;
-        if (!currency && (revG.currency || group.currency)) currency = revG.currency || group.currency;
+        videos += Number(group.videos || 0);
+        views += Number(group.views || 0);
+        orders += Number(group.orders || 0);
+        revenue += Number(group.revenue || 0);
+        if (group.revenueAvailable) revenueAvailable = true;
+        if (!currency && group.currency) currency = group.currency;
       }
     }
 
+    const currentPreviousGroups = activeReportTab === 'revenue' ? previousRevenueGroups : previousGroups;
     let prevVideos = 0;
     let prevViews = 0;
     let prevOrders = 0;
@@ -723,26 +697,23 @@ const ChannelReport = () => {
     let prevRevenueAvailable = false;
 
     for (const group of visibleGroups) {
-      const prevG = previousGroups.find((item) => item.key === group.key);
-      const prevRevG = previousRevenueGroups.find((item) => item.key === group.key);
-      const targetPrev = activeReportTab === 'revenue' ? (prevRevG || prevG) : (prevG || prevRevG);
-      if (targetPrev) {
-        const pMems = targetPrev.members || [];
+      const prevG = currentPreviousGroups.find((item) => item.key === group.key);
+      if (prevG) {
+        const pMems = prevG.members || [];
         if (pMems.length) {
           for (const pm of pMems) {
-            const revPm = prevRevG?.members?.find((m) => m.key === pm.key) || {};
-            prevVideos += Number(activeReportTab === 'revenue' ? (revPm.videos || pm.videos || 0) : (pm.videos || 0));
-            prevViews += Number(activeReportTab === 'revenue' ? (revPm.views || pm.views || 0) : (pm.views || 0));
-            prevOrders += Number(revPm.orders || pm.orders || 0);
-            prevRevenue += Number(revPm.revenue || pm.revenue || 0);
-            if (revPm.revenueAvailable || pm.revenueAvailable) prevRevenueAvailable = true;
+            prevVideos += Number(pm.videos || 0);
+            prevViews += Number(pm.views || 0);
+            prevOrders += Number(pm.orders || 0);
+            prevRevenue += Number(pm.revenue || 0);
+            if (pm.revenueAvailable) prevRevenueAvailable = true;
           }
         } else {
-          prevVideos += Number(targetPrev.videos || 0);
-          prevViews += Number(targetPrev.views || 0);
-          prevOrders += Number(prevRevG?.orders || targetPrev.orders || 0);
-          prevRevenue += Number(prevRevG?.revenue || targetPrev.revenue || 0);
-          if (prevRevG?.revenueAvailable || targetPrev.revenueAvailable) prevRevenueAvailable = true;
+          prevVideos += Number(prevG.videos || 0);
+          prevViews += Number(prevG.views || 0);
+          prevOrders += Number(prevG.orders || 0);
+          prevRevenue += Number(prevG.revenue || 0);
+          if (prevG.revenueAvailable) prevRevenueAvailable = true;
         }
       }
     }
@@ -760,7 +731,7 @@ const ChannelReport = () => {
       prevRevenue,
       prevRevenueAvailable,
     };
-  }, [activeReportTab, mergedMembers, previousGroups, previousRevenueGroups, revenueGroups, visibleGroups]);
+  }, [activeReportTab, mergedMembers, previousGroups, previousRevenueGroups, visibleGroups]);
 
   const changePeriodMode = (event) => {
     const nextMode = event.target.value;
@@ -1363,7 +1334,8 @@ const ChannelReport = () => {
                         >
                           <option value="all">Tất cả team ({formatNumber(allTeamOrders)} đơn)</option>
                           {teams.map((team) => {
-                            const teamRevGroup = revenueGroups.find((g) => g.key === String(team.id)) || groups.find((g) => g.key === String(team.id));
+                            const currentGroupList = activeReportTab === 'revenue' ? revenueGroups : groups;
+                            const teamRevGroup = currentGroupList.find((g) => g.key === String(team.id));
                             const orderCount = teamRevGroup?.orders || 0;
                             return (
                               <option key={team.id} value={String(team.id)}>
@@ -1532,47 +1504,17 @@ const ChannelReport = () => {
               ) : visibleGroups.length === 1 ? (
                 (() => {
                   const group = visibleGroups[0];
-                  const revenueGroup = revenueGroups.find((item) => item.key === group.key) || {};
-                  const previousGroup = previousGroups.find((item) => item.key === group.key);
-                  const previousRevenueGroup = previousRevenueGroups.find((item) => item.key === group.key) || {};
-                  const displayGroup = activeReportTab === 'revenue'
-                    ? {
-                      ...group,
-                      videos: revenueGroup.videos || 0,
-                      views: revenueGroup.views || 0,
-                      revenue: revenueGroup.revenue || 0,
-                      revenueAvailable: revenueGroup.revenueAvailable,
-                      currency: revenueGroup.currency,
-                      orders: revenueGroup.orders || 0,
-                    }
-                    : {
-                      ...group,
-                      orders: group.orders || revenueGroup.orders || 0,
-                    };
-                  const singleMembers = (group.members || []).map((m) => {
-                    const revenueMember = revenueGroup.members?.find((item) => item.key === m.key) || {};
-                    return activeReportTab === 'revenue' ? {
-                      ...m,
-                      teamKey: group.key,
-                      teamName: group.label,
-                      videos: Number(revenueMember.videos || 0),
-                      views: Number(revenueMember.views || 0),
-                      revenue: Number(revenueMember.revenue || 0),
-                      revenueAvailable: Boolean(revenueMember.revenueAvailable),
-                      currency: revenueMember.currency,
-                      orders: Number(revenueMember.orders || 0),
-                    } : {
-                      ...m,
-                      teamKey: group.key,
-                      teamName: group.label,
-                      videos: Number(m.videos || 0),
-                      views: Number(m.views || 0),
-                      revenue: Number(m.revenue || revenueMember.revenue || 0),
-                      revenueAvailable: Boolean(m.revenueAvailable || revenueMember.revenueAvailable),
-                      currency: m.currency || revenueMember.currency,
-                      orders: Number(m.orders || revenueMember.orders || 0),
-                    };
-                  });
+                  const singleMembers = (group.members || []).map((m) => ({
+                    ...m,
+                    teamKey: group.key,
+                    teamName: group.label,
+                    videos: Number(m.videos || 0),
+                    views: Number(m.views || 0),
+                    revenue: Number(m.revenue || 0),
+                    revenueAvailable: Boolean(m.revenueAvailable),
+                    currency: m.currency,
+                    orders: Number(m.orders || 0),
+                  }));
 
                   const singleSummary = (() => {
                     let videos = 0;
@@ -1592,17 +1534,16 @@ const ChannelReport = () => {
                     }
 
                     if (!videos && !views && !orders && !revenue) {
-                      videos = Number(activeReportTab === 'revenue' ? (revenueGroup.videos || group.videos || 0) : (group.videos || 0));
-                      views = Number(activeReportTab === 'revenue' ? (revenueGroup.views || group.views || 0) : (group.views || 0));
-                      orders = Number(revenueGroup.orders || group.orders || 0);
-                      revenue = Number(revenueGroup.revenue || group.revenue || 0);
-                      revenueAvailable = Boolean(revenueGroup.revenueAvailable || group.revenueAvailable);
-                      currency = revenueGroup.currency || group.currency;
+                      videos = Number(group.videos || 0);
+                      views = Number(group.views || 0);
+                      orders = Number(group.orders || 0);
+                      revenue = Number(group.revenue || 0);
+                      revenueAvailable = Boolean(group.revenueAvailable);
+                      currency = group.currency;
                     }
 
-                    const prevTarget = activeReportTab === 'revenue'
-                      ? (previousRevenueGroup || previousGroup)
-                      : (previousGroup || previousRevenueGroup);
+                    const currentPreviousGroups = activeReportTab === 'revenue' ? previousRevenueGroups : previousGroups;
+                    const prevTarget = currentPreviousGroups.find((item) => item.key === group.key);
 
                     let prevVideos = 0;
                     let prevViews = 0;
@@ -1614,19 +1555,18 @@ const ChannelReport = () => {
                       const pMems = prevTarget.members || [];
                       if (pMems.length) {
                         for (const pm of pMems) {
-                          const revPm = previousRevenueGroup?.members?.find((m) => m.key === pm.key) || {};
-                          prevVideos += Number(activeReportTab === 'revenue' ? (revPm.videos || pm.videos || 0) : (pm.videos || 0));
-                          prevViews += Number(activeReportTab === 'revenue' ? (revPm.views || pm.views || 0) : (pm.views || 0));
-                          prevOrders += Number(revPm.orders || pm.orders || 0);
-                          prevRevenue += Number(revPm.revenue || pm.revenue || 0);
-                          if (revPm.revenueAvailable || pm.revenueAvailable) prevRevenueAvailable = true;
+                          prevVideos += Number(pm.videos || 0);
+                          prevViews += Number(pm.views || 0);
+                          prevOrders += Number(pm.orders || 0);
+                          prevRevenue += Number(pm.revenue || 0);
+                          if (pm.revenueAvailable) prevRevenueAvailable = true;
                         }
                       } else {
                         prevVideos = Number(prevTarget.videos || 0);
                         prevViews = Number(prevTarget.views || 0);
-                        prevOrders = Number(previousRevenueGroup?.orders || prevTarget.orders || 0);
-                        prevRevenue = Number(previousRevenueGroup?.revenue || prevTarget.revenue || 0);
-                        prevRevenueAvailable = Boolean(previousRevenueGroup?.revenueAvailable || prevTarget.revenueAvailable);
+                        prevOrders += Number(prevTarget.orders || 0);
+                        prevRevenue += Number(prevTarget.revenue || 0);
+                        if (prevTarget.revenueAvailable) prevRevenueAvailable = true;
                       }
                     }
 
@@ -1636,7 +1576,7 @@ const ChannelReport = () => {
                       orders,
                       revenue,
                       revenueAvailable: revenueAvailable || revenue > 0,
-                      currency: currency || revenueGroup.currency || group.currency,
+                      currency: currency || group.currency,
                       prevVideos,
                       prevViews,
                       prevOrders,
