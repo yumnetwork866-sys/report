@@ -105,9 +105,15 @@ const normalizeBookingProducts = (products, productIds = []) => {
 };
 
 const affiliateProductsOfSnapshot = (snapshot) => {
-  const list = snapshot?.raw_metrics?.list || {};
-  const breakdowns = snapshot?.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.breakdowns || [];
+  const raw = snapshot?.raw_metrics || {};
+  const rawVideo = raw?.video || raw;
+  const list = rawVideo?.list || raw?.list || {};
+  const breakdowns = rawVideo?.detail?.performance?.intervals?.[0]?.sales?.breakdowns
+    || raw?.detail?.performance?.intervals?.[0]?.sales?.breakdowns
+    || [];
   const products = [
+    ...(Array.isArray(raw.products) ? raw.products : []),
+    ...(Array.isArray(rawVideo.products) ? rawVideo.products : []),
     ...(Array.isArray(list.products) ? list.products : []),
     ...(Array.isArray(breakdowns) ? breakdowns : []),
   ];
@@ -147,23 +153,6 @@ const hydrateBookingVideoProducts = async (bookings) => {
   for (const snapshot of snapshots) {
     const key = `${snapshot.shop_id}:${snapshot.video_id}`;
     if (!productsByVideo.has(key)) productsByVideo.set(key, affiliateProductsOfSnapshot(snapshot));
-  }
-  const orderSkus = TikTokAffiliateOrderSku?.findAll ? await TikTokAffiliateOrderSku.findAll({
-    where: {
-      shop_id: { [Op.in]: shopIds },
-      content_id: { [Op.in]: videoIds },
-      product_id: { [Op.not]: null },
-    },
-    attributes: ['shop_id', 'content_id', 'product_id', 'product_name'],
-  }).catch(() => []) : [];
-  for (const sku of orderSkus || []) {
-    const key = `${sku.shop_id}:${sku.content_id}`;
-    const list = productsByVideo.get(key) || [];
-    const prodId = String(sku.product_id || '').trim();
-    if (prodId && !list.some((p) => String(p.id) === prodId)) {
-      list.push({ id: prodId, name: sku.product_name || null, thumbnail_url: null });
-      productsByVideo.set(key, list);
-    }
   }
   for (const booking of bookings) {
     for (const video of booking.booking_videos || []) {

@@ -431,7 +431,7 @@ const productCtrOfBookingVideo = (snapshot) => {
   return totals.impressions > 0 ? totals.clicks / totals.impressions : null;
 };
 
-const BookingVideoProduct = ({ product }) => {
+const BookingVideoProduct = ({ product, isTarget }) => {
   const tooltipId = useId();
   const itemRef = useRef(null);
   const [failed, setFailed] = useState(false);
@@ -451,10 +451,10 @@ const BookingVideoProduct = ({ product }) => {
   };
   return (
     <span
-      className="booking-video-expansion__product"
+      className={`booking-video-expansion__product${isTarget ? ' booking-video-expansion__product--target' : ''}`}
       ref={itemRef}
       tabIndex={0}
-      aria-label={product.name || product.id}
+      aria-label={`${isTarget ? '[Sản phẩm Booking] ' : ''}${product.name || product.id}`}
       aria-describedby={tooltip ? tooltipId : undefined}
       onMouseEnter={showTooltip}
       onMouseLeave={() => setTooltip(null)}
@@ -471,6 +471,7 @@ const BookingVideoProduct = ({ product }) => {
           role="tooltip"
           style={{ left: tooltip.left, top: tooltip.top, width: tooltip.width }}
         >
+          {isTarget ? <span className="booking-video-expansion__product-target-tag">Sản phẩm Booking</span> : null}
           {product.name || product.id}
         </span>,
         document.body,
@@ -540,14 +541,32 @@ const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
   );
 };
 
-const BookingVideoProducts = ({ shopId, video, snapshot, label }) => {
+const BookingVideoProducts = ({ shopId, video, snapshot, label, booking }) => {
   const sourceProducts = useMemo(() => productsOfBookingVideo(video, snapshot), [snapshot, video]);
   const [products, setProducts] = useState(sourceProducts);
 
+  const targetProductMap = useMemo(() => {
+    const map = new Map();
+    for (const p of bookingProductsOf(booking)) {
+      const id = String(p?.id || p?.product_id || '').trim();
+      if (id) map.set(id, p);
+    }
+    return map;
+  }, [booking]);
+
   useEffect(() => {
-    setProducts(sourceProducts);
-    if (!shopId || !sourceProducts.length) return undefined;
-    const missing = sourceProducts.filter((product) => !product.name || !product.thumbnailUrl);
+    const enriched = sourceProducts.map((product) => {
+      const target = targetProductMap.get(String(product.id));
+      if (!target) return product;
+      return {
+        ...product,
+        name: product.name || target.name || target.title || null,
+        thumbnailUrl: product.thumbnailUrl || target.image_url || target.imageUrl || target.thumbnail_url || null,
+      };
+    });
+    setProducts(enriched);
+    if (!shopId || !enriched.length) return undefined;
+    const missing = enriched.filter((product) => !product.name || !product.thumbnailUrl);
     if (!missing.length) return undefined;
     let active = true;
     Promise.all(missing.map(async (product) => {
@@ -568,13 +587,30 @@ const BookingVideoProducts = ({ shopId, video, snapshot, label }) => {
       if (active) setProducts(loaded);
     });
     return () => { active = false; };
-  }, [shopId, sourceProducts]);
+  }, [shopId, sourceProducts, targetProductMap]);
+
+  const sortedProducts = useMemo(() => {
+    if (!targetProductMap.size || !products.length) return products;
+    return [...products].sort((a, b) => {
+      const aTarget = targetProductMap.has(String(a.id));
+      const bTarget = targetProductMap.has(String(b.id));
+      if (aTarget && !bTarget) return -1;
+      if (!aTarget && bTarget) return 1;
+      return 0;
+    });
+  }, [products, targetProductMap]);
 
   return (
     <div className="booking-video-expansion__products-card">
       <span className="booking-video-expansion__products-label">{label}</span>
       <span className="booking-video-expansion__products">
-        {products.length ? products.map((product) => <BookingVideoProduct product={product} key={product.id} />) : '—'}
+        {sortedProducts.length ? sortedProducts.map((product) => (
+          <BookingVideoProduct
+            product={product}
+            isTarget={targetProductMap.has(String(product.id))}
+            key={product.id}
+          />
+        )) : '—'}
       </span>
     </div>
   );
@@ -2360,7 +2396,7 @@ const BookingManagement = ({
                                                                   <div><span>{t('booking.videoGmv')}</span><strong>{formatMoney(latest.gross_gmv, latest.currency || booking.currency)}</strong></div>
                                                                   <div><span>{t('booking.videoItemsSold')}</span><strong>{formatNumber(latest.items_sold)}</strong></div>
                                                                   <div><span>{t('booking.videoCtr')}</span><strong>{formatRate(productCtrOfBookingVideo(latest))}</strong></div>
-                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} />
+                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} />
                                                                 </div>
                                                              ) : (
                                                                 <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.awaitingFirstSync')}</span></div>

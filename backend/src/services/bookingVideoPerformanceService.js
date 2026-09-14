@@ -55,8 +55,6 @@ const productIdsOfVideo = (video) => {
       raw.list,
       raw?.video?.list,
       detail?.performance?.intervals?.flatMap((interval) => interval?.sales?.breakdowns || []) || [],
-      raw.selected_product_ids,
-      raw.order_metrics?.product_ids,
     ];
   });
   return normalizedProductIds(
@@ -66,7 +64,6 @@ const productIdsOfVideo = (video) => {
     video?.raw_data?.product_id,
     video?.raw_data?.products,
     video?.raw_data?.video?.products,
-    video?.order_metrics?.product_ids,
     ...rawSources,
   );
 };
@@ -126,7 +123,6 @@ const normalizeCachedVideoCandidate = (videoInstance, orderMetrics = null) => {
     products: [
       ...(Array.isArray(video.raw_data?.products) ? video.raw_data.products : []),
       ...(Array.isArray(latest.raw_metrics?.products) ? latest.raw_metrics.products : []),
-      ...(orderMetrics?.product_ids ? orderMetrics.product_ids.map((id) => ({ id })) : []),
     ],
     cached_catalog: true,
     catalog_synced_at: latest.synced_at || video.last_seen_at || null,

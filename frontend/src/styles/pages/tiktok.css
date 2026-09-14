@@ -3928,18 +3928,38 @@
 
 .booking-video-expansion__social svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-.booking-video-expansion__products-card { display: grid; gap: 4px; min-width: 0; padding: 9px 10px; border-radius: 9px; background: var(--color-surface-subtle); }
+.booking-video-expansion__products-card { display: grid; gap: 6px; min-width: 0; padding: 9px 10px; border-radius: 9px; background: var(--color-surface-subtle); }
 
 .booking-video-expansion__products-label { color: var(--color-text-soft); font-size: .7rem; font-weight: 650; }
 
-.booking-video-expansion__products { display: flex; min-height: 30px; align-items: center; gap: 5px; color: var(--color-text-soft); }
+.booking-video-expansion__products { display: flex; min-height: 44px; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--color-text-soft); }
 
-.booking-video-expansion__product { display: block; width: 30px; height: 30px; flex: 0 0 30px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 7px; background: #fff; cursor: help; }
+.booking-video-expansion__product { display: block; width: 44px; height: 44px; flex: 0 0 44px; overflow: hidden; border: 1px solid var(--color-border); border-radius: 8px; background: #fff; cursor: help; transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+
+.booking-video-expansion__product:hover { transform: translateY(-1px); }
 
 .booking-video-expansion__product:focus-visible { outline: 2px solid var(--color-accent-strong); outline-offset: 2px; }
 
+.booking-video-expansion__product--target {
+  border: 2px solid #2563eb;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, .25);
+}
+
+.booking-video-expansion__product-target-tag {
+  display: block;
+  margin-bottom: 5px;
+  padding: 2px 7px;
+  width: fit-content;
+  border-radius: 4px;
+  background: #2563eb;
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .booking-video-expansion__product > img,
-.booking-video-expansion__product-placeholder { display: grid; width: 100%; height: 100%; place-items: center; background: #e8eef7; object-fit: cover; color: var(--color-accent-strong); font-size: .62rem; font-weight: 800; }
+.booking-video-expansion__product-placeholder { display: grid; width: 100%; height: 100%; place-items: center; background: #e8eef7; object-fit: cover; color: var(--color-accent-strong); font-size: .78rem; font-weight: 800; }
 
 .booking-video-expansion__product-tooltip { position: fixed; z-index: 12000; padding: 9px 11px; border: 1px solid rgba(15, 23, 42, .12); border-radius: 9px; background: #111827; color: #fff; box-shadow: 0 12px 30px rgba(15, 23, 42, .2); font-size: .76rem; line-height: 1.45; pointer-events: none; transform: translateY(0); }
 
