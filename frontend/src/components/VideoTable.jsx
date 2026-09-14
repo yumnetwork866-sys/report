@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { EyeOff, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { Eye, EyeOff, Heart, MessageCircle, Share2 } from 'lucide-react';
 import { fetchChannels, fetchVideoPage } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
@@ -159,6 +159,11 @@ const VideoTable = ({
       ? String(video.sales_currency).toUpperCase()
       : 'MYR';
     return formatMoney(video.gross_gmv, currency);
+  };
+  const formatOrders = (video) => {
+    const raw = video.orders ?? video.order_count;
+    if (raw === null || raw === undefined) return '—';
+    return formatNumber(raw);
   };
   const formatPublishedDate = (value) => {
     if (!value) return null;
@@ -326,17 +331,6 @@ const VideoTable = ({
       {error && !embedded ? <section className="section-card empty-state empty-state--compact">{error}</section> : null}
 
       <section className="section-card">
-        <div className="section-card__header">
-          {embedded ? (
-            <div>
-              <h2 className="section-card__title">{t('videoLibrary.heroTitle') || heroTitle}</h2>
-            </div>
-          ) : null}
-          <div className="chip-row">
-            <span className="chip chip--blue">{t('videoLibrary.channels', { count: channels.length })}</span>
-          </div>
-        </div>
-
         {!embedded ? <div className="filter-panel filter-panel--compact">
           <div className="field">
             <label htmlFor="channel-filter">{t('videoLibrary.channel')}</label>
@@ -355,15 +349,16 @@ const VideoTable = ({
             <thead>
               <tr>
                 <th>{t('videoLibrary.videos')}</th>
+                <th>{t('videoLibrary.publishedAt')}</th>
                 <th>{t('videoLibrary.hashtags')}</th>
-                <th className="cell-number">{t('videoLibrary.views')}</th>
+                <th className="cell-number">{t('videoLibrary.orders')}</th>
                 <th className="cell-number">{t('videoLibrary.gmv')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={4}>
+                  <td className="table-state-cell" colSpan={5}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('videoLibrary.loading')}</div>
@@ -461,12 +456,11 @@ const VideoTable = ({
                             )}
                           </div>
                           <div className="video-cell__sub-row">
-                            {publishedDate ? (
-                              <span className="video-cell__date" title={t('videoLibrary.publishedAt') || 'Ngày đăng'}>
-                                {publishedDate}
-                              </span>
-                            ) : null}
                             <div className="video-engagement video-engagement--inline">
+                              <span title={t('videoLibrary.views')} aria-label={`${t('videoLibrary.views')}: ${formatNumber(video.views)}`}>
+                                <Eye size={13} strokeWidth={1.8} aria-hidden="true" />
+                                {formatNumber(video.views)}
+                              </span>
                               <span title={t('videoLibrary.likes')} aria-label={`${t('videoLibrary.likes')}: ${formatNumber(video.likes)}`}>
                                 <Heart size={13} strokeWidth={1.8} aria-hidden="true" />
                                 {formatNumber(video.likes)}
@@ -484,6 +478,7 @@ const VideoTable = ({
                         </div>
                       </div>
                     </td>
+                    <td className="cell-date">{publishedDate || '—'}</td>
                     <td>
                       {hashtags.length ? (
                         <div className="video-hashtags" title={hashtags.join(' ')}>
@@ -492,13 +487,13 @@ const VideoTable = ({
                         </div>
                       ) : '—'}
                     </td>
-                    <td className="cell-number">{formatNumber(video.views)}</td>
+                    <td className="cell-number">{formatOrders(video)}</td>
                     <td className="cell-number"><strong>{formatGmv(video)}</strong></td>
                   </tr>;
                 })
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={4}>
+                  <td className="table-state-cell" colSpan={5}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('videoLibrary.noMatch')}</div>
                     </div>

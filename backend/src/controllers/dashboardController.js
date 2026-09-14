@@ -188,11 +188,13 @@ const getDashboard = async (req, res) => {
           COALESCE(SUM(v.comments), 0)::bigint AS comments,
           COALESCE(SUM(v.shares), 0)::bigint AS shares,
           COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
+          COALESCE(SUM(sales.orders), 0)::bigint AS orders,
           COALESCE(MAX(sales.currency), 'MYR') AS sales_currency
         FROM videos v
         LEFT JOIN LATERAL (
           SELECT
             snapshot.gross_gmv,
+            snapshot.orders,
             snapshot.currency
           FROM shop_videos shop_video
           JOIN shop_video_performance_snapshots snapshot
@@ -211,11 +213,13 @@ const getDashboard = async (req, res) => {
             COALESCE(SUM(v.likes), 0)::bigint AS likes,
             COALESCE(SUM(v.comments), 0)::bigint AS comments,
             COALESCE(SUM(v.shares), 0)::bigint AS shares,
-            COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv
+            COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
+            COALESCE(SUM(sales.orders), 0)::bigint AS orders
           FROM videos v
           LEFT JOIN LATERAL (
             SELECT
-              snapshot.gross_gmv
+              snapshot.gross_gmv,
+              snapshot.orders
             FROM shop_videos shop_video
             JOIN shop_video_performance_snapshots snapshot
               ON snapshot.shop_video_id = shop_video.id
@@ -352,12 +356,14 @@ const getDashboard = async (req, res) => {
           v.campaign,
           v.content_type,
           sales.gross_gmv,
+          sales.orders,
           sales.currency AS sales_currency,
           sales.synced_at AS sales_synced_at
         FROM videos v
         LEFT JOIN LATERAL (
           SELECT
             snapshot.gross_gmv,
+            snapshot.orders,
             snapshot.currency,
             snapshot.synced_at
           FROM shop_videos shop_video
@@ -381,7 +387,7 @@ const getDashboard = async (req, res) => {
       }),
     ]);
 
-    const numericFields = ['video_count', 'views', 'likes', 'comments', 'shares', 'gross_gmv', 'engagement_rate'];
+    const numericFields = ['video_count', 'views', 'likes', 'comments', 'shares', 'gross_gmv', 'orders', 'engagement_rate'];
     const withNumbers = (row) => Object.fromEntries(
       Object.entries(row).map(([key, value]) => [key, numericFields.includes(key) ? number(value) : value]),
     );
@@ -530,12 +536,14 @@ const getDashboardVideos = async (req, res) => {
             v.campaign,
             v.content_type,
             sales.gross_gmv,
+            sales.orders,
             sales.currency AS sales_currency,
             sales.synced_at AS sales_synced_at
           FROM videos v
           LEFT JOIN LATERAL (
             SELECT
               snapshot.gross_gmv,
+              snapshot.orders,
               snapshot.currency,
               snapshot.synced_at
             FROM shop_videos shop_video
@@ -559,7 +567,7 @@ const getDashboardVideos = async (req, res) => {
         }),
       ]);
 
-      const numericFields = ['video_count', 'views', 'likes', 'comments', 'shares', 'gross_gmv'];
+      const numericFields = ['video_count', 'views', 'likes', 'comments', 'shares', 'gross_gmv', 'orders'];
       const withNumbers = (row) => Object.fromEntries(
         Object.entries(row).map(([key, value]) => [key, numericFields.includes(key) ? number(value) : value]),
       );

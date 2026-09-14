@@ -73,6 +73,12 @@
 }
 
 
+.data-table .cell-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+
 .data-table .cell-actions {
   width: 1%;
   min-width: 74px;

@@ -805,11 +805,6 @@ const Dashboard = () => {
             <div className="dashboard-chart-summary" aria-hidden="true">
               <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
               <span>{t('dashboard.averageMetric', { metric: metricLabel })} <strong>{dailyMetric === 'gmv' ? formatGmvAmount(Math.round(averageChartValue), totals.sales_currency) : formatNumber(Math.round(averageChartValue))}</strong></span>
-              {chartMetric === 'date' ? (
-                <span style={{ fontSize: '0.76rem', color: 'var(--color-muted)' }}>
-                  {t('dashboard.clickToFilterDay')}
-                </span>
-              ) : null}
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">

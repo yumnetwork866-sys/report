@@ -90,6 +90,7 @@ const addLatestShopPerformance = async (videos) => {
     SELECT DISTINCT ON (sv.platform_video_id)
       sv.platform_video_id,
       snapshot.gross_gmv,
+      snapshot.orders,
       snapshot.currency,
       snapshot.synced_at
     FROM shop_videos sv
@@ -109,6 +110,7 @@ const addLatestShopPerformance = async (videos) => {
     return snapshot ? {
       ...value,
       gross_gmv: Number(snapshot.gross_gmv || 0),
+      orders: Number(snapshot.orders || 0),
       sales_currency: snapshot.currency || null,
       sales_synced_at: snapshot.synced_at || null,
     } : value;
