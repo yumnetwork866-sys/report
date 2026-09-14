@@ -431,7 +431,7 @@ const productCtrOfBookingVideo = (snapshot) => {
   return totals.impressions > 0 ? totals.clicks / totals.impressions : null;
 };
 
-const BookingVideoProduct = ({ product, isTarget }) => {
+const BookingVideoProduct = ({ product, isTarget, onClick }) => {
   const tooltipId = useId();
   const itemRef = useRef(null);
   const [failed, setFailed] = useState(false);
@@ -450,16 +450,17 @@ const BookingVideoProduct = ({ product, isTarget }) => {
     });
   };
   return (
-    <span
+    <button
+      type="button"
       className={`booking-video-expansion__product${isTarget ? ' booking-video-expansion__product--target' : ''}`}
       ref={itemRef}
-      tabIndex={0}
-      aria-label={`${isTarget ? '[Sản phẩm Booking] ' : ''}${product.name || product.id}`}
+      aria-label={`${isTarget ? '[Sản phẩm Booking] ' : ''}${product.name || product.id} - Xem chi tiết đơn hàng`}
       aria-describedby={tooltip ? tooltipId : undefined}
       onMouseEnter={showTooltip}
       onMouseLeave={() => setTooltip(null)}
       onFocus={showTooltip}
       onBlur={() => setTooltip(null)}
+      onClick={onClick}
     >
       {product.thumbnailUrl && !failed
         ? <img src={product.thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
@@ -473,10 +474,11 @@ const BookingVideoProduct = ({ product, isTarget }) => {
         >
           {isTarget ? <span className="booking-video-expansion__product-target-tag">Sản phẩm Booking</span> : null}
           {product.name || product.id}
+          <span className="booking-video-expansion__product-tooltip-hint">Nhấp để xem chi tiết đơn</span>
         </span>,
         document.body,
       ) : null}
-    </span>
+    </button>
   );
 };
 
@@ -519,7 +521,7 @@ const BookingDetailProduct = ({ product, onRemove }) => {
   );
 };
 
-const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
+const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber, onSelectProduct }) => {
   const products = useMemo(
     () => bookingProductOrderBreakdown(booking, orders),
     [booking, orders],
@@ -530,10 +532,19 @@ const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
         <strong>{t('booking.productOrderBreakdown')}</strong>
       </div>
       {products.length ? <div className="booking-product-order-expansion__list">
-        {products.map((product) => <article className="booking-product-order-expansion__item" key={product.id}>
+        {products.map((product) => <article
+          className="booking-product-order-expansion__item booking-product-order-expansion__item--clickable"
+          key={product.id}
+          role="button"
+          tabIndex={0}
+          onClick={() => onSelectProduct?.({ product, booking })}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelectProduct?.({ product, booking }); }}
+          title="Nhấp để xem chi tiết đơn hàng"
+        >
           <BookingDetailProduct product={product} />
           <div className="booking-product-order-expansion__metrics">
             <strong>{t('booking.ordersCount', { count: formatNumber(product.orderCount) })}</strong>
+            <span className="booking-product-order-expansion__hint">Xem đơn →</span>
           </div>
         </article>)}
       </div> : <div className="empty-state empty-state--compact">{t('booking.noAttachedProducts')}</div>}
@@ -541,7 +552,368 @@ const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber }) => {
   );
 };
 
-const BookingVideoProducts = ({ shopId, video, snapshot, label, booking }) => {
+const formatOrderTimestamp = (value) => {
+  if (!value) return '—';
+  const num = Number(value);
+  const date = !Number.isNaN(num) && num > 0
+    ? new Date(num > 1e11 ? num : num * 1000)
+    : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} ${hours}:${minutes}`;
+};
+
+const extractProductOrderRows = (orders = [], productId, creatorUsername, videoId = null) => {
+  const normProdId = String(productId || '').trim();
+  const normCreator = String(creatorUsername || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const normVideoId = String(videoId || '').trim();
+
+  const rows = [];
+  const orderIds = new Set();
+  let totalItems = 0;
+  let totalRefundedItems = 0;
+  let totalGmv = 0;
+  let totalRefundedGmv = 0;
+  let totalCommission = 0;
+  let currency = 'MYR';
+
+  for (const order of orders) {
+    const orderId = String(order?.id || order?.order_id || '').trim();
+    const orderTime = order?.create_time || order?.order_create_time || order?.created_time || order?.paid_time;
+    const orderStatus = order?.order_status || order?.status || null;
+
+    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
+      const skuProdId = String(sku?.product_id || '').trim();
+      if (normProdId && skuProdId !== normProdId) continue;
+
+      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+      if (normCreator && skuCreator && skuCreator !== normCreator) continue;
+
+      const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
+      const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
+      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
+      const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
+      const price = Math.max(0, finiteNumber(rawPrice));
+      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
+      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
+      const skuCurrency = sku?.price?.currency || sku?.currency || order?.currency || currency;
+      currency = skuCurrency;
+
+      const gmv = price * quantity;
+      const refundedGmv = price * refundedQuantity;
+      const commission = finiteNumber(sku?.commission_amount ?? sku?.estimated_commission)
+        || (price * (quantity - refundedQuantity) * commissionRate);
+
+      const isVideoMatch = normVideoId ? String(sku?.content_id || '').trim() === normVideoId : false;
+      const contentType = String(sku?.content_type || (sku?.content_id ? 'VIDEO' : 'OTHER')).toUpperCase();
+
+      totalItems += quantity;
+      totalRefundedItems += refundedQuantity;
+      totalGmv += gmv;
+      totalRefundedGmv += refundedGmv;
+      totalCommission += commission;
+      if (orderId) orderIds.add(orderId);
+
+      rows.push({
+        orderId: orderId || `order-${rows.length}`,
+        orderTime,
+        orderStatus: sku?.item_status || orderStatus || 'COMPLETED',
+        skuId: sku?.sku_id || '',
+        skuName: sku?.sku_name || sku?.product_name || 'Mặc định',
+        quantity,
+        refundedQuantity,
+        price,
+        gmv,
+        refundedGmv,
+        commission,
+        currency: skuCurrency,
+        contentType,
+        contentId: sku?.content_id || null,
+        videoTitle: sku?.video_title || null,
+        isVideoMatch,
+      });
+    }
+  }
+
+  rows.sort((a, b) => {
+    const timeA = Number(a.orderTime) || (new Date(a.orderTime).getTime() / 1000) || 0;
+    const timeB = Number(b.orderTime) || (new Date(b.orderTime).getTime() / 1000) || 0;
+    return timeB - timeA;
+  });
+
+  return {
+    rows,
+    totalOrders: orderIds.size,
+    totalItems,
+    totalRefundedItems,
+    totalGmv,
+    totalRefundedGmv,
+    totalCommission,
+    currency,
+  };
+};
+
+const BookingProductOrderDetailModal = ({
+  product,
+  booking,
+  video,
+  orders = [],
+  loading = false,
+  onClose,
+  formatMoney,
+  formatNumber,
+  t,
+  currency,
+}) => {
+  const [filterMode, setFilterMode] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const isTarget = useMemo(() => {
+    const targetProducts = bookingProductsOf(booking);
+    return targetProducts.some((p) => String(p.id || p.product_id) === String(product?.id));
+  }, [booking, product]);
+
+  const {
+    rows,
+    totalOrders,
+    totalItems,
+    totalRefundedItems,
+    totalGmv,
+    totalCommission,
+    currency: orderCurrency,
+  } = useMemo(
+    () => extractProductOrderRows(orders, product?.id, booking?.creator_username, video?.platform_video_id),
+    [orders, product?.id, booking?.creator_username, video?.platform_video_id],
+  );
+
+  const videoMatchRowsCount = useMemo(() => rows.filter((r) => r.isVideoMatch).length, [rows]);
+
+  const filteredRows = useMemo(() => {
+    let list = rows;
+    if (filterMode === 'video') {
+      list = list.filter((r) => r.isVideoMatch);
+    }
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => (
+        r.orderId.toLowerCase().includes(q)
+        || r.skuName.toLowerCase().includes(q)
+        || (r.videoTitle && r.videoTitle.toLowerCase().includes(q))
+      ));
+    }
+    return list;
+  }, [rows, filterMode, searchQuery]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const activeCurrency = orderCurrency || currency;
+
+  return (
+    <div
+      className="booking-product-order-modal-backdrop"
+      role="presentation"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div
+        className="booking-product-order-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="product-order-detail-title"
+      >
+        <header className="booking-product-order-modal__header">
+          <div className="booking-product-order-modal__product-info">
+            <div className="booking-product-order-modal__thumbnail">
+              {product?.thumbnailUrl ? (
+                <img src={product.thumbnailUrl} alt="" />
+              ) : (
+                <span className="booking-product-order-modal__placeholder">P</span>
+              )}
+            </div>
+            <div className="booking-product-order-modal__title-box">
+              <div className="booking-product-order-modal__meta">
+                {isTarget ? <span className="chip chip--positive">Sản phẩm Booking</span> : null}
+                {booking?.creator_username ? <span className="chip">@{booking.creator_username.replace(/^@/, '')}</span> : null}
+                {video ? (
+                  <span className="chip" title={video.title || video.platform_video_id}>
+                    Video: {video.title ? (video.title.length > 25 ? `${video.title.slice(0, 25)}...` : video.title) : video.platform_video_id}
+                  </span>
+                ) : null}
+              </div>
+              <h2 id="product-order-detail-title" className="booking-product-order-modal__title" title={product?.name || product?.id}>
+                {product?.name || product?.id}
+              </h2>
+              <small className="row-subtitle">Mã sản phẩm: {product?.id}</small>
+            </div>
+          </div>
+          <button
+            className="button button--ghost"
+            type="button"
+            aria-label={t('common.close')}
+            onClick={onClose}
+            style={{ fontSize: '1.25rem', minWidth: '36px', height: '36px' }}
+          >
+            ×
+          </button>
+        </header>
+
+        <div className="booking-product-order-modal__body">
+          <div className="booking-product-order-modal__stats">
+            <div className="booking-product-order-modal__stat">
+              <span>{t('booking.orderCount', { defaultValue: 'Số đơn hàng' })}</span>
+              <strong>{formatNumber(totalOrders)}</strong>
+            </div>
+            <div className="booking-product-order-modal__stat">
+              <span>{t('booking.itemsSoldTotal', { defaultValue: 'Số lượng đã bán' })}</span>
+              <strong>
+                {formatNumber(totalItems)}
+                {totalRefundedItems > 0 ? (
+                  <small style={{ fontWeight: 500, fontSize: '.75rem', color: 'var(--color-danger, #ef4444)' }}>
+                    {' '}(-{totalRefundedItems})
+                  </small>
+                ) : null}
+              </strong>
+            </div>
+            <div className="booking-product-order-modal__stat">
+              <span>{t('booking.videoGmv', { defaultValue: 'Doanh số (GMV)' })}</span>
+              <strong>{formatMoney(totalGmv, activeCurrency)}</strong>
+            </div>
+            <div className="booking-product-order-modal__stat">
+              <span>{t('booking.estimatedCommission', { defaultValue: 'Hoa hồng ước tính' })}</span>
+              <strong>{formatMoney(totalCommission, activeCurrency)}</strong>
+            </div>
+          </div>
+
+          <div className="booking-product-order-modal__filter-bar">
+            {video && videoMatchRowsCount > 0 ? (
+              <div className="booking-product-order-modal__tabs">
+                <button
+                  type="button"
+                  className={`booking-product-order-modal__tab${filterMode === 'all' ? ' booking-product-order-modal__tab--active' : ''}`}
+                  onClick={() => setFilterMode('all')}
+                >
+                  Tất cả đơn của KOC ({rows.length})
+                </button>
+                <button
+                  type="button"
+                  className={`booking-product-order-modal__tab${filterMode === 'video' ? ' booking-product-order-modal__tab--active' : ''}`}
+                  onClick={() => setFilterMode('video')}
+                >
+                  Đơn từ video này ({videoMatchRowsCount})
+                </button>
+              </div>
+            ) : <div />}
+            <input
+              type="search"
+              className="booking-product-order-modal__search"
+              placeholder="Tìm mã đơn, phân loại..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+
+          {loading ? (
+            <div className="empty-state" style={{ padding: '36px 0' }}>
+              <span className="loading-dot" />
+              <span>Đang tải danh sách đơn hàng...</span>
+            </div>
+          ) : filteredRows.length > 0 ? (
+            <div className="booking-product-order-modal__table-wrap">
+              <table className="booking-product-order-modal__table">
+                <thead>
+                  <tr>
+                    <th>Mã đơn hàng</th>
+                    <th>Thời gian đặt</th>
+                    <th>Phân loại SKU</th>
+                    <th style={{ textAlign: 'right' }}>Số lượng</th>
+                    <th style={{ textAlign: 'right' }}>Đơn giá</th>
+                    <th style={{ textAlign: 'right' }}>Thành tiền</th>
+                    <th style={{ textAlign: 'right' }}>Hoa hồng</th>
+                    <th>Nguồn</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((row, idx) => (
+                    <tr key={`${row.orderId}:${row.skuId || idx}`}>
+                      <td>
+                        <strong style={{ fontFamily: 'monospace', fontSize: '.82rem' }}>{row.orderId}</strong>
+                      </td>
+                      <td style={{ whiteSpace: 'nowrap', color: 'var(--color-text-soft)' }}>
+                        {formatOrderTimestamp(row.orderTime)}
+                      </td>
+                      <td>
+                        <span title={row.skuName}>{row.skuName}</span>
+                      </td>
+                      <td style={{ textAlign: 'right', fontWeight: 650 }}>
+                        {formatNumber(row.quantity)}
+                        {row.refundedQuantity > 0 ? (
+                          <small style={{ color: 'var(--color-danger, #ef4444)', marginLeft: '4px' }}>
+                            (-{row.refundedQuantity})
+                          </small>
+                        ) : null}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                        {formatMoney(row.price, row.currency)}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 650 }}>
+                        {formatMoney(row.gmv, row.currency)}
+                      </td>
+                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--color-accent-strong)' }}>
+                        {formatMoney(row.commission, row.currency)}
+                      </td>
+                      <td>
+                        {row.isVideoMatch ? (
+                          <span
+                            className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--match"
+                            title={`Video: ${row.contentId}`}
+                          >
+                            Video này
+                          </span>
+                        ) : row.contentType === 'VIDEO' ? (
+                          <span
+                            className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--other"
+                            title={`Video ID: ${row.contentId}`}
+                          >
+                            Video khác
+                          </span>
+                        ) : (
+                          <span className="booking-product-order-modal__tag-other">
+                            {row.contentType || 'Khác'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="empty-state" style={{ padding: '36px 0' }}>
+              <p>
+                {searchQuery
+                  ? 'Không tìm thấy đơn hàng nào khớp với tìm kiếm.'
+                  : filterMode === 'video'
+                    ? 'Chưa ghi nhận đơn hàng nào được gắn trực tiếp vào video này.'
+                    : 'Chưa có đơn hàng nào phát sinh cho sản phẩm này trong khoảng thời gian đã chọn.'}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const BookingVideoProducts = ({ shopId, video, snapshot, label, booking, onSelectProduct }) => {
   const sourceProducts = useMemo(() => productsOfBookingVideo(video, snapshot), [snapshot, video]);
   const [products, setProducts] = useState(sourceProducts);
 
@@ -609,6 +981,7 @@ const BookingVideoProducts = ({ shopId, video, snapshot, label, booking }) => {
             product={product}
             isTarget={targetProductMap.has(String(product.id))}
             key={product.id}
+            onClick={() => onSelectProduct?.({ product, video, booking })}
           />
         )) : '—'}
       </span>
@@ -1061,6 +1434,7 @@ const BookingManagement = ({
   const [expandedBookingId, setExpandedBookingId] = useState(() => bookingUiSession().expandedBookingId ?? null);
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [productOrderDetailModal, setProductOrderDetailModal] = useState(null);
   const [creatorDeleteConfirmOpen, setCreatorDeleteConfirmOpen] = useState(false);
   const [bookingDeleteConfirm, setBookingDeleteConfirm] = useState(null);
   const [detailProducts, setDetailProducts] = useState([]);
@@ -2359,7 +2733,7 @@ const BookingManagement = ({
                                             <tr className="booking-video-detail-row">
                                               <td colSpan={9}>
                                                 {bookingTab === 'product' ? (
-                                                  <BookingProductOrderExpansion booking={booking} orders={productOrdersByShop[String(booking.target_shop_id)] || []} t={t} formatNumber={formatNumber} />
+                                                  <BookingProductOrderExpansion booking={booking} orders={productOrdersByShop[String(booking.target_shop_id)] || []} t={t} formatNumber={formatNumber} onSelectProduct={setProductOrderDetailModal} />
                                                 ) : (
                                                   <div className="booking-video-expansion">
                                                     {bookingVideos.length ? (
@@ -2396,7 +2770,7 @@ const BookingManagement = ({
                                                                   <div><span>{t('booking.videoGmv')}</span><strong>{formatMoney(latest.gross_gmv, latest.currency || booking.currency)}</strong></div>
                                                                   <div><span>{t('booking.videoItemsSold')}</span><strong>{formatNumber(latest.items_sold)}</strong></div>
                                                                   <div><span>{t('booking.videoCtr')}</span><strong>{formatRate(productCtrOfBookingVideo(latest))}</strong></div>
-                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} />
+                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} onSelectProduct={setProductOrderDetailModal} />
                                                                 </div>
                                                              ) : (
                                                                 <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.awaitingFirstSync')}</span></div>
@@ -2583,6 +2957,22 @@ const BookingManagement = ({
             </div>
           </div>
         </div>,
+        document.body,
+      ) : null}
+
+      {productOrderDetailModal ? createPortal(
+        <BookingProductOrderDetailModal
+          product={productOrderDetailModal.product}
+          booking={productOrderDetailModal.booking}
+          video={productOrderDetailModal.video}
+          orders={productOrdersByShop[String(productOrderDetailModal.booking?.target_shop_id)] || []}
+          loading={productOrdersLoading}
+          onClose={() => setProductOrderDetailModal(null)}
+          formatMoney={formatMoney}
+          formatNumber={formatNumber}
+          t={t}
+          currency={productOrderDetailModal.booking?.currency || selectedCurrency}
+        />,
         document.body,
       ) : null}
     </div>

@@ -65,9 +65,16 @@ function getSnapshot() {
   return getStoredLanguage();
 }
 
-function getTranslation(path, language = getStoredLanguage()) {
+function getTranslation(path, language = getStoredLanguage(), defaultValue) {
   const locale = messages[language] || messages[DEFAULT_LANGUAGE];
-  return path.split('.').reduce((current, key) => current?.[key], locale) ?? path;
+  const translated = path.split('.').reduce((current, key) => current?.[key], locale);
+  if (translated !== undefined && translated !== null) {
+    return translated;
+  }
+  if (defaultValue !== undefined && defaultValue !== null) {
+    return defaultValue;
+  }
+  return path;
 }
 
 function formatMessage(template, values = {}) {
@@ -87,7 +94,12 @@ export function useLanguage() {
 
 export function useI18n() {
   const language = useLanguage();
-  const t = useMemo(() => (path, values) => formatMessage(getTranslation(path, language), values), [language]);
+  const t = useMemo(() => (path, values) => {
+    const defaultValue = (values && typeof values === 'object' && 'defaultValue' in values)
+      ? values.defaultValue
+      : undefined;
+    return formatMessage(getTranslation(path, language, defaultValue), values);
+  }, [language]);
 
   return {
     language,
