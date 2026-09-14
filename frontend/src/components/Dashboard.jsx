@@ -14,6 +14,12 @@ import { fetchDashboard } from '../lib/api';
 import { useI18n } from '../lib/language';
 import VideoTable, { ChannelPicker } from './VideoTable';
 import DatePickerInput from './DatePickerInput';
+import {
+  getStoredSelectedChannelId,
+  resolveSelectedChannelId,
+  setStoredSelectedChannelId,
+  subscribeSelectedChannel,
+} from '../lib/channelSelection';
 
 const chartTick = { fill: 'var(--color-muted)', fontSize: 12 };
 const dateInputValue = (date) => [
@@ -172,15 +178,21 @@ const Dashboard = ({ heroTitle }) => {
     total: 0,
     total_pages: 1,
   });
-  const [selectedChannelId, setSelectedChannelId] = useState('');
+  const [selectedChannelId, setSelectedChannelId] = useState(() => getStoredSelectedChannelId() || '');
   const [selectedUserId, setSelectedUserId] = useState('all');
-  const [chartMetric, setChartMetric] = useState('views');
+  const [chartMetric, setChartMetric] = useState('date');
   const [periodPreset, setPeriodPreset] = useState('30d');
   const initialPeriod = dashboardPeriodRange('30d');
   const [startDate, setStartDate] = useState(initialPeriod.startDate);
   const [endDate, setEndDate] = useState(initialPeriod.endDate);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const handleChannelChange = (nextChannelId) => {
+    const id = String(nextChannelId || '');
+    setStoredSelectedChannelId(id);
+    setSelectedChannelId(id);
+  };
 
   const formatNumber = (value) => Number(value || 0).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US');
 
@@ -242,11 +254,27 @@ const Dashboard = ({ heroTitle }) => {
   }, [periodPreset]);
 
   useEffect(() => {
-    setSelectedChannelId((current) => (
-      channels.some((channel) => String(channel.id) === current)
-        ? current
-        : String(channels[0]?.id || '')
-    ));
+    if (!channels.length) return;
+    setSelectedChannelId((current) => {
+      const preferred = current || getStoredSelectedChannelId();
+      const resolved = resolveSelectedChannelId(channels, preferred);
+      if (resolved && resolved !== getStoredSelectedChannelId()) {
+        setStoredSelectedChannelId(resolved);
+      }
+      return resolved;
+    });
+  }, [channels]);
+
+  useEffect(() => {
+    return subscribeSelectedChannel((event) => {
+      const nextId = event?.detail ?? getStoredSelectedChannelId();
+      if (!nextId) return;
+      setSelectedChannelId((current) => {
+        if (String(nextId) === String(current)) return current;
+        if (channels.length && !channels.some((channel) => String(channel.id) === String(nextId))) return current;
+        return String(nextId);
+      });
+    });
   }, [channels]);
 
   useEffect(() => {
@@ -336,7 +364,7 @@ const Dashboard = ({ heroTitle }) => {
                 id="dashboard-channel"
                 channels={channels}
                 value={selectedChannelId}
-                onChange={setSelectedChannelId}
+                onChange={handleChannelChange}
                 disabled={loading}
               />
             </div>
@@ -354,7 +382,7 @@ const Dashboard = ({ heroTitle }) => {
             <div className="field dashboard-metric-filter">
               <label htmlFor="dashboard-metric">{t('dashboard.metric')}</label>
               <select id="dashboard-metric" value={chartMetric} onChange={(event) => setChartMetric(event.target.value)}>
-                {['views', 'date', 'likes', 'shares'].map((metric) => (
+                {['date', 'views', 'likes', 'shares'].map((metric) => (
                   <option key={metric} value={metric}>{t(`dashboard.metric_${metric}`)}</option>
                 ))}
               </select>
@@ -434,7 +462,7 @@ const Dashboard = ({ heroTitle }) => {
           error,
         }}
         selectedChannelId={selectedChannelId}
-        onSelectedChannelChange={setSelectedChannelId}
+        onSelectedChannelChange={handleChannelChange}
         pagination={videoPagination}
         currentPage={videoPage}
         onPageChange={setVideoPage}

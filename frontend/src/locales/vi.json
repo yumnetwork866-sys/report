@@ -233,7 +233,8 @@
     "channelAvatar": "Ảnh đại diện kênh",
     "pagination": "Phân trang video",
     "pageOf": "Trang {{page}} / {{total}}",
-    "loadError": "Không tải được video"
+    "loadError": "Không tải được video",
+    "publishedAt": "Ngày đăng"
   },
   "reports": {
     "heroTitle": "Báo cáo đánh giá hiệu quả KOC",

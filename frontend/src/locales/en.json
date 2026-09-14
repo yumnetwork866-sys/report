@@ -238,7 +238,8 @@
     "channelAvatar": "Channel avatar",
     "pagination": "Video pagination",
     "pageOf": "Page {{page}} / {{total}}",
-    "loadError": "Failed to load videos"
+    "loadError": "Failed to load videos",
+    "publishedAt": "Published date"
   },
   "reports": {
     "heroTitle": "KOC performance reports",

@@ -5,6 +5,12 @@ import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 import Pagination from './Pagination';
 import AppAvatar from './AppAvatar';
+import {
+  getStoredSelectedChannelId,
+  resolveSelectedChannelId,
+  setStoredSelectedChannelId,
+  subscribeSelectedChannel,
+} from '../lib/channelSelection';
 
 const PAGE_SIZE = 20;
 
@@ -147,11 +153,25 @@ const VideoTable = ({
       : 'MYR';
     return formatMoney(video.gross_gmv, currency);
   };
+  const formatPublishedDate = (value) => {
+    if (!value) return null;
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return new Intl.DateTimeFormat(locale, {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      }).format(date);
+    } catch {
+      return null;
+    }
+  };
   const [localVideos, setLocalVideos] = useState([]);
   const [localChannels, setLocalChannels] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
   const [localError, setLocalError] = useState('');
-  const [localSelectedChannelId, setLocalSelectedChannelId] = useState('');
+  const [localSelectedChannelId, setLocalSelectedChannelId] = useState(() => getStoredSelectedChannelId() || '');
   const [localPagination, setLocalPagination] = useState({ total: 0, total_pages: 1 });
   const [localSummary, setLocalSummary] = useState({});
   const [page, setPage] = useState(1);
@@ -162,7 +182,12 @@ const VideoTable = ({
   const error = usesProvidedData ? String(data.error || '') : localError;
   const isChannelControlled = controlledChannelId !== undefined;
   const selectedChannelId = isChannelControlled ? String(controlledChannelId) : localSelectedChannelId;
-  const changeSelectedChannel = isChannelControlled ? onSelectedChannelChange : setLocalSelectedChannelId;
+  const handleLocalChannelChange = (nextChannelId) => {
+    const id = String(nextChannelId || '');
+    setStoredSelectedChannelId(id);
+    setLocalSelectedChannelId(id);
+  };
+  const changeSelectedChannel = isChannelControlled ? onSelectedChannelChange : handleLocalChannelChange;
   const isPageControlled = controlledPage !== undefined;
   const activePage = isPageControlled ? Number(controlledPage) : page;
   const changePage = isPageControlled ? onPageChange : setPage;
@@ -206,12 +231,28 @@ const VideoTable = ({
   }, [activePage, localSelectedChannelId, t, usesProvidedData]);
 
   useEffect(() => {
+    if (isChannelControlled || !channels.length) return;
+    setLocalSelectedChannelId((current) => {
+      const preferred = current || getStoredSelectedChannelId();
+      const resolved = resolveSelectedChannelId(channels, preferred);
+      if (resolved && resolved !== getStoredSelectedChannelId()) {
+        setStoredSelectedChannelId(resolved);
+      }
+      return resolved;
+    });
+  }, [channels, isChannelControlled]);
+
+  useEffect(() => {
     if (isChannelControlled) return;
-    setLocalSelectedChannelId((current) => (
-      channels.some((channel) => String(channel.id) === current)
-        ? current
-        : String(channels[0]?.id || '')
-    ));
+    return subscribeSelectedChannel((event) => {
+      const nextId = event?.detail ?? getStoredSelectedChannelId();
+      if (!nextId) return;
+      setLocalSelectedChannelId((current) => {
+        if (String(nextId) === String(current)) return current;
+        if (channels.length && !channels.some((channel) => String(channel.id) === String(nextId))) return current;
+        return String(nextId);
+      });
+    });
   }, [channels, isChannelControlled]);
 
   const filteredVideos = useMemo(() => {
@@ -310,13 +351,12 @@ const VideoTable = ({
                 <th>{t('videoLibrary.hashtags')}</th>
                 <th className="cell-number">{t('videoLibrary.views')}</th>
                 <th className="cell-number">{t('videoLibrary.gmv')}</th>
-                <th className="cell-number">{t('videoLibrary.engagement')}</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={4}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('videoLibrary.loading')}</div>
@@ -330,6 +370,7 @@ const VideoTable = ({
                     .replace(/#[\p{L}\p{N}_]+/gu, '')
                     .replace(/\s+/g, ' ')
                     .trim() || t('videoLibrary.untitledVideo');
+                  const publishedDate = formatPublishedDate(video.published_at);
                   return <tr key={video.id}>
                     <td>
                       <div className="video-cell">
@@ -398,6 +439,27 @@ const VideoTable = ({
                           <div className="video-cell__title-row">
                             <span className="row-title">{displayTitle}</span>
                           </div>
+                          <div className="video-cell__sub-row">
+                            {publishedDate ? (
+                              <span className="video-cell__date" title={t('videoLibrary.publishedAt') || 'Ngày đăng'}>
+                                {publishedDate}
+                              </span>
+                            ) : null}
+                            <div className="video-engagement video-engagement--inline">
+                              <span title={t('videoLibrary.likes')} aria-label={`${t('videoLibrary.likes')}: ${formatNumber(video.likes)}`}>
+                                <Heart size={13} strokeWidth={1.8} aria-hidden="true" />
+                                {formatNumber(video.likes)}
+                              </span>
+                              <span title={t('videoLibrary.comments')} aria-label={`${t('videoLibrary.comments')}: ${formatNumber(video.comments)}`}>
+                                <MessageCircle size={13} strokeWidth={1.8} aria-hidden="true" />
+                                {formatNumber(video.comments)}
+                              </span>
+                              <span title={t('videoLibrary.shares')} aria-label={`${t('videoLibrary.shares')}: ${formatNumber(video.shares)}`}>
+                                <Share2 size={13} strokeWidth={1.8} aria-hidden="true" />
+                                {formatNumber(video.shares)}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -411,27 +473,11 @@ const VideoTable = ({
                     </td>
                     <td className="cell-number">{formatNumber(video.views)}</td>
                     <td className="cell-number"><strong>{formatGmv(video)}</strong></td>
-                    <td className="cell-number">
-                      <div className="video-engagement">
-                        <span title={t('videoLibrary.likes')} aria-label={`${t('videoLibrary.likes')}: ${formatNumber(video.likes)}`}>
-                          <Heart size={15} strokeWidth={1.8} aria-hidden="true" />
-                          {formatNumber(video.likes)}
-                        </span>
-                        <span title={t('videoLibrary.comments')} aria-label={`${t('videoLibrary.comments')}: ${formatNumber(video.comments)}`}>
-                          <MessageCircle size={15} strokeWidth={1.8} aria-hidden="true" />
-                          {formatNumber(video.comments)}
-                        </span>
-                        <span title={t('videoLibrary.shares')} aria-label={`${t('videoLibrary.shares')}: ${formatNumber(video.shares)}`}>
-                          <Share2 size={15} strokeWidth={1.8} aria-hidden="true" />
-                          {formatNumber(video.shares)}
-                        </span>
-                      </div>
-                    </td>
                   </tr>;
                 })
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={4}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('videoLibrary.noMatch')}</div>
                     </div>
