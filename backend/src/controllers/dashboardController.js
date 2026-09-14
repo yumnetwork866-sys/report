@@ -174,12 +174,45 @@ const getDashboard = async (req, res) => {
           app_user.name,
           app_user.email,
           app_user.avatar_url
-        FROM user_content_attributions attribution
-        JOIN users app_user ON app_user.id = attribution.user_id
-        WHERE jsonb_typeof(attribution.hashtags) = 'array'
-          AND jsonb_array_length(attribution.hashtags) > 0
-        ORDER BY LOWER(app_user.name), app_user.id
-      `, { type: QueryTypes.SELECT }),
+        FROM users app_user
+        LEFT JOIN user_content_attributions attribution ON attribution.user_id = app_user.id
+        WHERE (
+          (jsonb_typeof(attribution.hashtags) = 'array' AND jsonb_array_length(attribution.hashtags) > 0)
+          OR EXISTS (
+            SELECT 1
+            FROM video_assignments va
+            WHERE va.user_id = app_user.id
+          )
+        )
+        AND (
+          :channelId::int IS NULL
+          OR EXISTS (
+            SELECT 1
+            FROM videos v
+            CROSS JOIN LATERAL jsonb_array_elements_text(
+              CASE
+                WHEN jsonb_typeof(attribution.hashtags) = 'array' THEN attribution.hashtags
+                ELSE '[]'::jsonb
+              END
+            ) configured_hashtag(value)
+            WHERE v.channel_id = :channelId
+              AND LOWER(configured_hashtag.value) = ANY(
+                regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
+              )
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM video_assignments va
+            JOIN videos v ON v.id = va.video_id
+            WHERE va.user_id = app_user.id
+              AND v.channel_id = :channelId
+          )
+        )
+        ORDER BY LOWER(COALESCE(app_user.name, app_user.email, '')), app_user.id
+      `, {
+        type: QueryTypes.SELECT,
+        replacements: { channelId },
+      }),
       sequelize.query(`
         SELECT
           COUNT(*)::int AS video_count,

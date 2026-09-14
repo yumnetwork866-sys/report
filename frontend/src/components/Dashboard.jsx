@@ -282,6 +282,7 @@ const Dashboard = () => {
     const id = String(nextChannelId || '');
     setStoredSelectedChannelId(id);
     setSelectedChannelId(id);
+    setSelectedUserId('all');
   };
 
   const formatNumber = useCallback(
@@ -415,7 +416,11 @@ const Dashboard = () => {
       if (cached) {
         setVideos(cached.videos || []);
         setChannels(cached.channels || []);
-        setUsers(cached.users || []);
+        const cachedUsers = cached.users || [];
+        setUsers(cachedUsers);
+        if (selectedUserId !== 'all' && !cachedUsers.some((u) => String(u.id) === String(selectedUserId))) {
+          setSelectedUserId('all');
+        }
         setTotals(cached.totals || {});
         setChartRows(cached.chart || []);
         setVideoPagination(cached.video_pagination || {
@@ -436,9 +441,13 @@ const Dashboard = () => {
           signal: controller.signal,
           ...params,
         });
+        const nextUsers = payload.users || [];
         setVideos(payload.videos || []);
         setChannels(payload.channels || []);
-        setUsers(payload.users || []);
+        setUsers(nextUsers);
+        if (selectedUserId !== 'all' && !nextUsers.some((u) => String(u.id) === String(selectedUserId))) {
+          setSelectedUserId('all');
+        }
         setTotals(payload.totals || {});
         setChartRows(payload.chart || []);
         setVideoPagination(payload.video_pagination || {
