@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { loginAdmin } from '../lib/api';
 import { saveStoredSession } from '../lib/session';
 import { useI18n } from '../lib/language';
-import AppLogo from './AppLogo';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -41,20 +40,6 @@ const Login = () => {
 
   return (
     <main className="login-page">
-      <section className="login-page__intro" aria-labelledby="login-title">
-        <div className="login-page__brand-mark" aria-hidden="true">
-          <AppLogo size="lg" alt="" />
-        </div>
-        <p className="login-page__eyebrow">{t('login.workspace')}</p>
-        <h1 id="login-title" className="login-page__title">{t('login.title')}</h1>
-        <p className="login-page__subtitle">{t('login.subtitle')}</p>
-        <div className="login-page__features" aria-label={t('login.featuresLabel')}>
-          <span>{t('login.featureReports')}</span>
-          <span>{t('login.featureChannels')}</span>
-          <span>{t('login.featureTeam')}</span>
-        </div>
-      </section>
-
       <section className="login-card" aria-labelledby="login-form-title">
         <div className="login-card__header">
           <h2 id="login-form-title">{t('login.formTitle')}</h2>
