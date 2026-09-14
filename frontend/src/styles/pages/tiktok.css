@@ -348,9 +348,38 @@
 
 .video-cell__meta {
   min-width: 0;
+  max-width: 360px;
 }
 
-.video-cell__title-row,
+.video-cell__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.video-cell__title-row .row-title {
+  display: inline-block;
+  max-width: 330px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  line-height: 1.4;
+}
+
+.video-cell__title-row a.row-title {
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.video-cell__title-row a.row-title:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
 .member-detail__video-title-row {
   display: flex;
   align-items: center;

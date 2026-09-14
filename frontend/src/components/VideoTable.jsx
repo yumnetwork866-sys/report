@@ -132,6 +132,13 @@ const getVideoHashtags = (video) => {
     .map((tag) => tag.startsWith('#') ? tag : `#${tag}`))];
 };
 
+const compactVideoTitle = (value, maxLength = 40) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const clean = raw.replace(/\s+/g, ' ');
+  return clean.length > maxLength ? `${clean.slice(0, maxLength - 3).trim()}…` : clean;
+};
+
 const VideoTable = ({
   heroTitle,
   embedded = false,
@@ -366,10 +373,12 @@ const VideoTable = ({
               ) : filteredVideos.length ? (
                 paginatedVideos.map((video) => {
                   const hashtags = getVideoHashtags(video);
-                  const displayTitle = String(video.title || '')
+                  const fullTitle = String(video.title || '').trim() || t('videoLibrary.untitledVideo');
+                  const cleanTitle = String(video.title || '')
                     .replace(/#[\p{L}\p{N}_]+/gu, '')
                     .replace(/\s+/g, ' ')
-                    .trim() || t('videoLibrary.untitledVideo');
+                    .trim() || fullTitle;
+                  const displayTitle = compactVideoTitle(cleanTitle, 40);
                   const publishedDate = formatPublishedDate(video.published_at);
                   return <tr key={video.id}>
                     <td>
@@ -392,12 +401,12 @@ const VideoTable = ({
                                   href={video.video_url}
                                   target="_blank"
                                   rel="noreferrer"
-                                  aria-label={t('videoLibrary.openVideo', { title: displayTitle })}
+                                  aria-label={t('videoLibrary.openVideo', { title: fullTitle })}
                                 >
                                   <img
                                     className="video-cell__thumb"
                                     src={video.thumbnail_url}
-                                    alt={displayTitle}
+                                    alt={fullTitle}
                                     loading="lazy"
                                     decoding="async"
                                     referrerPolicy="no-referrer"
@@ -413,7 +422,7 @@ const VideoTable = ({
                                 <img
                                   className="video-cell__thumb"
                                   src={video.thumbnail_url}
-                                  alt={displayTitle}
+                                  alt={fullTitle}
                                   loading="lazy"
                                   decoding="async"
                                   referrerPolicy="no-referrer"
@@ -436,8 +445,20 @@ const VideoTable = ({
                           </>
                         )}
                         <div className="video-cell__meta">
-                          <div className="video-cell__title-row">
-                            <span className="row-title">{displayTitle}</span>
+                          <div className="video-cell__title-row" title={fullTitle}>
+                            {video.video_url ? (
+                              <a
+                                href={video.video_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="row-title row-title--link"
+                                title={fullTitle}
+                              >
+                                {displayTitle}
+                              </a>
+                            ) : (
+                              <span className="row-title" title={fullTitle}>{displayTitle}</span>
+                            )}
                           </div>
                           <div className="video-cell__sub-row">
                             {publishedDate ? (
