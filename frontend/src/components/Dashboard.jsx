@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -9,9 +11,26 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { UserRound, UsersRound } from 'lucide-react';
-import { fetchDashboard } from '../lib/api';
+import {
+  AreaChart as AreaChartIcon,
+  BarChart2,
+  Calendar,
+  Minus,
+  TrendingDown,
+  TrendingUp,
+  UserRound,
+  UsersRound,
+  X,
+} from 'lucide-react';
+import { fetchDashboard, fetchDashboardVideos } from '../lib/api';
+import {
+  getCachedDashboard,
+  getCachedVideos,
+  setCachedDashboard,
+  setCachedVideos,
+} from '../lib/dashboardCache';
 import { useI18n } from '../lib/language';
+import { useMoneyFormatter } from '../lib/currency';
 import VideoTable, { ChannelPicker } from './VideoTable';
 import DatePickerInput from './DatePickerInput';
 import {
@@ -143,23 +162,83 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled }) => {
   );
 };
 
-const DashboardChartTooltip = ({ active, payload, formatNumber, metric, t }) => {
+const GrowthBadge = ({ value, label }) => {
+  if (value === null || value === undefined) return null;
+  const isPositive = value > 0;
+  const isNegative = value < 0;
+  const formatted = `${isPositive ? '+' : ''}${value.toFixed(1)}%`;
+
+  return (
+    <div
+      className={`stat-card__growth ${
+        isPositive
+          ? 'stat-card__growth--positive'
+          : isNegative
+            ? 'stat-card__growth--negative'
+            : 'stat-card__growth--neutral'
+      }`}
+      title={`${formatted} ${label}`}
+    >
+      {isPositive ? (
+        <TrendingUp size={13} aria-hidden="true" />
+      ) : isNegative ? (
+        <TrendingDown size={13} aria-hidden="true" />
+      ) : (
+        <Minus size={13} aria-hidden="true" />
+      )}
+      <span>{formatted}</span>
+      <span className="stat-card__growth-label">{label}</span>
+    </div>
+  );
+};
+
+const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount, metric, currency, t }) => {
   const item = payload?.[0]?.payload;
   if (!active || !item) return null;
 
   return (
     <div className="dashboard-chart-tooltip">
       <strong>{item.fullName}</strong>
-      {metric === 'date' ? <div><span>{t('dashboard.totalVideos')}</span><b>{formatNumber(item.videoCount)}</b></div> : null}
-      <div><span>{t('dashboard.views')}</span><b>{formatNumber(item.views)}</b></div>
-      <div><span>{t('dashboard.totalLikes')}</span><b>{formatNumber(item.likes)}</b></div>
-      <div><span>{t('dashboard.totalShares')}</span><b>{formatNumber(item.shares)}</b></div>
+      {metric === 'date' ? (
+        <div>
+          <span>{t('dashboard.totalVideos')}</span>
+          <b>{formatNumber(item.videoCount)}</b>
+        </div>
+      ) : null}
+      <div>
+        <span>{t('dashboard.views')}</span>
+        <b>{formatNumber(item.views)}</b>
+      </div>
+      <div>
+        <span>{t('dashboard.totalGmv')}</span>
+        <b>{formatGmvAmount(item.gross_gmv || 0, currency)}</b>
+      </div>
+      <div>
+        <span>{t('dashboard.totalLikes')}</span>
+        <b>{formatNumber(item.likes)}</b>
+      </div>
+      <div>
+        <span>{t('dashboard.totalShares')}</span>
+        <b>{formatNumber(item.shares)}</b>
+      </div>
+      {item.top_video ? (
+        <div className="dashboard-chart-tooltip__peak">
+          <span className="dashboard-chart-tooltip__peak-title">{t('dashboard.peakVideo')}:</span>
+          <div className="dashboard-chart-tooltip__peak-name">{item.top_video.title}</div>
+          <div className="dashboard-chart-tooltip__peak-stats">
+            {formatNumber(item.top_video.views)} {t('dashboard.views')} • {formatGmvAmount(item.top_video.gross_gmv || 0, currency)}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
 
-const Dashboard = ({ heroTitle }) => {
+const Dashboard = () => {
   const { t, language } = useI18n();
+  const locale = language === 'vi' ? 'vi-VN' : 'en-US';
+  const { formatMoney } = useMoneyFormatter(locale);
+
   const [videos, setVideos] = useState([]);
   const [channels, setChannels] = useState([]);
   const [users, setUsers] = useState([]);
@@ -169,6 +248,11 @@ const Dashboard = ({ heroTitle }) => {
     likes: 0,
     comments: 0,
     shares: 0,
+    gross_gmv: 0,
+    sales_currency: 'MYR',
+    engagement_rate: 0,
+    previous_period: null,
+    growth: null,
   });
   const [chartRows, setChartRows] = useState([]);
   const [videoPage, setVideoPage] = useState(1);
@@ -181,11 +265,17 @@ const Dashboard = ({ heroTitle }) => {
   const [selectedChannelId, setSelectedChannelId] = useState(() => getStoredSelectedChannelId() || '');
   const [selectedUserId, setSelectedUserId] = useState('all');
   const [chartMetric, setChartMetric] = useState('date');
+  const [dailyMetric, setDailyMetric] = useState('views');
+  const [chartType, setChartType] = useState('area');
+  const [selectedChartDate, setSelectedChartDate] = useState(null);
+
   const [periodPreset, setPeriodPreset] = useState('30d');
   const initialPeriod = dashboardPeriodRange('30d');
   const [startDate, setStartDate] = useState(initialPeriod.startDate);
   const [endDate, setEndDate] = useState(initialPeriod.endDate);
+
   const [loading, setLoading] = useState(true);
+  const [videosLoading, setVideosLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleChannelChange = (nextChannelId) => {
@@ -194,7 +284,111 @@ const Dashboard = ({ heroTitle }) => {
     setSelectedChannelId(id);
   };
 
-  const formatNumber = (value) => Number(value || 0).toLocaleString(language === 'vi' ? 'vi-VN' : 'en-US');
+  const formatNumber = useCallback(
+    (value) => Number(value || 0).toLocaleString(locale),
+    [locale],
+  );
+
+  const formatGmvAmount = useCallback(
+    (amount, currency = 'MYR', options = {}) => {
+      if (amount === null || amount === undefined) return '—';
+      return formatMoney(amount, currency, options);
+    },
+    [formatMoney],
+  );
+
+  const handlePageChange = useCallback(
+    async (nextPage) => {
+      setVideoPage(nextPage);
+      const videoParams = {
+        channelId: selectedChannelId || null,
+        userId: selectedUserId === 'all' ? null : selectedUserId,
+        startDate: chartMetric === 'date' ? startDate : null,
+        endDate: chartMetric === 'date' ? endDate : null,
+        date: selectedChartDate || null,
+        page: nextPage,
+        pageSize: 20,
+      };
+
+      const cached = getCachedVideos(videoParams);
+      if (cached) {
+        setVideos(cached.videos || []);
+        setVideoPagination(cached.video_pagination || {
+          page: nextPage,
+          page_size: 20,
+          total: videoPagination.total,
+          total_pages: videoPagination.total_pages,
+        });
+        return;
+      }
+
+      try {
+        setVideosLoading(true);
+        const payload = await fetchDashboardVideos(videoParams);
+        setVideos(payload.videos || []);
+        setVideoPagination(payload.video_pagination || {
+          page: nextPage,
+          page_size: 20,
+          total: 0,
+          total_pages: 1,
+        });
+        setCachedVideos(videoParams, payload);
+      } catch (err) {
+        console.error('Failed to paginate videos', err);
+      } finally {
+        setVideosLoading(false);
+      }
+    },
+    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate, videoPagination.total, videoPagination.total_pages],
+  );
+
+  const handleDateClick = useCallback(
+    async (clickedDate) => {
+      const nextDate = selectedChartDate === clickedDate ? null : clickedDate;
+      setSelectedChartDate(nextDate);
+      setVideoPage(1);
+
+      const videoParams = {
+        channelId: selectedChannelId || null,
+        userId: selectedUserId === 'all' ? null : selectedUserId,
+        startDate: chartMetric === 'date' ? startDate : null,
+        endDate: chartMetric === 'date' ? endDate : null,
+        date: nextDate,
+        page: 1,
+        pageSize: 20,
+      };
+
+      const cached = getCachedVideos(videoParams);
+      if (cached) {
+        setVideos(cached.videos || []);
+        setVideoPagination(cached.video_pagination || {
+          page: 1,
+          page_size: 20,
+          total: cached.video_pagination?.total || 0,
+          total_pages: cached.video_pagination?.total_pages || 1,
+        });
+        return;
+      }
+
+      try {
+        setVideosLoading(true);
+        const payload = await fetchDashboardVideos(videoParams);
+        setVideos(payload.videos || []);
+        setVideoPagination(payload.video_pagination || {
+          page: 1,
+          page_size: 20,
+          total: 0,
+          total_pages: 1,
+        });
+        setCachedVideos(videoParams, payload);
+      } catch (err) {
+        console.error('Failed to filter videos by date', err);
+      } finally {
+        setVideosLoading(false);
+      }
+    },
+    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -206,18 +400,41 @@ const Dashboard = ({ heroTitle }) => {
         setError(t('dashboard.invalidPeriod'));
         return;
       }
-      try {
+
+      const params = {
+        channelId: selectedChannelId || null,
+        userId: selectedUserId === 'all' ? null : selectedUserId,
+        startDate: chartMetric === 'date' ? startDate : null,
+        endDate: chartMetric === 'date' ? endDate : null,
+        metric: chartMetric,
+        page: 1,
+        pageSize: 20,
+      };
+
+      const cached = getCachedDashboard(params);
+      if (cached) {
+        setVideos(cached.videos || []);
+        setChannels(cached.channels || []);
+        setUsers(cached.users || []);
+        setTotals(cached.totals || {});
+        setChartRows(cached.chart || []);
+        setVideoPagination(cached.video_pagination || {
+          page: 1,
+          page_size: 20,
+          total: 0,
+          total_pages: 1,
+        });
+        setLoading(false);
+        setError('');
+      } else {
         setLoading(true);
         setError('');
+      }
+
+      try {
         const payload = await fetchDashboard({
           signal: controller.signal,
-          channelId: selectedChannelId || null,
-          userId: selectedUserId === 'all' ? null : selectedUserId,
-          startDate: chartMetric === 'date' ? startDate : null,
-          endDate: chartMetric === 'date' ? endDate : null,
-          metric: chartMetric,
-          page: videoPage,
-          pageSize: 20,
+          ...params,
         });
         setVideos(payload.videos || []);
         setChannels(payload.channels || []);
@@ -230,6 +447,24 @@ const Dashboard = ({ heroTitle }) => {
           total: 0,
           total_pages: 1,
         });
+        setCachedDashboard(params, payload);
+        setCachedVideos({
+          channelId: params.channelId,
+          userId: params.userId,
+          startDate: params.startDate,
+          endDate: params.endDate,
+          date: null,
+          page: 1,
+          pageSize: 20,
+        }, {
+          videos: payload.videos || [],
+          video_pagination: payload.video_pagination || {
+            page: 1,
+            page_size: 20,
+            total: payload.totals?.video_count || 0,
+            total_pages: Math.max(1, Math.ceil((payload.totals?.video_count || 0) / 20)),
+          },
+        });
       } catch (err) {
         if (err.name !== 'AbortError') {
           setError(err.message || t('dashboard.errorLoad') || 'Failed to load dashboard data');
@@ -241,10 +476,12 @@ const Dashboard = ({ heroTitle }) => {
       }
     };
 
+    setSelectedChartDate(null);
+    setVideoPage(1);
     load();
 
     return () => controller.abort();
-  }, [chartMetric, endDate, selectedChannelId, selectedUserId, startDate, t, videoPage]);
+  }, [chartMetric, endDate, selectedChannelId, selectedUserId, startDate, t]);
 
   useEffect(() => {
     if (periodPreset === 'custom') return;
@@ -277,72 +514,136 @@ const Dashboard = ({ heroTitle }) => {
     });
   }, [channels]);
 
-  useEffect(() => {
-    setVideoPage(1);
-  }, [endDate, selectedChannelId, selectedUserId, startDate]);
-
   const chartData = useMemo(() => {
     if (chartMetric === 'date') {
-      return chartRows
-        .map((item) => {
-          const date = String(item.date || '').slice(0, 10);
-          const dateLabel = new Date(`${date}T00:00:00`).toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US');
-          return {
-            ...item,
-            videoCount: Number(item.video_count || 0),
-            name: dateLabel,
-            fullName: dateLabel,
-            value: Number(item.video_count || 0),
-          };
-        });
+      return chartRows.map((item) => {
+        const rawDate = String(item.date || '').slice(0, 10);
+        const dateObj = new Date(`${rawDate}T00:00:00`);
+        const dateLabel = Number.isNaN(dateObj.getTime())
+          ? rawDate
+          : dateObj.toLocaleDateString(locale, { day: '2-digit', month: '2-digit' });
+        const fullDateLabel = Number.isNaN(dateObj.getTime())
+          ? rawDate
+          : dateObj.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+        let value = Number(item.views || 0);
+        if (dailyMetric === 'gmv') {
+          value = Number(item.gross_gmv || 0);
+        } else if (dailyMetric === 'video_count') {
+          value = Number(item.video_count || 0);
+        }
+
+        return {
+          ...item,
+          rawDate,
+          videoCount: Number(item.video_count || 0),
+          views: Number(item.views || 0),
+          likes: Number(item.likes || 0),
+          shares: Number(item.shares || 0),
+          gross_gmv: Number(item.gross_gmv || 0),
+          name: dateLabel,
+          fullName: fullDateLabel,
+          value,
+          isSelected: selectedChartDate === rawDate,
+        };
+      });
     }
 
     return chartRows.map((row, index) => {
-        const title = String(row.title || `${t('dashboard.video')} ${index + 1}`);
-        return {
-          name: title.length > 14 ? `${title.slice(0, 14)}…` : title,
-          fullName: title,
-          value: Number(row[chartMetric] || 0),
-          views: Number(row.views || 0),
-          likes: Number(row.likes || 0),
-          shares: Number(row.shares || 0),
-        };
-      });
-  }, [chartMetric, chartRows, language, t]);
+      const title = String(row.title || `${t('dashboard.video')} ${index + 1}`);
+      return {
+        ...row,
+        name: title.length > 14 ? `${title.slice(0, 14)}…` : title,
+        fullName: title,
+        value: Number(row[chartMetric] || 0),
+        views: Number(row.views || 0),
+        likes: Number(row.likes || 0),
+        shares: Number(row.shares || 0),
+        gross_gmv: Number(row.gross_gmv || 0),
+      };
+    });
+  }, [chartMetric, chartRows, dailyMetric, locale, selectedChartDate, t]);
+
+  const peakItem = useMemo(() => {
+    if (!chartData.length || chartMetric !== 'date') return null;
+    let max = chartData[0];
+    for (let i = 1; i < chartData.length; i += 1) {
+      if ((chartData[i]?.value || 0) > (max?.value || 0)) {
+        max = chartData[i];
+      }
+    }
+    return max && max.value > 0 ? max : null;
+  }, [chartData, chartMetric]);
 
   const averageChartValue = chartData.length
     ? chartData.reduce((sum, item) => sum + item.value, 0) / chartData.length
     : 0;
 
-  const metricLabel = chartMetric === 'date' ? t('dashboard.videosPerDay') : t(`dashboard.metric_${chartMetric}`);
+  const metricLabel = useMemo(() => {
+    if (chartMetric === 'date') {
+      if (dailyMetric === 'gmv') return t('dashboard.metric_gmv_daily');
+      if (dailyMetric === 'video_count') return t('dashboard.metric_videos_daily');
+      return t('dashboard.metric_views_daily');
+    }
+    return t(`dashboard.metric_${chartMetric}`);
+  }, [chartMetric, dailyMetric, t]);
+
+  const yAxisFormatter = useCallback(
+    (value) => {
+      if (chartMetric === 'date' && dailyMetric === 'gmv') {
+        return formatGmvAmount(value, totals.sales_currency, { compact: true });
+      }
+      return Intl.NumberFormat(locale, { notation: 'compact' }).format(value);
+    },
+    [chartMetric, dailyMetric, formatGmvAmount, locale, totals.sales_currency],
+  );
+
+  const handleChartClick = (state) => {
+    const rawDate = state?.activePayload?.[0]?.payload?.rawDate;
+    if (rawDate) {
+      handleDateClick(rawDate);
+    }
+  };
 
   return (
     <div className="page dashboard-page">
-      <section className="page__hero dashboard-hero">
-        <div className="dashboard-hero__copy">
-          <h1 className="page__title">{t('dashboard.heroTitle') || heroTitle}</h1>
-        </div>
-
-        <div className="dashboard-hero__summary" aria-live="polite">
-          <article className="stat-card stat-card--soft">
-            <p className="stat-card__label">{t('dashboard.totalViews')}</p>
-            <p className="stat-card__value" title={loading ? undefined : formatNumber(totals.views)}>
-              {loading ? '—' : formatNumber(totals.views)}
-            </p>
-          </article>
-          <article className="stat-card stat-card--soft">
-            <p className="stat-card__label">{t('dashboard.totalVideos')}</p>
-            <p className="stat-card__value">{formatNumber(totals.video_count)}</p>
-          </article>
-          <article className="stat-card stat-card--soft">
-            <p className="stat-card__label">{t('dashboard.totalLikes')}</p>
-            <p className="stat-card__value">{formatNumber(totals.likes)}</p>
-          </article>
-          <article className="stat-card stat-card--soft">
-            <p className="stat-card__label">{t('dashboard.totalShares')}</p>
-            <p className="stat-card__value">{formatNumber(totals.shares)}</p>
-          </article>
-        </div>
+      <section className="dashboard-hero__summary" aria-live="polite">
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalGmv')}</p>
+          <p className="stat-card__value" title={loading ? undefined : formatGmvAmount(totals.gross_gmv, totals.sales_currency)}>
+            {loading ? '—' : formatGmvAmount(totals.gross_gmv, totals.sales_currency)}
+          </p>
+          <GrowthBadge value={totals.growth?.gross_gmv} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalViews')}</p>
+          <p className="stat-card__value" title={loading ? undefined : formatNumber(totals.views)}>
+            {loading ? '—' : formatNumber(totals.views)}
+          </p>
+          <GrowthBadge value={totals.growth?.views} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label" title={t('dashboard.engagementFormula')}>{t('dashboard.engagementRate')}</p>
+          <p className="stat-card__value" title={loading ? undefined : `${Number(totals.engagement_rate || 0).toFixed(2)}%`}>
+            {loading ? '—' : `${Number(totals.engagement_rate || 0).toFixed(2)}%`}
+          </p>
+          <GrowthBadge value={totals.growth?.engagement_rate} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalVideos')}</p>
+          <p className="stat-card__value">{loading ? '—' : formatNumber(totals.video_count)}</p>
+          <GrowthBadge value={totals.growth?.video_count} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalLikes')}</p>
+          <p className="stat-card__value">{loading ? '—' : formatNumber(totals.likes)}</p>
+          <GrowthBadge value={totals.growth?.likes} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalShares')}</p>
+          <p className="stat-card__value">{loading ? '—' : formatNumber(totals.shares)}</p>
+          <GrowthBadge value={totals.growth?.shares} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
       </section>
 
       {error ? (
@@ -354,9 +655,6 @@ const Dashboard = ({ heroTitle }) => {
 
       <section className="section-card dashboard-chart-card">
         <div className="section-card__header dashboard-chart-card__header">
-          <div>
-            <h2 className="section-card__title">{t('dashboard.videoPerformance')}</h2>
-          </div>
           <div className={`dashboard-chart-filters${chartMetric === 'date' ? ` dashboard-chart-filters--date${periodPreset === 'custom' ? ' dashboard-chart-filters--custom' : ''}` : ''}`}>
             <div className="field dashboard-channel-filter">
               <label htmlFor="dashboard-channel">{t('dashboard.channel')}</label>
@@ -382,7 +680,7 @@ const Dashboard = ({ heroTitle }) => {
             <div className="field dashboard-metric-filter">
               <label htmlFor="dashboard-metric">{t('dashboard.metric')}</label>
               <select id="dashboard-metric" value={chartMetric} onChange={(event) => setChartMetric(event.target.value)}>
-                {['date', 'views', 'likes', 'shares'].map((metric) => (
+                {['date', 'views', 'gmv', 'likes', 'shares'].map((metric) => (
                   <option key={metric} value={metric}>{t(`dashboard.metric_${metric}`)}</option>
                 ))}
               </select>
@@ -426,25 +724,120 @@ const Dashboard = ({ heroTitle }) => {
           </div>
         </div>
 
+        {chartMetric === 'date' ? (
+          <div className="dashboard-chart-header-actions" style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.metric')}>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${dailyMetric === 'views' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setDailyMetric('views')}
+              >
+                {t('dashboard.metric_views_daily')}
+              </button>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${dailyMetric === 'gmv' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setDailyMetric('gmv')}
+              >
+                {t('dashboard.metric_gmv_daily')}
+              </button>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${dailyMetric === 'video_count' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setDailyMetric('video_count')}
+              >
+                {t('dashboard.metric_videos_daily')}
+              </button>
+            </div>
+
+            <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.chartType')}>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${chartType === 'area' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setChartType('area')}
+                title={t('dashboard.chartType_area')}
+              >
+                <AreaChartIcon size={15} />
+                <span>{t('dashboard.chartType_area')}</span>
+              </button>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${chartType === 'bar' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setChartType('bar')}
+                title={t('dashboard.chartType_bar')}
+              >
+                <BarChart2 size={15} />
+                <span>{t('dashboard.chartType_bar')}</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {peakItem ? (
+          <div className="dashboard-peak-banner">
+            <div className="dashboard-peak-banner__content">
+              <span className="dashboard-peak-banner__badge">
+                {t('dashboard.topPeakVideo')}: <strong>{peakItem.fullName}</strong>
+              </span>
+              <span className="dashboard-peak-banner__stat">
+                {metricLabel}: <strong>{dailyMetric === 'gmv' ? formatGmvAmount(peakItem.value, totals.sales_currency) : formatNumber(peakItem.value)}</strong>
+              </span>
+              {peakItem.top_video?.title ? (
+                <span className="dashboard-peak-banner__video" title={peakItem.top_video.title}>
+                  🎬 {peakItem.top_video.title}
+                </span>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={`dashboard-peak-banner__btn ${selectedChartDate === peakItem.rawDate ? 'dashboard-peak-banner__btn--active' : ''}`}
+              onClick={() => handleDateClick(peakItem.rawDate)}
+            >
+              {selectedChartDate === peakItem.rawDate ? t('dashboard.filteringThisDate') : t('dashboard.viewPeakVideos')}
+            </button>
+          </div>
+        ) : null}
+
         {loading ? (
           <div className="empty-state"><div className="loading-dot" />{t('dashboard.loading')}</div>
         ) : chartData.length ? (
           <div className="dashboard-chart-shell">
             <div className="dashboard-chart-summary" aria-hidden="true">
               <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
-              <span>{t('dashboard.averageMetric', { metric: metricLabel })} <strong>{formatNumber(Math.round(averageChartValue))}</strong></span>
+              <span>{t('dashboard.averageMetric', { metric: metricLabel })} <strong>{dailyMetric === 'gmv' ? formatGmvAmount(Math.round(averageChartValue), totals.sales_currency) : formatNumber(Math.round(averageChartValue))}</strong></span>
+              {chartMetric === 'date' ? (
+                <span style={{ fontSize: '0.76rem', color: 'var(--color-muted)' }}>
+                  {t('dashboard.clickToFilterDay')}
+                </span>
+              ) : null}
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} barSize={26} margin={{ top: 26, right: 12, bottom: 4, left: 4 }}>
-                  <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
-                  <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
-                  <YAxis width={58} tickLine={false} axisLine={false} allowDecimals={false} tick={chartTick} tickFormatter={(value) => Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', { notation: 'compact' }).format(value)} />
-                  <Tooltip cursor={{ fill: 'var(--color-accent-soft)' }} content={<DashboardChartTooltip formatNumber={formatNumber} metric={chartMetric} t={t} />} />
-                  <Bar dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]}>
-                    <LabelList dataKey="value" position="top" formatter={(value) => Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)} className="dashboard-chart-label" />
-                  </Bar>
-                </BarChart>
+                {chartType === 'area' && chartMetric === 'date' ? (
+                  <AreaChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick}>
+                    <defs>
+                      <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
+                        <stop offset="95%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
+                    <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
+                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
+                    <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
+                    <Area type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#dashboardAreaGradient)" activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-primary)' }} />
+                  </AreaChart>
+                ) : (
+                  <BarChart data={chartData} barSize={26} margin={{ top: 26, right: 12, bottom: 4, left: 4 }} onClick={handleChartClick}>
+                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
+                    <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
+                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
+                    <Tooltip cursor={{ fill: 'var(--color-accent-soft)' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
+                    <Bar dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]}>
+                      <LabelList dataKey="value" position="top" formatter={(val) => yAxisFormatter(val)} className="dashboard-chart-label" />
+                    </Bar>
+                  </BarChart>
+                )}
               </ResponsiveContainer>
             </div>
           </div>
@@ -453,19 +846,40 @@ const Dashboard = ({ heroTitle }) => {
         )}
       </section>
 
+      {selectedChartDate ? (
+        <div className="dashboard-active-filter-bar">
+          <div className="dashboard-active-filter-bar__content">
+            <Calendar size={16} color="#0284c7" />
+            <span className="dashboard-active-filter-bar__badge">
+              {t('dashboard.filteringByDate', { date: selectedChartDate })}
+            </span>
+            <span className="dashboard-active-filter-bar__count">
+              ({videoPagination.total} {t('dashboard.video')})
+            </span>
+          </div>
+          <button
+            type="button"
+            className="dashboard-active-filter-bar__clear"
+            onClick={() => handleDateClick(null)}
+          >
+            <X size={14} aria-hidden="true" /> {t('dashboard.clearDateFilter')}
+          </button>
+        </div>
+      ) : null}
+
       <VideoTable
         embedded
         data={{
           videos,
           channels,
-          loading,
+          loading: videosLoading || (loading && !videos.length),
           error,
         }}
         selectedChannelId={selectedChannelId}
         onSelectedChannelChange={handleChannelChange}
         pagination={videoPagination}
         currentPage={videoPage}
-        onPageChange={setVideoPage}
+        onPageChange={handlePageChange}
       />
     </div>
   );

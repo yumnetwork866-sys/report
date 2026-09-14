@@ -14,9 +14,10 @@ const {
   getChannelReportVideoDailyRevenue,
   generateWeeklyReport
 } = require('../controllers/reportController');
-const { getDashboard } = require('../controllers/dashboardController');
+const { getDashboard, getDashboardVideos } = require('../controllers/dashboardController');
 
 // GET /api/reports/kpis
+router.get('/dashboard/videos', getDashboardVideos);
 router.get('/dashboard', getDashboard);
 router.get('/kpis', getKpis);
 router.get('/channel', getChannelReport);

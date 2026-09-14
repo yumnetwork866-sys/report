@@ -503,6 +503,28 @@ export function fetchDashboard({
   return apiRequest(`/reports/dashboard${query ? `?${query}` : ''}`, { signal });
 }
 
+export function fetchDashboardVideos({
+  signal,
+  channelId,
+  startDate,
+  endDate,
+  userId,
+  date,
+  page,
+  pageSize,
+} = {}) {
+  const params = new URLSearchParams();
+  if (channelId) params.set('channel_id', channelId);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (userId) params.set('user_id', userId);
+  if (date) params.set('date', date);
+  if (page) params.set('page', page);
+  if (pageSize) params.set('page_size', pageSize);
+  const query = params.toString();
+  return apiRequest(`/reports/dashboard/videos${query ? `?${query}` : ''}`, { signal });
+}
+
 export function fetchKocDetail(creatorId, { signal, startDate, endDate } = {}) {
   const params = new URLSearchParams();
   if (startDate) params.set('start_date', startDate);

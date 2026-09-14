@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -307,3 +307,36 @@ test('Creator Marketplace detail helper encodes the creator id', async () => {
     assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/marketplace-creators/creator%2Fopen%20id');
   });
 });
+
+test('fetchDashboardVideos helper formats query parameters correctly', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('dashboard-admin'));
+    let request;
+    globalThis.fetch = async (url, options) => {
+      request = { url, options };
+      return new Response(JSON.stringify({ videos: [], video_pagination: {} }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const controller = new AbortController();
+    await fetchDashboardVideos({
+      channelId: '10',
+      userId: '5',
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+      date: '2026-08-15',
+      page: 3,
+      pageSize: 25,
+      signal: controller.signal,
+    });
+
+    assert.equal(
+      request.url,
+      '/api/reports/dashboard/videos?channel_id=10&start_date=2026-08-01&end_date=2026-08-31&user_id=5&date=2026-08-15&page=3&page_size=25',
+    );
+    assert.equal(request.options.signal, controller.signal);
+  });
+});
+
