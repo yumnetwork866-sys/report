@@ -9,6 +9,7 @@ import {
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokSellerAffiliateOrders,
+  fetchTikTokShopVideoThumbnail,
   fetchUsers,
   matchBookingVideo,
   updateBooking,
@@ -19,6 +20,7 @@ import { hasPermission } from '../lib/session';
 import { useSession } from '../lib/useSession';
 import AppAvatar from './AppAvatar';
 import BookingVideoThumbnail from './BookingVideoThumbnail';
+import { cachedThumbnail, thumbnailFrom } from '../lib/bookingVideoThumbnails';
 import DatePickerInput from './DatePickerInput';
 import { computeBookingTimeline } from '../lib/bookingTimeline';
 import { ChevronLeft, Pencil, Plus, Trash2 } from 'lucide-react';
@@ -234,6 +236,49 @@ const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots 
     String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
     || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
   ))[0] || null;
+const bookingVideoOrderMetrics = (video, booking, orders = []) => {
+  const normVideoId = String(video?.platform_video_id || '').trim();
+  const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  if (!normVideoId || !Array.isArray(orders) || !orders.length) return null;
+
+  let gmv = 0;
+  let itemsSold = 0;
+  const orderIds = new Set();
+  let currency = null;
+  let hasMatch = false;
+
+  for (const order of orders) {
+    const orderId = String(order?.id || order?.order_id || '').trim();
+    let matchedInOrder = false;
+    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
+      if (String(sku?.content_id || '').trim() !== normVideoId) continue;
+      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+      if (normCreator && skuCreator && skuCreator !== normCreator) continue;
+
+      const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
+      const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
+      const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
+      const price = Math.max(0, finiteNumber(rawPrice));
+
+      itemsSold += quantity;
+      gmv += price * quantity;
+      currency = sku?.price?.currency || sku?.currency || currency;
+      hasMatch = true;
+      matchedInOrder = true;
+    }
+    if (matchedInOrder && orderId) {
+      orderIds.add(orderId);
+    }
+  }
+
+  if (!hasMatch) return null;
+  return {
+    itemsSold,
+    orderCount: orderIds.size,
+    grossGmv: gmv,
+    currency,
+  };
+};
 const bookingVideosByRevenue = (videos = []) => videos
   .map((video, index) => ({ video, index, revenue: finiteNumber(latestBookingVideoSnapshot(video)?.gross_gmv) }))
   .sort((left, right) => right.revenue - left.revenue || left.index - right.index)
@@ -767,6 +812,7 @@ const BookingProductOrderDetailModal = ({
   product,
   booking,
   video,
+  snapshot,
   orders = [],
   loading = false,
   onClose,
@@ -775,6 +821,49 @@ const BookingProductOrderDetailModal = ({
   t,
   currency,
 }) => {
+  const effectiveSnapshot = snapshot || video?.snapshot;
+  const [videoThumbnail, setVideoThumbnail] = useState(() => (
+    video?.thumbnail_url
+    || video?.cover_image_url
+    || thumbnailFrom(video, effectiveSnapshot)
+    || null
+  ));
+  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
+
+  useEffect(() => {
+    const direct = video?.thumbnail_url
+      || video?.cover_image_url
+      || thumbnailFrom(video, effectiveSnapshot)
+      || null;
+    if (direct) {
+      setVideoThumbnail(direct);
+      setVideoThumbFailed(false);
+      return undefined;
+    }
+    if (product) return undefined;
+
+    const shopId = booking?.target_shop_id;
+    const videoId = String(video?.platform_video_id || video?.id || '').trim();
+    const username = String(video?.creator_username || booking?.creator_username || '').trim().replace(/^@+/, '');
+    if (!shopId || !videoId || !username) return undefined;
+
+    let active = true;
+    const cacheKey = `${shopId}:${videoId}:${username.toLowerCase()}`;
+    cachedThumbnail(cacheKey, () => (
+      fetchTikTokShopVideoThumbnail(shopId, videoId, username)
+    ))
+      .then((payload) => {
+        if (active && payload?.thumbnail_url) {
+          setVideoThumbnail(payload.thumbnail_url);
+          setVideoThumbFailed(false);
+        }
+      })
+      .catch(() => {
+        if (active) setVideoThumbFailed(true);
+      });
+    return () => { active = false; };
+  }, [product, video, effectiveSnapshot, booking?.target_shop_id, booking?.creator_username]);
+
   const [filterMode, setFilterMode] = useState(() => (video?.platform_video_id ? 'video' : 'all'));
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -885,12 +974,29 @@ const BookingProductOrderDetailModal = ({
         <header className="booking-product-order-modal__header">
           <div className="booking-product-order-modal__product-info">
             <div className="booking-product-order-modal__thumbnail">
-              {product?.thumbnailUrl ? (
-                <img src={product.thumbnailUrl} alt="" />
-              ) : (video?.thumbnail_url || video?.cover_image_url) ? (
-                <img src={video.thumbnail_url || video.cover_image_url} alt="" />
+              {product ? (
+                (product.thumbnailUrl || (product.id ? productThumbMap.get(String(product.id)) : null)) ? (
+                  <img
+                    src={product.thumbnailUrl || productThumbMap.get(String(product.id))}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <span className="booking-product-order-modal__placeholder">P</span>
+                )
+              ) : (videoThumbnail && !videoThumbFailed) ? (
+                <img
+                  src={videoThumbnail}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                  onError={() => setVideoThumbFailed(true)}
+                />
               ) : (
-                <span className="booking-product-order-modal__placeholder">{product ? 'P' : '🎬'}</span>
+                <span className="booking-product-order-modal__placeholder">▶</span>
               )}
             </div>
             <div className="booking-product-order-modal__title-box">
@@ -1215,7 +1321,7 @@ const BookingVideoProducts = ({ shopId, video, snapshot, label, booking, onSelec
               isTarget={targetProductMap.has(String(product.id))}
               quantity={qty}
               key={product.id}
-              onClick={() => onSelectProduct?.({ product, video, booking })}
+              onClick={() => onSelectProduct?.({ product, video: { ...video, snapshot }, booking, snapshot })}
             />
           );
         }) : '—'}
@@ -2966,11 +3072,22 @@ const BookingManagement = ({
                                                         {bookingVideos.map((video, videoIndex) => {
                                                           const latest = latestBookingVideoSnapshot(video);
                                                           const social = bookingVideoSocialMetrics(latest);
+                                                          const shopOrders = productOrdersByShop[String(booking.target_shop_id)] || [];
+                                                          const liveMetrics = bookingVideoOrderMetrics(video, booking, shopOrders);
+                                                          const displayGrossGmv = liveMetrics ? liveMetrics.grossGmv : Number(latest?.gross_gmv || 0);
+                                                          const displayItemsSold = liveMetrics ? liveMetrics.itemsSold : Number(latest?.items_sold || 0);
+                                                          const displayCurrency = (liveMetrics && liveMetrics.currency) || latest?.currency || booking.currency;
                                                           return (
                                                             <article className="booking-video-expansion__item" key={video.id || video.platform_video_id}>
                                                               <div className="booking-video-expansion__identity">
                                                                 <div className="booking-video-expansion__title">
-                                                                  <BookingVideoThumbnail shopId={booking.target_shop_id} video={video} snapshot={latest} index={videoIndex} />
+                                                                  <BookingVideoThumbnail
+                                                                    shopId={booking.target_shop_id}
+                                                                    video={video}
+                                                                    snapshot={latest}
+                                                                    index={videoIndex}
+                                                                    username={video.creator_username || booking.creator_username}
+                                                                  />
                                                                   <div>
                                                                     {video.video_url ? (
                                                                       <a href={video.video_url} target="_blank" rel="noreferrer">
@@ -2990,30 +3107,30 @@ const BookingManagement = ({
                                                                   </div>
                                                                 </div>
                                                               </div>
-                                                              {latest ? (
+                                                              {latest || liveMetrics ? (
                                                                 <div className="booking-video-expansion__metrics">
                                                                   <button
                                                                     type="button"
                                                                     className="booking-video-expansion__metric-card--clickable"
-                                                                    onClick={() => setProductOrderDetailModal({ product: null, video, booking })}
+                                                                    onClick={() => setProductOrderDetailModal({ product: null, video: { ...video, snapshot: latest }, booking, snapshot: latest })}
                                                                     title="Nhấp để xem chi tiết toàn bộ đơn hàng của video"
                                                                   >
                                                                     <span>{t('booking.videoGmv')}</span>
-                                                                    <strong>{formatMoney(latest.gross_gmv, latest.currency || booking.currency)}</strong>
+                                                                    <strong>{formatMoney(displayGrossGmv, displayCurrency)}</strong>
                                                                   </button>
                                                                   <button
                                                                     type="button"
                                                                     className="booking-video-expansion__metric-card--clickable"
-                                                                    onClick={() => setProductOrderDetailModal({ product: null, video, booking })}
+                                                                    onClick={() => setProductOrderDetailModal({ product: null, video: { ...video, snapshot: latest }, booking, snapshot: latest })}
                                                                     title="Nhấp để xem chi tiết toàn bộ đơn hàng của video"
                                                                   >
                                                                     <span>{t('booking.videoItemsSold')}</span>
-                                                                    <strong>{formatNumber(latest.items_sold)}</strong>
+                                                                    <strong>{formatNumber(displayItemsSold)}</strong>
                                                                   </button>
                                                                   <div><span>{t('booking.videoCtr')}</span><strong>{formatRate(productCtrOfBookingVideo(latest))}</strong></div>
-                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} onSelectProduct={setProductOrderDetailModal} orders={productOrdersByShop[String(booking.target_shop_id)] || []} />
+                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} onSelectProduct={setProductOrderDetailModal} orders={shopOrders} />
                                                                 </div>
-                                                             ) : (
+                                                              ) : (
                                                                 <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.awaitingFirstSync')}</span></div>
                                                               )}
                                                               {video.last_sync_error ? <p className="booking-video-expansion__error">{video.last_sync_error}</p> : null}
@@ -3206,6 +3323,7 @@ const BookingManagement = ({
           product={productOrderDetailModal.product}
           booking={productOrderDetailModal.booking}
           video={productOrderDetailModal.video}
+          snapshot={productOrderDetailModal.snapshot || productOrderDetailModal.video?.snapshot}
           orders={productOrdersByShop[String(productOrderDetailModal.booking?.target_shop_id)] || []}
           loading={productOrdersLoading}
           onClose={() => setProductOrderDetailModal(null)}
