@@ -139,3 +139,16 @@ test('handles cancelled bookings', () => {
   assert.equal(cancelled.badge.type, 'cancelled');
   assert.equal(cancelled.badge.label, 'Đã hủy');
 });
+
+test('returns null badge when deadlineDate is null and booking is not cancelled', () => {
+  const result = computeBookingTimeline({
+    startDate: '2026-08-14',
+    deadlineDate: null,
+    postedVideos: [{ posted_at: '2026-08-20' }],
+    committedVideos: 1,
+    status: 'video_posted',
+    today: '2026-09-11',
+  });
+  assert.equal(result.badge, null);
+});
+

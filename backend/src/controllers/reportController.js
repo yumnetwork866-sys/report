@@ -1869,10 +1869,11 @@ const getKocDetail = async (req, res) => {
       `, { type: QueryTypes.SELECT, replacements }),
         sequelize.query(`
         SELECT id, COALESCE(total_cost, booking_cost) AS "bookingCost", cost_note AS "costNote",
-          currency, status, deadline, note, video_url AS "videoUrl", posted_at AS "postedAt"
+          currency, status, deadline, note, video_url AS "videoUrl", posted_at AS "postedAt",
+          created_at AS "createdAt"
         FROM bookings
         WHERE creator_id = :creatorId
-        ORDER BY deadline DESC, id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 20
       `, { type: QueryTypes.SELECT, replacements }),
         sequelize.query(`

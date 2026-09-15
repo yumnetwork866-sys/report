@@ -92,18 +92,13 @@ const shiftDateInputValue = (value, days) => {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 };
-const defaultBookingForm = () => {
-  const today = dateInputValue(new Date());
-  return {
-    creator_key: '',
-    staff_id: '',
-    total_cost: '',
-    committed_videos: 1,
-    product_ids: [],
-    start_date: today,
-    end_date: shiftDateInputValue(today, 7),
-  };
-};
+const defaultBookingForm = () => ({
+  creator_key: '',
+  staff_id: '',
+  total_cost: '',
+  committed_videos: 1,
+  product_ids: [],
+});
 const initialForm = defaultBookingForm();
 const defaultCustomRange = () => {
   const end = new Date();
@@ -131,23 +126,47 @@ const bookingProductsOf = (booking) => {
   return [...byId.values()].filter((product) => String(product.id || product.product_id || '').trim());
 };
 
-const orderRangeForWindow = (windowType, customRange) => {
-  if (windowType === 'LIFETIME') {
-    return { startTime: null, endTime: null };
+const orderRangeForPeriod = (period, customRange) => {
+  if (!period || period === 'all') {
+    return { startTime: null, endTime: null, windowType: 'LIFETIME' };
   }
-  const end = windowType === 'CUSTOM'
-    ? customRange.end
-    : shiftDateInputValue(dateInputValue(new Date()), -1);
-  const days = Number(String(windowType).match(/^PAST_(\d+)_DAYS$/)?.[1]) || 30;
-  const start = windowType === 'CUSTOM' ? customRange.start : shiftDateInputValue(end, -(days - 1));
   const malaysiaMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00+08:00`).getTime() / 1000);
-  return {
-    startTime: malaysiaMidnightUnix(start),
-    endTime: malaysiaMidnightUnix(shiftDateInputValue(end, 1)),
-  };
+  if (period === 'custom') {
+    if (!customRange?.start || !customRange?.end) {
+      return { startTime: null, endTime: null, windowType: 'LIFETIME' };
+    }
+    const todayStr = dateInputValue(new Date());
+    const isPast = customRange.end < todayStr;
+    return {
+      startTime: malaysiaMidnightUnix(customRange.start),
+      endTime: malaysiaMidnightUnix(shiftDateInputValue(customRange.end, 1)),
+      startDate: customRange.start,
+      endDate: customRange.end,
+      windowType: isPast ? 'CUSTOM' : 'LIFETIME',
+    };
+  }
+  if (/^\d{4}-\d{2}$/.test(period)) {
+    const [year, month] = period.split('-').map(Number);
+    const startStr = `${period}-01`;
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const endStr = `${period}-${String(lastDay).padStart(2, '0')}`;
+    const todayStr = dateInputValue(new Date());
+    const isPast = endStr < todayStr;
+    return {
+      startTime: malaysiaMidnightUnix(startStr),
+      endTime: malaysiaMidnightUnix(nextMonthStr),
+      startDate: startStr,
+      endDate: endStr,
+      windowType: isPast ? 'CUSTOM' : 'LIFETIME',
+    };
+  }
+  return { startTime: null, endTime: null, windowType: 'LIFETIME' };
 };
 
-const bookingProductOrderPerformance = (booking, orders = []) => {
+const bookingProductOrderPerformance = (booking, orders = [], periodRange = null) => {
   const selectedProducts = bookingProductsOf(booking);
   const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
   const creatorUsername = String(booking.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
@@ -160,6 +179,18 @@ const bookingProductOrderPerformance = (booking, orders = []) => {
   let currency = booking.currency || 'MYR';
 
   for (const order of orders) {
+    if (periodRange && (periodRange.startTime || periodRange.endTime)) {
+      const rawTime = order?.create_time ?? order?.order_create_time ?? order?.created_time ?? order?.paid_time;
+      const orderTimeUnix = typeof rawTime === 'number'
+        ? rawTime
+        : (typeof rawTime === 'string' && /^\d+$/.test(rawTime.trim()))
+          ? Number(rawTime.trim())
+          : Math.floor(new Date(rawTime || 0).getTime() / 1000);
+      if (orderTimeUnix) {
+        if (periodRange.startTime && orderTimeUnix < periodRange.startTime) continue;
+        if (periodRange.endTime && orderTimeUnix >= periodRange.endTime) continue;
+      }
+    }
     const orderId = String(order?.id || order?.order_id || '').trim();
     let matchedOrder = false;
     for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
@@ -169,13 +200,14 @@ const bookingProductOrderPerformance = (booking, orders = []) => {
       const quantity = Math.max(0, finiteNumber(sku?.quantity));
       const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity)));
       const price = Math.max(0, finiteNumber(sku?.price?.amount ?? sku?.price_amount));
-      const commissionRate = Math.max(0, finiteNumber(sku?.creator_commission_rate));
+      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
+      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
       currency = sku?.price?.currency || sku?.currency || currency;
       itemsSold += quantity;
       itemsRefunded += refundedQuantity;
       affiliateGmv += price * quantity;
       refundedGmv += price * refundedQuantity;
-      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate / 10000;
+      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
       matchedOrder = true;
     }
     if (matchedOrder && orderId) orderIds.add(orderId);
@@ -243,6 +275,9 @@ const bookingVideoOrderMetrics = (video, booking, orders = []) => {
 
   let gmv = 0;
   let itemsSold = 0;
+  let itemsRefunded = 0;
+  let refundedGmv = 0;
+  let estimatedCommission = 0;
   const orderIds = new Set();
   let currency = null;
   let hasMatch = false;
@@ -257,11 +292,17 @@ const bookingVideoOrderMetrics = (video, booking, orders = []) => {
 
       const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
       const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
+      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
       const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
       const price = Math.max(0, finiteNumber(rawPrice));
+      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
+      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
 
       itemsSold += quantity;
+      itemsRefunded += refundedQuantity;
       gmv += price * quantity;
+      refundedGmv += price * refundedQuantity;
+      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
       currency = sku?.price?.currency || sku?.currency || currency;
       hasMatch = true;
       matchedInOrder = true;
@@ -274,8 +315,11 @@ const bookingVideoOrderMetrics = (video, booking, orders = []) => {
   if (!hasMatch) return null;
   return {
     itemsSold,
+    itemsRefunded,
     orderCount: orderIds.size,
     grossGmv: gmv,
+    refundedGmv,
+    estimatedCommission,
     currency,
   };
 };
@@ -283,6 +327,74 @@ const bookingVideosByRevenue = (videos = []) => videos
   .map((video, index) => ({ video, index, revenue: finiteNumber(latestBookingVideoSnapshot(video)?.gross_gmv) }))
   .sort((left, right) => right.revenue - left.revenue || left.index - right.index)
   .map(({ video }) => video);
+
+const filterVideosByPeriod = (videos = [], periodRange = null) => {
+  const list = Array.isArray(videos) ? videos : [];
+  if (!periodRange || (!periodRange.startDate && !periodRange.endDate)) {
+    return list;
+  }
+  return list.filter((video) => {
+    const rawPostDate = video?.posted_at || video?.video_post_time || video?.post_date || video?.post_time;
+    if (!rawPostDate) return false;
+    const postDate = String(rawPostDate).slice(0, 10);
+    if (periodRange.startDate && postDate < periodRange.startDate) return false;
+    if (periodRange.endDate && postDate > periodRange.endDate) return false;
+    return true;
+  });
+};
+
+const bookingVideoPerformanceForVideos = (videos = [], basePerformance = null, shopOrders = []) => {
+  if (!videos.length) {
+    return {
+      gross_gmv: 0,
+      views: 0,
+      orders: 0,
+      items_sold: 0,
+      refunded_gmv: 0,
+      currency: basePerformance?.currency || 'MYR',
+      video_count: 0,
+      samples_shipped: basePerformance?.samples_shipped ?? 0,
+      estimated_commission: 0,
+    };
+  }
+  let grossGmv = 0;
+  let views = 0;
+  let orders = 0;
+  let itemsSold = 0;
+  let refundedGmv = 0;
+  let estimatedCommission = 0;
+  let currency = basePerformance?.currency || 'MYR';
+
+  for (const video of videos) {
+    const latest = latestBookingVideoSnapshot(video);
+    const live = bookingVideoOrderMetrics(video, null, shopOrders);
+    const videoGmv = live ? live.grossGmv : finiteNumber(latest?.gross_gmv ?? video?.gross_gmv ?? video?.gmv);
+    const videoOrders = live ? live.orderCount : finiteNumber(latest?.orders ?? video?.orders);
+    const videoItems = live ? live.itemsSold : finiteNumber(latest?.items_sold ?? video?.items_sold);
+    const videoViews = finiteNumber(latest?.views ?? video?.views ?? latest?.raw_metrics?.views);
+    const videoRefunded = live ? live.refundedGmv : finiteNumber(latest?.refunded_gmv ?? video?.refunded_gmv);
+    const videoCommission = live ? live.estimatedCommission : finiteNumber(latest?.estimated_commission ?? video?.estimated_commission);
+    grossGmv += videoGmv;
+    views += videoViews;
+    orders += videoOrders;
+    itemsSold += videoItems;
+    refundedGmv += videoRefunded;
+    estimatedCommission += videoCommission;
+    if (latest?.currency) currency = latest.currency;
+    else if (video?.currency) currency = video.currency;
+  }
+  return {
+    gross_gmv: grossGmv,
+    views,
+    orders,
+    items_sold: itemsSold,
+    refunded_gmv: refundedGmv,
+    currency,
+    video_count: videos.length,
+    samples_shipped: basePerformance?.samples_shipped ?? 0,
+    estimated_commission: estimatedCommission || finiteNumber(basePerformance?.estimated_commission),
+  };
+};
 const BOOKING_VIDEO_ICON_PATHS = {
   views: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
   likes: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6a5.5 5.5 0 0 0 1-8.8Z'],
@@ -1000,19 +1112,11 @@ const BookingProductOrderDetailModal = ({
               )}
             </div>
             <div className="booking-product-order-modal__title-box">
-              <div className="booking-product-order-modal__meta">
-                {product ? (
-                  isTarget ? <span className="chip chip--positive">Sản phẩm Booking</span> : null
-                ) : (
-                  <span className="chip chip--positive">Tất cả sản phẩm của Video</span>
-                )}
-                {booking?.creator_username ? <span className="chip">@{booking.creator_username.replace(/^@/, '')}</span> : null}
-                {video ? (
-                  <span className="chip" title={video.title || video.platform_video_id}>
-                    Video: {video.title ? (video.title.length > 30 ? `${video.title.slice(0, 30)}...` : video.title) : video.platform_video_id}
-                  </span>
-                ) : null}
-              </div>
+              {product && isTarget ? (
+                <div className="booking-product-order-modal__meta">
+                  <span className="chip chip--positive">Sản phẩm Booking</span>
+                </div>
+              ) : null}
               <h2 id="product-order-detail-title" className="booking-product-order-modal__title" title={product?.name || product?.id || video?.title || 'Đơn hàng của Video'}>
                 {product ? (product.name || product.id) : (video?.title || 'Tất cả đơn hàng của Video')}
               </h2>
@@ -1448,8 +1552,6 @@ const BookingMonthCard = ({
   t,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const [startDate, setStartDate] = useState(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
-  const [endDate, setEndDate] = useState(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
   const rawCost = booking.total_cost ?? booking.booking_cost;
   const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
   const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
@@ -1470,8 +1572,6 @@ const BookingMonthCard = ({
   }, [productPickerOpen]);
 
   useEffect(() => {
-    setStartDate(booking.start_date ? String(booking.start_date).slice(0, 10) : '');
-    setEndDate(booking.end_date ? String(booking.end_date).slice(0, 10) : (booking.deadline ? String(booking.deadline).slice(0, 10) : ''));
     const rCost = booking.total_cost ?? booking.booking_cost;
     setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
     setCommittedVideos(booking.committed_videos || 1);
@@ -1483,9 +1583,9 @@ const BookingMonthCard = ({
     await onSave(booking.id, {
       total_cost: Number(cost),
       committed_videos: Math.max(1, Number.parseInt(committedVideos, 10) || 1),
-      start_date: startDate || null,
-      end_date: endDate || null,
-      deadline: endDate || null,
+      start_date: null,
+      end_date: null,
+      deadline: null,
       currency: selectedCurrency,
       product_ids: productIds,
       products: (allShopProducts || []).filter((p) => productIds.includes(p.id)),
@@ -1522,7 +1622,7 @@ const BookingMonthCard = ({
       <div className="booking-month-card__header">
         <div className="booking-month-card__header-left">
           <span className="booking-month-card__date-range">
-            {formatDate(booking.start_date)} → {formatDate(booking.end_date || booking.deadline)}
+            {formatDate(booking.created_at)}
           </span>
         </div>
         <div className="booking-month-card__header-badges">
@@ -1652,31 +1752,6 @@ const BookingMonthCard = ({
 
         {isEditing ? (
           <form className="booking-month-card__form" onSubmit={handleFormSubmit}>
-            <div className="field booking-modal-date-range">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`start-date-${booking.id}`}>{t('booking.startDate')}</label>
-                  <DatePickerInput
-                    id={`start-date-${booking.id}`}
-                    label={t('booking.startDate')}
-                    value={startDate}
-                    max={endDate || undefined}
-                    onChange={(val) => setStartDate(val)}
-                  />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`end-date-${booking.id}`}>{t('booking.endDate')}</label>
-                  <DatePickerInput
-                    id={`end-date-${booking.id}`}
-                    label={t('booking.endDate')}
-                    value={endDate}
-                    min={startDate || undefined}
-                    onChange={(val) => setEndDate(val)}
-                  />
-                </div>
-              </div>
-            </div>
-
             <div className="field booking-modal-cost-videos">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div className="field" style={{ margin: 0 }}>
@@ -2033,18 +2108,19 @@ const BookingManagement = ({
       return undefined;
     }
     const controller = new AbortController();
+    const range = orderRangeForPeriod(selectedMonth, customRange);
     setLoading(true);
     setError('');
     fetchBookings(controller.signal, {
-      windowType: performanceWindow,
-      ...(selectedMonth === 'custom' ? { startDate: customRange.start, endDate: customRange.end } : {}),
-      month: selectedMonth,
+      windowType: range.windowType,
+      ...(range.startDate ? { startDate: range.startDate, endDate: range.endDate } : {}),
+      month: 'all',
     })
       .then((loadedBookings) => setBookings(loadedBookings))
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [customRange.end, customRange.start, performanceWindow, selectedMonth, t]);
+  }, [customRange, selectedMonth, t]);
 
   useEffect(() => {
     if (loading) return;
@@ -2184,13 +2260,6 @@ const BookingManagement = ({
     })
       .then((creator) => {
         setSelectedKocDetail({ key: form.creator_key, creator });
-        if (creator?.collaboration?.start_at || creator?.collaboration?.end_at) {
-          setForm((current) => ({
-            ...current,
-            start_date: creator.collaboration?.start_at ? creator.collaboration.start_at.slice(0, 10) : current.start_date,
-            end_date: creator.collaboration?.end_at ? creator.collaboration.end_at.slice(0, 10) : current.end_date,
-          }));
-        }
       })
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
@@ -2207,7 +2276,7 @@ const BookingManagement = ({
       return undefined;
     }
     const controller = new AbortController();
-    const range = orderRangeForWindow(performanceWindow, customRange);
+    const range = orderRangeForPeriod(selectedMonth, customRange);
     const cacheKey = `${range.startTime || 'all'}:${range.endTime || 'all'}:${shopIds.join(',')}`;
     const cached = productOrdersCacheRef.current.get(cacheKey);
     if (cached && Date.now() - cached.fetchedAt < PRODUCT_ORDERS_CACHE_TTL_MS) {
@@ -2249,17 +2318,47 @@ const BookingManagement = ({
       if (!controller.signal.aborted) setProductOrdersLoading(false);
     });
     return () => controller.abort();
-  }, [bookings, customRange, performanceWindow, t]);
-  const productPerformanceByBooking = useMemo(() => new Map(bookings.map((booking) => [
-    String(booking.id),
-    bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || []),
-  ])), [bookings, productOrdersByShop]);
+  }, [bookings, customRange, selectedMonth, t]);
+  const productPerformanceByBooking = useMemo(() => {
+    const activeRange = orderRangeForPeriod(selectedMonth, customRange);
+    return new Map(bookings.map((booking) => [
+      String(booking.id),
+      bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || [], activeRange),
+    ]));
+  }, [bookings, customRange, productOrdersByShop, selectedMonth]);
+
+  const videoPerformanceByBooking = useMemo(() => {
+    const activeRange = orderRangeForPeriod(selectedMonth, customRange);
+    return new Map(bookings.map((booking) => {
+      const allVideos = bookingVideosOf(booking);
+      const filteredVideos = filterVideosByPeriod(allVideos, activeRange);
+      if (!activeRange.startDate && !activeRange.endDate) {
+        return [String(booking.id), {
+          videos: bookingVideosByRevenue(allVideos),
+          performance: booking.actual_performance,
+          videoCount: allVideos.length || Number(booking.actual_performance?.video_count || 0),
+        }];
+      }
+      const perf = bookingVideoPerformanceForVideos(
+        filteredVideos,
+        booking.actual_performance,
+        productOrdersByShop[String(booking.target_shop_id)] || [],
+      );
+      return [String(booking.id), {
+        videos: bookingVideosByRevenue(filteredVideos),
+        performance: perf,
+        videoCount: filteredVideos.length,
+      }];
+    }));
+  }, [bookings, customRange, productOrdersByShop, selectedMonth]);
+
   const stats = useMemo(() => bookings.reduce((result, booking) => {
     const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
     const convertedCost = convertAmount(rawCost, booking.currency);
+    const videoData = videoPerformanceByBooking.get(String(booking.id));
     const tabPerformance = bookingTab === 'product'
       ? productPerformanceByBooking.get(String(booking.id))
-      : booking.actual_performance;
+      : videoData?.performance || booking.actual_performance;
     const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
     const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency);
     result.total += 1;
@@ -2268,9 +2367,9 @@ const BookingManagement = ({
     result.committedVideos += Number(booking.committed_videos || 1);
     result.videoCount += bookingTab === 'product'
       ? finiteNumber(tabPerformance?.affiliate_orders)
-      : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
+      : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
     return result;
-  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking]);
+  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
   const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
     const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
     const convertedCost = convertAmount(rawCost, booking.currency);
@@ -2311,9 +2410,10 @@ const BookingManagement = ({
       const group = groups.get(key);
       const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
       const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
+      const videoData = videoPerformanceByBooking.get(String(booking.id));
       const tabPerformance = bookingTab === 'product'
         ? productPerformanceByBooking.get(String(booking.id))
-        : booking.actual_performance;
+        : videoData?.performance || booking.actual_performance;
       const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
       const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
       group.bookings.push(booking);
@@ -2322,16 +2422,18 @@ const BookingManagement = ({
       group.committedVideos += Number(booking.committed_videos || 1);
       group.videoCount += bookingTab === 'product'
         ? finiteNumber(tabPerformance?.affiliate_orders)
-        : bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
+        : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
     }
     for (const group of groups.values()) {
       group.bookings.sort((left, right) => {
-        const performanceOfBooking = (booking) => bookingTab === 'product'
-          ? productPerformanceByBooking.get(String(booking.id))
-          : booking.actual_performance;
+        const performanceOfBooking = (booking) => (
+          bookingTab === 'product'
+            ? productPerformanceByBooking.get(String(booking.id))
+            : (videoPerformanceByBooking.get(String(booking.id))?.performance || booking.actual_performance)
+        );
         const revenueOfBooking = (booking) => {
           const performance = performanceOfBooking(booking);
-          const revenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
+          const revenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : (performance?.gross_gmv ?? performance?.affiliate_gmv));
           return convertAmount(revenue, performance?.currency) ?? revenue;
         };
         return revenueOfBooking(right) - revenueOfBooking(left)
@@ -2343,7 +2445,7 @@ const BookingManagement = ({
       if (right.key === 'unassigned') return -1;
       return left.manager.name.localeCompare(right.manager.name, locale);
     });
-  }, [bookingTab, bookings, canManageUsers, convertAmount, locale, productPerformanceByBooking, session, t, users]);
+  }, [bookingTab, bookings, canManageUsers, convertAmount, locale, productPerformanceByBooking, session, t, users, videoPerformanceByBooking]);
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
@@ -2378,8 +2480,8 @@ const BookingManagement = ({
         valA = a.totalRevenue;
         valB = b.totalRevenue;
       } else if (key === 'ratio') {
-        valA = a.totalRevenue > 0 ? a.totalCost / a.totalRevenue : 0;
-        valB = b.totalRevenue > 0 ? b.totalCost / b.totalRevenue : 0;
+        valA = a.totalRevenue > 0 ? a.totalCost / a.totalRevenue : (a.totalCost > 0 ? Infinity : 0);
+        valB = b.totalRevenue > 0 ? b.totalCost / b.totalRevenue : (b.totalCost > 0 ? Infinity : 0);
       }
       if (valA !== valB) {
         return factor * (valA > valB ? 1 : -1);
@@ -2390,17 +2492,18 @@ const BookingManagement = ({
 
   const sortedBookingsOfGroup = useCallback((bookingsList) => {
     const list = [...bookingsList];
+    if (!bookingSort.key) return list;
     const { key, direction } = bookingSort;
     const factor = direction === 'desc' ? -1 : 1;
 
     const performanceOf = (booking) => (
       bookingTab === 'product'
         ? productPerformanceByBooking.get(String(booking.id))
-        : booking.actual_performance
+        : (videoPerformanceByBooking.get(String(booking.id))?.performance || booking.actual_performance)
     );
     const revenueOf = (booking) => {
       const perf = performanceOf(booking);
-      const raw = finiteNumber(bookingTab === 'product' ? perf?.affiliate_gmv : perf?.gross_gmv);
+      const raw = finiteNumber(bookingTab === 'product' ? perf?.affiliate_gmv : (perf?.gross_gmv ?? perf?.affiliate_gmv));
       return convertAmount(raw, perf?.currency) ?? raw;
     };
     const costOf = (booking) => {
@@ -2411,14 +2514,17 @@ const BookingManagement = ({
       if (bookingTab === 'product') {
         return finiteNumber(performanceOf(booking)?.affiliate_orders);
       }
-      return bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0);
+      const videoData = videoPerformanceByBooking.get(String(booking.id));
+      return videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0));
     };
 
     return list.sort((a, b) => {
       if (key === 'koc') {
         const nameA = String(a.creator_name || a.creator_username || '').trim();
         const nameB = String(b.creator_name || b.creator_username || '').trim();
-        return factor * nameA.localeCompare(nameB, locale);
+        const diff = nameA.localeCompare(nameB, locale);
+        if (diff !== 0) return factor * diff;
+        return Number(b.id || 0) - Number(a.id || 0);
       }
       let valA = 0;
       let valB = 0;
@@ -2434,8 +2540,8 @@ const BookingManagement = ({
       } else if (key === 'ratio') {
         const revA = revenueOf(a);
         const revB = revenueOf(b);
-        valA = revA > 0 ? costOf(a) / revA : 0;
-        valB = revB > 0 ? costOf(b) / revB : 0;
+        valA = revA > 0 ? costOf(a) / revA : (costOf(a) > 0 ? Infinity : 0);
+        valB = revB > 0 ? costOf(b) / revB : (costOf(b) > 0 ? Infinity : 0);
       } else if (key === 'refunds') {
         valA = finiteNumber(performanceOf(a)?.refunded_gmv);
         valB = finiteNumber(performanceOf(b)?.refunded_gmv);
@@ -2454,7 +2560,7 @@ const BookingManagement = ({
       }
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [bookingSort, bookingTab, convertAmount, locale, productPerformanceByBooking]);
+  }, [bookingSort, bookingTab, convertAmount, locale, productPerformanceByBooking, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canManageUsers && bookingGroups.length === 1) {
@@ -2478,9 +2584,6 @@ const BookingManagement = ({
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
         committed_videos: Math.max(1, Number.parseInt(form.committed_videos, 10) || 1),
-        start_date: form.start_date || undefined,
-        end_date: form.end_date || undefined,
-        deadline: form.end_date || undefined,
         product_ids: form.product_ids,
         products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
       });
@@ -2491,13 +2594,14 @@ const BookingManagement = ({
       )) {
         setCreatorBookings((items) => [created, ...items.filter((item) => item.id !== created.id)]);
       }
+      const currentRange = orderRangeForPeriod(selectedMonth, customRange);
       fetchBookings(undefined, {
-        windowType: performanceWindow,
-        ...(selectedMonth === 'custom' ? {
-          startDate: customRange.start,
-          endDate: customRange.end,
+        windowType: currentRange.windowType,
+        ...(currentRange.startDate ? {
+          startDate: currentRange.startDate,
+          endDate: currentRange.endDate,
         } : {}),
-        month: selectedMonth,
+        month: 'all',
       }).then(setBookings).catch(() => {});
       setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
       onEmbeddedChanged?.(created);
@@ -2736,30 +2840,6 @@ const BookingManagement = ({
                   </div>
                 ) : null}
               </div>
-              <div className="field booking-modal-date-range">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label htmlFor="booking-form-start-date">{t('booking.startDate')}</label>
-                    <DatePickerInput
-                      id="booking-form-start-date"
-                      label={t('booking.startDate')}
-                      value={form.start_date}
-                      max={form.end_date || undefined}
-                      onChange={(value) => setForm((current) => ({ ...current, start_date: value }))}
-                    />
-                  </div>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label htmlFor="booking-form-end-date">{t('booking.endDate')}</label>
-                    <DatePickerInput
-                      id="booking-form-end-date"
-                      label={t('booking.endDate')}
-                      value={form.end_date}
-                      min={form.start_date || undefined}
-                      onChange={(value) => setForm((current) => ({ ...current, end_date: value }))}
-                    />
-                  </div>
-                </div>
-              </div>
               <div className="field booking-modal-cost-videos">
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div className="field" style={{ margin: 0 }}>
@@ -2789,7 +2869,7 @@ const BookingManagement = ({
                   </div>
                 </div>
               </div>
-              <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={closeCreateBooking}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id || !form.start_date || !form.end_date}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
+              <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={closeCreateBooking}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
             </form>
           </section>
         </div>, document.body,
@@ -2821,7 +2901,7 @@ const BookingManagement = ({
               </div>
             ) : null}
             <div className="field booking-month-filter">
-              <label htmlFor="booking-month-select">{t('booking.bookingMonth')}</label>
+              <label htmlFor="booking-month-select">{bookingTab === 'video' ? t('booking.videoPostPeriod') : t('booking.orderPeriod')}</label>
               <select
                 id="booking-month-select"
                 value={selectedMonth}
@@ -2999,15 +3079,18 @@ const BookingManagement = ({
                                   </thead>
                                   <tbody>
                                     {sortedBookingsOfGroup(group.bookings).map((booking) => {
+                                      const videoData = videoPerformanceByBooking.get(String(booking.id));
                                       const performance = bookingTab === 'product'
                                         ? productPerformanceByBooking.get(String(booking.id))
-                                        : booking.actual_performance;
-                                      const bookingVideos = bookingVideosByRevenue(bookingVideosOf(booking));
+                                        : (videoData?.performance || booking.actual_performance);
+                                      const bookingVideos = videoData?.videos || bookingVideosByRevenue(bookingVideosOf(booking));
                                       const postedVideos = bookingVideos.filter((v) => v.posted_at).sort((a, b) => new Date(a.posted_at) - new Date(b.posted_at));
                                       const firstPostedDate = postedVideos[0]?.posted_at || booking.posted_at;
-                                      const startDate = booking.start_date || booking.created_at;
-                                      const deadlineDate = booking.end_date || booking.deadline;
-                                      const videoCount = bookingVideos.length || Number(booking.actual_performance?.video_count || 0);
+                                      const startDate = booking.created_at;
+                                      const deadlineDate = null;
+                                      const videoCount = bookingTab === 'product'
+                                        ? Number(performance?.affiliate_orders || 0)
+                                        : (videoData?.videoCount ?? bookingVideos.length);
                                       const timeline = computeBookingTimeline({
                                         startDate,
                                         deadlineDate,
@@ -3140,7 +3223,7 @@ const BookingManagement = ({
                                                       </div>
                                                     ) : (
                                                       <div className="booking-video-expansion__empty">
-                                                        <p>{t('booking.noMatchedVideo')}</p>
+                                                        <p>{t(selectedMonth && selectedMonth !== 'all' ? 'booking.noVideosInPeriod' : 'booking.noMatchedVideo')}</p>
                                                       </div>
                                                     )}
                                                   </div>

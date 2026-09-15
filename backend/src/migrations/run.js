@@ -83,6 +83,7 @@ const migrations = [
   require('./073_add_booking_start_end_dates'),
   require('./074_add_booking_committed_videos'),
   require('./075_add_video_status'),
+  require('./076_clear_booking_dates'),
 ];
 
 const createMigrationRunner = ({

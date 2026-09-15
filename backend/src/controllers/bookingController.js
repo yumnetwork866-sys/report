@@ -1235,7 +1235,7 @@ const getBookings = async (req, res) => {
           ...creatorWhere,
         },
         include: bookingInclude,
-        order: [['start_date', 'DESC'], ['deadline', 'DESC'], ['id', 'DESC']],
+        order: [['created_at', 'DESC'], ['id', 'DESC']],
       });
       const serialized = await applyBookingVideoPerformanceWindow(
         await serializeBookingsWithFreshCreatorAvatars(bookings),
@@ -1311,12 +1311,10 @@ const createBooking = async (req, res) => {
     };
     const targetStartDate = req.body.start_date
       ? String(req.body.start_date).slice(0, 10)
-      : (collaboration?.start_at ? new Date(collaboration.start_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+      : null;
     const targetEndDate = req.body.end_date
       ? String(req.body.end_date).slice(0, 10)
-      : (req.body.deadline
-        ? String(req.body.deadline).slice(0, 10)
-        : (collaboration?.end_at ? new Date(collaboration.end_at).toISOString().slice(0, 10) : null));
+      : (req.body.deadline ? String(req.body.deadline).slice(0, 10) : null);
 
     const committedVideos = req.body.committed_videos !== undefined
       ? Math.max(1, Number.parseInt(req.body.committed_videos, 10) || 1)
