@@ -372,21 +372,6 @@ const TeamSelectDropdown = ({ teams, value, onChange }) => {
   );
 };
 
-const TeamComparisonTooltip = ({ active, payload, formatNumber, formatRevenue }) => {
-  const team = payload?.[0]?.payload;
-  if (!active || !team) return null;
-
-  return (
-    <div className="dashboard-chart-tooltip team-comparison-tooltip">
-      <strong>{team.name}</strong>
-      <div><span>Video</span><b>{formatNumber(team.videos)}</b></div>
-      <div><span>Lượt xem</span><b>{formatNumber(team.views)}</b></div>
-      <div><span>Đơn hàng</span><b>{formatNumber(team.orders || 0)}</b></div>
-      <div><span>Doanh số</span><b>{team.revenueAvailable ? formatRevenue(team.revenue, team.currency) : '—'}</b></div>
-    </div>
-  );
-};
-
 const ChannelReport = () => {
   const { language } = useI18n();
   const [report, setReport] = useState(null);
@@ -401,7 +386,6 @@ const ChannelReport = () => {
   const [selectedTeamIds, setSelectedTeamIds] = useState('all');
   const [selectedChannelId, setSelectedChannelId] = useState('all');
   const [activeReportTab, setActiveReportTab] = useState('teams');
-  const [comparisonMetric, setComparisonMetric] = useState('views');
   const [productTeamFilter, setProductTeamFilter] = useState('all');
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [expandedMemberIds, setExpandedMemberIds] = useState(() => new Set());
@@ -536,7 +520,7 @@ const ChannelReport = () => {
     });
   }, [selectedMonth]);
 
-  const teams = report?.filters?.teams || [];
+  const teams = useMemo(() => report?.filters?.teams || [], [report?.filters?.teams]);
   const channels = report?.filters?.channels || [];
   const groups = report?.revenue?.teams || [];
   const revenueGroups = revenueReport?.revenue?.teams || [];
@@ -594,7 +578,7 @@ const ChannelReport = () => {
     }
 
     return [...list].sort((a, b) => (Number(b.orders || 0) - Number(a.orders || 0)) || (Number(b.revenue || 0) - Number(a.revenue || 0)));
-  }, [productSearchQuery, productTeamFilter, report, revenueReport]);
+  }, [activeReportTab, productSearchQuery, productTeamFilter, report, revenueReport]);
 
   const teamProductsSummary = useMemo(() => {
     let totalOrders = 0;
@@ -615,19 +599,13 @@ const ChannelReport = () => {
       productCount: teamProductsData.length,
     };
   }, [teamProductsData]);
-  const comparisonMetricLabel = {
-    videos: 'Video',
-    views: 'Lượt xem',
-    orders: 'Đơn hàng',
-    revenue: 'Doanh số',
-  }[comparisonMetric];
   const compactNumber = (value) => Intl.NumberFormat(language === 'vi' ? 'vi-VN' : 'en-US', {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(Number(value || 0));
 
-  const previousGroups = previousReport?.revenue?.teams || [];
-  const previousRevenueGroups = previousRevenueReport?.revenue?.teams || [];
+  const previousGroups = useMemo(() => previousReport?.revenue?.teams || [], [previousReport?.revenue?.teams]);
+  const previousRevenueGroups = useMemo(() => previousRevenueReport?.revenue?.teams || [], [previousRevenueReport?.revenue?.teams]);
   const changePercent = (current, previous) => {
     const currentValue = Number(current || 0);
     const previousValue = Number(previous || 0);

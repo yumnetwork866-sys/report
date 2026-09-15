@@ -54,7 +54,7 @@ const checkVideoAvailability = async (video) => {
     // Any other response (e.g. 403 HTML from Akamai WAF, 429 rate limit, 5xx server errors):
     // Do NOT assume the video is deleted or private. Keep current status.
     return { available: true, status: video.status || 'active' };
-  } catch (error) {
+  } catch {
     // Network / timeout error: do not assume video is gone
     return { available: true, status: video.status || 'active' };
   }

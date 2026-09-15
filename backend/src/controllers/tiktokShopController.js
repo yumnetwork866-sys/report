@@ -8,6 +8,7 @@ const {
   TikTokMarketplaceCreatorDetail, TikTokMarketplaceDiscoveryState,
   TikTokTargetCollaborationSnapshot,
   OrderProductCategory, OrderProductCategoryItem,
+  TikTokAffiliateOrder, TikTokAffiliateOrderSku, TikTokShopProduct,
 } = require('../models');
 const {
   buildShopAuthorizationUrl,
@@ -677,11 +678,137 @@ const loadTargetCollaborationSummaries = async (shop, targetIds) => {
 
 const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   const orderId = String(req.query.order_id || '').trim();
+  const orderSource = String(req.query.source || '').trim().toLowerCase();
+  const startTime = unixTimeValue(req.query.create_time_ge);
+  const endTime = unixTimeValue(req.query.create_time_lt);
+
+  if (orderSource === 'db' || orderSource === 'database') {
+    const where = { shop_id: shop.id };
+    if (orderId) where.order_id = orderId;
+    if (startTime && endTime) {
+      where.create_time = {
+        [Op.gte]: new Date(startTime * 1000),
+        [Op.lt]: new Date(endTime * 1000),
+      };
+    } else if (startTime) {
+      where.create_time = { [Op.gte]: new Date(startTime * 1000) };
+    } else if (endTime) {
+      where.create_time = { [Op.lt]: new Date(endTime * 1000) };
+    }
+
+    const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
+    const offset = Math.max(0, Number(req.query.page_token) || 0);
+
+    const { count, rows } = await TikTokAffiliateOrder.findAndCountAll({
+      where,
+      include: [{
+        model: TikTokAffiliateOrderSku,
+        as: 'skus',
+        required: false,
+      }],
+      distinct: true,
+      order: [['create_time', 'DESC']],
+      limit: pageSize,
+      offset,
+    });
+
+    const nextOffset = offset + rows.length;
+    const nextPageToken = nextOffset < count ? String(nextOffset) : '';
+
+    if (!rows.length) {
+      return {
+        code: 0,
+        message: 'Success',
+        data: {
+          orders: [],
+          next_page_token: '',
+          total_count: count,
+        },
+      };
+    }
+
+    const allSkus = rows.flatMap((r) => (Array.isArray(r.skus) ? r.skus : []));
+    const productIds = [...new Set(allSkus.map((sku) => sku.product_id).filter(Boolean).map(String))];
+    const targetIds = new Set(allSkus.map((sku) => sku.target_collaboration_id).filter(Boolean).map(String));
+
+    const [products, targetSnapshots] = await Promise.all([
+      productIds.length
+        ? TikTokShopProduct.findAll({
+            where: { shop_id: shop.id, product_id: { [Op.in]: productIds } },
+          })
+        : [],
+      targetIds.size
+        ? TikTokTargetCollaborationSnapshot.findAll({
+            where: { shop_id: shop.id, collaboration_id: { [Op.in]: [...targetIds] } },
+          })
+        : [],
+    ]);
+
+    const productsById = new Map(products.map((p) => [
+      String(p.product_id),
+      { id: p.product_id, name: p.title, image_url: p.image_url, main_image_url: p.image_url, ...(p.raw_data || {}) },
+    ]));
+    const targetProgramsById = new Map(targetSnapshots.map((t) => [
+      String(t.collaboration_id),
+      { id: String(t.collaboration_id), name: t.name, type: 'TARGET', ...(t.raw_data || {}) },
+    ]));
+
+    const orders = rows.map((r) => {
+      const base = r.raw_data || {};
+      const skus = Array.isArray(r.skus) && r.skus.length ? r.skus.map((s) => {
+        const rawSku = s.raw_data || {};
+        const prod = productsById.get(String(s.product_id || rawSku.product_id));
+        return {
+          ...rawSku,
+          sku_id: s.sku_id || rawSku.sku_id,
+          product_id: s.product_id || rawSku.product_id,
+          product_name: s.product_name || rawSku.product_name || prod?.name || '',
+          product_image: prod?.image_url || rawSku.product_image || '',
+          image_url: prod?.image_url || rawSku.image_url || '',
+          quantity: s.quantity ?? rawSku.quantity,
+          refunded_quantity: s.refunded_quantity ?? rawSku.refunded_quantity,
+          price: s.price !== null && s.price !== undefined
+            ? { amount: String(s.price), currency: s.currency || 'MYR' }
+            : (rawSku.price || {}),
+          content_id: s.content_id || rawSku.content_id,
+          content_type: s.content_type || rawSku.content_type,
+          creator_username: s.creator_username || rawSku.creator_username,
+        };
+      }) : (Array.isArray(base.skus) ? base.skus : []);
+
+      const pIds = [...new Set(skus.map((sku) => sku?.product_id).filter(Boolean).map(String))];
+      const progIds = [...new Set(skus
+        .flatMap((sku) => [sku?.target_collaboration_id, sku?.open_collaboration_id])
+        .filter(Boolean)
+        .map(String))];
+
+      return {
+        ...base,
+        id: r.order_id,
+        order_id: r.order_id,
+        create_time: r.create_time ? Math.floor(new Date(r.create_time).getTime() / 1000) : base.create_time,
+        skus,
+        products: pIds.map((id) => productsById.get(id) || { id }),
+        programs: progIds.map((id) => targetProgramsById.get(id) || { id }),
+      };
+    });
+
+    return {
+      code: 0,
+      message: 'Success',
+      data: {
+        orders,
+        next_page_token: nextPageToken,
+        total_count: count,
+      },
+    };
+  }
+
   const orderSearchOptions = {
     authorization: shop.authorization,
     shopCipher: shop.cipher,
-    startTime: unixTimeValue(req.query.create_time_ge),
-    endTime: unixTimeValue(req.query.create_time_lt),
+    startTime,
+    endTime,
     programId: req.query.program_id,
   };
   let payload;

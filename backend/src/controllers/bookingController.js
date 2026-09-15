@@ -3,7 +3,7 @@ const { Op, QueryTypes, literal } = require('sequelize');
 const {
   User, Booking, TikTokPartnerAuthorization, TikTokShop,
   TikTokTargetCollaborationSnapshot, TikTokCreatorPerformanceExport, TikTokCreatorPerformanceSnapshot,
-  TikTokVideoPerformanceSnapshot, TikTokAffiliateOrderSku,
+  TikTokVideoPerformanceSnapshot,
   BookingVideo, BookingVideoPerformanceSnapshot,
   ShopVideo, ShopVideoPerformanceSnapshot, sequelize,
 } = require('../models');

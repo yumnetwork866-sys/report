@@ -1,6 +1,6 @@
 require('dotenv').config();
 
-const { Video, TikTokChannel, sequelize } = require('../models');
+const { Video, TikTokChannel } = require('../models');
 const { batchCheckVideosAvailability } = require('../services/videoAvailabilityService');
 
 const run = async ({ limit = 200, concurrency = 5, updateThumbnails = true } = {}) => {
