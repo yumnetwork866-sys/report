@@ -542,6 +542,7 @@
     "videoPostPeriod": "Video post period",
     "orderPeriod": "Order period",
     "noVideosInPeriod": "No videos posted in this period",
+    "bookingDate": "Booking date",
     "bookDate": "Booked",
     "lateByDays": "{{count}}d late",
     "onTime": "On time",

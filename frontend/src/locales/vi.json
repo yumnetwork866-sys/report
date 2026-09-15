@@ -538,6 +538,7 @@
     "videoPostPeriod": "Thời gian đăng video",
     "orderPeriod": "Thời gian đơn hàng",
     "noVideosInPeriod": "Chưa có video nào đăng trong khoảng thời gian này",
+    "bookingDate": "Ngày booking",
     "bookDate": "Book",
     "lateByDays": "Muộn {{count}} ngày",
     "onTime": "Đúng hạn",

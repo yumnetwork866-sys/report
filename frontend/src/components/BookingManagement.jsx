@@ -92,9 +92,26 @@ const shiftDateInputValue = (value, days) => {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 };
+const bookingDateOf = (booking) => {
+  if (!booking) return '';
+  const raw = booking.start_date || booking.booking_date || booking.created_at;
+  if (!raw) return '';
+  if (typeof raw === 'string') return raw.slice(0, 10);
+  if (raw instanceof Date) return dateInputValue(raw);
+  return String(raw).slice(0, 10);
+};
+const isBookingInPeriod = (booking, activeRange) => {
+  if (!activeRange || (!activeRange.startDate && !activeRange.endDate)) return true;
+  const bDate = bookingDateOf(booking);
+  if (!bDate) return false;
+  if (activeRange.startDate && bDate < activeRange.startDate) return false;
+  if (activeRange.endDate && bDate > activeRange.endDate) return false;
+  return true;
+};
 const defaultBookingForm = () => ({
   creator_key: '',
   staff_id: '',
+  booking_date: dateInputValue(new Date()),
   total_cost: '',
   committed_videos: 1,
   product_ids: [],
@@ -1555,6 +1572,7 @@ const BookingMonthCard = ({
   const rawCost = booking.total_cost ?? booking.booking_cost;
   const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
   const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
+  const [bookingDate, setBookingDate] = useState(bookingDateOf(booking));
   const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
   const [productPickerOpen, setProductPickerOpen] = useState(false);
   const productPickerTriggerRef = useRef(null);
@@ -1575,6 +1593,7 @@ const BookingMonthCard = ({
     const rCost = booking.total_cost ?? booking.booking_cost;
     setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
     setCommittedVideos(booking.committed_videos || 1);
+    setBookingDate(bookingDateOf(booking));
     setProductIds(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
   }, [booking, convertAmount, editableCurrencyAmount, selectedCurrency]);
 
@@ -1583,7 +1602,7 @@ const BookingMonthCard = ({
     await onSave(booking.id, {
       total_cost: Number(cost),
       committed_videos: Math.max(1, Number.parseInt(committedVideos, 10) || 1),
-      start_date: null,
+      start_date: bookingDate || null,
       end_date: null,
       deadline: null,
       currency: selectedCurrency,
@@ -1622,7 +1641,7 @@ const BookingMonthCard = ({
       <div className="booking-month-card__header">
         <div className="booking-month-card__header-left">
           <span className="booking-month-card__date-range">
-            {formatDate(booking.created_at)}
+            {formatDate(bookingDateOf(booking) || booking.created_at)}
           </span>
         </div>
         <div className="booking-month-card__header-badges">
@@ -1753,7 +1772,16 @@ const BookingMonthCard = ({
         {isEditing ? (
           <form className="booking-month-card__form" onSubmit={handleFormSubmit}>
             <div className="field booking-modal-cost-videos">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
+                <div className="field" style={{ margin: 0 }}>
+                  <label htmlFor={`date-${booking.id}`}>{t('booking.bookingDate')}</label>
+                  <DatePickerInput
+                    id={`date-${booking.id}`}
+                    label={t('booking.bookingDate')}
+                    value={bookingDate}
+                    onChange={(val) => setBookingDate(val)}
+                  />
+                </div>
                 <div className="field" style={{ margin: 0 }}>
                   <label htmlFor={`cost-${booking.id}`}>{t('booking.totalCost')} ({currencyLabel})</label>
                   <input
@@ -2058,7 +2086,7 @@ const BookingManagement = ({
     if (!localMatches.some((b) => b.id === selectedBooking.id)) {
       localMatches.push(selectedBooking);
     }
-    localMatches.sort((a, b) => new Date(b.start_date || b.deadline || b.created_at || 0) - new Date(a.start_date || a.deadline || a.created_at || 0));
+    localMatches.sort((a, b) => new Date(bookingDateOf(b) || 0) - new Date(bookingDateOf(a) || 0));
     setCreatorBookings(localMatches);
 
     const controller = new AbortController();
@@ -2071,7 +2099,7 @@ const BookingManagement = ({
     })
       .then((items) => {
         if (!controller.signal.aborted && Array.isArray(items) && items.length) {
-          items.sort((a, b) => new Date(b.start_date || b.deadline || b.created_at || 0) - new Date(a.start_date || a.deadline || a.created_at || 0));
+          items.sort((a, b) => new Date(bookingDateOf(b) || 0) - new Date(bookingDateOf(a) || 0));
           setCreatorBookings(items);
         }
       })
@@ -2352,24 +2380,31 @@ const BookingManagement = ({
     }));
   }, [bookings, customRange, productOrdersByShop, selectedMonth]);
 
-  const stats = useMemo(() => bookings.reduce((result, booking) => {
-    const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
-    const convertedCost = convertAmount(rawCost, booking.currency);
-    const videoData = videoPerformanceByBooking.get(String(booking.id));
-    const tabPerformance = bookingTab === 'product'
-      ? productPerformanceByBooking.get(String(booking.id))
-      : videoData?.performance || booking.actual_performance;
-    const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
-    const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency);
-    result.total += 1;
-    result.totalCost += convertedCost ?? rawCost;
-    result.totalRevenue += convertedRevenue ?? rawRevenue;
-    result.committedVideos += Number(booking.committed_videos || 1);
-    result.videoCount += bookingTab === 'product'
-      ? finiteNumber(tabPerformance?.affiliate_orders)
-      : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
-    return result;
-  }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 }), [bookingTab, bookings, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
+  const stats = useMemo(() => {
+    const activeRange = orderRangeForPeriod(selectedMonth, customRange);
+    return bookings.reduce((result, booking) => {
+      const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
+      const videoData = videoPerformanceByBooking.get(String(booking.id));
+      const tabPerformance = bookingTab === 'product'
+        ? productPerformanceByBooking.get(String(booking.id))
+        : videoData?.performance || booking.actual_performance;
+      const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
+      const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
+      const inPeriodForCost = isBookingInPeriod(booking, activeRange);
+
+      result.total += 1;
+      if (inPeriodForCost) {
+        result.totalCost += convertedCost;
+      }
+      result.totalRevenue += convertedRevenue;
+      result.committedVideos += Number(booking.committed_videos || 1);
+      result.videoCount += bookingTab === 'product'
+        ? finiteNumber(tabPerformance?.affiliate_orders)
+        : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
+      return result;
+    }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 });
+  }, [bookingTab, bookings, convertAmount, customRange, productPerformanceByBooking, selectedMonth, videoPerformanceByBooking]);
   const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
     const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
     const convertedCost = convertAmount(rawCost, booking.currency);
@@ -2382,6 +2417,7 @@ const BookingManagement = ({
     return result;
   }, { totalCost: 0, totalGmv: 0, itemsSold: 0 }), [creatorBookings, convertAmount]);
   const bookingGroups = useMemo(() => {
+    const activeRange = orderRangeForPeriod(selectedMonth, customRange);
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
     const visibleBookings = canManageUsers
@@ -2416,8 +2452,12 @@ const BookingManagement = ({
         : videoData?.performance || booking.actual_performance;
       const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
       const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
+      const inPeriodForCost = isBookingInPeriod(booking, activeRange);
+
       group.bookings.push(booking);
-      group.totalCost += convertedCost;
+      if (inPeriodForCost) {
+        group.totalCost += convertedCost;
+      }
       group.totalRevenue += convertedRevenue;
       group.committedVideos += Number(booking.committed_videos || 1);
       group.videoCount += bookingTab === 'product'
@@ -2445,7 +2485,7 @@ const BookingManagement = ({
       if (right.key === 'unassigned') return -1;
       return left.manager.name.localeCompare(right.manager.name, locale);
     });
-  }, [bookingTab, bookings, canManageUsers, convertAmount, locale, productPerformanceByBooking, session, t, users, videoPerformanceByBooking]);
+  }, [bookingTab, bookings, canManageUsers, convertAmount, customRange, locale, productPerformanceByBooking, selectedMonth, session, t, users, videoPerformanceByBooking]);
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
@@ -2584,6 +2624,7 @@ const BookingManagement = ({
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
         committed_videos: Math.max(1, Number.parseInt(form.committed_videos, 10) || 1),
+        start_date: form.booking_date || dateInputValue(new Date()),
         product_ids: form.product_ids,
         products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
       });
@@ -2788,87 +2829,98 @@ const BookingManagement = ({
           <section className="booking-create-modal" role="dialog" aria-modal="true" aria-labelledby="booking-create-modal-title">
             <header className="booking-create-modal__header"><div><h2 id="booking-create-modal-title">{t('booking.createEvaluation')}</h2></div><button className="button button--ghost" type="button" aria-label={t('common.close')} disabled={saving} onClick={closeCreateBooking}>×</button></header>
             <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
-              <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
-              {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
-              <div className="field booking-product-picker-field">
-                <label>{t('booking.products')}</label>
-                <div className="booking-product-picker">
-                  <button ref={createProductPickerTriggerRef} className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                      <Plus size={14} aria-hidden="true" />
-                      <span>{t('booking.addProduct')}</span>
-                      {form.product_ids.length ? <span className="chip chip--compact">{form.product_ids.length}</span> : null}
-                    </span>
-                    <span className="sidebar__chevron" aria-hidden="true" />
-                  </button>
-                  {productPickerOpen ? (
-                    <div ref={createProductPickerMenuRef} className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
-                      {channelProductsLoading ? (
-                        <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div>
-                      ) : bookingProducts.length ? (
-                        bookingProducts.map((product) => (
-                          <label className="booking-product-picker__option" key={product.id}>
-                            <input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} />
-                            <span>
-                              {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
-                              <span><strong>{product.name}</strong><small>{product.id}</small></span>
-                            </span>
-                          </label>
-                        ))
-                      ) : null}
+              <div className="booking-evaluation-form__col">
+                <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
+                <div className="field booking-product-picker-field">
+                  <label>{t('booking.products')}</label>
+                  <div className="booking-product-picker">
+                    <button ref={createProductPickerTriggerRef} className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <Plus size={14} aria-hidden="true" />
+                        <span>{t('booking.addProduct')}</span>
+                        {form.product_ids.length ? <span className="chip chip--compact">{form.product_ids.length}</span> : null}
+                      </span>
+                      <span className="sidebar__chevron" aria-hidden="true" />
+                    </button>
+                    {productPickerOpen ? (
+                      <div ref={createProductPickerMenuRef} className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
+                        {channelProductsLoading ? (
+                          <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div>
+                        ) : bookingProducts.length ? (
+                          bookingProducts.map((product) => (
+                            <label className="booking-product-picker__option" key={product.id}>
+                              <input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} />
+                              <span>
+                                {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
+                                <span><strong>{product.name}</strong><small>{product.id}</small></span>
+                              </span>
+                            </label>
+                          ))
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  {form.product_ids.length ? (
+                    <div style={{ marginTop: '8px' }}>
+                      <div className="booking-detail-products">
+                        {form.product_ids.map((id) => {
+                          const p = bookingProducts.find((item) => String(item.id) === String(id)) || {};
+                          return (
+                            <BookingDetailProduct
+                              key={id}
+                              product={{
+                                id,
+                                name: p.name || id,
+                                imageUrl: p.imageUrl || null,
+                              }}
+                              onRemove={() => toggleBookingProduct(id)}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : null}
                 </div>
-                {form.product_ids.length ? (
-                  <div style={{ marginTop: '8px' }}>
-                    <div className="booking-detail-products">
-                      {form.product_ids.map((id) => {
-                        const p = bookingProducts.find((item) => String(item.id) === String(id)) || {};
-                        return (
-                          <BookingDetailProduct
-                            key={id}
-                            product={{
-                              id,
-                              name: p.name || id,
-                              imageUrl: p.imageUrl || null,
-                            }}
-                            onRemove={() => toggleBookingProduct(id)}
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <div className="field booking-modal-cost-videos">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label>
-                    <input
-                      id="total_cost"
-                      type="number"
-                      min="0"
-                      step={selectedCurrency === 'VND' ? '1' : '0.01'}
-                      inputMode="decimal"
-                      value={form.total_cost}
-                      onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="field" style={{ margin: 0 }}>
-                    <label htmlFor="committed_videos">{t('booking.committedVideos')}</label>
-                    <input
-                      id="committed_videos"
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={form.committed_videos}
-                      onChange={(event) => setForm((current) => ({ ...current, committed_videos: event.target.value }))}
-                      required
-                    />
-                  </div>
+                <div className="field">
+                  <label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label>
+                  <input
+                    id="total_cost"
+                    type="number"
+                    min="0"
+                    step={selectedCurrency === 'VND' ? '1' : '0.01'}
+                    inputMode="decimal"
+                    value={form.total_cost}
+                    onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))}
+                    required
+                  />
                 </div>
               </div>
+
+              <div className="booking-evaluation-form__col">
+                {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
+                <div className="field">
+                  <label htmlFor="booking_date">{t('booking.bookingDate')}</label>
+                  <DatePickerInput
+                    id="booking_date"
+                    label={t('booking.bookingDate')}
+                    value={form.booking_date}
+                    onChange={(value) => setForm((current) => ({ ...current, booking_date: value }))}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="committed_videos">{t('booking.committedVideos')}</label>
+                  <input
+                    id="committed_videos"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={form.committed_videos}
+                    onChange={(event) => setForm((current) => ({ ...current, committed_videos: event.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+
               <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={closeCreateBooking}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
             </form>
           </section>

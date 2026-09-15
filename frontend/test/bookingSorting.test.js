@@ -34,7 +34,7 @@ test('sorting prioritizes period GMV over lifetime GMV when date range is select
   };
 
   // Helper matching bookingVideoPerformanceForVideos
-  const aggregateVideos = (videos, basePerf) => {
+  const aggregateVideos = (videos) => {
     if (!videos.length) {
       return { gross_gmv: 0, orders: 0, items_sold: 0, video_count: 0 };
     }

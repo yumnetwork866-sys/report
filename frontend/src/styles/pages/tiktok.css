@@ -1133,7 +1133,9 @@
 .channel-report-date-picker {
   position: relative;
   display: block;
+  width: 100%;
   min-height: 42px;
+  box-sizing: border-box;
 }
 
 .channel-report-date-picker__value {
@@ -1144,16 +1146,23 @@
   width: 100%;
   min-height: 42px;
   padding: 0 12px;
-  border: 1px solid var(--color-border, #d7dce5);
-  border-radius: 10px;
+  border: 1px solid var(--color-border-strong, #cbd8e8);
+  border-radius: var(--radius-md, 10px);
   background: var(--color-surface, #fff);
   color: var(--color-text, #172033);
-  pointer-events: none;
   font: inherit;
   text-align: left;
   cursor: pointer;
   pointer-events: auto;
+  box-sizing: border-box;
+  white-space: nowrap;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.channel-report-date-picker__value span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .channel-report-date-picker__value:hover {
@@ -3509,6 +3518,13 @@
   padding: 18px 22px 22px;
 }
 .booking-create-modal .booking-evaluation-form > .field { min-width: 0; }
+.booking-create-modal .booking-evaluation-form__col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.booking-create-modal .booking-evaluation-form__col > .field { min-width: 0; }
 .booking-create-modal .booking-koc-combobox { min-width: 0; }
 .booking-create-modal .booking-koc-combobox__menu {
   z-index: 1300;
@@ -3517,6 +3533,30 @@
 .booking-create-modal .booking-product-picker__menu {
   z-index: 1200;
   max-height: min(360px, 42vh);
+}
+.booking-create-modal .channel-report-date-picker__value,
+.booking-create-modal .booking-staff-select__trigger,
+.booking-create-modal .booking-product-picker__trigger {
+  min-height: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+}
+.booking-create-modal .booking-evaluation-form input {
+  height: 44px;
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+}
+.booking-create-modal .booking-evaluation-form input:not(.booking-koc-combobox__control input) {
+  padding: 8px 12px;
+}
+.booking-modal-cost-videos {
+  width: 100%;
+}
+.booking-modal-cost-videos .channel-report-date-picker,
+.booking-modal-cost-videos .channel-report-date-picker__value {
+  width: 100%;
+  box-sizing: border-box;
 }
 .booking-product-picker-field { position: relative; }
 .booking-product-picker { position: relative; }

@@ -83,6 +83,7 @@ const defaultMigrationNames = [
   '074_add_booking_committed_videos',
   '075_add_video_status',
   '076_clear_booking_dates',
+  '077_set_booking_date',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));
