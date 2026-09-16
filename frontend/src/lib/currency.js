@@ -5,8 +5,25 @@ import { getStoredSession } from './session.js';
 const CURRENCY_STORAGE_KEY = 'content_report_currency';
 const DEFAULT_CURRENCY = 'MYR';
 const SUPPORTED_CURRENCIES = new Set(['MYR', 'VND']);
-let exchangeRatesSnapshot = null;
+
+export const FALLBACK_EXCHANGE_RATES = {
+  base: 'MYR',
+  rates: {
+    MYR: 1,
+    USD: 4.0895,
+    VND: 0.000162,
+  },
+  dates: {
+    MYR: null,
+    USD: null,
+    VND: null,
+  },
+  source: 'Bank Negara Malaysia (Fallback)',
+};
+
+let exchangeRatesSnapshot = FALLBACK_EXCHANGE_RATES;
 let exchangeRatesRequested = false;
+let retryTimer = null;
 const exchangeRateListeners = new Set();
 
 function preferenceKey() {
@@ -76,22 +93,34 @@ function getExchangeRatesSnapshot() {
   return exchangeRatesSnapshot;
 }
 
-async function loadExchangeRates() {
-  if (exchangeRatesRequested) return;
+function scheduleRetry() {
+  exchangeRatesRequested = false;
+  if (!retryTimer && typeof setTimeout !== 'undefined') {
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      loadExchangeRates();
+    }, 10000);
+  }
+}
+
+export async function loadExchangeRates(force = false) {
+  if (exchangeRatesRequested && !force) return;
   exchangeRatesRequested = true;
   try {
     const payload = await fetchExchangeRates();
     if (payload?.base === 'MYR' && payload?.rates) {
       exchangeRatesSnapshot = payload;
       exchangeRateListeners.forEach((listener) => listener());
+    } else {
+      scheduleRetry();
     }
   } catch {
-    // Keep original monetary values when the rate service is unavailable.
+    scheduleRetry();
   }
 }
 
 export function useExchangeRates() {
-  const rates = useSyncExternalStore(subscribeExchangeRates, getExchangeRatesSnapshot, () => null);
+  const rates = useSyncExternalStore(subscribeExchangeRates, getExchangeRatesSnapshot, () => FALLBACK_EXCHANGE_RATES);
   useEffect(() => { loadExchangeRates(); }, []);
   return rates;
 }
@@ -101,22 +130,24 @@ function normalizeCurrency(currency) {
   return normalized === 'LOCAL' ? DEFAULT_CURRENCY : normalized;
 }
 
-export function convertCurrencyAmount(amount, sourceCurrency, targetCurrency, exchangeRates) {
+export function convertCurrencyAmount(amount, sourceCurrency, targetCurrency, exchangeRates = exchangeRatesSnapshot) {
   const numericAmount = Number(amount);
   if (!Number.isFinite(numericAmount)) return null;
   const source = normalizeCurrency(sourceCurrency);
   const target = normalizeCurrency(targetCurrency);
   if (source === target) return numericAmount;
-  const sourceRate = Number(exchangeRates?.rates?.[source]);
-  const targetRate = Number(exchangeRates?.rates?.[target]);
+  const rates = exchangeRates || exchangeRatesSnapshot || FALLBACK_EXCHANGE_RATES;
+  const sourceRate = Number(rates?.rates?.[source]);
+  const targetRate = Number(rates?.rates?.[target]);
   if (!Number.isFinite(sourceRate) || sourceRate <= 0 || !Number.isFinite(targetRate) || targetRate <= 0) return null;
   return numericAmount * sourceRate / targetRate;
 }
 
-export function formatCurrencyAmount(amount, sourceCurrency, targetCurrency, exchangeRates, locale, options = {}) {
+export function formatCurrencyAmount(amount, sourceCurrency, targetCurrency, exchangeRates = exchangeRatesSnapshot, locale, options = {}) {
+  const rates = exchangeRates || exchangeRatesSnapshot || FALLBACK_EXCHANGE_RATES;
   const source = normalizeCurrency(sourceCurrency);
   const target = normalizeCurrency(targetCurrency);
-  const converted = convertCurrencyAmount(amount, source, target, exchangeRates);
+  const converted = convertCurrencyAmount(amount, source, target, rates);
   const displayCurrency = converted === null ? source : target;
   const displayAmount = converted === null ? Number(amount) : converted;
   if (!Number.isFinite(displayAmount)) return '—';

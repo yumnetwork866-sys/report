@@ -37,6 +37,8 @@ const loadController = (
       serializeBookingWithActual: (booking) => (
         typeof booking?.toJSON === 'function' ? booking.toJSON() : booking
       ),
+      applyBookingProductPerformance: async (bookings) => bookings,
+      loadOrderMetricsForBookingProducts: async () => new Map(),
       ...bookingVideoService,
     }),
     mockModule(require.resolve('../src/controllers/tiktokShopController'), {

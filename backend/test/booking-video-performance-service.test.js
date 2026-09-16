@@ -3,6 +3,9 @@ const test = require('node:test');
 
 const {
   calculateActualPerformance,
+  applyBookingProductPerformance,
+  loadOrderMetricsForBookingProducts,
+  normalizeBookingProducts,
   __test: {
     affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingDateRange, matchesBookingProducts, metricOfAffiliateSnapshot,
     normalizeCachedVideoCandidate, productIdsOfVideo,
@@ -312,5 +315,48 @@ test('normalizeCachedVideoCandidate merges order ledger metrics into catalog can
   assert.equal(candidate.views, 25000);
   assert.equal(candidate.cached_catalog, true);
   assert.equal(candidate.products[0].id, 'prod-serum');
+});
+
+test('normalizeBookingProducts deduplicates and normalizes products from snapshot', () => {
+  const products = [
+    { id: 'prod-1', name: 'Product 1', image_url: 'https://img.com/1.png' },
+    { product_id: 'prod-2', title: 'Product 2' },
+  ];
+  const productIds = ['prod-1', 'prod-3'];
+  const result = normalizeBookingProducts(products, productIds);
+  assert.equal(result.length, 3);
+  assert.equal(result[0].id, 'prod-1');
+  assert.equal(result[0].name, 'Product 1');
+  assert.equal(result[1].id, 'prod-2');
+  assert.equal(result[1].name, 'Product 2');
+  assert.equal(result[2].id, 'prod-3');
+  assert.equal(result[2].name, 'prod-3');
+});
+
+test('applyBookingProductPerformance sets default product_performance when no db records exist', async () => {
+  const bookings = [
+    {
+      id: 1,
+      target_shop_id: 10,
+      currency: 'MYR',
+      evaluation_snapshot: {
+        products: [{ id: 'p-1', name: 'Serum' }],
+      },
+    },
+    {
+      id: 2,
+      target_shop_id: 10,
+      evaluation_snapshot: {},
+    },
+  ];
+
+  const result = await applyBookingProductPerformance(bookings);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].product_performance.has_products, true);
+  assert.equal(result[0].product_performance.affiliate_gmv, 0);
+  assert.equal(result[0].product_performance.affiliate_orders, 0);
+  assert.equal(result[0].product_performance.breakdown.length, 1);
+  assert.equal(result[0].product_performance.breakdown[0].id, 'p-1');
+  assert.equal(result[1].product_performance.has_products, false);
 });
 

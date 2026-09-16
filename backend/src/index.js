@@ -38,6 +38,7 @@ const { requireAdmin, requirePermission } = require('./lib/session');
 const { getAdminAccount } = require('./lib/adminAccount');
 const { startDatabaseScheduler } = require('./services/scheduledJobService');
 const { serverAdapter, bullBoardAuth } = require('./routes/bullBoardRoutes');
+const { getMyrExchangeRates, FALLBACK_EXCHANGE_RATES } = require('./services/exchangeRateService');
 
 const httpLogFormat = process.env.HTTP_LOG_FORMAT || ':method :url :status :response-time ms';
 
@@ -88,6 +89,14 @@ const createApp = () => {
   // Messenger (chatbot) is admin-only since the 'chatbots' permission was removed.
   app.use('/api/chatbot', requireAdmin, chatbotRoutes.adminRouter);
   app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
+  app.get('/api/exchange-rates', async (req, res) => {
+    try {
+      res.json(await getMyrExchangeRates());
+    } catch (err) {
+      console.error('[exchange-rates] Error fetching exchange rates:', err.message);
+      res.json(FALLBACK_EXCHANGE_RATES);
+    }
+  });
   app.use('/api/schedules', requireAdmin, scheduleRoutes);
   app.use('/api/queues', requireAdmin, queueRoutes);
   app.use('/admin/queues', bullBoardAuth, serverAdapter.getRouter());

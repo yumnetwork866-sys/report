@@ -37,6 +37,8 @@ const {
   serializeBookingWithActual,
   selectedProductIdsOfBooking,
   syncBookingVideo,
+  loadOrderMetricsForBookingProducts,
+  applyBookingProductPerformance,
 } = require('../services/bookingVideoPerformanceService');
 const { handleShopOauthCallback } = require('./tiktokShopController');
 const { loadShopProducts, upsertShopProducts } = require('../services/shopProductCatalogService');
@@ -1242,13 +1244,69 @@ const getBookings = async (req, res) => {
         requestedWindow,
         customRange,
       );
-      return addReferencePerformance(serialized, requestedWindow, customRange);
+      let periodStartDate = customRange.startDate || null;
+      let periodEndDate = customRange.endDate || null;
+      if (!periodStartDate && !periodEndDate) {
+        if (requestedMonth === 'custom' && startDate && endDate) {
+          periodStartDate = startDate <= endDate ? startDate : endDate;
+          periodEndDate = startDate <= endDate ? endDate : startDate;
+        } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+          periodStartDate = `${requestedMonth}-01`;
+          const [y, m] = requestedMonth.split('-').map(Number);
+          const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+          periodEndDate = `${requestedMonth}-${String(lastDay).padStart(2, '0')}`;
+        }
+      }
+      const withProductPerf = await applyBookingProductPerformance(serialized, {
+        startDate: periodStartDate,
+        endDate: periodEndDate,
+      });
+      return addReferencePerformance(withProductPerf, requestedWindow, customRange);
     });
 
     if (hit) {
       res.setHeader('X-Cache', 'HIT');
     }
     res.json(payload);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+const getBookingProductPerformance = async (req, res) => {
+  try {
+    const requestedMonth = String(req.query?.month || '').trim();
+    const startDate = String(req.query?.start_date || '').trim();
+    const endDate = String(req.query?.end_date || '').trim();
+    const startTime = req.query?.start_time ? Number(req.query.start_time) : null;
+    const endTime = req.query?.end_time ? Number(req.query.end_time) : null;
+
+    let periodStart = startDate || null;
+    let periodEnd = endDate || null;
+    if (requestedMonth === 'custom' && startDate && endDate) {
+      periodStart = startDate <= endDate ? startDate : endDate;
+      periodEnd = startDate <= endDate ? endDate : startDate;
+    } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+      periodStart = `${requestedMonth}-01`;
+      const [y, m] = requestedMonth.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      periodEnd = `${requestedMonth}-${String(lastDay).padStart(2, '0')}`;
+    }
+
+    const bookings = await Booking.findAll({
+      where: { evaluation_snapshot: { [Op.not]: null } },
+      attributes: ['id', 'target_shop_id', 'creator_username', 'currency', 'evaluation_snapshot'],
+    });
+
+    const perfMap = await loadOrderMetricsForBookingProducts({
+      bookings,
+      startDate: periodStart,
+      endDate: periodEnd,
+      startTime,
+      endTime,
+    });
+
+    res.json({ performance: Object.fromEntries(perfMap) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1841,6 +1899,7 @@ const disconnectTikTokPartner = async (req, res) => {
 module.exports = {
   getBookings,
   getBookingById,
+  getBookingProductPerformance,
   createBooking,
   updateBooking,
   matchBookingVideo,

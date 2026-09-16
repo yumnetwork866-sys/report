@@ -268,6 +268,230 @@ const loadOrderMetricsForVideos = async ({
   }
 };
 
+const normalizeBookingProducts = (products, productIds = []) => {
+  const suppliedProducts = Array.isArray(products) ? products : [];
+  const suppliedIds = Array.isArray(productIds) ? productIds : [];
+  const byId = new Map();
+  for (const product of suppliedProducts) {
+    const id = String(product?.id || product?.product_id || '').trim();
+    if (!id) continue;
+    byId.set(id, {
+      id,
+      name: String(product?.name || product?.title || product?.product_name || id),
+      image_url: String(product?.imageUrl || product?.image_url || product?.main_image_url || product?.thumbnail_url || '') || null,
+    });
+  }
+  for (const value of suppliedIds) {
+    const id = String(value || '').trim();
+    if (id && !byId.has(id)) byId.set(id, { id, name: id, image_url: null });
+  }
+  return [...byId.values()];
+};
+
+const loadOrderMetricsForBookingProducts = async ({
+  bookings = [],
+  startDate = null,
+  endDate = null,
+  startTime = null,
+  endTime = null,
+} = {}) => {
+  const bookingList = Array.isArray(bookings) ? bookings : [];
+  const result = new Map();
+
+  for (const booking of bookingList) {
+    const bId = String(booking?.id);
+    const selectedProducts = normalizeBookingProducts(
+      booking?.evaluation_snapshot?.products,
+      booking?.evaluation_snapshot?.product_ids,
+    );
+    result.set(bId, {
+      source: 'AFFILIATE_ORDERS',
+      has_products: selectedProducts.length > 0,
+      currency: booking?.currency || 'MYR',
+      affiliate_gmv: 0,
+      affiliate_orders: 0,
+      items_sold: 0,
+      items_refunded: 0,
+      refunded_gmv: 0,
+      estimated_commission: 0,
+      selected_products: selectedProducts,
+      breakdown: selectedProducts.map((p) => ({
+        id: String(p.id),
+        name: p.name || String(p.id),
+        thumbnailUrl: p.image_url || null,
+        orderCount: 0,
+        quantity: 0,
+      })),
+    });
+  }
+
+  if (!bookingList.length || !sequelize?.query) {
+    return result;
+  }
+
+  const shopIds = [...new Set(bookingList.map((b) => Number(b.target_shop_id)).filter(Number.isInteger))];
+  const allProductIds = [...new Set(bookingList.flatMap((b) => [...selectedProductIdsOfBooking(b)]).filter(Boolean))];
+
+  if (!shopIds.length || !allProductIds.length) {
+    return result;
+  }
+
+  const dateClauses = [];
+  const replacements = {
+    shopIds,
+    productIds: allProductIds,
+  };
+
+  if (startTime) {
+    replacements.startDateTime = new Date(Number(startTime) * 1000).toISOString();
+    dateClauses.push('o.create_time >= :startDateTime');
+  } else if (startDate) {
+    replacements.startDateTime = `${dateOnly(startDate)}T00:00:00.000Z`;
+    dateClauses.push('o.create_time >= :startDateTime');
+  }
+
+  if (endTime) {
+    replacements.endDateTime = new Date(Number(endTime) * 1000).toISOString();
+    dateClauses.push('o.create_time < :endDateTime');
+  } else if (endDate) {
+    replacements.endDateTime = `${shiftDate(endDate, 1)}T00:00:00.000Z`;
+    dateClauses.push('o.create_time < :endDateTime');
+  }
+
+  const dateWhere = dateClauses.length ? `AND ${dateClauses.join(' AND ')}` : '';
+
+  try {
+    const rows = await sequelize.query(`
+      SELECT
+        s.shop_id,
+        s.product_id,
+        s.product_name,
+        LOWER(TRIM(LEADING '@' FROM COALESCE(s.creator_username, ''))) AS creator_username,
+        s.order_id,
+        COALESCE(s.currency, 'MYR') AS currency,
+        s.quantity,
+        s.refunded_quantity,
+        COALESCE(s.price, 0) AS price,
+        s.raw_data
+      FROM tiktok_affiliate_order_skus s
+      JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
+      WHERE s.shop_id IN (:shopIds)
+        AND s.product_id IN (:productIds)
+        ${dateWhere}
+    `, {
+      replacements,
+      type: QueryTypes.SELECT,
+    });
+
+    for (const booking of bookingList) {
+      const bId = String(booking?.id);
+      const perf = result.get(bId);
+      if (!perf || !perf.has_products) continue;
+
+      const selectedIds = new Set(perf.selected_products.map((p) => String(p.id)));
+      const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+      const bookingShopId = Number(booking?.target_shop_id);
+
+      const orderIds = new Set();
+      let affiliateGmv = 0;
+      let refundedGmv = 0;
+      let itemsSold = 0;
+      let itemsRefunded = 0;
+      let estimatedCommission = 0;
+      let currency = perf.currency;
+
+      const productBreakdown = new Map(perf.selected_products.map((p) => [
+        String(p.id),
+        {
+          id: String(p.id),
+          name: p.name || String(p.id),
+          thumbnailUrl: p.image_url || null,
+          orderIds: new Set(),
+          quantity: 0,
+        },
+      ]));
+
+      for (const row of rows || []) {
+        if (Number(row.shop_id) !== bookingShopId) continue;
+        const productId = String(row.product_id || '').trim();
+        if (!selectedIds.has(productId)) continue;
+        const rowCreator = String(row.creator_username || '').trim();
+        if (creatorUsername && rowCreator !== creatorUsername) continue;
+
+        const quantity = Math.max(0, Number(row.quantity) || 0);
+        const refundedQuantity = Math.min(quantity, Math.max(0, Number(row.refunded_quantity) || 0));
+        const price = Math.max(0, Number(row.price) || 0);
+        const rawComm = row?.raw_data?.creator_commission_rate ?? row?.raw_data?.commission_rate;
+        const numComm = Number(rawComm);
+        const commRate = Number.isFinite(numComm) ? (numComm > 100 ? numComm / 10000 : numComm / 100) : 0;
+
+        if (row.currency) currency = row.currency;
+
+        itemsSold += quantity;
+        itemsRefunded += refundedQuantity;
+        affiliateGmv += price * quantity;
+        refundedGmv += price * refundedQuantity;
+        estimatedCommission += price * (quantity - refundedQuantity) * commRate;
+
+        if (row.order_id) orderIds.add(String(row.order_id));
+
+        const breakdownItem = productBreakdown.get(productId);
+        if (breakdownItem) {
+          if (row.product_name && breakdownItem.name === breakdownItem.id) {
+            breakdownItem.name = row.product_name;
+          }
+          if (row.order_id) breakdownItem.orderIds.add(String(row.order_id));
+          breakdownItem.quantity += quantity;
+        }
+      }
+
+      const breakdown = [...productBreakdown.values()].map(({ orderIds: pOrderIds, ...item }) => ({
+        ...item,
+        orderCount: pOrderIds.size,
+      })).sort((a, b) => b.orderCount - a.orderCount || b.quantity - a.quantity || a.name.localeCompare(b.name));
+
+      result.set(bId, {
+        source: 'AFFILIATE_ORDERS',
+        has_products: true,
+        currency,
+        affiliate_gmv: Math.round(affiliateGmv * 100) / 100,
+        affiliate_orders: orderIds.size,
+        items_sold: itemsSold,
+        items_refunded: itemsRefunded,
+        refunded_gmv: Math.round(refundedGmv * 100) / 100,
+        estimated_commission: Math.round(estimatedCommission * 100) / 100,
+        selected_products: perf.selected_products,
+        breakdown,
+      });
+    }
+
+    return result;
+  } catch (error) {
+    console.warn('[Booking Product] Failed to query product order metrics:', error?.message || error);
+    return result;
+  }
+};
+
+const applyBookingProductPerformance = async (bookings = [], {
+  startDate = null,
+  endDate = null,
+  startTime = null,
+  endTime = null,
+} = {}) => {
+  const bookingList = Array.isArray(bookings) ? bookings : [];
+  const perfMap = await loadOrderMetricsForBookingProducts({
+    bookings: bookingList,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+  });
+  for (const booking of bookingList) {
+    booking.product_performance = perfMap.get(String(booking.id)) || null;
+  }
+  return bookingList;
+};
+
 const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) => {
   if (!videoData) return null;
   const hasSelectedProducts = selectedProductIds && selectedProductIds.size > 0;
@@ -906,6 +1130,9 @@ module.exports = {
   selectedProductIdsOfBooking,
   loadOrderMetricsForVideos,
   resolveOrderMetricsForVideo,
+  loadOrderMetricsForBookingProducts,
+  applyBookingProductPerformance,
+  normalizeBookingProducts,
   __test: {
     dateOnly,
     shiftDate,
@@ -922,5 +1149,8 @@ module.exports = {
     latestSnapshot,
     loadOrderMetricsForVideos,
     resolveOrderMetricsForVideo,
+    loadOrderMetricsForBookingProducts,
+    applyBookingProductPerformance,
+    normalizeBookingProducts,
   },
 };

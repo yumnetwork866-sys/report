@@ -3,6 +3,21 @@ const { getCache, setCache, delCache } = require('../lib/redis');
 const BNM_EXCHANGE_RATE_URL = 'https://api.bnm.gov.my/public/exchange-rate?session=0900&quote=rm';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
+const FALLBACK_EXCHANGE_RATES = {
+  base: 'MYR',
+  rates: {
+    MYR: 1,
+    USD: 4.0895,
+    VND: 0.000162,
+  },
+  dates: {
+    MYR: null,
+    USD: null,
+    VND: null,
+  },
+  source: 'Bank Negara Malaysia (Fallback)',
+};
+
 let myrRatesCache = null;
 
 const getMyrExchangeRates = async (fetchImpl = fetch) => {
@@ -17,39 +32,47 @@ const getMyrExchangeRates = async (fetchImpl = fetch) => {
     }
   }
 
-  const response = await fetchImpl(process.env.BNM_EXCHANGE_RATE_URL || BNM_EXCHANGE_RATE_URL, {
-    headers: {
-      accept: 'application/vnd.BNM.API.v1+json',
-      'user-agent': 'YumReport/1.0',
-    },
-    signal: AbortSignal.timeout(Math.max(1000, Number(process.env.EXCHANGE_RATE_TIMEOUT_MS || 5000))),
-  });
-  if (!response.ok) throw new Error(`BNM exchange-rate request failed with status ${response.status}.`);
+  try {
+    const response = await fetchImpl(process.env.BNM_EXCHANGE_RATE_URL || BNM_EXCHANGE_RATE_URL, {
+      headers: {
+        accept: 'application/vnd.BNM.API.v1+json',
+        'user-agent': 'YumReport/1.0',
+      },
+      signal: AbortSignal.timeout(Math.max(1000, Number(process.env.EXCHANGE_RATE_TIMEOUT_MS || 5000))),
+    });
+    if (!response.ok) throw new Error(`BNM exchange-rate request failed with status ${response.status}.`);
 
-  const payload = await response.json();
-  const value = {
-    base: 'MYR',
-    rates: { MYR: 1 },
-    dates: { MYR: null },
-    source: 'Bank Negara Malaysia',
-  };
-  for (const item of Array.isArray(payload.data) ? payload.data : []) {
-    const currency = String(item?.currency_code || '').toUpperCase();
-    if (!['USD', 'VND'].includes(currency)) continue;
-    const unit = Number(item?.unit || 1);
-    const middleRate = Number(item?.rate?.middle_rate);
-    if (!Number.isFinite(middleRate) || middleRate <= 0 || !Number.isFinite(unit) || unit <= 0) continue;
-    value.rates[currency] = middleRate / unit;
-    value.dates[currency] = item.rate.date || null;
+    const payload = await response.json();
+    const value = {
+      base: 'MYR',
+      rates: { MYR: 1 },
+      dates: { MYR: null },
+      source: 'Bank Negara Malaysia',
+    };
+    for (const item of Array.isArray(payload.data) ? payload.data : []) {
+      const currency = String(item?.currency_code || '').toUpperCase();
+      if (!['USD', 'VND'].includes(currency)) continue;
+      const unit = Number(item?.unit || 1);
+      const middleRate = Number(item?.rate?.middle_rate);
+      if (!Number.isFinite(middleRate) || middleRate <= 0 || !Number.isFinite(unit) || unit <= 0) continue;
+      value.rates[currency] = middleRate / unit;
+      value.dates[currency] = item.rate.date || null;
+    }
+    if (!value.rates.USD) {
+      throw new Error('BNM exchange-rate response does not contain a valid USD/MYR middle rate.');
+    }
+    myrRatesCache = { value, expiresAt: Date.now() + CACHE_TTL_MS };
+    if (!isTest) {
+      await setCache('exchange_rate:myr', value, Math.ceil(CACHE_TTL_MS / 1000));
+    }
+    return value;
+  } catch (error) {
+    if (myrRatesCache?.value) {
+      return myrRatesCache.value;
+    }
+    console.warn('[exchangeRateService] BNM exchange-rate fetch failed, using fallback:', error.message);
+    return FALLBACK_EXCHANGE_RATES;
   }
-  if (!value.rates.USD) {
-    throw new Error('BNM exchange-rate response does not contain a valid USD/MYR middle rate.');
-  }
-  myrRatesCache = { value, expiresAt: Date.now() + CACHE_TTL_MS };
-  if (!isTest) {
-    await setCache('exchange_rate:myr', value, Math.ceil(CACHE_TTL_MS / 1000));
-  }
-  return value;
 };
 
 const getUsdMyrRate = async (fetchImpl = fetch) => {
@@ -163,6 +186,7 @@ const clearExchangeRateCache = async () => {
 
 module.exports = {
   BNM_EXCHANGE_RATE_URL,
+  FALLBACK_EXCHANGE_RATES,
   getMyrExchangeRates,
   getUsdMyrRate,
   convertUsdMoneyToMyr,

@@ -38,7 +38,7 @@ const {
   getShopVideoPerformance,
 } = require('../services/tiktokShopService');
 const { loadShopAnalyticsPerformance } = require('../services/tiktokShopAnalyticsSyncService');
-const { addMarketplaceLocalCurrency, getMyrExchangeRates } = require('../services/exchangeRateService');
+const { addMarketplaceLocalCurrency, getMyrExchangeRates, FALLBACK_EXCHANGE_RATES } = require('../services/exchangeRateService');
 const { marketplaceSearchQueueService } = require('../services/tiktokMarketplaceSearchQueueService');
 const {
   createCreatorPerformanceExportWithFallback,
@@ -699,12 +699,23 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
 
+    const skuWhere = {};
+    const filterProductId = String(req.query.product_id || '').trim();
+    const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
+    const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
+    if (filterProductId) skuWhere.product_id = filterProductId;
+    if (filterVideoId) skuWhere.content_id = filterVideoId;
+    if (filterCreator) skuWhere.creator_username = { [Op.iLike]: filterCreator };
+
+    const hasSkuFilter = Object.keys(skuWhere).length > 0;
+
     const { count, rows } = await TikTokAffiliateOrder.findAndCountAll({
       where,
       include: [{
         model: TikTokAffiliateOrderSku,
         as: 'skus',
-        required: false,
+        where: hasSkuFilter ? skuWhere : undefined,
+        required: hasSkuFilter,
       }],
       distinct: true,
       order: [['create_time', 'DESC']],
@@ -1947,7 +1958,8 @@ const getExchangeRates = async (_req, res) => {
   try {
     res.json(await getMyrExchangeRates());
   } catch (error) {
-    res.status(502).json({ message: error.message });
+    console.error('[exchange-rates] Error fetching exchange rates:', error.message);
+    res.json(FALLBACK_EXCHANGE_RATES);
   }
 };
 

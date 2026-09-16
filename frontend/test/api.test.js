@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -227,6 +227,27 @@ test('Booking list helper sends an inclusive custom date range', async () => {
     });
 
     assert.equal(requestUrl, '/api/bookings?window_type=CUSTOM&start_date=2026-07-01&end_date=2026-07-31');
+  });
+});
+
+test('Booking product performance helper sends date range and month filters', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify({ performance: {} }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchBookingProductPerformance(undefined, {
+      month: '2026-08',
+      startDate: '2026-08-01',
+      endDate: '2026-08-31',
+    });
+
+    assert.equal(requestUrl, '/api/bookings/product-performance?month=2026-08&start_date=2026-08-01&end_date=2026-08-31');
   });
 });
 

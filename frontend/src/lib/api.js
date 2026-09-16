@@ -97,6 +97,17 @@ export function fetchBookings(signal, { windowType, startDate, endDate, month, c
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }
 
+export function fetchBookingProductPerformance(signal, { month, startDate, endDate, startTime, endTime } = {}) {
+  const params = new URLSearchParams();
+  if (month && month !== 'all') params.set('month', month);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (startTime) params.set('start_time', String(startTime));
+  if (endTime) params.set('end_time', String(endTime));
+  const query = params.toString();
+  return apiRequest(`/bookings/product-performance${query ? `?${query}` : ''}`, { signal });
+}
+
 export function fetchBookingTargetKocs({ keyword, page = 1, pageSize = 20, signal } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -153,7 +164,7 @@ export function fetchTikTokShops(signal) {
 }
 
 export function fetchExchangeRates(signal) {
-  return apiRequest('/tiktok-shop/exchange-rates', { signal });
+  return apiRequest('/exchange-rates', { signal }).catch(() => apiRequest('/tiktok-shop/exchange-rates', { signal }));
 }
 
 export function fetchTikTokShopAnalytics(shopId, { signal, startDate, endDate, currency } = {}) {

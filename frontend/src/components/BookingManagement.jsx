@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   createBooking,
@@ -9,7 +8,6 @@ import {
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokSellerAffiliateOrders,
-  fetchTikTokShopVideoThumbnail,
   fetchUsers,
   matchBookingVideo,
   updateBooking,
@@ -18,1812 +16,44 @@ import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 import { hasPermission } from '../lib/session';
 import { useSession } from '../lib/useSession';
-import AppAvatar from './AppAvatar';
-import BookingVideoThumbnail from './BookingVideoThumbnail';
-import { cachedThumbnail, thumbnailFrom } from '../lib/bookingVideoThumbnails';
 import DatePickerInput from './DatePickerInput';
-import { computeBookingTimeline } from '../lib/bookingTimeline';
-import { ChevronLeft, Pencil, Plus, Trash2 } from 'lucide-react';
 
-const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
-const generateBookingMonthOptions = (count = 3) => {
-  const options = [{ value: 'all', labelKey: 'booking.allMonths' }];
-  const d = new Date();
-  for (let i = 0; i < count; i += 1) {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    options.push({
-      value: `${year}-${month}`,
-      label: `${month}/${year}`,
-    });
-    d.setMonth(d.getMonth() - 1);
-  }
-  options.push({ value: 'custom', labelKey: 'booking.periodCustom' });
-  return options;
-};
-const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
-const BOOKING_UI_SESSION_KEY = 'booking-management-ui';
-const PRODUCT_ORDERS_CACHE_SESSION_KEY = 'booking-product-orders-cache';
-const bookingResourceCache = new Map();
-const cachedBookingResource = (key, load) => {
-  const cached = bookingResourceCache.get(key);
-  if (cached && Date.now() - cached.createdAt < PRODUCT_ORDERS_CACHE_TTL_MS) return cached.promise;
-  const promise = Promise.resolve().then(load).catch((error) => {
-    bookingResourceCache.delete(key);
-    throw error;
-  });
-  bookingResourceCache.set(key, { createdAt: Date.now(), promise });
-  return promise;
-};
-const bookingUiSession = () => {
-  if (typeof window === 'undefined') return {};
-  try {
-    return JSON.parse(window.sessionStorage.getItem(BOOKING_UI_SESSION_KEY) || '{}');
-  } catch {
-    return {};
-  }
-};
-const productOrdersCacheSession = () => {
-  if (typeof window === 'undefined') return new Map();
-  try {
-    const now = Date.now();
-    const entries = JSON.parse(window.sessionStorage.getItem(PRODUCT_ORDERS_CACHE_SESSION_KEY) || '[]');
-    return new Map(entries.filter(([, cached]) => (
-      cached?.ordersByShop && now - Number(cached.fetchedAt) < PRODUCT_ORDERS_CACHE_TTL_MS
-    )));
-  } catch {
-    return new Map();
-  }
-};
-const persistProductOrdersCache = (cache) => {
-  try {
-    window.sessionStorage.setItem(PRODUCT_ORDERS_CACHE_SESSION_KEY, JSON.stringify([...cache]));
-  } catch {
-    // Keep the in-memory cache when session storage is unavailable or full.
-  }
-};
-const dateInputValue = (date) => [
-  date.getFullYear(),
-  String(date.getMonth() + 1).padStart(2, '0'),
-  String(date.getDate()).padStart(2, '0'),
-].join('-');
-const shiftDateInputValue = (value, days) => {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
-const bookingDateOf = (booking) => {
-  if (!booking) return '';
-  const raw = booking.start_date || booking.booking_date || booking.created_at;
-  if (!raw) return '';
-  if (typeof raw === 'string') return raw.slice(0, 10);
-  if (raw instanceof Date) return dateInputValue(raw);
-  return String(raw).slice(0, 10);
-};
-const isBookingInPeriod = (booking, activeRange) => {
-  if (!activeRange || (!activeRange.startDate && !activeRange.endDate)) return true;
-  const bDate = bookingDateOf(booking);
-  if (!bDate) return false;
-  if (activeRange.startDate && bDate < activeRange.startDate) return false;
-  if (activeRange.endDate && bDate > activeRange.endDate) return false;
-  return true;
-};
-const defaultBookingForm = () => ({
-  creator_key: '',
-  staff_id: '',
-  booking_date: dateInputValue(new Date()),
-  total_cost: '',
-  committed_videos: 1,
-  product_ids: [],
-});
-const initialForm = defaultBookingForm();
-const defaultCustomRange = () => {
-  const end = new Date();
-  end.setDate(end.getDate() - 1);
-  const start = new Date(end);
-  start.setDate(start.getDate() - 29);
-  return { start: dateInputValue(start), end: dateInputValue(end) };
-};
-
-
-const targetKocKey = (creator) => {
-  const identity = creator.creator_open_id || `username:${String(creator.username || '').toLocaleLowerCase()}`;
-  return `${creator.shop_id}:${identity}`;
-};
-const snapshotOf = (booking) => booking?.evaluation_snapshot || {};
-const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
-const bookingProductsOf = (booking) => {
-  const snapshot = snapshotOf(booking);
-  const products = Array.isArray(snapshot.products) ? snapshot.products : [];
-  const byId = new Map(products.map((product) => [String(product.id || product.product_id), product]));
-  for (const value of Array.isArray(snapshot.product_ids) ? snapshot.product_ids : []) {
-    const id = String(value || '').trim();
-    if (id && !byId.has(id)) byId.set(id, { id, name: id, image_url: null });
-  }
-  return [...byId.values()].filter((product) => String(product.id || product.product_id || '').trim());
-};
-
-const orderRangeForPeriod = (period, customRange) => {
-  if (!period || period === 'all') {
-    return { startTime: null, endTime: null, windowType: 'LIFETIME' };
-  }
-  const malaysiaMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00+08:00`).getTime() / 1000);
-  if (period === 'custom') {
-    if (!customRange?.start || !customRange?.end) {
-      return { startTime: null, endTime: null, windowType: 'LIFETIME' };
-    }
-    const todayStr = dateInputValue(new Date());
-    const isPast = customRange.end < todayStr;
-    return {
-      startTime: malaysiaMidnightUnix(customRange.start),
-      endTime: malaysiaMidnightUnix(shiftDateInputValue(customRange.end, 1)),
-      startDate: customRange.start,
-      endDate: customRange.end,
-      windowType: isPast ? 'CUSTOM' : 'LIFETIME',
-    };
-  }
-  if (/^\d{4}-\d{2}$/.test(period)) {
-    const [year, month] = period.split('-').map(Number);
-    const startStr = `${period}-01`;
-    const nextMonth = month === 12 ? 1 : month + 1;
-    const nextYear = month === 12 ? year + 1 : year;
-    const nextMonthStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
-    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    const endStr = `${period}-${String(lastDay).padStart(2, '0')}`;
-    const todayStr = dateInputValue(new Date());
-    const isPast = endStr < todayStr;
-    return {
-      startTime: malaysiaMidnightUnix(startStr),
-      endTime: malaysiaMidnightUnix(nextMonthStr),
-      startDate: startStr,
-      endDate: endStr,
-      windowType: isPast ? 'CUSTOM' : 'LIFETIME',
-    };
-  }
-  return { startTime: null, endTime: null, windowType: 'LIFETIME' };
-};
-
-const bookingProductOrderPerformance = (booking, orders = [], periodRange = null) => {
-  const selectedProducts = bookingProductsOf(booking);
-  const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
-  const creatorUsername = String(booking.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-  const orderIds = new Set();
-  let affiliateGmv = 0;
-  let refundedGmv = 0;
-  let itemsSold = 0;
-  let itemsRefunded = 0;
-  let estimatedCommission = 0;
-  let currency = booking.currency || 'MYR';
-
-  for (const order of orders) {
-    if (periodRange && (periodRange.startTime || periodRange.endTime)) {
-      const rawTime = order?.create_time ?? order?.order_create_time ?? order?.created_time ?? order?.paid_time;
-      const orderTimeUnix = typeof rawTime === 'number'
-        ? rawTime
-        : (typeof rawTime === 'string' && /^\d+$/.test(rawTime.trim()))
-          ? Number(rawTime.trim())
-          : Math.floor(new Date(rawTime || 0).getTime() / 1000);
-      if (orderTimeUnix) {
-        if (periodRange.startTime && orderTimeUnix < periodRange.startTime) continue;
-        if (periodRange.endTime && orderTimeUnix >= periodRange.endTime) continue;
-      }
-    }
-    const orderId = String(order?.id || order?.order_id || '').trim();
-    let matchedOrder = false;
-    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-      const productId = String(sku?.product_id || '').trim();
-      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-      if (!selectedIds.has(productId) || (creatorUsername && skuCreator !== creatorUsername)) continue;
-      const quantity = Math.max(0, finiteNumber(sku?.quantity));
-      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity)));
-      const price = Math.max(0, finiteNumber(sku?.price?.amount ?? sku?.price_amount));
-      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
-      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
-      currency = sku?.price?.currency || sku?.currency || currency;
-      itemsSold += quantity;
-      itemsRefunded += refundedQuantity;
-      affiliateGmv += price * quantity;
-      refundedGmv += price * refundedQuantity;
-      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
-      matchedOrder = true;
-    }
-    if (matchedOrder && orderId) orderIds.add(orderId);
-  }
-
-  return {
-    source: 'AFFILIATE_ORDERS',
-    has_products: selectedProducts.length > 0,
-    currency,
-    affiliate_gmv: affiliateGmv,
-    affiliate_orders: orderIds.size,
-    items_sold: itemsSold,
-    items_refunded: itemsRefunded,
-    refunded_gmv: refundedGmv,
-    estimated_commission: estimatedCommission,
-    selected_products: selectedProducts,
-  };
-};
-const bookingProductOrderBreakdown = (booking, orders = []) => {
-  const selectedProducts = bookingProductsOf(booking);
-  const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
-  const creatorUsername = String(booking.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-  const rowsById = new Map(selectedProducts.map((product) => {
-    const id = String(product.id || product.product_id);
-    return [id, {
-      id,
-      name: product.name || product.title || product.product_name || id,
-      thumbnailUrl: product.main_image_url || product.thumbnail_url || product.thumbnailUrl || product.image_url || null,
-      orderIds: new Set(),
-      quantity: 0,
-    }];
-  }));
-
-  orders.forEach((order, orderIndex) => {
-    const orderKey = String(order?.id || order?.order_id || `order:${orderIndex}`);
-    const orderProducts = new Map((Array.isArray(order?.products) ? order.products : [])
-      .map((product) => [String(product?.id || product?.product_id || ''), product]));
-    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-      const productId = String(sku?.product_id || '').trim();
-      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-      if (!selectedIds.has(productId) || (creatorUsername && skuCreator !== creatorUsername)) continue;
-
-      const product = orderProducts.get(productId) || {};
-      const row = rowsById.get(productId);
-      row.name = sku?.product_name || product?.title || product?.name || product?.product_name || row.name;
-      row.thumbnailUrl = product?.main_image_url || product?.thumbnail_url || product?.thumbnailUrl || product?.image_url || row.thumbnailUrl;
-      row.orderIds.add(orderKey);
-      row.quantity += Math.max(0, finiteNumber(sku?.quantity));
-    }
-  });
-
-  return [...rowsById.values()]
-    .map(({ orderIds, ...product }) => ({ ...product, orderCount: orderIds.size }))
-    .sort((left, right) => right.orderCount - left.orderCount || right.quantity - left.quantity || left.name.localeCompare(right.name));
-};
-const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots || [])]
-  .sort((left, right) => (
-    String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
-    || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
-  ))[0] || null;
-const bookingVideoOrderMetrics = (video, booking, orders = []) => {
-  const normVideoId = String(video?.platform_video_id || '').trim();
-  const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-  if (!normVideoId || !Array.isArray(orders) || !orders.length) return null;
-
-  let gmv = 0;
-  let itemsSold = 0;
-  let itemsRefunded = 0;
-  let refundedGmv = 0;
-  let estimatedCommission = 0;
-  const orderIds = new Set();
-  let currency = null;
-  let hasMatch = false;
-
-  for (const order of orders) {
-    const orderId = String(order?.id || order?.order_id || '').trim();
-    let matchedInOrder = false;
-    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-      if (String(sku?.content_id || '').trim() !== normVideoId) continue;
-      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-      if (normCreator && skuCreator && skuCreator !== normCreator) continue;
-
-      const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
-      const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
-      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
-      const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
-      const price = Math.max(0, finiteNumber(rawPrice));
-      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
-      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
-
-      itemsSold += quantity;
-      itemsRefunded += refundedQuantity;
-      gmv += price * quantity;
-      refundedGmv += price * refundedQuantity;
-      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
-      currency = sku?.price?.currency || sku?.currency || currency;
-      hasMatch = true;
-      matchedInOrder = true;
-    }
-    if (matchedInOrder && orderId) {
-      orderIds.add(orderId);
-    }
-  }
-
-  if (!hasMatch) return null;
-  return {
-    itemsSold,
-    itemsRefunded,
-    orderCount: orderIds.size,
-    grossGmv: gmv,
-    refundedGmv,
-    estimatedCommission,
-    currency,
-  };
-};
-const bookingVideosByRevenue = (videos = []) => videos
-  .map((video, index) => ({ video, index, revenue: finiteNumber(latestBookingVideoSnapshot(video)?.gross_gmv) }))
-  .sort((left, right) => right.revenue - left.revenue || left.index - right.index)
-  .map(({ video }) => video);
-
-const filterVideosByPeriod = (videos = [], periodRange = null) => {
-  const list = Array.isArray(videos) ? videos : [];
-  if (!periodRange || (!periodRange.startDate && !periodRange.endDate)) {
-    return list;
-  }
-  return list.filter((video) => {
-    const rawPostDate = video?.posted_at || video?.video_post_time || video?.post_date || video?.post_time;
-    if (!rawPostDate) return false;
-    const postDate = String(rawPostDate).slice(0, 10);
-    if (periodRange.startDate && postDate < periodRange.startDate) return false;
-    if (periodRange.endDate && postDate > periodRange.endDate) return false;
-    return true;
-  });
-};
-
-const bookingVideoPerformanceForVideos = (videos = [], basePerformance = null, shopOrders = []) => {
-  if (!videos.length) {
-    return {
-      gross_gmv: 0,
-      views: 0,
-      orders: 0,
-      items_sold: 0,
-      refunded_gmv: 0,
-      currency: basePerformance?.currency || 'MYR',
-      video_count: 0,
-      samples_shipped: basePerformance?.samples_shipped ?? 0,
-      estimated_commission: 0,
-    };
-  }
-  let grossGmv = 0;
-  let views = 0;
-  let orders = 0;
-  let itemsSold = 0;
-  let refundedGmv = 0;
-  let estimatedCommission = 0;
-  let currency = basePerformance?.currency || 'MYR';
-
-  for (const video of videos) {
-    const latest = latestBookingVideoSnapshot(video);
-    const live = bookingVideoOrderMetrics(video, null, shopOrders);
-    const videoGmv = live ? live.grossGmv : finiteNumber(latest?.gross_gmv ?? video?.gross_gmv ?? video?.gmv);
-    const videoOrders = live ? live.orderCount : finiteNumber(latest?.orders ?? video?.orders);
-    const videoItems = live ? live.itemsSold : finiteNumber(latest?.items_sold ?? video?.items_sold);
-    const videoViews = finiteNumber(latest?.views ?? video?.views ?? latest?.raw_metrics?.views);
-    const videoRefunded = live ? live.refundedGmv : finiteNumber(latest?.refunded_gmv ?? video?.refunded_gmv);
-    const videoCommission = live ? live.estimatedCommission : finiteNumber(latest?.estimated_commission ?? video?.estimated_commission);
-    grossGmv += videoGmv;
-    views += videoViews;
-    orders += videoOrders;
-    itemsSold += videoItems;
-    refundedGmv += videoRefunded;
-    estimatedCommission += videoCommission;
-    if (latest?.currency) currency = latest.currency;
-    else if (video?.currency) currency = video.currency;
-  }
-  return {
-    gross_gmv: grossGmv,
-    views,
-    orders,
-    items_sold: itemsSold,
-    refunded_gmv: refundedGmv,
-    currency,
-    video_count: videos.length,
-    samples_shipped: basePerformance?.samples_shipped ?? 0,
-    estimated_commission: estimatedCommission || finiteNumber(basePerformance?.estimated_commission),
-  };
-};
-const BOOKING_VIDEO_ICON_PATHS = {
-  views: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
-  likes: ['M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6a5.5 5.5 0 0 0 1-8.8Z'],
-  comments: ['M21 12a8 8 0 0 1-8 8 9 9 0 0 1-4-.9L3 21l1.4-3.5A8 8 0 1 1 21 12Z'],
-  shares: ['M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z', 'M8.6 10.5l6.8-4', 'M8.6 13.5l6.8 4'],
-};
-const BookingVideoIcon = ({ name }) => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    {BOOKING_VIDEO_ICON_PATHS[name].map((path) => <path key={path} d={path} />)}
-  </svg>
-);
-const bookingVideoSocialMetrics = (snapshot) => {
-  const rawVideo = snapshot?.raw_metrics?.video || snapshot?.raw_metrics || {};
-  const listVideo = rawVideo?.list || rawVideo;
-  const traffic = rawVideo?.detail?.performance?.intervals?.[0]?.traffic || {};
-  return {
-    views: snapshot?.views ?? listVideo?.views ?? traffic.views,
-    likes: traffic.likes ?? listVideo?.likes ?? rawVideo?.likes,
-    comments: traffic.comments ?? listVideo?.comments ?? rawVideo?.comments,
-    shares: traffic.shares ?? listVideo?.shares ?? rawVideo?.shares,
-  };
-};
-const finiteNumber = (value) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-};
-const optionalNumber = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
-const editableCurrencyAmount = (value, currency) => {
-  if (value === null || value === undefined || value === '') return '';
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return '';
-  return String(currency === 'VND' ? Math.round(amount) : Math.round(amount * 100) / 100);
-};
-
-const TargetKocAvatar = ({ src, name }) => <AppAvatar src={src} name={name || 'KOC'} />;
-
-const SortIcon = ({ active, direction }) => {
-  if (!active) {
-    return (
-      <span className="table-sort-icon table-sort-icon--idle" aria-hidden="true">
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m7 15 5 5 5-5" />
-          <path d="m7 9 5-5 5 5" />
-        </svg>
-      </span>
-    );
-  }
-  return (
-    <span className={`table-sort-icon table-sort-icon--active table-sort-icon--${direction}`} aria-hidden="true">
-      {direction === 'asc' ? (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m18 15-6-6-6 6" />
-        </svg>
-      ) : (
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="m6 9 6 6 6-6" />
-        </svg>
-      )}
-    </span>
-  );
-};
-
-const BookingStaffSelect = ({ users, value, onChange, placeholder, loading, loadingLabel, allLabel, showAll = false }) => {
-  const rootRef = useRef(null);
-  const searchRef = useRef(null);
-  const menuId = useId();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const selected = users.find((user) => String(user.id) === String(value)) || null;
-  const isAll = showAll && value === 'all';
-  const showTriggerAvatar = !isAll && Boolean(selected);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event) => {
-      if (event.key === 'Escape' || (event.type === 'pointerdown' && !rootRef.current?.contains(event.target))) {
-        setOpen(false);
-      }
-    };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', close);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    setQuery('');
-    const frame = window.requestAnimationFrame(() => searchRef.current?.focus());
-    return () => window.cancelAnimationFrame(frame);
-  }, [open]);
-
-  const selectableUsers = users.filter((user) => user.is_active !== false);
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredUsers = normalizedQuery
-    ? selectableUsers.filter((user) =>
-      [user.name, user.email].filter(Boolean)
-        .some((field) => String(field).toLocaleLowerCase().includes(normalizedQuery)))
-    : selectableUsers;
-
-  const toggle = () => setOpen((current) => !current);
-
-  return (
-    <div className="booking-koc-combobox booking-staff-select" ref={rootRef}>
-      <button className={`booking-staff-select__trigger${!showTriggerAvatar ? ' booking-staff-select__trigger--no-avatar' : ''}`} type="button" aria-haspopup="listbox" aria-expanded={open} aria-controls={menuId} disabled={loading} onClick={toggle}>
-        {showTriggerAvatar ? <TargetKocAvatar src={selected?.avatar_url} name={selected?.name || 'U'} /> : null}
-        <span className="booking-staff-select__meta"><strong>{isAll ? allLabel : selected?.name || (loading ? loadingLabel : placeholder)}</strong>{selected?.email ? <small>{selected.email}</small> : null}</span>
-        <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
-      </button>
-      {open ? (
-        <div className="booking-koc-combobox__menu booking-staff-select__menu" id={menuId} role="listbox">
-          <label className="booking-staff-select__search">
-            <span className="sr-only">Tìm nhân viên</span>
-            <input ref={searchRef} type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Tìm theo tên hoặc email…" />
-          </label>
-          {showAll ? <button className={`booking-koc-combobox__option booking-staff-select__option--all${isAll ? ' booking-koc-combobox__option--active' : ''}`} type="button" role="option" aria-selected={isAll} onClick={() => { onChange('all'); setOpen(false); }}>
-            <span className="booking-staff-select__option-meta"><strong>{allLabel}</strong></span>
-            {isAll ? <span className="booking-staff-select__check" aria-hidden="true">✓</span> : null}
-          </button> : null}
-          {filteredUsers.length ? filteredUsers.map((user) => (
-            <button className={`booking-koc-combobox__option${String(user.id) === String(value) ? ' booking-koc-combobox__option--active' : ''}`} type="button" role="option" aria-selected={String(user.id) === String(value)} key={user.id} onClick={() => { onChange(String(user.id)); setOpen(false); }}>
-              <TargetKocAvatar src={user.avatar_url} name={user.name} />
-              <span className="booking-staff-select__option-meta"><strong>{user.name}</strong><small>{user.email || '—'}</small></span>
-              {String(user.id) === String(value) ? <span className="booking-staff-select__check" aria-hidden="true">✓</span> : null}
-            </button>
-          )) : <div className="booking-koc-combobox__empty">Không có nhân viên phù hợp.</div>}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const productsOfBookingVideo = (video, snapshot) => {
-  const raw = snapshot?.raw_metrics || {};
-  const rawVideo = raw?.video || raw;
-  const listVideo = rawVideo?.list || rawVideo;
-  const breakdowns = rawVideo?.detail?.performance?.intervals?.[0]?.sales?.breakdowns || [];
-  const sourceProducts = [
-    ...(Array.isArray(video?.affiliate_products) ? video.affiliate_products : []),
-    ...(Array.isArray(raw.products) ? raw.products : []),
-    ...(Array.isArray(listVideo.products) ? listVideo.products : []),
-    ...(Array.isArray(breakdowns) ? breakdowns : []),
-  ];
-  const byId = new Map();
-  for (const product of sourceProducts) {
-    const id = String(product?.id || product?.product_id || '').trim();
-    if (!id) continue;
-    const existing = byId.get(id) || {};
-    byId.set(id, {
-      id,
-      name: product?.name || product?.title || product?.product_name || existing.name || null,
-      thumbnailUrl: product?.main_image_url || product?.thumbnail_url || product?.thumbnailUrl || product?.image_url || existing.thumbnailUrl || null,
-    });
-  }
-  const ids = [raw.product_id, rawVideo.product_id, listVideo.product_id]
-    .flatMap((value) => String(value || '').split(','))
-    .map((id) => id.trim())
-    .filter(Boolean);
-  for (const id of ids) {
-    if (!byId.has(id)) byId.set(id, { id, name: null, thumbnailUrl: null });
-  }
-  return [...byId.values()];
-};
-
-const productCtrOfBookingVideo = (snapshot) => {
-  const raw = snapshot?.raw_metrics || {};
-  const rawVideo = raw?.video || raw;
-  const listVideo = rawVideo?.list || rawVideo;
-  const sales = rawVideo?.detail?.performance?.intervals?.[0]?.sales || {};
-  const ratioOf = (source) => {
-    const impressions = optionalNumber(source?.product_impressions);
-    const clicks = optionalNumber(source?.product_clicks);
-    return impressions !== null && impressions > 0 ? (clicks || 0) / impressions : null;
-  };
-  const overallRatio = ratioOf(sales.overall) ?? ratioOf(raw);
-  if (overallRatio !== null) return overallRatio;
-  const productRows = Array.isArray(sales.breakdowns) && sales.breakdowns.length
-    ? sales.breakdowns
-    : Array.isArray(listVideo.products) ? listVideo.products : [];
-  const totals = productRows.reduce((result, product) => {
-    const impressions = optionalNumber(product?.product_impressions);
-    if (impressions === null) return result;
-    result.impressions += impressions;
-    result.clicks += optionalNumber(product?.product_clicks) || 0;
-    return result;
-  }, { clicks: 0, impressions: 0 });
-  return totals.impressions > 0 ? totals.clicks / totals.impressions : null;
-};
-
-const BookingVideoProduct = ({ product, isTarget, quantity, onClick }) => {
-  const tooltipId = useId();
-  const itemRef = useRef(null);
-  const [failed, setFailed] = useState(false);
-  const [tooltip, setTooltip] = useState(null);
-  useEffect(() => setFailed(false), [product.thumbnailUrl]);
-  const showTooltip = () => {
-    const rect = itemRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const width = Math.min(320, window.innerWidth - 24);
-    const showAbove = rect.bottom + 110 > window.innerHeight;
-    setTooltip({
-      left: Math.min(window.innerWidth - width - 12, Math.max(12, rect.left)),
-      top: showAbove ? rect.top - 8 : rect.bottom + 8,
-      width,
-      showAbove,
-    });
-  };
-  return (
-    <button
-      type="button"
-      className={`booking-video-expansion__product${isTarget ? ' booking-video-expansion__product--target' : ''}`}
-      ref={itemRef}
-      aria-label={`${isTarget ? '[Sản phẩm Booking] ' : ''}${product.name || product.id} - Xem chi tiết đơn hàng`}
-      aria-describedby={tooltip ? tooltipId : undefined}
-      onMouseEnter={showTooltip}
-      onMouseLeave={() => setTooltip(null)}
-      onFocus={showTooltip}
-      onBlur={() => setTooltip(null)}
-      onClick={onClick}
-    >
-      {product.thumbnailUrl && !failed
-        ? <img src={product.thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
-        : <span className="booking-video-expansion__product-placeholder" aria-hidden="true">P</span>}
-      {quantity !== undefined && quantity !== null ? (
-        <span
-          className={`booking-video-expansion__product-badge${quantity > 0 ? ' booking-video-expansion__product-badge--active' : ''}`}
-          aria-label={`Số lượng bán: ${quantity}`}
-        >
-          x{quantity}
-        </span>
-      ) : null}
-      {tooltip ? createPortal(
-        <span
-          className={`booking-video-expansion__product-tooltip${tooltip.showAbove ? ' booking-video-expansion__product-tooltip--above' : ''}`}
-          id={tooltipId}
-          role="tooltip"
-          style={{ left: tooltip.left, top: tooltip.top, width: tooltip.width }}
-        >
-          {isTarget ? <span className="booking-video-expansion__product-target-tag">Sản phẩm Booking</span> : null}
-          {product.name || product.id}
-          {quantity !== undefined && quantity !== null ? (
-            <span className="booking-video-expansion__product-tooltip-qty">
-              Đã bán: {quantity}
-            </span>
-          ) : null}
-          <span className="booking-video-expansion__product-tooltip-hint">Nhấp để xem chi tiết đơn</span>
-        </span>,
-        document.body,
-      ) : null}
-    </button>
-  );
-};
-
-const BookingDetailProduct = ({ product, onRemove }) => {
-  const [imageFailed, setImageFailed] = useState(false);
-  const source = product?.product || product || {};
-  const name = source.title || source.name || source.product_name || source.id || source.product_id || '—';
-  const id = source.id || source.product_id || null;
-  const thumbnailUrl = source.imageUrl
-    || source.main_image_url
-    || source.thumbnail_url
-    || source.thumbnailUrl
-    || source.image_url
-    || source.image?.url
-    || source.images?.[0]?.url
-    || null;
-  useEffect(() => setImageFailed(false), [thumbnailUrl]);
-  return (
-    <div className={`booking-detail-product${onRemove ? ' booking-detail-product--removable' : ''}`}>
-      {thumbnailUrl && !imageFailed
-        ? <img src={thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
-        : <span className="booking-detail-product__placeholder" aria-hidden="true">P</span>}
-      <span><strong title={name}>{name}</strong>{id && String(id) !== String(name) ? <small>{id}</small> : null}</span>
-      {onRemove && id ? (
-        <button
-          type="button"
-          className="booking-detail-product__remove"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onRemove(id);
-          }}
-          title="Xóa"
-          aria-label="Xóa"
-        >
-          ×
-        </button>
-      ) : null}
-    </div>
-  );
-};
-
-const BookingProductOrderExpansion = ({ booking, orders, t, formatNumber, onSelectProduct }) => {
-  const products = useMemo(
-    () => bookingProductOrderBreakdown(booking, orders),
-    [booking, orders],
-  );
-  return (
-    <div className="booking-product-order-expansion">
-      <div className="booking-product-order-expansion__heading">
-        <strong>{t('booking.productOrderBreakdown')}</strong>
-      </div>
-      {products.length ? <div className="booking-product-order-expansion__list">
-        {products.map((product) => <article
-          className="booking-product-order-expansion__item booking-product-order-expansion__item--clickable"
-          key={product.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelectProduct?.({ product, booking })}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelectProduct?.({ product, booking }); }}
-          title="Nhấp để xem chi tiết đơn hàng"
-        >
-          <BookingDetailProduct product={product} />
-          <div className="booking-product-order-expansion__metrics">
-            <strong>{t('booking.ordersCount', { count: formatNumber(product.orderCount) })}</strong>
-            <span className="booking-product-order-expansion__hint">Xem đơn →</span>
-          </div>
-        </article>)}
-      </div> : <div className="empty-state empty-state--compact">{t('booking.noAttachedProducts')}</div>}
-    </div>
-  );
-};
-
-const formatOrderTimestamp = (value) => {
-  if (!value) return { date: '—', time: '' };
-  const num = Number(value);
-  const date = !Number.isNaN(num) && num > 0
-    ? new Date(num > 1e11 ? num : num * 1000)
-    : new Date(value);
-  if (Number.isNaN(date.getTime())) return { date: String(value), time: '' };
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return {
-    date: `${day}/${month}/${year}`,
-    time: `${hours}:${minutes}`,
-  };
-};
-
-const cleanDisplayProductName = (fullName) => {
-  if (!fullName) return '';
-  const firstPart = String(fullName).split(/\s*[-–|]\s*/)[0].trim();
-  return firstPart.replace(/^\[[^\]]+\]\s*/i, '').trim();
-};
-
-const resolveProductClassification = (skuName, productName) => {
-  const normSku = String(skuName || '').trim();
-  const normProd = String(productName || '').trim();
-
-  if (normSku && normSku !== normProd && normSku.toLowerCase() !== 'mặc định' && normSku.toLowerCase() !== 'default') {
-    return normSku;
-  }
-
-  if (!normProd) return normSku || 'Mặc định';
-
-  const parenMatch = normProd.match(/\(([^)]+)\)\s*$/);
-  const parenContent = parenMatch ? parenMatch[1].trim() : null;
-
-  const parts = normProd.split(/\s*[-–|]\s*/);
-  const firstPart = parts[0].trim();
-
-  const cleanBrand = (str) => str
-    .replace(/^\[[^\]]+\]\s*/i, '')
-    .replace(/^(FOLLICAS|ACTISCAR)\s+/i, '')
-    .trim();
-
-  const brandCleaned = cleanBrand(firstPart);
-
-  if (parenContent) {
-    const formattedSpec = parenContent.replace(/\s+dan\s+/gi, ' + ');
-    if (/^Kombo\b/i.test(brandCleaned)) {
-      return `Kombo (${formattedSpec})`;
-    }
-    if (/^Serum\b/i.test(brandCleaned)) {
-      return `Serum (${formattedSpec})`;
-    }
-    if (/^Krim\b/i.test(brandCleaned)) {
-      return `Krim (${formattedSpec})`;
-    }
-    return formattedSpec;
-  }
-
-  if (parts.length > 1) {
-    for (let i = 1; i < parts.length; i += 1) {
-      const part = parts[i].trim();
-      if (/ml|g|tampalan|spray|krim|serum|combo/i.test(part) && part.length <= 40) {
-        return part.replace(/\s+dan\s+/gi, ' + ');
-      }
-    }
-  }
-
-  const countMatch = firstPart.match(/\b\d+\s*tampalan\b/i);
-  if (countMatch) {
-    return countMatch[0];
-  }
-
-  if (/\b\d+\s*(ml|g)\b/i.test(firstPart)) {
-    return brandCleaned;
-  }
-
-  if (brandCleaned && brandCleaned.length <= 30) {
-    return brandCleaned;
-  }
-
-  return 'Mặc định';
-};
-
-const extractProductOrderRows = (orders = [], productId, creatorUsername, videoId = null) => {
-  const normProdId = String(productId || '').trim();
-  const normCreator = String(creatorUsername || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-  const normVideoId = String(videoId || '').trim();
-
-  const rows = [];
-  const orderIds = new Set();
-  let totalItems = 0;
-  let totalRefundedItems = 0;
-  let totalGmv = 0;
-  let totalRefundedGmv = 0;
-  let totalCommission = 0;
-  let currency = 'MYR';
-
-  for (const order of orders) {
-    const orderId = String(order?.id || order?.order_id || '').trim();
-    const orderTime = order?.create_time || order?.order_create_time || order?.created_time || order?.paid_time;
-    const orderStatus = order?.order_status || order?.status || null;
-
-    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-      const skuProdId = String(sku?.product_id || '').trim();
-      if (normProdId && skuProdId !== normProdId) continue;
-
-      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-      if (normCreator && skuCreator && skuCreator !== normCreator) continue;
-
-      const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
-      const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
-      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
-      const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
-      const price = Math.max(0, finiteNumber(rawPrice));
-      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
-      const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
-      const skuCurrency = sku?.price?.currency || sku?.currency || order?.currency || currency;
-      currency = skuCurrency;
-
-      const orderProd = Array.isArray(order?.products)
-        ? order.products.find((p) => String(p?.id || p?.product_id || '').trim() === skuProdId)
-        : null;
-      const orderProdThumb = orderProd?.main_image_url || orderProd?.image_url || orderProd?.thumbnail_url || orderProd?.thumbnailUrl || null;
-
-      const skuThumb = sku?.sku_image || sku?.thumbnail_url || sku?.thumbnailUrl || sku?.image_url
-        || sku?.main_image_url || sku?.product_image || sku?.raw_data?.sku_image
-        || sku?.raw_data?.image_url || sku?.raw_data?.product_image
-        || orderProdThumb || null;
-
-      const gmv = price * quantity;
-      const refundedGmv = price * refundedQuantity;
-      const commission = finiteNumber(sku?.commission_amount ?? sku?.estimated_commission)
-        || (price * (quantity - refundedQuantity) * commissionRate);
-
-      const isVideoMatch = normVideoId ? String(sku?.content_id || '').trim() === normVideoId : false;
-      const contentType = String(sku?.content_type || (sku?.content_id ? 'VIDEO' : 'OTHER')).toUpperCase();
-
-      totalItems += quantity;
-      totalRefundedItems += refundedQuantity;
-      totalGmv += gmv;
-      totalRefundedGmv += refundedGmv;
-      totalCommission += commission;
-      if (orderId) orderIds.add(orderId);
-
-      const rawProdName = sku?.product_name || sku?.title || '';
-      const rawSkuName = sku?.sku_name || '';
-      const classification = resolveProductClassification(rawSkuName, rawProdName);
-      const displayProductName = cleanDisplayProductName(rawProdName);
-
-      rows.push({
-        orderId: orderId || `order-${rows.length}`,
-        orderTime,
-        orderStatus: sku?.item_status || orderStatus || 'COMPLETED',
-        skuId: sku?.sku_id || '',
-        productId: skuProdId,
-        productName: rawProdName,
-        displayProductName,
-        skuName: classification,
-        classification,
-        thumbnailUrl: skuThumb,
-        quantity,
-        refundedQuantity,
-        price,
-        gmv,
-        refundedGmv,
-        commission,
-        currency: skuCurrency,
-        contentType,
-        contentId: sku?.content_id || null,
-        videoTitle: sku?.video_title || null,
-        isVideoMatch,
-      });
-    }
-  }
-
-  rows.sort((a, b) => {
-    const timeA = Number(a.orderTime) || (new Date(a.orderTime).getTime() / 1000) || 0;
-    const timeB = Number(b.orderTime) || (new Date(b.orderTime).getTime() / 1000) || 0;
-    return timeB - timeA;
-  });
-
-  return {
-    rows,
-    totalOrders: orderIds.size,
-    totalItems,
-    totalRefundedItems,
-    totalGmv,
-    totalRefundedGmv,
-    totalCommission,
-    currency,
-  };
-};
-
-const BookingProductOrderDetailModal = ({
-  product,
-  booking,
-  video,
-  snapshot,
-  orders = [],
-  loading = false,
-  onClose,
-  formatMoney,
-  formatNumber,
-  t,
-  currency,
-}) => {
-  const effectiveSnapshot = snapshot || video?.snapshot;
-  const [videoThumbnail, setVideoThumbnail] = useState(() => (
-    video?.thumbnail_url
-    || video?.cover_image_url
-    || thumbnailFrom(video, effectiveSnapshot)
-    || null
-  ));
-  const [videoThumbFailed, setVideoThumbFailed] = useState(false);
-
-  useEffect(() => {
-    const direct = video?.thumbnail_url
-      || video?.cover_image_url
-      || thumbnailFrom(video, effectiveSnapshot)
-      || null;
-    if (direct) {
-      setVideoThumbnail(direct);
-      setVideoThumbFailed(false);
-      return undefined;
-    }
-    if (product) return undefined;
-
-    const shopId = booking?.target_shop_id;
-    const videoId = String(video?.platform_video_id || video?.id || '').trim();
-    const username = String(video?.creator_username || booking?.creator_username || '').trim().replace(/^@+/, '');
-    if (!shopId || !videoId || !username) return undefined;
-
-    let active = true;
-    const cacheKey = `${shopId}:${videoId}:${username.toLowerCase()}`;
-    cachedThumbnail(cacheKey, () => (
-      fetchTikTokShopVideoThumbnail(shopId, videoId, username)
-    ))
-      .then((payload) => {
-        if (active && payload?.thumbnail_url) {
-          setVideoThumbnail(payload.thumbnail_url);
-          setVideoThumbFailed(false);
-        }
-      })
-      .catch(() => {
-        if (active) setVideoThumbFailed(true);
-      });
-    return () => { active = false; };
-  }, [product, video, effectiveSnapshot, booking?.target_shop_id, booking?.creator_username]);
-
-  const [filterMode, setFilterMode] = useState(() => (video?.platform_video_id ? 'video' : 'all'));
-  const [searchQuery, setSearchQuery] = useState('');
-
-  const isTarget = useMemo(() => {
-    const targetProducts = bookingProductsOf(booking);
-    return targetProducts.some((p) => String(p.id || p.product_id) === String(product?.id));
-  }, [booking, product]);
-
-  const { rows, currency: orderCurrency } = useMemo(
-    () => extractProductOrderRows(orders, product?.id, booking?.creator_username, video?.platform_video_id),
-    [orders, product?.id, booking?.creator_username, video?.platform_video_id],
-  );
-
-  const videoMatchRowsCount = useMemo(() => rows.filter((r) => r.isVideoMatch).length, [rows]);
-
-  const productThumbMap = useMemo(() => {
-    const map = new Map();
-    if (product?.id) {
-      const img = product.thumbnailUrl || product.image_url || product.thumbnail_url || product.imageUrl;
-      if (img) map.set(String(product.id), img);
-    }
-    for (const p of bookingProductsOf(booking)) {
-      const id = String(p?.id || p?.product_id || '').trim();
-      const img = p?.image_url || p?.imageUrl || p?.thumbnail_url || p?.thumbnailUrl || p?.main_image_url;
-      if (id && img) map.set(id, img);
-    }
-    for (const p of Array.isArray(video?.affiliate_products) ? video.affiliate_products : []) {
-      const id = String(p?.id || p?.product_id || '').trim();
-      const img = p?.thumbnail_url || p?.thumbnailUrl || p?.main_image_url || p?.image_url;
-      if (id && img) map.set(id, img);
-    }
-    for (const order of Array.isArray(orders) ? orders : []) {
-      for (const prod of Array.isArray(order?.products) ? order.products : []) {
-        const id = String(prod?.id || prod?.product_id || '').trim();
-        const img = prod?.main_image_url || prod?.image_url || prod?.thumbnail_url || prod?.thumbnailUrl;
-        if (id && img && !map.has(id)) map.set(id, img);
-      }
-    }
-    return map;
-  }, [product, booking, video, orders]);
-
-  const tabRows = useMemo(() => {
-    if (filterMode === 'video' && video?.platform_video_id) {
-      return rows.filter((r) => r.isVideoMatch);
-    }
-    return rows;
-  }, [rows, filterMode, video?.platform_video_id]);
-
-  const activeStats = useMemo(() => {
-    const list = tabRows;
-    const orderIds = new Set();
-    let items = 0;
-    let refundedItems = 0;
-    let gmv = 0;
-    let comm = 0;
-    for (const r of list) {
-      if (r.orderId) orderIds.add(r.orderId);
-      items += r.quantity;
-      refundedItems += r.refundedQuantity;
-      gmv += r.gmv;
-      comm += r.commission;
-    }
-    return {
-      orderCount: orderIds.size,
-      items,
-      refundedItems,
-      gmv,
-      commission: comm,
-    };
-  }, [tabRows]);
-
-  const filteredRows = useMemo(() => {
-    let list = tabRows;
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((r) => (
-        r.orderId.toLowerCase().includes(q)
-        || r.skuName.toLowerCase().includes(q)
-        || (r.productName && r.productName.toLowerCase().includes(q))
-        || (r.videoTitle && r.videoTitle.toLowerCase().includes(q))
-      ));
-    }
-    return list;
-  }, [tabRows, searchQuery]);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
-
-  const activeCurrency = orderCurrency || currency;
-
-  return (
-    <div
-      className="booking-product-order-modal-backdrop"
-      role="presentation"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="booking-product-order-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="product-order-detail-title"
-      >
-        <header className="booking-product-order-modal__header">
-          <div className="booking-product-order-modal__product-info">
-            <div className="booking-product-order-modal__thumbnail">
-              {product ? (
-                (product.thumbnailUrl || (product.id ? productThumbMap.get(String(product.id)) : null)) ? (
-                  <img
-                    src={product.thumbnailUrl || productThumbMap.get(String(product.id))}
-                    alt=""
-                    loading="lazy"
-                    decoding="async"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <span className="booking-product-order-modal__placeholder">P</span>
-                )
-              ) : (videoThumbnail && !videoThumbFailed) ? (
-                <img
-                  src={videoThumbnail}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                  onError={() => setVideoThumbFailed(true)}
-                />
-              ) : (
-                <span className="booking-product-order-modal__placeholder">▶</span>
-              )}
-            </div>
-            <div className="booking-product-order-modal__title-box">
-              {product && isTarget ? (
-                <div className="booking-product-order-modal__meta">
-                  <span className="chip chip--positive">Sản phẩm Booking</span>
-                </div>
-              ) : null}
-              <h2 id="product-order-detail-title" className="booking-product-order-modal__title" title={product?.name || product?.id || video?.title || 'Đơn hàng của Video'}>
-                {product ? (product.name || product.id) : (video?.title || 'Tất cả đơn hàng của Video')}
-              </h2>
-              <small className="row-subtitle">
-                {product ? `Mã sản phẩm: ${product.id}` : `Video ID: ${video?.platform_video_id || '—'}`}
-              </small>
-            </div>
-          </div>
-          <button
-            className="button button--ghost"
-            type="button"
-            aria-label={t('common.close')}
-            onClick={onClose}
-            style={{ fontSize: '1.25rem', minWidth: '36px', height: '36px' }}
-          >
-            ×
-          </button>
-        </header>
-
-        <div className="booking-product-order-modal__body">
-          <div className="booking-product-order-modal__stats">
-            <div className="booking-product-order-modal__stat">
-              <span>{t('booking.orderCount', { defaultValue: 'Số đơn hàng' })}</span>
-              <strong>{formatNumber(activeStats.orderCount)}</strong>
-            </div>
-            <div className="booking-product-order-modal__stat">
-              <span>{t('booking.itemsSoldTotal', { defaultValue: 'Số lượng đã bán' })}</span>
-              <strong>
-                {formatNumber(activeStats.items)}
-                {activeStats.refundedItems > 0 ? (
-                  <small style={{ fontWeight: 500, fontSize: '.75rem', color: 'var(--color-danger, #ef4444)' }}>
-                    {' '}(-{activeStats.refundedItems})
-                  </small>
-                ) : null}
-              </strong>
-            </div>
-            <div className="booking-product-order-modal__stat">
-              <span>{t('booking.videoGmv', { defaultValue: 'Doanh số (GMV)' })}</span>
-              <strong>{formatMoney(activeStats.gmv, activeCurrency)}</strong>
-            </div>
-            <div className="booking-product-order-modal__stat">
-              <span>{t('booking.estimatedCommission', { defaultValue: 'Hoa hồng ước tính' })}</span>
-              <strong>{formatMoney(activeStats.commission, activeCurrency)}</strong>
-            </div>
-          </div>
-
-          <div className="booking-product-order-modal__filter-bar">
-            {video ? (
-              <div className="booking-product-order-modal__tabs">
-                <button
-                  type="button"
-                  className={`booking-product-order-modal__tab${filterMode === 'video' ? ' booking-product-order-modal__tab--active' : ''}`}
-                  onClick={() => setFilterMode('video')}
-                >
-                  Đơn từ video này ({videoMatchRowsCount})
-                </button>
-                <button
-                  type="button"
-                  className={`booking-product-order-modal__tab${filterMode === 'all' ? ' booking-product-order-modal__tab--active' : ''}`}
-                  onClick={() => setFilterMode('all')}
-                >
-                  Tất cả đơn của KOC ({rows.length})
-                </button>
-              </div>
-            ) : <div />}
-            <input
-              type="search"
-              className="booking-product-order-modal__search"
-              placeholder={product ? "Tìm mã đơn, phân loại..." : "Tìm mã đơn, sản phẩm, phân loại..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          {loading ? (
-            <div className="empty-state" style={{ padding: '36px 0' }}>
-              <span className="loading-dot" />
-              <span>Đang tải danh sách đơn hàng...</span>
-            </div>
-          ) : filteredRows.length > 0 ? (
-            <div className="booking-product-order-modal__table-wrap">
-              <table className="booking-product-order-modal__table">
-                <thead>
-                  <tr>
-                    <th>Đơn hàng</th>
-                    <th>Thời gian đặt</th>
-                    <th style={{ minWidth: '220px' }}>Phân loại</th>
-                    <th style={{ textAlign: 'right' }}>Số lượng</th>
-                    <th style={{ textAlign: 'right' }}>Đơn giá</th>
-                    <th style={{ textAlign: 'right' }}>Thành tiền</th>
-                    <th style={{ textAlign: 'right' }}>Hoa hồng</th>
-                    <th>Nguồn</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredRows.map((row, idx) => {
-                    const thumb = row.thumbnailUrl || productThumbMap.get(String(row.productId)) || null;
-                    const displaySkuName = row.classification || row.skuName || 'Mặc định';
-                    return (
-                      <tr key={`${row.orderId}:${row.skuId || idx}`}>
-                        <td>
-                          <div className="booking-product-order-modal__order-cell">
-                            <div className="booking-product-order-modal__product-cell-thumb">
-                              {thumb ? (
-                                <img src={thumb} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" />
-                              ) : (
-                                <span>{(row.displayProductName || row.productName || 'P').trim().charAt(0).toUpperCase()}</span>
-                              )}
-                            </div>
-                            <div className="booking-product-order-modal__order-cell-info">
-                              <strong
-                                className="booking-product-order-modal__order-product-name"
-                                title={row.productName || row.displayProductName}
-                              >
-                                {row.displayProductName || row.productName || '—'}
-                              </strong>
-                              <span
-                                className="booking-product-order-modal__order-id"
-                                title={`Mã đơn: ${row.orderId}`}
-                              >
-                                {row.orderId}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-                        <td>
-                          {(() => {
-                            const formatted = formatOrderTimestamp(row.orderTime);
-                            return (
-                              <div className="booking-product-order-modal__time-cell">
-                                <span className="booking-product-order-modal__time-date">{formatted.date}</span>
-                                {formatted.time ? (
-                                  <small className="booking-product-order-modal__time-hour">{formatted.time}</small>
-                                ) : null}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td>
-                          <div className="booking-product-order-modal__sku-cell">
-                            <span className="booking-product-order-modal__sku-badge" title={displaySkuName}>
-                              {displaySkuName}
-                            </span>
-                            {row.skuId ? (
-                              <small className="booking-product-order-modal__sku-id" title={`SKU ID: ${row.skuId}`}>
-                                {row.skuId}
-                              </small>
-                            ) : null}
-                          </div>
-                        </td>
-                      <td style={{ textAlign: 'right', fontWeight: 650 }}>
-                        {formatNumber(row.quantity)}
-                        {row.refundedQuantity > 0 ? (
-                          <small style={{ color: 'var(--color-danger, #ef4444)', marginLeft: '4px' }}>
-                            (-{row.refundedQuantity})
-                          </small>
-                        ) : null}
-                      </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                        {formatMoney(row.price, row.currency)}
-                      </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 650 }}>
-                        {formatMoney(row.gmv, row.currency)}
-                      </td>
-                      <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--color-accent-strong)' }}>
-                        {formatMoney(row.commission, row.currency)}
-                      </td>
-                      <td>
-                        {row.isVideoMatch ? (
-                          <span
-                            className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--match"
-                            title={`Video: ${row.contentId}`}
-                          >
-                            Video này
-                          </span>
-                        ) : row.contentType === 'VIDEO' ? (
-                          <span
-                            className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--other"
-                            title={`Video ID: ${row.contentId}`}
-                          >
-                            Video khác
-                          </span>
-                        ) : (
-                          <span className="booking-product-order-modal__tag-other">
-                            {row.contentType || 'Khác'}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="empty-state" style={{ padding: '36px 0' }}>
-              <p>
-                {searchQuery
-                  ? 'Không tìm thấy đơn hàng nào khớp với tìm kiếm.'
-                  : filterMode === 'video'
-                    ? 'Chưa ghi nhận đơn hàng nào được gắn trực tiếp vào video này.'
-                    : 'Chưa có đơn hàng nào phát sinh cho sản phẩm này trong khoảng thời gian đã chọn.'}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const BookingVideoProducts = ({ shopId, video, snapshot, label, booking, onSelectProduct, orders = [] }) => {
-  const sourceProducts = useMemo(() => productsOfBookingVideo(video, snapshot), [snapshot, video]);
-  const [products, setProducts] = useState(sourceProducts);
-
-  const targetProductMap = useMemo(() => {
-    const map = new Map();
-    for (const p of bookingProductsOf(booking)) {
-      const id = String(p?.id || p?.product_id || '').trim();
-      if (id) map.set(id, p);
-    }
-    return map;
-  }, [booking]);
-
-  const quantitiesByProductId = useMemo(() => {
-    const map = new Map();
-    const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-    const normVideoId = String(video?.platform_video_id || '').trim();
-
-    for (const order of orders || []) {
-      for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-        const prodId = String(sku?.product_id || '').trim();
-        if (!prodId) continue;
-
-        const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-        if (normCreator && skuCreator && skuCreator !== normCreator) continue;
-
-        if (normVideoId && String(sku?.content_id || '').trim() !== normVideoId) continue;
-
-        const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
-        const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
-
-        map.set(prodId, (map.get(prodId) || 0) + quantity);
-      }
-    }
-    return map;
-  }, [orders, booking?.creator_username, video?.platform_video_id]);
-
-  useEffect(() => {
-    const enriched = sourceProducts.map((product) => {
-      const target = targetProductMap.get(String(product.id));
-      if (!target) return product;
-      return {
-        ...product,
-        name: product.name || target.name || target.title || null,
-        thumbnailUrl: product.thumbnailUrl || target.image_url || target.imageUrl || target.thumbnail_url || null,
-      };
-    });
-    setProducts(enriched);
-    if (!shopId || !enriched.length) return undefined;
-    const missing = enriched.filter((product) => !product.name || !product.thumbnailUrl);
-    if (!missing.length) return undefined;
-    let active = true;
-    Promise.all(missing.map(async (product) => {
-      try {
-        const payload = await cachedBookingResource(`video-product:${shopId}:${product.id}`, () => (
-          fetchTikTokSellerOpenCollaborations(shopId, { pageSize: 20, keyword: product.id })
-        ));
-        const row = (payload?.open_collaborations || []).find((item) => String(item?.product?.id) === product.id);
-        return row?.product ? {
-          id: product.id,
-          name: row.product.title || product.name,
-          thumbnailUrl: row.product.main_image_url || product.thumbnailUrl,
-        } : product;
-      } catch {
-        return product;
-      }
-    })).then((loaded) => {
-      if (active) setProducts(loaded);
-    });
-    return () => { active = false; };
-  }, [shopId, sourceProducts, targetProductMap]);
-
-  const sortedProducts = useMemo(() => {
-    if (!targetProductMap.size || !products.length) return products;
-    return [...products].sort((a, b) => {
-      const aTarget = targetProductMap.has(String(a.id));
-      const bTarget = targetProductMap.has(String(b.id));
-      if (aTarget && !bTarget) return -1;
-      if (!aTarget && bTarget) return 1;
-      return 0;
-    });
-  }, [products, targetProductMap]);
-
-  return (
-    <div className="booking-video-expansion__products-card">
-      <span className="booking-video-expansion__products-label">{label}</span>
-      <span className="booking-video-expansion__products">
-        {sortedProducts.length ? sortedProducts.map((product) => {
-          const qty = quantitiesByProductId.has(String(product.id))
-            ? quantitiesByProductId.get(String(product.id))
-            : (product.quantity !== undefined ? Number(product.quantity) : 0);
-          return (
-            <BookingVideoProduct
-              product={product}
-              isTarget={targetProductMap.has(String(product.id))}
-              quantity={qty}
-              key={product.id}
-              onClick={() => onSelectProduct?.({ product, video: { ...video, snapshot }, booking, snapshot })}
-            />
-          );
-        }) : '—'}
-      </span>
-    </div>
-  );
-};
-
-const TargetKocCombobox = ({
-  creators, value, onChange, onSearch, onLoadMore, hasMore, loading,
-  placeholder, noResults, performanceSourceLabel, collaborationLabel, loadMoreLabel, loadingLabel,
-}) => {
-  const rootRef = useRef(null);
-  const selectedCreator = useMemo(
-    () => creators.find((creator) => targetKocKey(creator) === value) || null,
-    [creators, value],
-  );
-  const [query, setQuery] = useState('');
-  const [open, setOpen] = useState(false);
-  const selectedName = selectedCreator?.nickname || selectedCreator?.username || '';
-
-  useEffect(() => setQuery(selectedName), [selectedName]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (event) => {
-      if (event.key === 'Escape' || (event.type === 'pointerdown' && !rootRef.current?.contains(event.target))) {
-        setOpen(false);
-        setQuery(selectedName);
-      }
-    };
-    window.addEventListener('pointerdown', close);
-    window.addEventListener('keydown', close);
-    return () => {
-      window.removeEventListener('pointerdown', close);
-      window.removeEventListener('keydown', close);
-    };
-  }, [open, selectedName]);
-
-  const openSearch = () => {
-    setQuery('');
-    onSearch('');
-    setOpen(true);
-  };
-
-  return (
-    <div className="booking-koc-combobox" ref={rootRef}>
-      <div className={`booking-koc-combobox__control${selectedCreator && !open ? ' booking-koc-combobox__control--selected' : ''}`}>
-        {selectedCreator && !open ? (
-          <span className="booking-koc-combobox__selected-avatar" aria-hidden="true">
-            <TargetKocAvatar src={selectedCreator.avatar_url} name={selectedName} />
-          </span>
-        ) : null}
-        <input
-          type="text"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={open}
-          aria-controls="booking-koc-options"
-          value={query}
-          placeholder={placeholder}
-          required
-          onFocus={openSearch}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            onSearch(event.target.value);
-            onChange('');
-            setOpen(true);
-          }}
-        />
-        <button type="button" aria-label={placeholder} aria-expanded={open} onClick={() => {
-          if (open) {
-            setOpen(false);
-            setQuery(selectedName);
-          } else {
-            openSearch();
-          }
-        }}>
-          <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
-        </button>
-      </div>
-      {open ? (
-        <div className="booking-koc-combobox__menu" id="booking-koc-options" role="listbox">
-          {creators.length ? creators.map((creator) => (
-            <button
-              className={`booking-koc-combobox__option${targetKocKey(creator) === value ? ' booking-koc-combobox__option--active' : ''}`}
-              type="button"
-              role="option"
-              aria-selected={targetKocKey(creator) === value}
-              key={targetKocKey(creator)}
-              onClick={() => { onChange(targetKocKey(creator)); setQuery(creator.nickname || creator.username || ''); setOpen(false); }}
-            >
-              <TargetKocAvatar src={creator.avatar_url} name={creator.nickname || creator.username} />
-              <span>
-                <strong>{creator.nickname || creator.username}</strong>
-                <small>{creator.shop_name ? `${creator.shop_name} · ` : ''}@{creator.username} · {creator.collaboration_count ? `${creator.collaboration_count} ${collaborationLabel}` : performanceSourceLabel}</small>
-              </span>
-            </button>
-          )) : loading ? null : <div className="booking-koc-combobox__empty">{noResults}</div>}
-          {loading ? <div className="booking-koc-combobox__empty"><span className="loading-dot" />{loadingLabel}</div> : null}
-          {!loading && hasMore ? <button className="booking-koc-combobox__load-more" type="button" onClick={onLoadMore}>{loadMoreLabel}</button> : null}
-        </div>
-      ) : null}
-    </div>
-  );
-};
-
-const BookingMonthCard = ({
-  booking,
-  isSelected,
-  selectedCurrency,
-  currencyLabel,
-  convertAmount,
+import {
+  DEFAULT_PERFORMANCE_WINDOW,
+  PRODUCT_ORDERS_CACHE_TTL_MS,
+  generateBookingMonthOptions,
+  bookingUiSession,
+  productOrdersCacheSession,
+  persistProductOrdersCache,
+  dateInputValue,
+  bookingDateOf,
+  isBookingInPeriod,
+  defaultBookingForm,
+  defaultCustomRange,
+  targetKocKey,
+  bookingVideosOf,
+  bookingVideosByRevenue,
+  bookingProductsOf,
+  orderRangeForPeriod,
+  bookingProductOrderPerformance,
+  filterVideosByPeriod,
+  bookingVideoPerformanceForVideos,
+  finiteNumber,
+  optionalNumber,
   editableCurrencyAmount,
-  formatMoney,
-  formatNumber,
-  formatRatio,
-  formatDate,
-  updatingId,
-  deletingId,
-  onSave,
-  onDelete,
-  allShopProducts,
-  productsLoading,
-  t,
-}) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const rawCost = booking.total_cost ?? booking.booking_cost;
-  const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
-  const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
-  const [bookingDate, setBookingDate] = useState(bookingDateOf(booking));
-  const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const productPickerTriggerRef = useRef(null);
-  const productPickerMenuRef = useRef(null);
+} from '../lib/bookingMetrics';
 
-  useEffect(() => {
-    if (!productPickerOpen) return undefined;
-    const closeOnOutsideClick = (event) => {
-      if (productPickerTriggerRef.current?.contains(event.target)
-        || productPickerMenuRef.current?.contains(event.target)) return;
-      setProductPickerOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
-  }, [productPickerOpen]);
+import BookingStaffSelect from './booking/BookingStaffSelect';
+import TargetKocAvatar from './booking/TargetKocAvatar';
+import BookingEvaluationTable from './booking/BookingEvaluationTable';
+import BookingProductOrderDetailModal from './booking/BookingProductOrderDetailModal';
+import BookingCreateModal from './booking/BookingCreateModal';
+import BookingVideoMatchDrawer from './booking/BookingVideoMatchDrawer';
+import BookingDetailDrawer from './booking/BookingDetailDrawer';
+import BookingDeleteConfirmModal from './booking/BookingDeleteConfirmModal';
+import { SortIcon } from './booking/BookingIcons';
 
-  useEffect(() => {
-    const rCost = booking.total_cost ?? booking.booking_cost;
-    setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
-    setCommittedVideos(booking.committed_videos || 1);
-    setBookingDate(bookingDateOf(booking));
-    setProductIds(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
-  }, [booking, convertAmount, editableCurrencyAmount, selectedCurrency]);
-
-  const handleFormSubmit = async (e) => {
-    e.preventDefault();
-    await onSave(booking.id, {
-      total_cost: Number(cost),
-      committed_videos: Math.max(1, Number.parseInt(committedVideos, 10) || 1),
-      start_date: bookingDate || null,
-      end_date: null,
-      deadline: null,
-      currency: selectedCurrency,
-      product_ids: productIds,
-      products: (allShopProducts || []).filter((p) => productIds.includes(p.id)),
-    });
-  };
-
-  const cardVideos = bookingVideosOf(booking);
-  const videoCount = cardVideos.length || Number(booking.actual_performance?.video_count || 0);
-  const targetVideos = booking.committed_videos || 1;
-  const actualGmv = Number(booking.actual_performance?.gross_gmv || booking.actual_performance?.affiliate_gmv || 0);
-  const performanceCurrency = booking.actual_performance?.currency || booking.currency;
-  const numCost = Number(booking.total_cost ?? booking.booking_cost ?? 0);
-  const convertedCost = convertAmount(numCost, booking.currency);
-  const convertedGmv = convertAmount(actualGmv, performanceCurrency);
-  const ratio = (convertedGmv > 0 && convertedCost !== null) ? (convertedCost / convertedGmv) : null;
-  const itemsSold = booking.actual_performance?.items_sold;
-
-  const selectedProductsList = useMemo(() => {
-    const shopProductsById = new Map((allShopProducts || []).map((p) => [String(p.id), p]));
-    const bookingProductsById = new Map(bookingProductsOf(booking).map((p) => [String(p.id || p.product_id), p]));
-    return productIds.map((id) => {
-      const sp = shopProductsById.get(String(id));
-      const bp = bookingProductsById.get(String(id));
-      return {
-        id: String(id),
-        name: sp?.name || bp?.name || bp?.title || bp?.product_name || id,
-        imageUrl: sp?.imageUrl || bp?.imageUrl || bp?.thumbnailUrl || bp?.image_url || bp?.main_image_url || bp?.thumbnail_url || null,
-      };
-    });
-  }, [allShopProducts, booking, productIds]);
-
-  return (
-    <article className={`booking-month-card${isSelected ? ' booking-month-card--active' : ''}`}>
-      <div className="booking-month-card__header">
-        <div className="booking-month-card__header-left">
-          <span className="booking-month-card__date-range">
-            {formatDate(bookingDateOf(booking) || booking.created_at)}
-          </span>
-        </div>
-        <div className="booking-month-card__header-badges">
-          {videoCount >= targetVideos ? (
-            <span className="booking-month-card__badge booking-month-card__badge--success">
-              {videoCount}/{targetVideos}
-            </span>
-          ) : videoCount === 0 ? (
-            <span className="booking-month-card__badge booking-month-card__badge--pending">
-              0/{targetVideos}
-            </span>
-          ) : (
-            <span className="booking-month-card__badge booking-month-card__badge--info">
-              {videoCount}/{targetVideos}
-            </span>
-          )}
-          <button
-            className="booking-month-card__edit"
-            type="button"
-            aria-pressed={isEditing}
-            aria-label={t(isEditing ? 'booking.bookingCardCollapse' : 'booking.bookingCardEdit')}
-            title={t(isEditing ? 'booking.bookingCardCollapse' : 'booking.bookingCardEdit')}
-            onClick={() => setIsEditing((current) => !current)}
-          >
-            <Pencil size={15} aria-hidden="true" />
-          </button>
-          <button
-            className="booking-month-card__edit booking-month-card__delete"
-            type="button"
-            disabled={deletingId === booking.id}
-            aria-label={t(deletingId === booking.id ? 'booking.deleting' : 'booking.delete')}
-            title={t(deletingId === booking.id ? 'booking.deleting' : 'booking.delete')}
-            onClick={() => onDelete(booking)}
-          >
-            <Trash2 size={15} aria-hidden="true" />
-          </button>
-        </div>
-      </div>
-
-      <div className="booking-month-card__body">
-        <div className="booking-month-card__metrics">
-          <div className="booking-month-card__metric-item">
-            <span>{t('booking.cost')}</span>
-            <strong>{formatMoney(numCost, booking.currency)}</strong>
-          </div>
-          <div className="booking-month-card__metric-item">
-            <span>GMV</span>
-            <strong>{actualGmv > 0 ? formatMoney(actualGmv, performanceCurrency) : '—'}</strong>
-          </div>
-          <div className="booking-month-card__metric-item">
-            <span>{t('booking.costRevenueRatio')}</span>
-            <strong>{formatRatio(ratio)}</strong>
-          </div>
-          <div className="booking-month-card__metric-item">
-            <span>{t('booking.videoItemsSold')}</span>
-            <strong>{itemsSold !== undefined && itemsSold !== null ? formatNumber(itemsSold) : '—'}</strong>
-          </div>
-        </div>
-
-        <div className="booking-month-card__products-section">
-          <div className="booking-month-card__products-header">
-            <span className="booking-month-card__products-label">
-              {t('booking.products')} {selectedProductsList.length ? `(${selectedProductsList.length})` : ''}
-            </span>
-            {isEditing ? (
-              <button
-                ref={productPickerTriggerRef}
-                className="booking-month-card__add-product-btn"
-                type="button"
-                aria-expanded={productPickerOpen}
-                disabled={productsLoading}
-                onClick={() => setProductPickerOpen((prev) => !prev)}
-              >
-                <Plus size={14} aria-hidden="true" />
-                <span>{t('booking.addProduct')}</span>
-              </button>
-            ) : null}
-          </div>
-
-          {isEditing && productPickerOpen ? (
-            <div ref={productPickerMenuRef} className="booking-product-picker__menu booking-detail-product-picker__menu" role="listbox">
-              {allShopProducts.length ? (
-                allShopProducts.map((product) => (
-                  <label className="booking-product-picker__option" key={product.id}>
-                    <input
-                      type="checkbox"
-                      checked={productIds.includes(product.id)}
-                      onChange={() => setProductIds((current) => (
-                        current.includes(product.id)
-                          ? current.filter((id) => id !== product.id)
-                          : [...current, product.id]
-                      ))}
-                    />
-                    <span>
-                      {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
-                      <span>
-                        <strong>{product.name}</strong>
-                        <small>{product.id}</small>
-                      </span>
-                    </span>
-                  </label>
-                ))
-              ) : (
-                <div className="booking-product-picker__empty">{t('booking.noProducts')}</div>
-              )}
-            </div>
-          ) : null}
-
-          {selectedProductsList.length ? (
-            <div className="booking-detail-products">
-              {selectedProductsList.map((product) => (
-                <BookingDetailProduct
-                  key={product.id}
-                  product={product}
-                  onRemove={isEditing ? (idToRemove) => {
-                    setProductIds((curr) => curr.filter((id) => String(id) !== String(idToRemove)));
-                  } : null}
-                />
-              ))}
-            </div>
-          ) : (
-            isEditing && !productPickerOpen ? (
-              <p className="booking-month-card__products-empty">{t('booking.noAttachedProducts')}</p>
-            ) : null
-          )}
-        </div>
-
-        {isEditing ? (
-          <form className="booking-month-card__form" onSubmit={handleFormSubmit}>
-            <div className="field booking-modal-cost-videos">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '10px' }}>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`date-${booking.id}`}>{t('booking.bookingDate')}</label>
-                  <DatePickerInput
-                    id={`date-${booking.id}`}
-                    label={t('booking.bookingDate')}
-                    value={bookingDate}
-                    onChange={(val) => setBookingDate(val)}
-                  />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`cost-${booking.id}`}>{t('booking.totalCost')} ({currencyLabel})</label>
-                  <input
-                    id={`cost-${booking.id}`}
-                    type="number"
-                    min="0"
-                    step={selectedCurrency === 'VND' ? '1' : '0.01'}
-                    value={cost}
-                    onChange={(e) => setCost(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`committed-${booking.id}`}>{t('booking.committedVideos')}</label>
-                  <input
-                    id={`committed-${booking.id}`}
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={committedVideos}
-                    onChange={(e) => setCommittedVideos(e.target.value)}
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="booking-month-card__actions">
-              <button
-                className="button button--small"
-                type="submit"
-                disabled={updatingId === booking.id}
-              >
-                {updatingId === booking.id ? t('common.loading') : t('booking.saveChanges')}
-              </button>
-            </div>
-          </form>
-        ) : null}
-      </div>
-    </article>
-  );
-};
+const initialForm = defaultBookingForm();
 
 const BookingManagement = ({
   heroTitle,
@@ -1863,9 +93,6 @@ const BookingManagement = ({
   const [targetKocsLoading, setTargetKocsLoading] = useState(false);
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
   const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create');
-  const [productPickerOpen, setProductPickerOpen] = useState(false);
-  const createProductPickerTriggerRef = useRef(null);
-  const createProductPickerMenuRef = useRef(null);
   const [channelProducts, setChannelProducts] = useState([]);
   const [channelProductsLoading, setChannelProductsLoading] = useState(false);
   const [form, setForm] = useState(() => ({ ...initialForm, staff_id: initialStaffId ? String(initialStaffId) : '' }));
@@ -1886,26 +113,19 @@ const BookingManagement = ({
   const [creatorBookings, setCreatorBookings] = useState([]);
   const [, setCreatorBookingsLoading] = useState(false);
   const [error, setError] = useState('');
+
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
     if (embeddedMode === 'create') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
+
   const closeBookingDetail = useCallback(() => {
     setCreatorDeleteConfirmOpen(false);
     setBookingDeleteConfirm(null);
     setSelectedBooking(null);
     if (embeddedMode === 'detail') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
-  useEffect(() => {
-    if (!productPickerOpen) return undefined;
-    const closeOnOutsideClick = (event) => {
-      if (createProductPickerTriggerRef.current?.contains(event.target)
-        || createProductPickerMenuRef.current?.contains(event.target)) return;
-      setProductPickerOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsideClick);
-    return () => document.removeEventListener('pointerdown', closeOnOutsideClick);
-  }, [productPickerOpen]);
+
   const openCreateBookingFromDrawer = () => {
     if (!selectedBooking) return;
     const creator = {
@@ -1923,7 +143,6 @@ const BookingManagement = ({
     setTargetKocQuery('');
     setTargetKocPage(1);
     setSelectedKocDetail(null);
-    setProductPickerOpen(false);
     setForm({
       ...defaultBookingForm(),
       creator_key: creatorKey,
@@ -1933,10 +152,12 @@ const BookingManagement = ({
     });
     setIsCreateBookingOpen(true);
   };
-  const toggleBookingRow = (event, bookingId) => {
+
+  const toggleBookingRow = useCallback((event, bookingId) => {
     if (event.target.closest('button, a, input, select, textarea, label')) return;
     setExpandedBookingId((current) => String(current) === String(bookingId) ? null : bookingId);
-  };
+  }, []);
+
   const toggleGroup = useCallback((groupKey) => {
     setExpandedGroupKeys((current) => {
       const next = new Set(current);
@@ -1948,6 +169,7 @@ const BookingManagement = ({
       return next;
     });
   }, []);
+
   const [overviewSort, setOverviewSort] = useState({ key: 'ratio', direction: 'desc' });
   const [bookingSort, setBookingSort] = useState({ key: 'revenue', direction: 'desc' });
 
@@ -1960,14 +182,14 @@ const BookingManagement = ({
     });
   };
 
-  const handleBookingSort = (key) => {
+  const handleBookingSort = useCallback((key) => {
     setBookingSort((current) => {
       if (current.key === key) {
         return { key, direction: current.direction === 'desc' ? 'asc' : 'desc' };
       }
       return { key, direction: 'desc' };
     });
-  };
+  }, []);
 
   useEffect(() => {
     try {
@@ -1981,24 +203,25 @@ const BookingManagement = ({
     }
   }, [bookingTab, expandedBookingId, selectedManagerKey]);
 
-
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
-  const formatNumber = (value, options) => finiteNumber(value).toLocaleString(locale, options);
+  const collator = useMemo(() => new Intl.Collator(locale, { sensitivity: 'base', numeric: true }), [locale]);
+  const formatNumber = useCallback((value, options) => finiteNumber(value).toLocaleString(locale, options), [locale]);
   const { formatMoney, currency: selectedCurrency, convertAmount } = useMoneyFormatter(locale);
   const costInputCurrencyRef = useRef(selectedCurrency);
   const currencyLabel = selectedCurrency === 'VND' ? 'VNĐ' : 'RM';
-  const formatDate = (value) => value
+  const formatDate = useCallback((value) => value
     ? new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(new Date(value))
-    : '—';
-  const formatRate = (value) => {
+    : '—', [locale]);
+  const formatRate = useCallback((value) => {
     const rate = optionalNumber(value);
     if (rate === null) return '—';
     return `${formatNumber(rate <= 1 ? rate * 100 : rate, { maximumFractionDigits: 2 })}%`;
-  };
-  const formatRatio = (value) => {
+  }, [formatNumber]);
+  const formatRatio = useCallback((value) => {
     const ratio = optionalNumber(value);
     return ratio === null ? '—' : `${formatNumber(ratio * 100, { maximumFractionDigits: 2 })}%`;
-  };
+  }, [formatNumber]);
+
   useEffect(() => {
     const previousCurrency = costInputCurrencyRef.current;
     if (previousCurrency === selectedCurrency) return;
@@ -2011,10 +234,7 @@ const BookingManagement = ({
   }, [convertAmount, selectedCurrency]);
 
   useEffect(() => {
-    if (!isCreateBookingOpen) {
-      setProductPickerOpen(false);
-      return undefined;
-    }
+    if (!isCreateBookingOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event) => {
       if (event.key === 'Escape' && !saving) closeCreateBooking();
@@ -2257,7 +477,6 @@ const BookingManagement = ({
   }, [channelShopId, isCreateBookingOpen, t]);
 
   useEffect(() => {
-    setProductPickerOpen(false);
     setForm((current) => ({
       ...current,
       product_ids: current.product_ids.filter((id) => bookingProducts.some((product) => product.id === id)),
@@ -2292,14 +511,20 @@ const BookingManagement = ({
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
   }, [form.creator_key, selectedKocSummary, t]);
+
   useEffect(() => {
     const shopIds = [...new Set(bookings
       .filter((booking) => bookingProductsOf(booking).length)
       .map((booking) => String(booking.target_shop_id || ''))
       .filter(Boolean))].sort();
-    if (!shopIds.length) {
-      setProductOrdersByShop({});
-      setProductOrdersError('');
+    const needsProductOrders = bookings.some(
+      (booking) => bookingProductsOf(booking).length > 0 && !booking.product_performance,
+    );
+    if (!shopIds.length || !needsProductOrders) {
+      setProductOrdersLoading(false);
+      return undefined;
+    }
+    if (bookingTab !== 'product') {
       setProductOrdersLoading(false);
       return undefined;
     }
@@ -2346,12 +571,14 @@ const BookingManagement = ({
       if (!controller.signal.aborted) setProductOrdersLoading(false);
     });
     return () => controller.abort();
-  }, [bookings, customRange, selectedMonth, t]);
+  }, [bookingTab, bookings, customRange, selectedMonth, t]);
+
   const productPerformanceByBooking = useMemo(() => {
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
     return new Map(bookings.map((booking) => [
       String(booking.id),
-      bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || [], activeRange),
+      booking.product_performance
+      || bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || [], activeRange),
     ]));
   }, [bookings, customRange, productOrdersByShop, selectedMonth]);
 
@@ -2405,6 +632,7 @@ const BookingManagement = ({
       return result;
     }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 });
   }, [bookingTab, bookings, convertAmount, customRange, productPerformanceByBooking, selectedMonth, videoPerformanceByBooking]);
+
   const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
     const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
     const convertedCost = convertAmount(rawCost, booking.currency);
@@ -2416,6 +644,7 @@ const BookingManagement = ({
     result.itemsSold += finiteNumber(performance.items_sold);
     return result;
   }, { totalCost: 0, totalGmv: 0, itemsSold: 0 }), [creatorBookings, convertAmount]);
+
   const bookingGroups = useMemo(() => {
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
     const usersById = new Map(users.map((user) => [String(user.id), user]));
@@ -2483,9 +712,10 @@ const BookingManagement = ({
     return [...groups.values()].sort((left, right) => {
       if (left.key === 'unassigned') return 1;
       if (right.key === 'unassigned') return -1;
-      return left.manager.name.localeCompare(right.manager.name, locale);
+      return collator.compare(left.manager.name, right.manager.name);
     });
-  }, [bookingTab, bookings, canManageUsers, convertAmount, customRange, locale, productPerformanceByBooking, selectedMonth, session, t, users, videoPerformanceByBooking]);
+  }, [bookingTab, bookings, canManageUsers, collator, convertAmount, customRange, productPerformanceByBooking, selectedMonth, session, t, users, videoPerformanceByBooking]);
+
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
     || null;
@@ -2503,7 +733,7 @@ const BookingManagement = ({
 
     return list.sort((a, b) => {
       if (key === 'staff') {
-        return factor * a.manager.name.localeCompare(b.manager.name, locale);
+        return factor * collator.compare(a.manager.name, b.manager.name);
       }
       let valA = 0;
       let valB = 0;
@@ -2526,9 +756,9 @@ const BookingManagement = ({
       if (valA !== valB) {
         return factor * (valA > valB ? 1 : -1);
       }
-      return a.manager.name.localeCompare(b.manager.name, locale);
+      return collator.compare(a.manager.name, b.manager.name);
     });
-  }, [bookingGroupsToRender, locale, overviewSort]);
+  }, [bookingGroupsToRender, collator, overviewSort]);
 
   const sortedBookingsOfGroup = useCallback((bookingsList) => {
     const list = [...bookingsList];
@@ -2562,7 +792,7 @@ const BookingManagement = ({
       if (key === 'koc') {
         const nameA = String(a.creator_name || a.creator_username || '').trim();
         const nameB = String(b.creator_name || b.creator_username || '').trim();
-        const diff = nameA.localeCompare(nameB, locale);
+        const diff = collator.compare(nameA, nameB);
         if (diff !== 0) return factor * diff;
         return Number(b.id || 0) - Number(a.id || 0);
       }
@@ -2584,30 +814,29 @@ const BookingManagement = ({
         valB = revB > 0 ? costOf(b) / revB : (costOf(b) > 0 ? Infinity : 0);
       } else if (key === 'refunds') {
         valA = finiteNumber(performanceOf(a)?.refunded_gmv);
-        valB = finiteNumber(performanceOf(b)?.refunded_gmv);
+        valB = finiteNumber(performanceOf(a)?.refunded_gmv);
       } else if (key === 'items_sold') {
         valA = finiteNumber(performanceOf(a)?.items_sold);
-        valB = finiteNumber(performanceOf(b)?.items_sold);
+        valB = finiteNumber(performanceOf(a)?.items_sold);
       } else if (key === 'samples') {
         valA = finiteNumber(performanceOf(a)?.samples_shipped);
-        valB = finiteNumber(performanceOf(b)?.samples_shipped);
+        valB = finiteNumber(performanceOf(a)?.samples_shipped);
       } else if (key === 'commission') {
         valA = finiteNumber(performanceOf(a)?.estimated_commission);
-        valB = finiteNumber(performanceOf(b)?.estimated_commission);
+        valB = finiteNumber(performanceOf(a)?.estimated_commission);
       }
       if (valA !== valB) {
         return factor * (valA > valB ? 1 : -1);
       }
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [bookingSort, bookingTab, convertAmount, locale, productPerformanceByBooking, videoPerformanceByBooking]);
+  }, [bookingSort, bookingTab, collator, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canManageUsers && bookingGroups.length === 1) {
       setExpandedGroupKeys(new Set([bookingGroups[0].key]));
     }
   }, [canManageUsers, bookingGroups]);
-
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -2776,7 +1005,7 @@ const BookingManagement = ({
     }
   };
 
-  const renderPerformance = (performance) => {
+  const renderPerformance = useCallback((performance) => {
     if (!performance) return <span className="chip">{t('booking.noPerformance')}</span>;
     if (performance.source === 'AFFILIATE_ORDERS' && !performance.has_products) {
       return <span className="chip">{t('booking.noAttachedProducts')}</span>;
@@ -2793,13 +1022,13 @@ const BookingManagement = ({
           : null}
       </div>
     );
-  };
+  }, [formatMoney, formatNumber, t]);
 
-  const creatorMetric = (performance, field, { money = false } = {}) => {
+  const creatorMetric = useCallback((performance, field, { money = false } = {}) => {
     const value = optionalNumber(performance?.[field]);
     if (value === null) return '—';
     return money ? formatMoney(value, performance.currency) : formatNumber(value);
-  };
+  }, [formatMoney, formatNumber]);
 
   return (
     <div className={`page${embeddedMode ? ' booking-management--embedded' : ''}`}>
@@ -2824,108 +1053,30 @@ const BookingManagement = ({
         <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
       </section>
 
-      {isCreateBookingOpen ? createPortal(
-        <div className="booking-create-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) closeCreateBooking(); }}>
-          <section className="booking-create-modal" role="dialog" aria-modal="true" aria-labelledby="booking-create-modal-title">
-            <header className="booking-create-modal__header"><div><h2 id="booking-create-modal-title">{t('booking.createEvaluation')}</h2></div><button className="button button--ghost" type="button" aria-label={t('common.close')} disabled={saving} onClick={closeCreateBooking}>×</button></header>
-            <form className="filter-panel booking-evaluation-form" onSubmit={handleSubmit}>
-              <div className="booking-evaluation-form__col">
-                <div className="field"><label>{t('booking.targetCreator')}</label><TargetKocCombobox creators={targetKocs} value={form.creator_key} onChange={(value) => setForm((current) => ({ ...current, creator_key: value }))} onSearch={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }} onLoadMore={() => setTargetKocPage((current) => current + 1)} hasMore={targetKocPagination.page < targetKocPagination.total_pages} loading={targetKocsLoading} placeholder={t('booking.searchKoc')} noResults={t('booking.noSyncedCollaboration')} performanceSourceLabel={t('booking.creatorPerformance')} collaborationLabel={t('booking.collaboration')} loadMoreLabel={t('booking.loadMoreKocs')} loadingLabel={t('booking.loadingKocs')} /></div>
-                <div className="field booking-product-picker-field">
-                  <label>{t('booking.products')}</label>
-                  <div className="booking-product-picker">
-                    <button ref={createProductPickerTriggerRef} className="booking-product-picker__trigger" type="button" aria-expanded={productPickerOpen} onClick={() => setProductPickerOpen((current) => !current)}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                        <Plus size={14} aria-hidden="true" />
-                        <span>{t('booking.addProduct')}</span>
-                        {form.product_ids.length ? <span className="chip chip--compact">{form.product_ids.length}</span> : null}
-                      </span>
-                      <span className="sidebar__chevron" aria-hidden="true" />
-                    </button>
-                    {productPickerOpen ? (
-                      <div ref={createProductPickerMenuRef} className="booking-product-picker__menu" role="listbox" aria-label={t('booking.products')}>
-                        {channelProductsLoading ? (
-                          <div className="booking-product-picker__empty"><span className="loading-dot" />{t('booking.loadingProducts')}</div>
-                        ) : bookingProducts.length ? (
-                          bookingProducts.map((product) => (
-                            <label className="booking-product-picker__option" key={product.id}>
-                              <input type="checkbox" checked={form.product_ids.includes(product.id)} onChange={() => toggleBookingProduct(product.id)} />
-                              <span>
-                                {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
-                                <span><strong>{product.name}</strong><small>{product.id}</small></span>
-                              </span>
-                            </label>
-                          ))
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                  {form.product_ids.length ? (
-                    <div style={{ marginTop: '8px' }}>
-                      <div className="booking-detail-products">
-                        {form.product_ids.map((id) => {
-                          const p = bookingProducts.find((item) => String(item.id) === String(id)) || {};
-                          return (
-                            <BookingDetailProduct
-                              key={id}
-                              product={{
-                                id,
-                                name: p.name || id,
-                                imageUrl: p.imageUrl || null,
-                              }}
-                              onRemove={() => toggleBookingProduct(id)}
-                            />
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <div className="field">
-                  <label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label>
-                  <input
-                    id="total_cost"
-                    type="number"
-                    min="0"
-                    step={selectedCurrency === 'VND' ? '1' : '0.01'}
-                    inputMode="decimal"
-                    value={form.total_cost}
-                    onChange={(event) => setForm((current) => ({ ...current, total_cost: event.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
+      <BookingCreateModal
+        isOpen={isCreateBookingOpen}
+        saving={saving}
+        onClose={closeCreateBooking}
+        onSubmit={handleSubmit}
+        targetKocs={targetKocs}
+        form={form}
+        setForm={setForm}
+        onSearchKoc={(keyword) => { setTargetKocQuery(keyword); setTargetKocPage(1); }}
+        onLoadMoreKocs={() => setTargetKocPage((current) => current + 1)}
+        targetKocPagination={targetKocPagination}
+        targetKocsLoading={targetKocsLoading}
+        channelProductsLoading={channelProductsLoading}
+        bookingProducts={bookingProducts}
+        toggleBookingProduct={toggleBookingProduct}
+        currencyLabel={currencyLabel}
+        selectedCurrency={selectedCurrency}
+        canManageUsers={canManageUsers}
+        users={users}
+        usersLoading={usersLoading}
+        selectedKoc={selectedKoc}
+        t={t}
+      />
 
-              <div className="booking-evaluation-form__col">
-                {canManageUsers ? <div className="field"><label>{t('booking.bookingStaff')}</label><BookingStaffSelect users={users} value={form.staff_id} onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))} placeholder={t('booking.selectStaff')} loading={usersLoading} loadingLabel={t('booking.loading')} /></div> : null}
-                <div className="field">
-                  <label htmlFor="booking_date">{t('booking.bookingDate')}</label>
-                  <DatePickerInput
-                    id="booking_date"
-                    label={t('booking.bookingDate')}
-                    value={form.booking_date}
-                    onChange={(value) => setForm((current) => ({ ...current, booking_date: value }))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="committed_videos">{t('booking.committedVideos')}</label>
-                  <input
-                    id="committed_videos"
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={form.committed_videos}
-                    onChange={(event) => setForm((current) => ({ ...current, committed_videos: event.target.value }))}
-                    required
-                  />
-                </div>
-              </div>
-
-              <footer className="booking-create-modal__footer"><button className="button button--ghost" type="button" disabled={saving} onClick={closeCreateBooking}>{t('common.cancel')}</button><button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>{saving ? t('booking.submitting') : t('booking.evaluate')}</button></footer>
-            </form>
-          </section>
-        </div>, document.body,
-      ) : null}
       <section className="section-card" id="booking-list-panel" role="tabpanel">
         <div className="section-card__header booking-evaluation-list-header">
           <div className="booking-performance-controls">
@@ -3073,223 +1224,26 @@ const BookingManagement = ({
                       {isExpanded ? (
                         <tr className="member-detail-row">
                           <td colSpan={6}>
-                            <div className="booking-manager-expanded-detail">
-                              <div className="table-wrap">
-                                <table className="data-table booking-evaluation-table">
-                                  <thead>
-                                    <tr>
-                                      <th className="booking-koc-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('koc')}>
-                                          <span>{t('booking.kocColumn')}</span>
-                                          <SortIcon active={bookingSort.key === 'koc'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="booking-creator-performance-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('revenue')}>
-                                          <span>{t('booking.gmvColumn')}</span>
-                                          <SortIcon active={bookingSort.key === 'revenue'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-number booking-total-cost-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('cost')}>
-                                          <span>{t('booking.totalCost')}</span>
-                                          <SortIcon active={bookingSort.key === 'cost'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="booking-video-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('videos')}>
-                                          <span>{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</span>
-                                          <SortIcon active={bookingSort.key === 'videos'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-number sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('items_sold')}>
-                                          <span>{t('booking.products')}</span>
-                                          <SortIcon active={bookingSort.key === 'items_sold'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-number booking-refunds-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('refunds')}>
-                                          <span>{t('booking.refunds')}</span>
-                                          <SortIcon active={bookingSort.key === 'refunds'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-number booking-samples-column sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('samples')}>
-                                          <span>{t('booking.samplesShipped')}</span>
-                                          <SortIcon active={bookingSort.key === 'samples'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-number sortable-th">
-                                        <button type="button" className="table-sort-btn" onClick={() => handleBookingSort('commission')}>
-                                          <span>{t('booking.estimatedCommission')}</span>
-                                          <SortIcon active={bookingSort.key === 'commission'} direction={bookingSort.direction} />
-                                        </button>
-                                      </th>
-                                      <th className="cell-actions">{t('booking.actionsColumn')}</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {sortedBookingsOfGroup(group.bookings).map((booking) => {
-                                      const videoData = videoPerformanceByBooking.get(String(booking.id));
-                                      const performance = bookingTab === 'product'
-                                        ? productPerformanceByBooking.get(String(booking.id))
-                                        : (videoData?.performance || booking.actual_performance);
-                                      const bookingVideos = videoData?.videos || bookingVideosByRevenue(bookingVideosOf(booking));
-                                      const postedVideos = bookingVideos.filter((v) => v.posted_at).sort((a, b) => new Date(a.posted_at) - new Date(b.posted_at));
-                                      const firstPostedDate = postedVideos[0]?.posted_at || booking.posted_at;
-                                      const startDate = booking.created_at;
-                                      const deadlineDate = null;
-                                      const videoCount = bookingTab === 'product'
-                                        ? Number(performance?.affiliate_orders || 0)
-                                        : (videoData?.videoCount ?? bookingVideos.length);
-                                      const timeline = computeBookingTimeline({
-                                        startDate,
-                                        deadlineDate,
-                                        postedVideos,
-                                        firstPostedDate,
-                                        committedVideos: booking.committed_videos,
-                                        videoCount,
-                                        status: booking.status,
-                                        t,
-                                      });
-                                      const expanded = String(expandedBookingId) === String(booking.id);
-                                      return (
-                                        <React.Fragment key={booking.id}>
-                                          <tr className={expanded ? 'booking-row booking-row--expanded' : 'booking-row'} onClick={(event) => toggleBookingRow(event, booking.id)}>
-                                            <td className="booking-koc-column">
-                                              <div className="booking-koc-identity">
-                                                <TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} />
-                                                <span>
-                                                  <strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong>
-                                                  <small>@{booking.creator_username}</small>
-                                                  {timeline.badge ? (
-                                                    <div className="booking-row-timeline">
-                                                      <span
-                                                        className={`booking-row-timeline__badge booking-row-timeline__badge--${timeline.badge.type}`}
-                                                        title={timeline.badge.tooltip}
-                                                      >
-                                                        {timeline.badge.label}
-                                                      </span>
-                                                    </div>
-                                                  ) : null}
-                                                </span>
-                                              </div>
-                                            </td>
-                                            <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
-                                            <td className="cell-number booking-total-cost-column"><strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong></td>
-                                            <td className="booking-video-column"><span className="booking-video-count"><strong>{bookingTab === 'product' ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 }) : t('booking.videoProgress', { current: videoCount, target: booking.committed_videos || 1 })}</strong></span></td>
-                                            <td className="cell-number"><div className="booking-product-summary"><strong>{creatorMetric(performance, 'items_sold')} <span>{t('booking.itemsSold')}</span></strong><small>{creatorMetric(performance, 'items_refunded')} {t('booking.refundedShort')}</small></div></td>
-                                            <td className="cell-number booking-refunds-column">{creatorMetric(performance, 'refunded_gmv', { money: true })}</td>
-                                            <td className="cell-number booking-samples-column">{bookingTab === 'product' ? '—' : creatorMetric(performance, 'samples_shipped')}</td>
-                                            <td className="cell-number">{creatorMetric(performance, 'estimated_commission', { money: true })}</td>
-                                            <td className="cell-actions">
-                                              <button
-                                                className="booking-action-open"
-                                                type="button"
-                                                aria-label={t('booking.details')}
-                                                title={t('booking.details')}
-                                                onClick={() => setSelectedBooking(booking)}
-                                              >
-                                                <ChevronLeft size={18} aria-hidden="true" />
-                                              </button>
-                                            </td>
-                                          </tr>
-                                          {expanded ? (
-                                            <tr className="booking-video-detail-row">
-                                              <td colSpan={9}>
-                                                {bookingTab === 'product' ? (
-                                                  <BookingProductOrderExpansion booking={booking} orders={productOrdersByShop[String(booking.target_shop_id)] || []} t={t} formatNumber={formatNumber} onSelectProduct={setProductOrderDetailModal} />
-                                                ) : (
-                                                  <div className="booking-video-expansion">
-                                                    {bookingVideos.length ? (
-                                                      <div className="booking-video-expansion__list">
-                                                        {bookingVideos.map((video, videoIndex) => {
-                                                          const latest = latestBookingVideoSnapshot(video);
-                                                          const social = bookingVideoSocialMetrics(latest);
-                                                          const shopOrders = productOrdersByShop[String(booking.target_shop_id)] || [];
-                                                          const liveMetrics = bookingVideoOrderMetrics(video, booking, shopOrders);
-                                                          const displayGrossGmv = liveMetrics ? liveMetrics.grossGmv : Number(latest?.gross_gmv || 0);
-                                                          const displayItemsSold = liveMetrics ? liveMetrics.itemsSold : Number(latest?.items_sold || 0);
-                                                          const displayCurrency = (liveMetrics && liveMetrics.currency) || latest?.currency || booking.currency;
-                                                          return (
-                                                            <article className="booking-video-expansion__item" key={video.id || video.platform_video_id}>
-                                                              <div className="booking-video-expansion__identity">
-                                                                <div className="booking-video-expansion__title">
-                                                                  <BookingVideoThumbnail
-                                                                    shopId={booking.target_shop_id}
-                                                                    video={video}
-                                                                    snapshot={latest}
-                                                                    index={videoIndex}
-                                                                    username={video.creator_username || booking.creator_username}
-                                                                  />
-                                                                  <div>
-                                                                    {video.video_url ? (
-                                                                      <a href={video.video_url} target="_blank" rel="noreferrer">
-                                                                        <strong>{video.title || video.platform_video_id}</strong>
-                                                                        <span aria-hidden="true"> ↗</span>
-                                                                      </a>
-                                                                    ) : (
-                                                                      <strong>{video.title || video.platform_video_id}</strong>
-                                                                    )}
-                                                                    <small>{t('booking.postedAt')} {formatDate(video.posted_at)}</small>
-                                                                    <span className="booking-video-expansion__social">
-                                                                      <span title={`${t('booking.videoViews')}: ${formatNumber(social.views)}`}><BookingVideoIcon name="views" />{formatNumber(social.views)}</span>
-                                                                      <span title={`${t('videoLibrary.likes')}: ${formatNumber(social.likes)}`}><BookingVideoIcon name="likes" />{formatNumber(social.likes)}</span>
-                                                                      <span title={`${t('videoLibrary.comments')}: ${formatNumber(social.comments)}`}><BookingVideoIcon name="comments" />{formatNumber(social.comments)}</span>
-                                                                      <span title={`${t('videoLibrary.shares')}: ${formatNumber(social.shares)}`}><BookingVideoIcon name="shares" />{formatNumber(social.shares)}</span>
-                                                                    </span>
-                                                                  </div>
-                                                                </div>
-                                                              </div>
-                                                              {latest || liveMetrics ? (
-                                                                <div className="booking-video-expansion__metrics">
-                                                                  <button
-                                                                    type="button"
-                                                                    className="booking-video-expansion__metric-card--clickable"
-                                                                    onClick={() => setProductOrderDetailModal({ product: null, video: { ...video, snapshot: latest }, booking, snapshot: latest })}
-                                                                    title="Nhấp để xem chi tiết toàn bộ đơn hàng của video"
-                                                                  >
-                                                                    <span>{t('booking.videoGmv')}</span>
-                                                                    <strong>{formatMoney(displayGrossGmv, displayCurrency)}</strong>
-                                                                  </button>
-                                                                  <button
-                                                                    type="button"
-                                                                    className="booking-video-expansion__metric-card--clickable"
-                                                                    onClick={() => setProductOrderDetailModal({ product: null, video: { ...video, snapshot: latest }, booking, snapshot: latest })}
-                                                                    title="Nhấp để xem chi tiết toàn bộ đơn hàng của video"
-                                                                  >
-                                                                    <span>{t('booking.videoItemsSold')}</span>
-                                                                    <strong>{formatNumber(displayItemsSold)}</strong>
-                                                                  </button>
-                                                                  <div><span>{t('booking.videoCtr')}</span><strong>{formatRate(productCtrOfBookingVideo(latest))}</strong></div>
-                                                                  <BookingVideoProducts shopId={booking.target_shop_id} video={video} snapshot={latest} label={t('booking.products')} booking={booking} onSelectProduct={setProductOrderDetailModal} orders={shopOrders} />
-                                                                </div>
-                                                              ) : (
-                                                                <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.awaitingFirstSync')}</span></div>
-                                                              )}
-                                                              {video.last_sync_error ? <p className="booking-video-expansion__error">{video.last_sync_error}</p> : null}
-                                                            </article>
-                                                          );
-                                                        })}
-                                                      </div>
-                                                    ) : (
-                                                      <div className="booking-video-expansion__empty">
-                                                        <p>{t(selectedMonth && selectedMonth !== 'all' ? 'booking.noVideosInPeriod' : 'booking.noMatchedVideo')}</p>
-                                                      </div>
-                                                    )}
-                                                  </div>
-                                                )}
-                                              </td>
-                                            </tr>
-                                          ) : null}
-                                        </React.Fragment>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
+                            <BookingEvaluationTable
+                              bookings={sortedBookingsOfGroup(group.bookings)}
+                              bookingSort={bookingSort}
+                              onSort={handleBookingSort}
+                              expandedBookingId={expandedBookingId}
+                              onToggleRow={toggleBookingRow}
+                              onSelectBooking={setSelectedBooking}
+                              bookingTab={bookingTab}
+                              productPerformanceByBooking={productPerformanceByBooking}
+                              videoPerformanceByBooking={videoPerformanceByBooking}
+                              productOrdersByShop={productOrdersByShop}
+                              onSelectProduct={setProductOrderDetailModal}
+                              formatMoney={formatMoney}
+                              formatNumber={formatNumber}
+                              formatDate={formatDate}
+                              formatRate={formatRate}
+                              renderPerformance={renderPerformance}
+                              creatorMetric={creatorMetric}
+                              t={t}
+                            />
                           </td>
                         </tr>
                       ) : null}
@@ -3304,156 +1258,65 @@ const BookingManagement = ({
         )}
       </section>
 
-      {videoMatchDialog ? (
-        <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setVideoMatchDialog(null); }}>
-          <aside className="koc-drawer booking-video-match-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-video-match-title">
-            <div className="koc-drawer__header"><div><h2 id="booking-video-match-title">{t('booking.videoCandidatesTitle')}</h2></div><button className="button button--ghost" type="button" aria-label={t('common.close')} onClick={() => setVideoMatchDialog(null)}>×</button></div>
-            <div className="koc-drawer__body">
-              {videoMatchDialog.candidates.length ? <div className="booking-video-candidates">{videoMatchDialog.candidates.map((candidate) => <button className="booking-video-candidate" type="button" key={candidate.id} disabled={matchingVideoId === videoMatchDialog.booking.id} onClick={() => findBookingVideo(videoMatchDialog.booking, candidate.id)}><span><strong>{candidate.title || candidate.id}</strong><small>@{candidate.username} · {formatDate(candidate.posted_at)}</small></span><span><strong>{formatMoney(candidate.gmv?.amount, candidate.gmv?.currency)}</strong><small>{formatNumber(candidate.views)} {t('booking.views')} · {formatNumber(candidate.orders)} {t('booking.orders')}</small></span></button>)}</div> : <p className="section-card__meta">{t('booking.videoMatchNone')}</p>}
-              <form className="booking-video-manual" onSubmit={(event) => { event.preventDefault(); findBookingVideo(videoMatchDialog.booking, null, manualVideoUrl); }}>
-                <label className="field"><span>{t('booking.manualVideoUrl')}</span><input type="url" required value={manualVideoUrl} placeholder="https://www.tiktok.com/@username/video/..." onChange={(event) => setManualVideoUrl(event.target.value)} /></label>
-                <button className="button" type="submit" disabled={matchingVideoId === videoMatchDialog.booking.id}>{matchingVideoId === videoMatchDialog.booking.id ? t('booking.linkingVideo') : t('booking.linkVideo')}</button>
-              </form>
-            </div>
-          </aside>
-        </div>
-      ) : null}
+      <BookingVideoMatchDrawer
+        videoMatchDialog={videoMatchDialog}
+        onClose={() => setVideoMatchDialog(null)}
+        matchingVideoId={matchingVideoId}
+        findBookingVideo={findBookingVideo}
+        manualVideoUrl={manualVideoUrl}
+        setManualVideoUrl={setManualVideoUrl}
+        formatDate={formatDate}
+        formatMoney={formatMoney}
+        formatNumber={formatNumber}
+        t={t}
+      />
 
-      {selectedBooking ? createPortal(
-        <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closeBookingDetail(); }}>
-          <aside className="koc-drawer booking-detail-drawer" role="dialog" aria-modal="true" aria-labelledby="booking-detail-title">
-            <div className="koc-drawer__header">
-              <div className="booking-detail-drawer__heading"><TargetKocAvatar src={selectedBooking.creator_avatar_url} name={selectedBooking.creator_name} /><div><h2 id="booking-detail-title">{selectedBooking.creator_name || selectedBooking.creator_username}</h2><p>@{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}</p></div></div>
-              <div className="booking-detail-drawer__header-actions">
-                <button
-                  className="button button--ghost booking-detail-drawer__delete"
-                  type="button"
-                  disabled={deletingId === 'creator' || !creatorBookings.length}
-                  aria-label={t(deletingId === 'creator' ? 'booking.deleting' : 'booking.deleteCreatorBookings')}
-                  title={t(deletingId === 'creator' ? 'booking.deleting' : 'booking.deleteCreatorBookings')}
-                  onClick={() => setCreatorDeleteConfirmOpen(true)}
-                >
-                  <Trash2 size={18} aria-hidden="true" />
-                </button>
-                <button className="button button--ghost booking-detail-drawer__close" type="button" aria-label={t('common.close')} onClick={closeBookingDetail}>×</button>
-              </div>
-            </div>
-            <div className="koc-drawer__body">
-              <div className="booking-detail-summary">
-                <article className="booking-detail-summary__card">
-                  <span>{t('booking.totalCost')}</span>
-                  <strong>{formatMoney(creatorBookingStats.totalCost, selectedCurrency)}</strong>
-                </article>
-                <article className="booking-detail-summary__card">
-                  <span>{t('booking.totalGmv')}</span>
-                  <strong>{formatMoney(creatorBookingStats.totalGmv, selectedCurrency)}</strong>
-                </article>
-                <article className="booking-detail-summary__card">
-                  <span>{t('booking.totalCostRevenueRatio')}</span>
-                  <strong>{formatRatio(creatorBookingStats.totalGmv > 0 ? creatorBookingStats.totalCost / creatorBookingStats.totalGmv : null)}</strong>
-                </article>
-                <article className="booking-detail-summary__card">
-                  <span>{t('booking.totalItemsSold')}</span>
-                  <strong>{formatNumber(creatorBookingStats.itemsSold)}</strong>
-                </article>
-              </div>
-              <div className="booking-cards-list">
-                {creatorBookings.map((b) => (
-                  <BookingMonthCard
-                    key={b.id}
-                    booking={b}
-                    isSelected={b.id === selectedBooking.id}
-                    selectedCurrency={selectedCurrency}
-                    currencyLabel={currencyLabel}
-                    convertAmount={convertAmount}
-                    editableCurrencyAmount={editableCurrencyAmount}
-                    formatMoney={formatMoney}
-                    formatNumber={formatNumber}
-                    formatRatio={formatRatio}
-                    formatDate={formatDate}
-                    updatingId={updatingId}
-                    deletingId={deletingId}
-                    onSave={handleSaveCard}
-                    onDelete={(booking) => setBookingDeleteConfirm(booking)}
-                    allShopProducts={detailProducts}
-                    productsLoading={detailProductsLoading}
-                    t={t}
-                  />
-                ))}
-                <button className="booking-cards-list__add" type="button" onClick={openCreateBookingFromDrawer} aria-label={t('booking.addBooking')}>
-                  <Plus size={20} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-          </aside>
-        </div>,
-        document.body,
-      ) : null}
+      <BookingDetailDrawer
+        selectedBooking={selectedBooking}
+        onClose={closeBookingDetail}
+        creatorBookings={creatorBookings}
+        deletingId={deletingId}
+        onRequestDeleteCreator={() => setCreatorDeleteConfirmOpen(true)}
+        creatorBookingStats={creatorBookingStats}
+        selectedCurrency={selectedCurrency}
+        currencyLabel={currencyLabel}
+        convertAmount={convertAmount}
+        editableCurrencyAmount={editableCurrencyAmount}
+        formatMoney={formatMoney}
+        formatNumber={formatNumber}
+        formatRatio={formatRatio}
+        formatDate={formatDate}
+        updatingId={updatingId}
+        onSaveCard={handleSaveCard}
+        onRequestDeleteCard={(booking) => setBookingDeleteConfirm(booking)}
+        openCreateBookingFromDrawer={openCreateBookingFromDrawer}
+        detailProducts={detailProducts}
+        detailProductsLoading={detailProductsLoading}
+        t={t}
+      />
 
-      {creatorDeleteConfirmOpen && selectedBooking ? createPortal(
-        <div
-          className="booking-delete-confirm-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && deletingId !== 'creator') {
-              setCreatorDeleteConfirmOpen(false);
-            }
-          }}
-        >
-          <div className="booking-delete-confirm" role="alertdialog" aria-modal="true" aria-describedby="booking-delete-confirm-message">
-            <div className="booking-delete-confirm__content">
-              <div className="booking-delete-confirm__icon" aria-hidden="true"><Trash2 size={22} /></div>
-              <strong id="booking-delete-confirm-message">
-                {t('booking.deleteCreatorBookingsConfirm', {
-                  name: selectedBooking.creator_name || `@${selectedBooking.creator_username}`,
-                  count: creatorBookings.length,
-                })}
-              </strong>
-            </div>
-            <div className="booking-delete-confirm__actions">
-              <button className="button button--ghost" type="button" disabled={deletingId === 'creator'} onClick={() => setCreatorDeleteConfirmOpen(false)}>
-                {t('common.cancel')}
-              </button>
-              <button className="button button--danger" type="button" disabled={deletingId === 'creator'} onClick={handleDeleteCreatorBookings}>
-                {deletingId === 'creator' ? t('booking.deleting') : t('booking.delete')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
+      <BookingDeleteConfirmModal
+        isOpen={creatorDeleteConfirmOpen && Boolean(selectedBooking)}
+        onClose={() => setCreatorDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteCreatorBookings}
+        isDeleting={deletingId === 'creator'}
+        message={t('booking.deleteCreatorBookingsConfirm', {
+          name: selectedBooking?.creator_name || `@${selectedBooking?.creator_username}`,
+          count: creatorBookings.length,
+        })}
+        confirmLabel={deletingId === 'creator' ? t('booking.deleting') : t('booking.delete')}
+      />
 
-      {bookingDeleteConfirm ? createPortal(
-        <div
-          className="booking-delete-confirm-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && deletingId !== bookingDeleteConfirm.id) {
-              setBookingDeleteConfirm(null);
-            }
-          }}
-        >
-          <div className="booking-delete-confirm" role="alertdialog" aria-modal="true" aria-describedby="booking-card-delete-confirm-message">
-            <div className="booking-delete-confirm__content">
-              <div className="booking-delete-confirm__icon" aria-hidden="true"><Trash2 size={22} /></div>
-              <strong id="booking-card-delete-confirm-message">
-                {t('booking.deleteConfirm', { id: bookingDeleteConfirm.id })}
-              </strong>
-            </div>
-            <div className="booking-delete-confirm__actions">
-              <button className="button button--ghost" type="button" disabled={deletingId === bookingDeleteConfirm.id} onClick={() => setBookingDeleteConfirm(null)}>
-                {t('common.cancel')}
-              </button>
-              <button className="button button--danger" type="button" disabled={deletingId === bookingDeleteConfirm.id} onClick={() => handleDeleteCard(bookingDeleteConfirm)}>
-                {deletingId === bookingDeleteConfirm.id ? t('booking.deleting') : t('booking.delete')}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body,
-      ) : null}
+      <BookingDeleteConfirmModal
+        isOpen={Boolean(bookingDeleteConfirm)}
+        onClose={() => setBookingDeleteConfirm(null)}
+        onConfirm={() => handleDeleteCard(bookingDeleteConfirm)}
+        isDeleting={deletingId === bookingDeleteConfirm?.id}
+        message={t('booking.deleteConfirm', { id: bookingDeleteConfirm?.id })}
+        confirmLabel={deletingId === bookingDeleteConfirm?.id ? t('booking.deleting') : t('booking.delete')}
+      />
 
-      {productOrderDetailModal ? createPortal(
+      {productOrderDetailModal ? (
         <BookingProductOrderDetailModal
           product={productOrderDetailModal.product}
           booking={productOrderDetailModal.booking}
@@ -3466,8 +1329,8 @@ const BookingManagement = ({
           formatNumber={formatNumber}
           t={t}
           currency={productOrderDetailModal.booking?.currency || selectedCurrency}
-        />,
-        document.body,
+          dateRange={orderRangeForPeriod(selectedMonth, customRange)}
+        />
       ) : null}
     </div>
   );

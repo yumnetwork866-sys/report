@@ -38,6 +38,19 @@ test('normalizes BNM USD and VND rates to MYR per one currency unit', async (t) 
   assert.equal(rates.source, 'Bank Negara Malaysia');
 });
 
+test('falls back to FALLBACK_EXCHANGE_RATES when BNM fetch throws an error', async (t) => {
+  clearExchangeRateCache();
+  t.after(clearExchangeRateCache);
+  const rates = await getMyrExchangeRates(async () => {
+    throw new Error('Connection timed out');
+  });
+  assert.equal(rates.base, 'MYR');
+  assert.equal(rates.rates.MYR, 1);
+  assert.equal(rates.rates.USD, 4.0895);
+  assert.equal(rates.rates.VND, 0.000162);
+  assert.match(rates.source, /Fallback/);
+});
+
 test('loads and caches the BNM USD/MYR middle rate', async (t) => {
   clearExchangeRateCache();
   t.after(clearExchangeRateCache);

@@ -14,8 +14,10 @@ const {
   startTikTokPartnerOauth,
   disconnectTikTokPartner,
   getTikTokPartnerCreatorOverview,
+  getBookingProductPerformance,
 } = require('../controllers/bookingController');
 router.get('/', getBookings);
+router.get('/product-performance', getBookingProductPerformance);
 router.get('/target-kocs', getTargetKocs);
 router.get('/target-kocs/detail', getTargetKocDetail);
 router.get('/tiktok-partner/collaborations', getTikTokPartnerCollaborations);

@@ -21,3 +21,16 @@ test('uses the requested RM and VNĐ display symbols', () => {
   assert.match(formatCurrencyAmount(100, 'USD', 'MYR', exchangeRates, 'en-US'), /RM/);
   assert.match(formatCurrencyAmount(100, 'USD', 'VND', exchangeRates, 'vi-VN'), /VNĐ/);
 });
+
+test('falls back to default FALLBACK_EXCHANGE_RATES when exchangeRates is not provided or null', () => {
+  const converted = convertCurrencyAmount(100, 'MYR', 'VND');
+  assert.ok(converted > 0);
+  assert.equal(Math.round(converted), Math.round(100 / 0.000162));
+
+  const formattedVnd = formatCurrencyAmount(100, 'MYR', 'VND', null, 'vi-VN');
+  assert.match(formattedVnd, /VNĐ/);
+
+  const formattedMyr = formatCurrencyAmount(100, 'MYR', 'MYR', null, 'en-US');
+  assert.match(formattedMyr, /RM/);
+});
+
