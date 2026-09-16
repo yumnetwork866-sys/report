@@ -114,7 +114,17 @@ const Login = () => {
           </button>
         </form>
 
-        <p className="login-card__support">{t('login.support')}</p>
+        <p className="login-card__support">
+          <span>{t('login.supportPrefix')}</span>{' '}
+          <a
+            href="https://wa.me/message/TJP53DL4W2OHK1"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="login-card__support-link"
+          >
+            {t('login.supportLink')}
+          </a>
+        </p>
       </section>
     </main>
   );

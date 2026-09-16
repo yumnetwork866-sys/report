@@ -66,7 +66,9 @@
     "submit": "Sign in",
     "submitting": "Signing in",
     "error": "Unable to sign in",
-    "support": "Having trouble signing in? Contact your system administrator."
+    "support": "Having trouble signing in? Contact your administrator.",
+    "supportPrefix": "Having trouble signing in?",
+    "supportLink": "Contact your administrator."
   },
   "ai": {
     "assistant": "AI Assistant",
