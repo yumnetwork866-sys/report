@@ -659,14 +659,14 @@ const BookingManagement = ({
         : videoData?.performance || booking.actual_performance;
       const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
       const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
-      const inPeriodForCost = isBookingInPeriod(booking, activeRange);
+      const inBookingPeriod = isBookingInPeriod(booking, activeRange);
 
       result.total += 1;
-      if (inPeriodForCost) {
+      if (inBookingPeriod) {
         result.totalCost += convertedCost;
+        result.committedVideos += Number(booking.committed_videos || 1);
       }
       result.totalRevenue += convertedRevenue;
-      result.committedVideos += Number(booking.committed_videos || 1);
       result.videoCount += bookingTab === 'product'
         ? finiteNumber(tabPerformance?.affiliate_orders)
         : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
@@ -722,14 +722,14 @@ const BookingManagement = ({
         : videoData?.performance || booking.actual_performance;
       const rawRevenue = finiteNumber(bookingTab === 'product' ? tabPerformance?.affiliate_gmv : tabPerformance?.gross_gmv);
       const convertedRevenue = convertAmount(rawRevenue, tabPerformance?.currency) ?? rawRevenue;
-      const inPeriodForCost = isBookingInPeriod(booking, activeRange);
+      const inBookingPeriod = isBookingInPeriod(booking, activeRange);
 
       group.bookings.push(booking);
-      if (inPeriodForCost) {
+      if (inBookingPeriod) {
         group.totalCost += convertedCost;
+        group.committedVideos += Number(booking.committed_videos || 1);
       }
       group.totalRevenue += convertedRevenue;
-      group.committedVideos += Number(booking.committed_videos || 1);
       group.videoCount += bookingTab === 'product'
         ? finiteNumber(tabPerformance?.affiliate_orders)
         : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
@@ -1271,7 +1271,7 @@ const BookingManagement = ({
                           </button>
                         </td>
                         <td className="cell-number">{formatNumber(group.bookings.length)}</td>
-                        <td className="cell-number">{bookingTab === 'product' ? formatNumber(group.videoCount) : `${formatNumber(group.videoCount)} / ${formatNumber(group.committedVideos || group.bookings.length)}`}</td>
+                        <td className="cell-number">{bookingTab === 'product' ? formatNumber(group.videoCount) : `${formatNumber(group.videoCount)} / ${formatNumber(group.committedVideos)}`}</td>
                         <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                         <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>
                         <td className="cell-number">{formatRatio(group.totalRevenue > 0 ? group.totalCost / group.totalRevenue : null)}</td>

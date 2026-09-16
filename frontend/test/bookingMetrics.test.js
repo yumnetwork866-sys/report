@@ -4,6 +4,7 @@ import {
   cleanDisplayProductName,
   resolveProductClassification,
   orderRangeForPeriod,
+  isBookingInPeriod,
   bookingProductOrderPerformance,
   bookingVideoHashtags,
   bookingVideoMatchesHashtags,
@@ -43,6 +44,14 @@ test('orderRangeForPeriod formats all, custom, and monthly periods', () => {
   assert.equal(monthly.startDate, '2026-08-01');
   assert.equal(monthly.endDate, '2026-08-31');
   assert.equal(monthly.windowType, 'CUSTOM');
+});
+
+test('isBookingInPeriod scopes booking targets to the selected booking month', () => {
+  const august = orderRangeForPeriod('2026-08');
+  assert.equal(isBookingInPeriod({ start_date: '2026-08-15' }, august), true);
+  assert.equal(isBookingInPeriod({ start_date: '2026-07-31' }, august), false);
+  assert.equal(isBookingInPeriod({ created_at: '2026-08-20T10:00:00.000Z' }, august), true);
+  assert.equal(isBookingInPeriod({ start_date: '2025-01-01' }, orderRangeForPeriod('all')), true);
 });
 
 test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refunds and commission', () => {
