@@ -5,8 +5,11 @@ import {
   resolveProductClassification,
   orderRangeForPeriod,
   bookingProductOrderPerformance,
+  bookingVideoHashtags,
+  bookingVideoMatchesHashtags,
   filterVideosByPeriod,
   bookingVideoPerformanceForVideos,
+  productsOfBookingVideo,
   extractProductOrderRows,
   formatOrderTimestamp,
   finiteNumber,
@@ -112,6 +115,19 @@ test('filterVideosByPeriod filters videos by range', () => {
   assert.equal(filtered[1].id, 3);
 });
 
+test('booking video hashtag helpers use exact normalized hashtag matches', () => {
+  const video = {
+    title: 'Review sản phẩm #Beauty #Da_Khoe',
+    hashtags: ['SALE'],
+    performance_snapshots: [],
+  };
+
+  assert.deepEqual(bookingVideoHashtags(video), ['#sale', '#beauty', '#da_khoe']);
+  assert.equal(bookingVideoMatchesHashtags(video, ['#BEAUTY']), true);
+  assert.equal(bookingVideoMatchesHashtags(video, ['#beaut']), false);
+  assert.equal(bookingVideoMatchesHashtags(video, []), false);
+});
+
 test('bookingVideoPerformanceForVideos aggregates metrics across videos', () => {
   const videos = [
     {
@@ -130,6 +146,40 @@ test('bookingVideoPerformanceForVideos aggregates metrics across videos', () => 
   assert.equal(perf.orders, 15);
   assert.equal(perf.items_sold, 15);
   assert.equal(perf.video_count, 2);
+});
+
+test('productsOfBookingVideo keeps per-product sold quantity from snapshot breakdown', () => {
+  const snapshot = {
+    items_sold: 3,
+    raw_metrics: {
+      detail: {
+        performance: {
+          intervals: [{
+            sales: {
+              breakdowns: [
+                { product_id: 'prod_1', items_sold: 1 },
+                { product_id: 'prod_2', items_sold: 2 },
+              ],
+            },
+          }],
+        },
+      },
+    },
+  };
+
+  const products = productsOfBookingVideo({}, snapshot);
+  assert.deepEqual(products.map(({ id, quantity }) => ({ id, quantity })), [
+    { id: 'prod_1', quantity: 1 },
+    { id: 'prod_2', quantity: 2 },
+  ]);
+});
+
+test('productsOfBookingVideo uses video total only when one product is present', () => {
+  const products = productsOfBookingVideo(
+    { affiliate_products: [{ id: 'prod_1' }] },
+    { items_sold: 1, raw_metrics: {} },
+  );
+  assert.equal(products[0].quantity, 1);
 });
 
 test('extractProductOrderRows creates sorted rows with video match check', () => {

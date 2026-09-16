@@ -63,6 +63,10 @@ export function fetchUsers(signal) {
   return apiRequest('/users', { signal });
 }
 
+export function fetchUser(userId, signal) {
+  return apiRequest(`/users/${encodeURIComponent(userId)}`, { signal });
+}
+
 export function fetchUserBookings(userId, signal) {
   return apiRequest(`/users/${encodeURIComponent(userId)}/bookings`, { signal });
 }

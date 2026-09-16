@@ -106,7 +106,7 @@ const BookingVideoProducts = ({
         {sortedProducts.length ? sortedProducts.map((product) => {
           const qty = quantitiesByProductId.has(String(product.id))
             ? quantitiesByProductId.get(String(product.id))
-            : (product.quantity !== undefined ? Number(product.quantity) : 0);
+            : (product.quantity !== undefined && product.quantity !== null ? Number(product.quantity) : null);
           return (
             <BookingVideoProduct
               product={product}

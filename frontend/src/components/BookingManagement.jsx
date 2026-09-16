@@ -8,6 +8,7 @@ import {
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokSellerAffiliateOrders,
+  fetchUser,
   fetchUsers,
   matchBookingVideo,
   updateBooking,
@@ -33,6 +34,7 @@ import {
   targetKocKey,
   bookingVideosOf,
   bookingVideosByRevenue,
+  bookingVideoMatchesHashtags,
   bookingProductsOf,
   orderRangeForPeriod,
   bookingProductOrderPerformance,
@@ -66,6 +68,8 @@ const BookingManagement = ({
   const { t, language } = useI18n();
   const session = useSession();
   const canManageUsers = hasPermission(session, 'users');
+  const sessionUserId = String(session?.user?.id || 'anonymous');
+  const hashtagFilterStorageKey = `booking-hashtag-filter:${sessionUserId}`;
   const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [users, setUsers] = useState([]);
@@ -78,6 +82,13 @@ const BookingManagement = ({
   const [bookingTab, setBookingTab] = useState(() => (
     bookingUiSession().bookingTab === 'product' ? 'product' : 'video'
   ));
+  const [hashtagFilterEnabled, setHashtagFilterEnabled] = useState(() => {
+    try {
+      return window.localStorage.getItem(hashtagFilterStorageKey) === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [productOrdersByShop, setProductOrdersByShop] = useState({});
   const productOrdersCacheRef = useRef(null);
   if (productOrdersCacheRef.current === null) productOrdersCacheRef.current = productOrdersCacheSession();
@@ -202,6 +213,14 @@ const BookingManagement = ({
       // The page still works when session storage is unavailable.
     }
   }, [bookingTab, expandedBookingId, selectedManagerKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(hashtagFilterStorageKey, String(hashtagFilterEnabled));
+    } catch {
+      // The filter still works when local storage is unavailable.
+    }
+  }, [hashtagFilterEnabled, hashtagFilterStorageKey]);
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const collator = useMemo(() => new Intl.Collator(locale, { sensitivity: 'base', numeric: true }), [locale]);
@@ -335,9 +354,22 @@ const BookingManagement = ({
     if (!canManageUsers) {
       const currentUser = session?.user;
       setUsers(currentUser?.id ? [currentUser] : []);
-      setUsersLoading(false);
       setForm((current) => ({ ...current, staff_id: currentUser?.id ? String(currentUser.id) : '' }));
-      return undefined;
+      if (!currentUser?.id) {
+        setUsersLoading(false);
+        return undefined;
+      }
+      const controller = new AbortController();
+      setUsersLoading(true);
+      fetchUser(currentUser.id, controller.signal)
+        .then((user) => {
+          if (!controller.signal.aborted) setUsers(user ? [user] : [currentUser]);
+        })
+        .catch((err) => {
+          if (err.name !== 'AbortError' && !controller.signal.aborted) setUsers([currentUser]);
+        })
+        .finally(() => { if (!controller.signal.aborted) setUsersLoading(false); });
+      return () => controller.abort();
     }
 
     const controller = new AbortController();
@@ -582,12 +614,21 @@ const BookingManagement = ({
     ]));
   }, [bookings, customRange, productOrdersByShop, selectedMonth]);
 
+  const hashtagsByUserId = useMemo(() => new Map(users.map((user) => [
+    String(user.id),
+    Array.isArray(user.content_attribution?.hashtags) ? user.content_attribution.hashtags : [],
+  ])), [users]);
+
   const videoPerformanceByBooking = useMemo(() => {
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
     return new Map(bookings.map((booking) => {
       const allVideos = bookingVideosOf(booking);
-      const filteredVideos = filterVideosByPeriod(allVideos, activeRange);
-      if (!activeRange.startDate && !activeRange.endDate) {
+      const periodVideos = filterVideosByPeriod(allVideos, activeRange);
+      const staffHashtags = hashtagsByUserId.get(String(booking.staff_id || booking.staff?.id || '')) || [];
+      const filteredVideos = hashtagFilterEnabled
+        ? periodVideos.filter((video) => bookingVideoMatchesHashtags(video, staffHashtags))
+        : periodVideos;
+      if (!activeRange.startDate && !activeRange.endDate && !hashtagFilterEnabled) {
         return [String(booking.id), {
           videos: bookingVideosByRevenue(allVideos),
           performance: booking.actual_performance,
@@ -605,7 +646,7 @@ const BookingManagement = ({
         videoCount: filteredVideos.length,
       }];
     }));
-  }, [bookings, customRange, productOrdersByShop, selectedMonth]);
+  }, [bookings, customRange, hashtagFilterEnabled, hashtagsByUserId, productOrdersByShop, selectedMonth]);
 
   const stats = useMemo(() => {
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
@@ -1033,7 +1074,21 @@ const BookingManagement = ({
   return (
     <div className={`page${embeddedMode ? ' booking-management--embedded' : ''}`}>
       <section className="page__hero booking-page-hero">
-        <div><h1 className="page__title">{t('booking.heroTitle') || heroTitle}</h1></div>
+        <div className="booking-page-hero__title-row">
+          <h1 className="page__title">{t('booking.heroTitle') || heroTitle}</h1>
+          <label
+            className={`booking-hashtag-toggle${hashtagFilterEnabled ? ' booking-hashtag-toggle--active' : ''}`}
+            title={t('booking.hashtagFilterHelp')}
+          >
+            <input
+              type="checkbox"
+              checked={hashtagFilterEnabled}
+              onChange={(event) => setHashtagFilterEnabled(event.target.checked)}
+            />
+            <span className="booking-hashtag-toggle__track" aria-hidden="true"><i /></span>
+            <span>{t('booking.hashtagFilter')}</span>
+          </label>
+        </div>
         <div className="page__stats booking-stats booking-stats--evaluation">
           <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{stats.total}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>

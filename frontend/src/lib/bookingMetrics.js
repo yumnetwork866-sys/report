@@ -295,6 +295,53 @@ export const latestBookingVideoSnapshot = (video) => [...(video?.performance_sna
     || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
   ))[0] || null;
 
+const normalizedHashtag = (value) => {
+  const tag = String(value || '').trim().toLocaleLowerCase('en').replace(/^#+/, '');
+  return tag ? `#${tag}` : '';
+};
+
+export const bookingVideoHashtags = (video) => {
+  const raw = latestBookingVideoSnapshot(video)?.raw_metrics || {};
+  const list = raw?.video?.list || raw?.list || raw?.video || raw;
+  const provided = [
+    video?.hashtags,
+    video?.hash_tags,
+    video?.raw_data?.hashtags,
+    video?.raw_data?.hash_tags,
+    raw?.hashtags,
+    raw?.hash_tags,
+    list?.hashtags,
+    list?.hash_tags,
+  ].flatMap((value) => Array.isArray(value) ? value : (value ? [value] : []));
+  const text = [
+    video?.title,
+    video?.description,
+    video?.caption,
+    video?.raw_data?.title,
+    video?.raw_data?.description,
+    raw?.title,
+    raw?.description,
+    list?.title,
+    list?.description,
+  ].filter(Boolean).join(' ');
+  const extracted = text.match(/#[\p{L}\p{N}_]+/gu) || [];
+  const supplied = provided.flatMap((value) => {
+    if (value && typeof value === 'object') {
+      return [value.name || value.hashtag_name || value.hashtag || value.title || ''];
+    }
+    return String(value || '').split(/[\s,]+/);
+  });
+  return [...new Set([...supplied, ...extracted].map(normalizedHashtag).filter(Boolean))];
+};
+
+export const bookingVideoMatchesHashtags = (video, configuredHashtags = []) => {
+  const configured = new Set((Array.isArray(configuredHashtags) ? configuredHashtags : [])
+    .map(normalizedHashtag)
+    .filter(Boolean));
+  if (!configured.size) return false;
+  return bookingVideoHashtags(video).some((hashtag) => configured.has(hashtag));
+};
+
 export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
   const normVideoId = String(video?.platform_video_id || '').trim();
   const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
@@ -648,10 +695,17 @@ export const productsOfBookingVideo = (video, snapshot) => {
     const id = String(product?.id || product?.product_id || '').trim();
     if (!id) continue;
     const existing = byId.get(id) || {};
+    const quantity = optionalNumber(
+      product?.items_sold
+      ?? product?.quantity
+      ?? product?.units_sold
+      ?? product?.sold_count,
+    );
     byId.set(id, {
       id,
       name: product?.name || product?.title || product?.product_name || existing.name || null,
       thumbnailUrl: product?.main_image_url || product?.thumbnail_url || product?.thumbnailUrl || product?.image_url || existing.thumbnailUrl || null,
+      quantity: quantity ?? existing.quantity ?? null,
     });
   }
   const ids = [raw.product_id, rawVideo.product_id, listVideo.product_id]
@@ -659,7 +713,14 @@ export const productsOfBookingVideo = (video, snapshot) => {
     .map((id) => id.trim())
     .filter(Boolean);
   for (const id of ids) {
-    if (!byId.has(id)) byId.set(id, { id, name: null, thumbnailUrl: null });
+    if (!byId.has(id)) byId.set(id, { id, name: null, thumbnailUrl: null, quantity: null });
+  }
+  if (byId.size === 1) {
+    const [id, product] = [...byId.entries()][0];
+    if (product.quantity === null || product.quantity === undefined) {
+      const totalItemsSold = optionalNumber(snapshot?.items_sold);
+      if (totalItemsSold !== null) byId.set(id, { ...product, quantity: totalItemsSold });
+    }
   }
   return [...byId.values()];
 };

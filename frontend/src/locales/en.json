@@ -526,6 +526,8 @@
     "viewTabs": "Booking type",
     "videoTab": "Video",
     "productTab": "Orders",
+    "hashtagFilter": "Hashtag filter",
+    "hashtagFilterHelp": "Only show and aggregate videos matching the hashtags configured for the user assigned to each booking",
     "createEvaluation": "Create booking evaluation",
     "createEvaluationMeta": "Choose a KOC from Target Collaboration or Creator Performance and enter the proposed cost.",
     "targetCreator": "Choose or search for a KOC",

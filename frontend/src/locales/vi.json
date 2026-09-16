@@ -521,6 +521,8 @@
     "viewTabs": "Loại booking",
     "videoTab": "Video",
     "productTab": "Đơn hàng",
+    "hashtagFilter": "Lọc hashtag",
+    "hashtagFilterHelp": "Chỉ hiển thị và thống kê video khớp hashtag đã cấu hình cho user phụ trách booking",
     "createEvaluation": "Tạo đánh giá booking",
     "createEvaluationMeta": "Chọn KOC từ Target Collaboration hoặc Creator Performance và nhập chi phí dự kiến.",
     "targetCreator": "Chọn hoặc tìm kiếm KOC",
