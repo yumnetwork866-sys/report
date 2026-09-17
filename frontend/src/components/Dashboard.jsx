@@ -15,11 +15,17 @@ import {
   AreaChart as AreaChartIcon,
   BarChart2,
   Calendar,
+  CircleDollarSign,
+  Eye,
+  Heart,
+  MessageCircle,
   Minus,
+  Share2,
   TrendingDown,
   TrendingUp,
   UserRound,
   UsersRound,
+  Video,
   X,
 } from 'lucide-react';
 import { fetchDashboard, fetchDashboardVideos } from '../lib/api';
@@ -162,6 +168,73 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled }) => {
   );
 };
 
+const dailyMetricOptions = [
+  { value: 'views', labelKey: 'dashboard.metric_views_daily', Icon: Eye },
+  { value: 'gmv', labelKey: 'dashboard.metric_gmv_daily', Icon: CircleDollarSign },
+  { value: 'likes', labelKey: 'dashboard.metric_likes', Icon: Heart },
+  { value: 'shares', labelKey: 'dashboard.metric_shares', Icon: Share2 },
+  { value: 'comments', labelKey: 'dashboard.metric_comments', Icon: MessageCircle },
+  { value: 'video_count', labelKey: 'dashboard.metric_videos_daily', Icon: Video },
+];
+
+const MetricPicker = ({ id, value, onChange, t }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selectedOption = dailyMetricOptions.find((option) => option.value === value) || dailyMetricOptions[0];
+  const SelectedIcon = selectedOption.Icon;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (!rootRef.current?.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [open]);
+
+  return (
+    <div className="channel-picker dashboard-metric-picker" ref={rootRef}>
+      <button
+        id={id}
+        className="channel-picker__trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="channel-picker__current">
+          <SelectedIcon className="dashboard-metric-picker__icon" size={18} aria-hidden="true" />
+          <span className="channel-picker__label">{t(selectedOption.labelKey)}</span>
+        </span>
+        <span className={`sidebar__chevron channel-picker__chevron ${open ? 'sidebar__chevron--open' : ''}`} aria-hidden="true" />
+      </button>
+
+      {open ? (
+        <div className="channel-picker__menu" role="listbox">
+          {dailyMetricOptions.map(({ value: optionValue, labelKey, Icon }) => {
+            const active = optionValue === value;
+            return (
+              <button
+                className={`channel-picker__option ${active ? 'channel-picker__option--active' : ''}`}
+                type="button"
+                role="option"
+                aria-selected={active}
+                key={optionValue}
+                onClick={() => { onChange(optionValue); setOpen(false); }}
+              >
+                <Icon className="dashboard-metric-picker__icon" size={18} aria-hidden="true" />
+                <span className="channel-picker__option-meta">
+                  <span className="channel-picker__option-title">{t(labelKey)}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const GrowthBadge = ({ value, label }) => {
   if (value === null || value === undefined) return null;
   const isPositive = value > 0;
@@ -221,6 +294,10 @@ const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount,
         <span>{t('dashboard.totalShares')}</span>
         <b>{formatNumber(item.shares)}</b>
       </div>
+      <div>
+        <span>{t('dashboard.totalComments')}</span>
+        <b>{formatNumber(item.comments)}</b>
+      </div>
       {item.top_video ? (
         <div className="dashboard-chart-tooltip__peak">
           <span className="dashboard-chart-tooltip__peak-title">{t('dashboard.peakVideo')}:</span>
@@ -264,7 +341,7 @@ const Dashboard = () => {
   });
   const [selectedChannelId, setSelectedChannelId] = useState(() => getStoredSelectedChannelId() || '');
   const [selectedUserId, setSelectedUserId] = useState('all');
-  const [chartMetric, setChartMetric] = useState('date');
+  const chartMetric = 'date';
   const [dailyMetric, setDailyMetric] = useState('views');
   const [chartType, setChartType] = useState('area');
   const [selectedChartDate, setSelectedChartDate] = useState(null);
@@ -535,12 +612,8 @@ const Dashboard = () => {
           ? rawDate
           : dateObj.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-        let value = Number(item.views || 0);
-        if (dailyMetric === 'gmv') {
-          value = Number(item.gross_gmv || 0);
-        } else if (dailyMetric === 'video_count') {
-          value = Number(item.video_count || 0);
-        }
+        const metricField = dailyMetric === 'gmv' ? 'gross_gmv' : dailyMetric;
+        const value = Number(item[metricField] || 0);
 
         return {
           ...item,
@@ -548,6 +621,7 @@ const Dashboard = () => {
           videoCount: Number(item.video_count || 0),
           views: Number(item.views || 0),
           likes: Number(item.likes || 0),
+          comments: Number(item.comments || 0),
           shares: Number(item.shares || 0),
           gross_gmv: Number(item.gross_gmv || 0),
           name: dateLabel,
@@ -573,17 +647,6 @@ const Dashboard = () => {
     });
   }, [chartMetric, chartRows, dailyMetric, locale, selectedChartDate, t]);
 
-  const peakItem = useMemo(() => {
-    if (!chartData.length || chartMetric !== 'date') return null;
-    let max = chartData[0];
-    for (let i = 1; i < chartData.length; i += 1) {
-      if ((chartData[i]?.value || 0) > (max?.value || 0)) {
-        max = chartData[i];
-      }
-    }
-    return max && max.value > 0 ? max : null;
-  }, [chartData, chartMetric]);
-
   const averageChartValue = chartData.length
     ? chartData.reduce((sum, item) => sum + item.value, 0) / chartData.length
     : 0;
@@ -592,6 +655,9 @@ const Dashboard = () => {
     if (chartMetric === 'date') {
       if (dailyMetric === 'gmv') return t('dashboard.metric_gmv_daily');
       if (dailyMetric === 'video_count') return t('dashboard.metric_videos_daily');
+      if (dailyMetric === 'likes') return t('dashboard.metric_likes');
+      if (dailyMetric === 'shares') return t('dashboard.metric_shares');
+      if (dailyMetric === 'comments') return t('dashboard.metric_comments');
       return t('dashboard.metric_views_daily');
     }
     return t(`dashboard.metric_${chartMetric}`);
@@ -687,12 +753,13 @@ const Dashboard = () => {
               />
             </div>
             <div className="field dashboard-metric-filter">
-              <label htmlFor="dashboard-metric">{t('dashboard.metric')}</label>
-              <select id="dashboard-metric" value={chartMetric} onChange={(event) => setChartMetric(event.target.value)}>
-                {['date', 'views', 'gmv', 'likes', 'shares'].map((metric) => (
-                  <option key={metric} value={metric}>{t(`dashboard.metric_${metric}`)}</option>
-                ))}
-              </select>
+              <label htmlFor="dashboard-daily-metric">{t('dashboard.metric')}</label>
+              <MetricPicker
+                id="dashboard-daily-metric"
+                value={dailyMetric}
+                onChange={setDailyMetric}
+                t={t}
+              />
             </div>
             {chartMetric === 'date' ? (
               <div className="field dashboard-period-filter">
@@ -734,31 +801,7 @@ const Dashboard = () => {
         </div>
 
         {chartMetric === 'date' ? (
-          <div className="dashboard-chart-header-actions" style={{ padding: '0 16px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.metric')}>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${dailyMetric === 'views' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setDailyMetric('views')}
-              >
-                {t('dashboard.metric_views_daily')}
-              </button>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${dailyMetric === 'gmv' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setDailyMetric('gmv')}
-              >
-                {t('dashboard.metric_gmv_daily')}
-              </button>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${dailyMetric === 'video_count' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setDailyMetric('video_count')}
-              >
-                {t('dashboard.metric_videos_daily')}
-              </button>
-            </div>
-
+          <div className="dashboard-chart-header-actions dashboard-chart-header-actions--end">
             <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.chartType')}>
               <button
                 type="button"
@@ -779,31 +822,6 @@ const Dashboard = () => {
                 <span>{t('dashboard.chartType_bar')}</span>
               </button>
             </div>
-          </div>
-        ) : null}
-
-        {peakItem ? (
-          <div className="dashboard-peak-banner">
-            <div className="dashboard-peak-banner__content">
-              <span className="dashboard-peak-banner__badge">
-                {t('dashboard.topPeakVideo')}: <strong>{peakItem.fullName}</strong>
-              </span>
-              <span className="dashboard-peak-banner__stat">
-                {metricLabel}: <strong>{dailyMetric === 'gmv' ? formatGmvAmount(peakItem.value, totals.sales_currency) : formatNumber(peakItem.value)}</strong>
-              </span>
-              {peakItem.top_video?.title ? (
-                <span className="dashboard-peak-banner__video" title={peakItem.top_video.title}>
-                  🎬 {peakItem.top_video.title}
-                </span>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              className={`dashboard-peak-banner__btn ${selectedChartDate === peakItem.rawDate ? 'dashboard-peak-banner__btn--active' : ''}`}
-              onClick={() => handleDateClick(peakItem.rawDate)}
-            >
-              {selectedChartDate === peakItem.rawDate ? t('dashboard.filteringThisDate') : t('dashboard.viewPeakVideos')}
-            </button>
           </div>
         ) : null}
 
