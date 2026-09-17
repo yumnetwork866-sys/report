@@ -519,16 +519,11 @@
       "SYNC_FAILED": "Sync failed",
       "FINALIZED": "Finalized"
     },
-    "matchedVideo": "Booking video",
+    "matchedVideo": "Video",
     "noMatchedVideo": "No video",
     "costRevenueRatio": "Cost / Revenue",
     "videosCount": "{{count}} videos",
-    "videoProgress": "{{current}}/{{target}} videos",
-    "committedVideos": "Committed videos",
-    "committedVideosPlaceholder": "e.g. 1, 2...",
     "bookingInstance": "Booking #{{id}}",
-    "committedCompleted": "Target reached",
-    "committedPending": "Pending video",
     "scanVideo": "Scan video",
     "noVideosYet": "No videos recorded yet",
     "monthBookings": "Monthly booking history",
@@ -1427,6 +1422,11 @@
       "truncated": "Large content is truncated; binary data is omitted.",
       "awaitingResponse": "Waiting for a response…",
       "noPayload": "No content available for this section.",
+      "detailSelected": "selected {{count}}",
+      "detailSucceeded": "succeeded {{count}}",
+      "detailFailed": "failed {{count}}",
+      "detailFresh": "fresh {{count}}",
+      "detailDeferred": "deferred {{count}}",
       "statuses": {
         "processing": "Running",
         "retry_pending": "Waiting to retry",
@@ -1455,6 +1455,8 @@
         "request_deferred": "Request deferred",
         "cooldown_started": "Endpoint cooldown started",
         "retry_scheduled": "Retry scheduled",
+        "video_detail_batch_started": "Booking video Detail batch started",
+        "video_detail_batch_finished": "Booking video Detail batch finished",
         "api_request": "API request"
       }
     },
@@ -1481,10 +1483,6 @@
     "jobs": {
       "tiktok_creator_performance": {
         "name": "Creator Performance",
-        "description": ""
-      },
-      "tiktok_creator_performance_backfill": {
-        "name": "Creator Performance Daily Backfill",
         "description": ""
       },
       "tiktok_shop_analytics": {
@@ -1514,6 +1512,10 @@
       "tiktok_affiliate_video_performance": {
         "name": "Affiliate Video Performance",
         "description": "Sync the latest seven-day and thirty-day periods from Affiliate Center > Analytics > All videos."
+      },
+      "tiktok_booking_video_detail": {
+        "name": "Booking Video Detail",
+        "description": ""
       }
     }
   }

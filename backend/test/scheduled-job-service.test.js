@@ -7,7 +7,6 @@ const {
   localScheduleParts,
   latestScheduledSlot,
   sixMonthSnapshotIsFresh,
-  creatorDailyBackfillDates,
   assertRequestedCreatorPerformanceSynced,
   catchUpScheduledJobs,
   DEFAULT_COMPASS_WINDOW_DELAY_MS,
@@ -98,15 +97,6 @@ test('cancellation during a checkpoint cannot be overwritten by retry/completion
     },
   });
   assert.equal(stored.status, 'CANCELLED');
-});
-
-test('creator daily backfill selects only the newest missing historical date', () => {
-  const dates = creatorDailyBackfillDates('2026-08-07', [
-    '2026-08-06',
-    '2026-08-04',
-  ]);
-
-  assert.deepEqual(dates, ['2026-08-05']);
 });
 
 test('Compass window delay defaults to 60s and respects environment override', () => {
@@ -354,4 +344,3 @@ test('resolveCreatorPerformanceEndDayOffset handles manual and automated trigger
     -2,
   );
 });
-

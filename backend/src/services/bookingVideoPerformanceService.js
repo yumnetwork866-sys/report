@@ -8,6 +8,7 @@ const {
   ShopVideoPerformanceSnapshot,
   TikTokCreatorPerformanceExport,
   TikTokShop,
+  TikTokVideoDetailSnapshot,
   TikTokVideoPerformanceSnapshot,
 } = require('../models');
 
@@ -18,6 +19,9 @@ const shiftDate = (value, days) => {
   return dateOnly(date);
 };
 const numberOrZero = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+const numberOrNull = (value) => value === null || value === undefined || value === ''
+  ? null
+  : (Number.isFinite(Number(value)) ? Number(value) : null);
 const normalizedProductIds = (...sources) => {
   const ids = new Set();
   const visit = (source) => {
@@ -540,7 +544,7 @@ const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) 
   };
 };
 
-const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), orderMetrics = null) => {
+const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), orderMetrics = null, videoDetailSnapshot = null) => {
   const scoped = scopedMetricsOfSnapshot(snapshot, selectedProductIds);
   const hasSelectedProducts = selectedProductIds.size > 0;
   const hasOrderMetrics = orderMetrics && (orderMetrics.has_data || orderMetrics.orders > 0 || orderMetrics.gross_gmv > 0);
@@ -587,6 +591,43 @@ const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), ord
       || null;
   }
 
+  const fallbackTraffic = snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.traffic || null;
+  const socialMetrics = videoDetailSnapshot?.synced_at
+    ? {
+      available: true,
+      metric_window: videoDetailSnapshot.metric_window || 'PAST_30_DAYS',
+      start_date: videoDetailSnapshot.start_date || null,
+      end_date: videoDetailSnapshot.end_date || null,
+      views: numberOrNull(videoDetailSnapshot.views),
+      likes: numberOrNull(videoDetailSnapshot.likes),
+      comments: numberOrNull(videoDetailSnapshot.comments),
+      shares: numberOrNull(videoDetailSnapshot.shares),
+      synced_at: videoDetailSnapshot.synced_at,
+    }
+    : fallbackTraffic
+      ? {
+        available: true,
+        metric_window: 'PAST_30_DAYS',
+        start_date: null,
+        end_date: null,
+        views: numberOrNull(fallbackTraffic.views),
+        likes: numberOrNull(fallbackTraffic.likes),
+        comments: numberOrNull(fallbackTraffic.comments),
+        shares: numberOrNull(fallbackTraffic.shares),
+        synced_at: snapshot.synced_at || null,
+      }
+      : {
+        available: false,
+        metric_window: 'PAST_30_DAYS',
+        start_date: null,
+        end_date: null,
+        views: null,
+        likes: null,
+        comments: null,
+        shares: null,
+        synced_at: null,
+      };
+
   return {
     gross_gmv: grossGmv,
     refunded_gmv: refundedGmv,
@@ -612,6 +653,7 @@ const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), ord
       product_clicks: hasSelectedProducts ? scoped?.product_clicks || 0 : numberOrZero(snapshot.product_clicks),
       products: snapshot.raw_metrics?.list?.products || [],
       video: snapshot.raw_metrics,
+      social_metrics: socialMetrics,
     },
   };
 };
@@ -915,6 +957,13 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
     }) : null;
 
     const affiliateSnapshot = await loadAffiliateVideoPerformance(shop.id, bookingVideo.platform_video_id).catch(() => null);
+    const videoDetailSnapshot = await TikTokVideoDetailSnapshot.findOne({
+      where: {
+        shop_id: shop.id,
+        video_id: String(bookingVideo.platform_video_id),
+        metric_window: 'PAST_30_DAYS',
+      },
+    }).catch(() => null);
 
     if (!shopVideo && !affiliateSnapshot) {
       if (bookingVideo.attribution_end && dateOnly(now) > bookingVideo.attribution_end) {
@@ -955,7 +1004,7 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
 
     let metrics;
     if (affiliateSnapshot) {
-      metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIds, orderMetrics);
+      metrics = metricOfAffiliateSnapshot(affiliateSnapshot, selectedProductIds, orderMetrics, videoDetailSnapshot);
       if (latestShopSnapshot.views) {
         metrics.views = Math.max(metrics.views, numberOrZero(latestShopSnapshot.views));
       }
@@ -995,6 +1044,27 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
             ...(orderMetrics?.product_ids ? orderMetrics.product_ids.map((id) => ({ id })) : []),
           ],
           video: shopVideo?.raw_data || null,
+          social_metrics: videoDetailSnapshot?.synced_at ? {
+            available: true,
+            metric_window: videoDetailSnapshot.metric_window || 'PAST_30_DAYS',
+            start_date: videoDetailSnapshot.start_date || null,
+            end_date: videoDetailSnapshot.end_date || null,
+            views: numberOrNull(videoDetailSnapshot.views),
+            likes: numberOrNull(videoDetailSnapshot.likes),
+            comments: numberOrNull(videoDetailSnapshot.comments),
+            shares: numberOrNull(videoDetailSnapshot.shares),
+            synced_at: videoDetailSnapshot.synced_at,
+          } : {
+            available: false,
+            metric_window: 'PAST_30_DAYS',
+            start_date: null,
+            end_date: null,
+            views: null,
+            likes: null,
+            comments: null,
+            shares: null,
+            synced_at: null,
+          },
         },
       };
     } else {

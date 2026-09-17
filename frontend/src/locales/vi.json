@@ -515,16 +515,11 @@
       "SYNC_FAILED": "Đồng bộ lỗi",
       "FINALIZED": "Đã chốt"
     },
-    "matchedVideo": "Video booking",
+    "matchedVideo": "Video",
     "noMatchedVideo": "Không có video",
     "costRevenueRatio": "Chi phí / Doanh thu",
     "videosCount": "{{count}} video",
-    "videoProgress": "{{current}}/{{target}} video",
-    "committedVideos": "Số video cam kết",
-    "committedVideosPlaceholder": "Ví dụ: 1, 2...",
     "bookingInstance": "Lần book #{{id}}",
-    "committedCompleted": "Đủ cam kết",
-    "committedPending": "Chờ video",
     "scanVideo": "Quét video",
     "noVideosYet": "Chưa có video nào được ghi nhận",
     "monthBookings": "Lịch sử booking các tháng",
@@ -1427,6 +1422,11 @@
       "truncated": "Nội dung lớn đã được rút gọn; dữ liệu nhị phân không được lưu.",
       "awaitingResponse": "Đang chờ phản hồi…",
       "noPayload": "Không có nội dung cho mục này.",
+      "detailSelected": "chọn {{count}}",
+      "detailSucceeded": "thành công {{count}}",
+      "detailFailed": "lỗi {{count}}",
+      "detailFresh": "còn mới {{count}}",
+      "detailDeferred": "để lượt sau {{count}}",
       "statuses": {
         "processing": "Đang chạy",
         "retry_pending": "Chờ thử lại",
@@ -1455,6 +1455,8 @@
         "request_deferred": "Chờ lượt gọi API",
         "cooldown_started": "Bắt đầu cooldown",
         "retry_scheduled": "Đã lên lịch thử lại",
+        "video_detail_batch_started": "Bắt đầu cập nhật Detail video Booking",
+        "video_detail_batch_finished": "Hoàn tất cập nhật Detail video Booking",
         "api_request": "Request API"
       }
     },
@@ -1483,10 +1485,6 @@
         "name": "Creator Performance",
         "description": ""
       },
-      "tiktok_creator_performance_backfill": {
-        "name": "Backfill Creator Performance hằng ngày",
-        "description": ""
-      },
       "tiktok_shop_analytics": {
         "name": "TikTok Shop Analytics",
         "description": ""
@@ -1513,6 +1511,10 @@
       },
       "tiktok_affiliate_video_performance": {
         "name": "Hiệu suất video Affiliate",
+        "description": ""
+      },
+      "tiktok_booking_video_detail": {
+        "name": "Chi tiết video Booking",
         "description": ""
       }
     }

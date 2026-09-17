@@ -130,8 +130,15 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
           const windowType = String(window.window_type || (window.days ? `PAST_${window.days}_DAYS` : '') || '');
           const windowLabel = windowType ? windowType.replace('PAST_', '').replace('_DAYS', 'd') : (window.days ? `${window.days}d` : '');
           const moduleType = window.module_type || (window.row_count !== undefined ? 'VIDEO' : '');
-          const rowInfo = window.row_count !== undefined ? `${window.row_count} rows` : '';
-          const parts = [moduleType, windowLabel, rowInfo, label(status)].filter(Boolean);
+          const detailInfo = moduleType === 'DETAIL' ? [
+            t('schedule.monitor.detailSelected', { count: window.selected ?? 0 }),
+            t('schedule.monitor.detailSucceeded', { count: window.succeeded ?? 0 }),
+            t('schedule.monitor.detailFailed', { count: window.failed ?? 0 }),
+            t('schedule.monitor.detailFresh', { count: window.skipped_fresh ?? 0 }),
+            window.deferred ? t('schedule.monitor.detailDeferred', { count: window.deferred }) : '',
+          ] : [];
+          const rowInfo = moduleType !== 'DETAIL' && window.row_count !== undefined ? `${window.row_count} rows` : '';
+          const parts = [moduleType, windowLabel, rowInfo, ...detailInfo, label(status)].filter(Boolean);
           const titleParts = [moduleType, label(status), window.retry_count !== undefined ? `${t('schedule.monitor.retries')}: ${window.retry_count}` : ''].filter(Boolean);
           return (
             <span

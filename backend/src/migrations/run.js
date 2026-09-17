@@ -85,6 +85,10 @@ const migrations = [
   require('./075_add_video_status'),
   require('./076_clear_booking_dates'),
   require('./077_set_booking_date'),
+  require('./078_create_tiktok_video_detail_snapshots'),
+  require('./079_backfill_tiktok_video_detail_snapshots'),
+  require('./080_split_booking_video_detail_schedule'),
+  require('./081_remove_booking_committed_videos'),
 ];
 
 const createMigrationRunner = ({

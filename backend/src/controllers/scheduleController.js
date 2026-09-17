@@ -19,7 +19,10 @@ const serializeJob = async (job) => {
 
 const listSchedules = async (_req, res) => {
   try {
-    const jobs = await ScheduledJob.findAll({ order: [['id', 'ASC']] });
+    const jobs = await ScheduledJob.findAll({
+      where: { job_key: { [Op.in]: [...JOB_KEYS] } },
+      order: [['id', 'ASC']],
+    });
     const shops = await TikTokShop.findAll({
       attributes: ['id', 'name', 'code', 'region'],
       order: [['id', 'ASC']],

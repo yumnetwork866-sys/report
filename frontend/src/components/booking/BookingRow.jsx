@@ -2,7 +2,6 @@ import React, { memo } from 'react';
 import { ChevronLeft } from 'lucide-react';
 import TargetKocAvatar from './TargetKocAvatar';
 import BookingVideoThumbnail from '../BookingVideoThumbnail';
-import { BookingVideoIcon } from './BookingIcons';
 import BookingVideoProducts from './BookingVideoProducts';
 import BookingProductOrderExpansion from './BookingProductOrderExpansion';
 import { computeBookingTimeline } from '../../lib/bookingTimeline';
@@ -10,7 +9,6 @@ import {
   bookingVideosOf,
   bookingVideosByRevenue,
   latestBookingVideoSnapshot,
-  bookingVideoSocialMetrics,
   bookingVideoOrderMetrics,
   productCtrOfBookingVideo,
 } from '../../lib/bookingMetrics';
@@ -47,7 +45,6 @@ const BookingRow = memo(({
     deadlineDate,
     postedVideos,
     firstPostedDate,
-    committedVideos: booking.committed_videos,
     videoCount,
     status: booking.status,
     t,
@@ -87,7 +84,7 @@ const BookingRow = memo(({
             <strong>
               {bookingTab === 'product'
                 ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 })
-                : t('booking.videoProgress', { current: videoCount, target: booking.committed_videos || 1 })}
+                : t('booking.videosCount', { count: videoCount })}
             </strong>
           </span>
         </td>
@@ -130,7 +127,6 @@ const BookingRow = memo(({
                   <div className="booking-video-expansion__list">
                     {bookingVideos.map((video, videoIndex) => {
                       const latest = latestBookingVideoSnapshot(video);
-                      const social = bookingVideoSocialMetrics(latest);
                       const liveMetrics = bookingVideoOrderMetrics(video, booking, shopOrders);
                       const displayGrossGmv = liveMetrics ? liveMetrics.grossGmv : Number(latest?.gross_gmv || 0);
                       const displayItemsSold = liveMetrics ? liveMetrics.itemsSold : Number(latest?.items_sold || 0);
@@ -155,13 +151,7 @@ const BookingRow = memo(({
                                 ) : (
                                   <strong>{video.title || video.platform_video_id}</strong>
                                 )}
-                                <small>{t('booking.postedAt')} {formatDate(video.posted_at)}</small>
-                                <span className="booking-video-expansion__social">
-                                  <span title={`${t('booking.videoViews')}: ${formatNumber(social.views)}`}><BookingVideoIcon name="views" />{formatNumber(social.views)}</span>
-                                  <span title={`${t('videoLibrary.likes')}: ${formatNumber(social.likes)}`}><BookingVideoIcon name="likes" />{formatNumber(social.likes)}</span>
-                                  <span title={`${t('videoLibrary.comments')}: ${formatNumber(social.comments)}`}><BookingVideoIcon name="comments" />{formatNumber(social.comments)}</span>
-                                  <span title={`${t('videoLibrary.shares')}: ${formatNumber(social.shares)}`}><BookingVideoIcon name="shares" />{formatNumber(social.shares)}</span>
-                                </span>
+                                <small>{formatDate(video.posted_at)}</small>
                               </div>
                             </div>
                           </div>

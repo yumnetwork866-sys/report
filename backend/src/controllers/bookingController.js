@@ -1374,10 +1374,6 @@ const createBooking = async (req, res) => {
       ? String(req.body.end_date).slice(0, 10)
       : (req.body.deadline ? String(req.body.deadline).slice(0, 10) : null);
 
-    const committedVideos = req.body.committed_videos !== undefined
-      ? Math.max(1, Number.parseInt(req.body.committed_videos, 10) || 1)
-      : 1;
-
     const payload = compactPayload({
       staff_id: staff?.id || null,
       staff_name: staff?.name || null,
@@ -1392,7 +1388,6 @@ const createBooking = async (req, res) => {
       booking_cost: cost,
       total_cost: cost,
       cost_note: String(req.body.cost_note || '').trim() || null,
-      committed_videos: committedVideos,
       currency: String(req.body.currency || performance?.currency || 'MYR').trim().toUpperCase(),
       status: 'draft',
       start_date: targetStartDate,
@@ -1513,22 +1508,12 @@ const updateBooking = async (req, res) => {
       ? (req.body.start_date ? String(req.body.start_date).slice(0, 10) : null)
       : undefined;
 
-    let targetCommittedVideos;
-    if (req.body.committed_videos !== undefined) {
-      const parsed = Number.parseInt(req.body.committed_videos, 10);
-      if (!Number.isInteger(parsed) || parsed < 1) {
-        return res.status(400).json({ message: 'Committed videos must be an integer of 1 or greater.' });
-      }
-      targetCommittedVideos = parsed;
-    }
-
     const payload = compactPayload({
       ...staffUpdate,
       creator_id: req.body.creator_id,
       booking_cost: req.body.booking_cost,
       total_cost: req.body.total_cost,
       cost_note: req.body.cost_note === undefined ? undefined : String(req.body.cost_note || '').trim() || null,
-      committed_videos: targetCommittedVideos,
       currency: req.body.currency === undefined ? undefined : String(req.body.currency || 'MYR').trim().toUpperCase(),
       status: req.body.status,
       start_date: targetStartDate,

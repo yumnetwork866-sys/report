@@ -4050,12 +4050,6 @@
 
 .booking-video-expansion__item small { color: var(--color-text-soft); font-size: .76rem; }
 
-.booking-video-expansion__social { display: flex; align-items: center; flex-wrap: wrap; gap: 11px; margin-top: 7px; color: var(--color-text-soft); font-size: .74rem; font-weight: 700; }
-
-.booking-video-expansion__social > span { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
-
-.booking-video-expansion__social svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-
 .booking-video-expansion__products-card { display: grid; gap: 6px; min-width: 0; padding: 9px 10px; border-radius: 9px; background: var(--color-surface-subtle); }
 
 .booking-video-expansion__products-label { color: var(--color-text-soft); font-size: .7rem; font-weight: 650; }

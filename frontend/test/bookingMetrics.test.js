@@ -8,6 +8,7 @@ import {
   bookingProductOrderPerformance,
   bookingVideoHashtags,
   bookingVideoMatchesHashtags,
+  bookingVideoSocialMetrics,
   filterVideosByPeriod,
   bookingVideoPerformanceForVideos,
   productsOfBookingVideo,
@@ -233,4 +234,34 @@ test('utility helpers handle null and number conversion', () => {
   assert.equal(optionalNumber(0), 0);
   assert.equal(editableCurrencyAmount(1234.56, 'VND'), '1235');
   assert.equal(editableCurrencyAmount(1234.56, 'MYR'), '1234.56');
+});
+
+test('booking video social metrics distinguish unavailable data from real zeroes', () => {
+  const unavailable = bookingVideoSocialMetrics({
+    views: 120,
+    raw_metrics: { social_metrics: { available: false, likes: null, comments: null, shares: null } },
+  });
+  assert.equal(unavailable.views, 120);
+  assert.equal(unavailable.likes, null);
+  assert.equal(unavailable.comments, null);
+  assert.equal(unavailable.shares, null);
+  assert.equal(unavailable.available, false);
+
+  const available = bookingVideoSocialMetrics({
+    views: 120,
+    raw_metrics: {
+      social_metrics: {
+        available: true,
+        metric_window: 'PAST_30_DAYS',
+        likes: 0,
+        comments: 2,
+        shares: 1,
+        synced_at: '2026-09-17T00:00:00.000Z',
+      },
+    },
+  });
+  assert.equal(available.likes, 0);
+  assert.equal(available.comments, 2);
+  assert.equal(available.shares, 1);
+  assert.equal(available.available, true);
 });

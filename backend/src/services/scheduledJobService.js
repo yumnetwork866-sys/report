@@ -8,7 +8,6 @@ const {
   ScheduledJobRun,
   TikTokShop,
   TikTokShopAuthorization,
-  TikTokCreatorPerformanceExport,
   TikTokCreatorPerformanceSnapshot,
   sequelize,
 } = require('../models');
@@ -29,7 +28,10 @@ const { run: syncTikTokChannels } = require('../jobs/syncTiktokChannels');
 const { targetCollaborationSyncService } = require('./tiktokTargetCollaborationSyncService');
 const { syncActiveBookingVideos } = require('./bookingVideoPerformanceService');
 const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
-const { syncVideoPerformanceApi } = require('./tiktokVideoPerformanceService');
+const {
+  syncBookingVideoDetails,
+  syncVideoPerformanceApi,
+} = require('./tiktokVideoPerformanceService');
 const { syncChannelReportRevenue } = require('./channelReportRevenueSyncService');
 const { syncAffiliateOrders } = require('./affiliateOrderSyncService');
 const { delByPattern } = require('../lib/redis');
@@ -37,12 +39,12 @@ const { startTiktokSyncWorker, queueSyncJob } = require('../workers/tiktokSyncWo
 
 const JOB_KEYS = new Set([
   'tiktok_creator_performance',
-  'tiktok_creator_performance_backfill',
   'tiktok_shop_analytics',
   'tiktok_channel_metrics',
   'booking_video_performance',
   'tiktok_shop_video_catalog',
   'tiktok_affiliate_video_performance',
+  'tiktok_booking_video_detail',
   'tiktok_channel_report_revenue',
   'tiktok_affiliate_orders',
 ]);
@@ -62,16 +64,6 @@ const abortActiveRun = (runId) => {
     return true;
   }
   return false;
-};
-const CREATOR_DAILY_BACKFILL_DAYS = 1;
-const CREATOR_DAILY_HISTORY_DAYS = 180;
-const SHOP_TIMEZONES = {
-  MY: 'Asia/Kuala_Lumpur',
-  VN: 'Asia/Ho_Chi_Minh',
-  SG: 'Asia/Singapore',
-  TH: 'Asia/Bangkok',
-  PH: 'Asia/Manila',
-  ID: 'Asia/Jakarta',
 };
 const DEFAULT_COMPASS_WINDOW_DELAY_MS = 60 * 1000;
 
@@ -320,69 +312,6 @@ const assertRequestedCreatorPerformanceSynced = (exports) => {
   error.code = 'CREATOR_PERFORMANCE_FALLBACK';
   error.fallback_exports = fallbackExports;
   throw error;
-};
-
-const creatorDailyBackfillDates = (endDate, availableDates = [], limit = CREATOR_DAILY_BACKFILL_DAYS) => {
-  const available = new Set(availableDates.map(String));
-  const dates = [];
-  const cursor = new Date(`${endDate}T00:00:00.000Z`);
-  for (let age = 1; age < CREATOR_DAILY_HISTORY_DAYS && dates.length < limit; age += 1) {
-    cursor.setUTCDate(cursor.getUTCDate() - 1);
-    const date = cursor.toISOString().slice(0, 10);
-    if (!available.has(date)) dates.push(date);
-  }
-  return dates;
-};
-
-const backfillCreatorDailyPerformance = async (shop, effectiveEndDay, signal, now = new Date()) => {
-  const endDate = isoEndDay(effectiveEndDay);
-  const timezone = SHOP_TIMEZONES[String(shop.region || '').toUpperCase()] || 'UTC';
-  const localDate = localScheduleParts(now, timezone).date;
-  const localDayStart = zonedScheduleDate(localDate, '00:00', timezone);
-  const attemptedToday = await TikTokCreatorPerformanceExport.count({
-    where: {
-      shop_id: shop.id,
-      module_type: 'CREATOR',
-      window_type: 'PAST_24H',
-      plan_type: 'ALL',
-      end_date: { [Op.lt]: endDate },
-      created_at: { [Op.gte]: localDayStart },
-    },
-  });
-  const remaining = Math.max(0, CREATOR_DAILY_BACKFILL_DAYS - attemptedToday);
-  if (!remaining) return { attempted: 0, succeeded: 0, failed: [], remaining_today: 0 };
-
-  const historyStart = shiftLocalDate(endDate, -(CREATOR_DAILY_HISTORY_DAYS - 1));
-  const completed = await TikTokCreatorPerformanceExport.findAll({
-    where: {
-      shop_id: shop.id,
-      module_type: 'CREATOR',
-      window_type: 'PAST_24H',
-      plan_type: 'ALL',
-      status: 'SUCCEEDED',
-      start_date: { [Op.gte]: historyStart },
-      end_date: { [Op.lt]: endDate },
-    },
-    attributes: ['end_date'],
-  });
-  const dates = creatorDailyBackfillDates(endDate, completed.map((row) => row.end_date), remaining);
-  const result = { attempted: dates.length, succeeded: 0, failed: [], remaining_today: remaining - dates.length };
-  for (const date of dates) {
-    throwIfAborted(signal);
-    try {
-      const { exportRecord } = await createCreatorPerformanceExportWithFallback(shop, {
-        windowType: 'PAST_24H',
-        endDay: date.replaceAll('-', ''),
-        planType: 'ALL',
-      }, { maxFallbackDays: 0 });
-      if (exportRecord.status === 'PROCESSING') await processCreatorPerformanceExport(shop, exportRecord);
-      result.succeeded += 1;
-    } catch (error) {
-      if (signal?.aborted || error.name === 'AbortError') throw error;
-      result.failed.push({ date, error: error.message });
-    }
-  }
-  return result;
 };
 
 const syncBasePerformanceWindows = async (shop, creatorExports, signal) => {
@@ -715,19 +644,6 @@ const jobHandlers = {
       shops, signal, resumeState, checkpoint,
     }, { endDayForShop });
   },
-  tiktok_creator_performance_backfill: ({ signal, shopId } = {}) => runForShops(async (shop) => {
-    const dailyBackfill = await backfillCreatorDailyPerformance(
-      shop,
-      latestCompassEndDay(shop.region),
-      signal,
-    );
-    if (dailyBackfill.failed.length) {
-      const error = new Error(`Creator Performance daily backfill failed for ${dailyBackfill.failed[0].date}: ${dailyBackfill.failed[0].error}`);
-      error.daily_backfill = dailyBackfill;
-      throw error;
-    }
-    return { daily_backfill: dailyBackfill };
-  }, signal, shopId),
   tiktok_shop_analytics: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const range = scheduledAnalyticsRange(shop);
     const analytics = await syncShopAnalyticsSnapshot(shop, range);
@@ -783,6 +699,38 @@ const jobHandlers = {
     }
     return { windows };
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
+  tiktok_booking_video_detail: ({ signal, shopId } = {}) => runForShops(async (shop) => (
+    withMonitorContext({ module_type: 'VIDEO_DETAIL', window_type: 'PAST_30_DAYS' }, async () => {
+      const { endDate } = scheduledAnalyticsRange(shop);
+      await recordRunEvent('VIDEO_DETAIL_BATCH_STARTED', {
+        status: 'PROCESSING', module_type: 'VIDEO_DETAIL', window_type: 'PAST_30_DAYS',
+      });
+      const detail = await syncBookingVideoDetails(shop, {
+        startDate: shiftLocalDate(endDate, -30),
+        endDate,
+        currency: 'LOCAL',
+        signal,
+      });
+      const status = detail.failed ? 'FAILED' : 'SUCCEEDED';
+      await recordRunEvent('VIDEO_DETAIL_BATCH_FINISHED', {
+        status,
+        module_type: 'VIDEO_DETAIL',
+        window_type: 'PAST_30_DAYS',
+        request_data: detail,
+        message: detail.rate_limited ? 'Stopped after TikTok rate limit; remaining videos were deferred.' : null,
+        next_retry_at: detail.cooldown_until,
+      });
+      return {
+        video_detail: detail,
+        windows: [{
+          module_type: 'DETAIL',
+          window_type: 'PAST_30_DAYS',
+          status,
+          ...detail,
+        }],
+      };
+    })
+  ), signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
 };
 
 const processScheduledJobRun = async (job, run, { shopId = null } = {}, {
@@ -963,7 +911,9 @@ const tickScheduledJobs = async (now = new Date()) => {
   await dispatchPendingCompassRetries(now).catch((error) => {
     console.error('[Schedule Manager] Retry dispatch failed; pending state retained', error.message);
   });
-  const jobs = await ScheduledJob.findAll({ where: { enabled: true } });
+  const jobs = await ScheduledJob.findAll({
+    where: { enabled: true, job_key: { [Op.in]: [...JOB_KEYS] } },
+  });
   await Promise.all(jobs.map(async (job) => {
     const local = localScheduleParts(now, job.timezone);
     const times = normalizeRunTimes(job.run_times);
@@ -980,7 +930,10 @@ const catchUpScheduledJobs = async (now = new Date(), {
   RunModel = ScheduledJobRun,
   enqueue = enqueueScheduledJob,
 } = {}) => {
-  const jobs = await JobModel.findAll({ where: { enabled: true }, order: [['id', 'ASC']] });
+  const jobs = await JobModel.findAll({
+    where: { enabled: true, job_key: { [Op.in]: [...JOB_KEYS] } },
+    order: [['id', 'ASC']],
+  });
   const results = [];
   for (const job of jobs) {
     const slot = latestScheduledSlot(job, now);
@@ -1071,7 +1024,6 @@ module.exports = {
   localScheduleParts,
   latestScheduledSlot,
   sixMonthSnapshotIsFresh,
-  creatorDailyBackfillDates,
   assertRequestedCreatorPerformanceSynced,
   executeScheduledJob,
   enqueueScheduledJob,

@@ -176,18 +176,6 @@ const BookingCreateModal = ({
                 onChange={(value) => setForm((current) => ({ ...current, booking_date: value }))}
               />
             </div>
-            <div className="field">
-              <label htmlFor="committed_videos">{t('booking.committedVideos')}</label>
-              <input
-                id="committed_videos"
-                type="number"
-                min="1"
-                step="1"
-                value={form.committed_videos}
-                onChange={(event) => setForm((current) => ({ ...current, committed_videos: event.target.value }))}
-                required
-              />
-            </div>
           </div>
 
           <footer className="booking-create-modal__footer">

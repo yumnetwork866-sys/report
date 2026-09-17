@@ -30,7 +30,6 @@ const BookingMonthCard = ({
   const [isEditing, setIsEditing] = useState(false);
   const rawCost = booking.total_cost ?? booking.booking_cost;
   const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
-  const [committedVideos, setCommittedVideos] = useState(booking.committed_videos || 1);
   const [bookingDate, setBookingDate] = useState(bookingDateOf(booking));
   const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
   const [productPickerOpen, setProductPickerOpen] = useState(false);
@@ -51,7 +50,6 @@ const BookingMonthCard = ({
   useEffect(() => {
     const rCost = booking.total_cost ?? booking.booking_cost;
     setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
-    setCommittedVideos(booking.committed_videos || 1);
     setBookingDate(bookingDateOf(booking));
     setProductIds(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
   }, [booking, convertAmount, editableCurrencyAmount, selectedCurrency]);
@@ -60,7 +58,6 @@ const BookingMonthCard = ({
     e.preventDefault();
     await onSave(booking.id, {
       total_cost: Number(cost),
-      committed_videos: Math.max(1, Number.parseInt(committedVideos, 10) || 1),
       start_date: bookingDate || null,
       end_date: null,
       deadline: null,
@@ -72,7 +69,6 @@ const BookingMonthCard = ({
 
   const cardVideos = bookingVideosOf(booking);
   const videoCount = cardVideos.length || Number(booking.actual_performance?.video_count || 0);
-  const targetVideos = booking.committed_videos || 1;
   const actualGmv = Number(booking.actual_performance?.gross_gmv || booking.actual_performance?.affiliate_gmv || 0);
   const performanceCurrency = booking.actual_performance?.currency || booking.currency;
   const numCost = Number(booking.total_cost ?? booking.booking_cost ?? 0);
@@ -104,17 +100,13 @@ const BookingMonthCard = ({
           </span>
         </div>
         <div className="booking-month-card__header-badges">
-          {videoCount >= targetVideos ? (
-            <span className="booking-month-card__badge booking-month-card__badge--success">
-              {videoCount}/{targetVideos}
-            </span>
-          ) : videoCount === 0 ? (
+          {videoCount === 0 ? (
             <span className="booking-month-card__badge booking-month-card__badge--pending">
-              0/{targetVideos}
+              {t('booking.videosCount', { count: 0 })}
             </span>
           ) : (
             <span className="booking-month-card__badge booking-month-card__badge--info">
-              {videoCount}/{targetVideos}
+              {t('booking.videosCount', { count: videoCount })}
             </span>
           )}
           <button
@@ -250,18 +242,6 @@ const BookingMonthCard = ({
                     step={selectedCurrency === 'VND' ? '1' : '0.01'}
                     value={cost}
                     onChange={(e) => setCost(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="field" style={{ margin: 0 }}>
-                  <label htmlFor={`committed-${booking.id}`}>{t('booking.committedVideos')}</label>
-                  <input
-                    id={`committed-${booking.id}`}
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={committedVideos}
-                    onChange={(e) => setCommittedVideos(e.target.value)}
                     required
                   />
                 </div>

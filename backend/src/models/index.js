@@ -177,11 +177,6 @@ const Booking = sequelize.define('Booking', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
-  committed_videos: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-    defaultValue: 1,
-  },
   note: {
     type: DataTypes.TEXT,
     allowNull: true,
@@ -583,6 +578,27 @@ const TikTokVideoPerformanceSnapshot = sequelize.define('TikTokVideoPerformanceS
   tableName: 'tiktok_video_performance_snapshots',
   timestamps: false,
   indexes: [{ unique: true, fields: ['export_id', 'video_id'] }],
+});
+
+const TikTokVideoDetailSnapshot = sequelize.define('TikTokVideoDetailSnapshot', {
+  id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+  shop_id: { type: DataTypes.INTEGER, allowNull: false },
+  video_id: { type: DataTypes.STRING(128), allowNull: false },
+  metric_window: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'PAST_30_DAYS' },
+  start_date: DataTypes.DATEONLY,
+  end_date: DataTypes.DATEONLY,
+  views: DataTypes.BIGINT,
+  likes: DataTypes.BIGINT,
+  comments: DataTypes.BIGINT,
+  shares: DataTypes.BIGINT,
+  raw_metrics: DataTypes.JSONB,
+  synced_at: DataTypes.DATE,
+  last_attempted_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  last_error: DataTypes.TEXT,
+}, {
+  tableName: 'tiktok_video_detail_snapshots',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['shop_id', 'video_id', 'metric_window'] }],
 });
 
 const TikTokCreatorProfile = sequelize.define('TikTokCreatorProfile', {
@@ -1316,6 +1332,7 @@ module.exports = {
   TikTokCreatorContactHistory,
   TikTokTargetCollaborationSnapshot,
   TikTokBasePerformanceSnapshot,
+  TikTokVideoDetailSnapshot,
   ScheduledJob,
   ScheduledJobRun,
   ScheduledJobRunEvent,

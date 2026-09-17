@@ -535,7 +535,6 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(createdPayload.staff_id, 7);
   assert.equal(createdPayload.staff_name, 'Account manager');
   assert.equal(createdPayload.deadline, null);
-  assert.equal(createdPayload.committed_videos, 1);
   assert.equal(createdPayload.evaluation_snapshot.collaboration, null);
   assert.deepEqual(createdPayload.evaluation_snapshot.performance, performanceData);
   assert.deepEqual(createdPayload.evaluation_snapshot.product_ids, ['product-1']);
@@ -549,7 +548,7 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(autoLinkedBooking.id, 12);
 });
 
-test('updateBooking updates committed_videos, start_date, and end_date', async (t) => {
+test('updateBooking updates start_date and end_date', async (t) => {
   let updatedPayload;
   const mockBooking = {
     id: 15,
@@ -557,7 +556,6 @@ test('updateBooking updates committed_videos, start_date, and end_date', async (
     start_date: '2026-03-01',
     end_date: '2026-03-31',
     deadline: '2026-03-31',
-    committed_videos: 1,
   };
   const { updateBooking } = loadController(t, {
     Booking: {
@@ -572,27 +570,23 @@ test('updateBooking updates committed_videos, start_date, and end_date', async (
     },
   });
 
-  let response;
   await updateBooking(
     {
       params: { id: 15 },
       body: {
-        committed_videos: 3,
         start_date: '2026-03-05',
         end_date: '2026-04-10',
       },
     },
     {
-      status: () => ({ json: (body) => { response = body; } }),
-      json: (body) => { response = body; },
+      status: () => ({ json: () => {} }),
+      json: () => {},
     },
   );
 
-  assert.equal(updatedPayload.committed_videos, 3);
   assert.equal(updatedPayload.start_date, '2026-03-05');
   assert.equal(updatedPayload.end_date, '2026-04-10');
   assert.equal(updatedPayload.deadline, '2026-04-10');
-  assert.equal(response.committed_videos, 3);
 });
 
 test('getBookings filters by creator_username', async (t) => {

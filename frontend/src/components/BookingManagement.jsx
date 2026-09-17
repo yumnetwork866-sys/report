@@ -664,14 +664,13 @@ const BookingManagement = ({
       result.total += 1;
       if (inBookingPeriod) {
         result.totalCost += convertedCost;
-        result.committedVideos += Number(booking.committed_videos || 1);
       }
       result.totalRevenue += convertedRevenue;
       result.videoCount += bookingTab === 'product'
         ? finiteNumber(tabPerformance?.affiliate_orders)
         : (videoData?.videoCount ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0)));
       return result;
-    }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0, committedVideos: 0 });
+    }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 });
   }, [bookingTab, bookings, convertAmount, customRange, productPerformanceByBooking, selectedMonth, videoPerformanceByBooking]);
 
   const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
@@ -710,7 +709,6 @@ const BookingManagement = ({
           totalCost: 0,
           totalRevenue: 0,
           videoCount: 0,
-          committedVideos: 0,
         });
       }
       const group = groups.get(key);
@@ -727,7 +725,6 @@ const BookingManagement = ({
       group.bookings.push(booking);
       if (inBookingPeriod) {
         group.totalCost += convertedCost;
-        group.committedVideos += Number(booking.committed_videos || 1);
       }
       group.totalRevenue += convertedRevenue;
       group.videoCount += bookingTab === 'product'
@@ -893,7 +890,6 @@ const BookingManagement = ({
         creator_username: selectedKoc.username,
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
-        committed_videos: Math.max(1, Number.parseInt(form.committed_videos, 10) || 1),
         start_date: form.booking_date || dateInputValue(new Date()),
         product_ids: form.product_ids,
         products: bookingProducts.filter((product) => form.product_ids.includes(product.id)),
@@ -1271,7 +1267,7 @@ const BookingManagement = ({
                           </button>
                         </td>
                         <td className="cell-number">{formatNumber(group.bookings.length)}</td>
-                        <td className="cell-number">{bookingTab === 'product' ? formatNumber(group.videoCount) : `${formatNumber(group.videoCount)} / ${formatNumber(group.committedVideos)}`}</td>
+                        <td className="cell-number">{formatNumber(group.videoCount)}</td>
                         <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                         <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>
                         <td className="cell-number">{formatRatio(group.totalRevenue > 0 ? group.totalCost / group.totalRevenue : null)}</td>

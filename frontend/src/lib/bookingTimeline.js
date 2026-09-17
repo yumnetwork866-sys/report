@@ -5,7 +5,6 @@ export function computeBookingTimeline({
   deadlineDate,
   postedVideos = [],
   firstPostedDate,
-  committedVideos = 1,
   videoCount: explicitVideoCount,
   status,
   t,
@@ -14,27 +13,22 @@ export function computeBookingTimeline({
   const isCancelled = status === 'cancelled';
   let badge = null;
 
-  const targetVideos = Math.max(1, Number(committedVideos) || 1);
   const videoList = Array.isArray(postedVideos) ? postedVideos : [];
   const count = explicitVideoCount !== undefined
     ? Number(explicitVideoCount) || 0
     : (videoList.length || (firstPostedDate ? 1 : 0));
-  const isCompleted = count >= targetVideos;
+  const hasPostedVideo = count > 0;
 
-  // Identify earliest posted video and completion video (the video that fulfilled the target)
   const earliestVideoDate = videoList[0]?.posted_at || firstPostedDate || null;
-  const completionVideo = videoList[targetVideos - 1] || videoList[videoList.length - 1] || null;
-  const completionDate = completionVideo?.posted_at || firstPostedDate || null;
+  const completionDate = earliestVideoDate;
 
   const dateParts = [];
   if (startDate) dateParts.push(`📅 ${t ? t('booking.bookDate') : 'Book'}: ${formatDateOnly(startDate)}`);
   if (deadlineDate) dateParts.push(`⏰ ${t ? t('booking.deadline') : 'Hạn'}: ${formatDateOnly(deadlineDate)}`);
-  if (isCompleted && completionDate) {
+  if (hasPostedVideo && completionDate) {
     dateParts.push(`🎬 ${t ? t('booking.completedAt', 'Hoàn thành') : 'Hoàn thành'}: ${formatDateOnly(completionDate)}`);
-  } else if (earliestVideoDate) {
-    dateParts.push(`🎬 ${t ? t('booking.firstPosted', 'Video đầu') : 'Video đầu'}: ${formatDateOnly(earliestVideoDate)}`);
   }
-  dateParts.push(`🎯 ${count}/${targetVideos} video`);
+  dateParts.push(`🎬 ${count} video`);
   const detailsSuffix = ` (${dateParts.join(' · ')})`;
 
   if (isCancelled) {
@@ -43,7 +37,7 @@ export function computeBookingTimeline({
       label: t ? t('booking.statusCancelled') : 'Đã hủy',
       tooltip: (t ? t('booking.statusCancelled') : 'Đã hủy') + detailsSuffix,
     };
-  } else if (isCompleted) {
+  } else if (hasPostedVideo) {
     if (completionDate && deadlineDate) {
       const diff = diffInDays(completionDate, deadlineDate);
       if (diff > 0) {

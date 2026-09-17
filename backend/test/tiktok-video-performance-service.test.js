@@ -114,76 +114,42 @@ test('apiVideoRow gracefully falls back to list metrics when detail request fail
   assert.equal(row.raw_metrics.detail_error, 'Rate limit 36009002');
 });
 
-test('video detail delay defaults to 150ms and respects environment override', () => {
-  assert.equal(__test.DEFAULT_VIDEO_DETAIL_DELAY_MS, 150);
-  const original = process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS;
-  try {
-    delete process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS;
-    assert.equal(__test.configuredVideoDetailDelayMs(), 150);
-    process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS = '200';
-    assert.equal(__test.configuredVideoDetailDelayMs(), 200);
-  } finally {
-    if (original === undefined) {
-      delete process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS;
-    } else {
-      process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS = original;
-    }
-  }
+test('video detail uses fixed safe pacing and batch values', () => {
+  assert.equal(__test.VIDEO_DETAIL_BATCH_SIZE, 30);
+  assert.equal(__test.VIDEO_DETAIL_DELAY_MS, 2000);
+  assert.equal(__test.VIDEO_DETAIL_REFRESH_MS, 24 * 60 * 60 * 1000);
 });
 
-test('selectVideosForDetailFetch returns empty set when TIKTOK_VIDEO_DETAIL_ENABLED is false', () => {
-  const originalEnabled = process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
-  try {
-    process.env.TIKTOK_VIDEO_DETAIL_ENABLED = 'false';
-    const videos = [{ id: '1', gmv: { amount: '100' }, sku_orders: 5, views: 100 }];
-    const selected = __test.selectVideosForDetailFetch(videos);
-    assert.equal(selected.size, 0);
-  } finally {
-    if (originalEnabled === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
-    else process.env.TIKTOK_VIDEO_DETAIL_ENABLED = originalEnabled;
-  }
+test('booking detail selection only includes linked videos and prioritizes missing or oldest snapshots', () => {
+  const now = new Date('2026-09-17T00:00:00.000Z');
+  const videos = [
+    { id: 'new-high', gmv: { amount: '10' }, views: 100 },
+    { id: 'new-low', gmv: { amount: '0' }, views: 10 },
+    { id: 'old', gmv: { amount: '0' }, views: 5 },
+    { id: 'fresh', gmv: { amount: '100' }, views: 1000 },
+    { id: 'failed-recently', gmv: { amount: '500' }, views: 5000 },
+    { id: 'not-booked', gmv: { amount: '999' }, views: 9999 },
+  ];
+  const selected = __test.selectBookingVideosForDetail({
+    videos,
+    bookingVideoIds: new Set(['new-high', 'new-low', 'old', 'fresh', 'failed-recently']),
+    snapshots: [
+      { video_id: 'old', synced_at: '2026-09-10T00:00:00.000Z' },
+      { video_id: 'fresh', synced_at: '2026-09-16T12:00:00.000Z' },
+      { video_id: 'failed-recently', synced_at: null, last_attempted_at: '2026-09-16T12:00:00.000Z' },
+    ],
+    now,
+    batchSize: 3,
+  });
+
+  assert.deepEqual(selected.map((video) => video.id), ['new-high', 'new-low', 'old']);
 });
 
-test('selectVideosForDetailFetch prioritizes videos with GMV, orders, and top activity', () => {
-  const originalEnabled = process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
-  const originalTop = process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT;
-  const originalMax = process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH;
-  try {
-    process.env.TIKTOK_VIDEO_DETAIL_ENABLED = 'true';
-    process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT = '2';
-    process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH = '5';
-
-    const videos = [
-      { id: '1', gmv: { amount: '0' }, sku_orders: 0, views: 10 },
-      { id: '2', gmv: { amount: '0' }, sku_orders: 0, views: 20 },
-      { id: '3', gmv: { amount: '0' }, sku_orders: 0, views: 5 },
-      { id: '4', gmv: { amount: '150' }, sku_orders: 0, views: 10 }, // has GMV
-      { id: '5', gmv: { amount: '0' }, sku_orders: 3, views: 10 },   // has orders
-      { id: '6', gmv: { amount: '0' }, sku_orders: 0, views: 1000 }, // high views
-      { id: '7', gmv: { amount: '0' }, sku_orders: 0, views: 0 },    // inactive
-    ];
-
-    const selected = __test.selectVideosForDetailFetch(videos);
-
-    // 1 and 2 are top 2 by rank
-    assert.ok(selected.has('1'), 'Top 1 by rank should be included');
-    assert.ok(selected.has('2'), 'Top 2 by rank should be included');
-    // 4 has GMV
-    assert.ok(selected.has('4'), 'Video with GMV should be included');
-    // 5 has orders
-    assert.ok(selected.has('5'), 'Video with orders should be included');
-    // 6 is top by views
-    assert.ok(selected.has('6'), 'Video with highest views should be included');
-    // 7 is inactive and not top
-    assert.equal(selected.has('7'), false, 'Inactive video should not be selected');
-  } finally {
-    if (originalEnabled === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_ENABLED;
-    else process.env.TIKTOK_VIDEO_DETAIL_ENABLED = originalEnabled;
-    if (originalTop === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT;
-    else process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT = originalTop;
-    if (originalMax === undefined) delete process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH;
-    else process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH = originalMax;
-  }
+test('rate limits are detected and are not retried as transient detail failures', () => {
+  assert.equal(__test.isRateLimitError({ httpStatus: 429 }), true);
+  assert.equal(__test.isRateLimitError({ tiktokCode: 36009002 }), true);
+  assert.equal(__test.isRateLimitError(new Error('quota exceeded')), true);
+  assert.equal(__test.isRateLimitError(new Error('network timeout')), false);
 });
 
 test('apiVideoRow works cleanly without detail for inactive videos', () => {
@@ -227,5 +193,3 @@ test('mapWithConcurrency aborts immediately when AbortSignal is triggered', asyn
   });
   assert.equal(processed, 2, 'Should not process remaining items after abort');
 });
-
-

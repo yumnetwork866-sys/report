@@ -98,7 +98,6 @@ export const defaultBookingForm = () => ({
   staff_id: '',
   booking_date: dateInputValue(new Date()),
   total_cost: '',
-  committed_videos: 1,
   product_ids: [],
 });
 
@@ -475,11 +474,27 @@ export const bookingVideoSocialMetrics = (snapshot) => {
   const rawVideo = snapshot?.raw_metrics?.video || snapshot?.raw_metrics || {};
   const listVideo = rawVideo?.list || rawVideo;
   const traffic = rawVideo?.detail?.performance?.intervals?.[0]?.traffic || {};
+  const shared = snapshot?.raw_metrics?.social_metrics;
+  if (shared) {
+    return {
+      views: optionalNumber(shared.views) ?? optionalNumber(snapshot?.views) ?? optionalNumber(listVideo?.views),
+      likes: shared.available ? optionalNumber(shared.likes) : null,
+      comments: shared.available ? optionalNumber(shared.comments) : null,
+      shares: shared.available ? optionalNumber(shared.shares) : null,
+      available: Boolean(shared.available),
+      metricWindow: shared.metric_window || 'PAST_30_DAYS',
+      syncedAt: shared.synced_at || null,
+    };
+  }
+  const available = ['likes', 'comments', 'shares'].some((key) => traffic[key] !== null && traffic[key] !== undefined);
   return {
-    views: snapshot?.views ?? listVideo?.views ?? traffic.views,
-    likes: traffic.likes ?? listVideo?.likes ?? rawVideo?.likes,
-    comments: traffic.comments ?? listVideo?.comments ?? rawVideo?.comments,
-    shares: traffic.shares ?? listVideo?.shares ?? rawVideo?.shares,
+    views: optionalNumber(snapshot?.views ?? listVideo?.views ?? traffic.views),
+    likes: available ? optionalNumber(traffic.likes ?? listVideo?.likes ?? rawVideo?.likes) : null,
+    comments: available ? optionalNumber(traffic.comments ?? listVideo?.comments ?? rawVideo?.comments) : null,
+    shares: available ? optionalNumber(traffic.shares ?? listVideo?.shares ?? rawVideo?.shares) : null,
+    available,
+    metricWindow: available ? 'PAST_30_DAYS' : null,
+    syncedAt: available ? snapshot?.synced_at || null : null,
   };
 };
 

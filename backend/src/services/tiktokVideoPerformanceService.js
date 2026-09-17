@@ -1,8 +1,11 @@
 const XLSX = require('xlsx');
 const crypto = require('node:crypto');
+const { Op, QueryTypes } = require('sequelize');
 const {
   sequelize,
+  TikTokApiCooldown,
   TikTokCreatorPerformanceExport,
+  TikTokVideoDetailSnapshot,
   TikTokVideoPerformanceSnapshot,
 } = require('../models');
 const {
@@ -33,7 +36,10 @@ const productCtr = (clicks, impressions) => {
 const moneyValue = (value) => numberValue(value && typeof value === 'object' ? value.amount : value);
 const uniqueValues = (values) => [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const retryableTikTokError = (error) => [36009002, 36009003].includes(Number(error?.tiktokCode))
+const isRateLimitError = (error) => Number(error?.httpStatus) === 429
+  || [36009002, 36009003].includes(Number(error?.tiktokCode))
+  || /too many requests|rate limit|quota exceeded/i.test(String(error?.message || ''));
+const retryableTikTokError = (error) => isRateLimitError(error)
   || /too many requests|rate limit|timeout|network|fetch|internal error/i.test(String(error?.message || ''));
 
 const requestWithRetry = async (operation, attempts = 4) => {
@@ -43,6 +49,7 @@ const requestWithRetry = async (operation, attempts = 4) => {
       return await operation();
     } catch (error) {
       lastError = error;
+      if (isRateLimitError(error)) throw error;
       if (!retryableTikTokError(error) || attempt === attempts - 1) throw error;
       const delay = error?.retryAfterMs || (750 * (2 ** attempt));
       await wait(delay);
@@ -51,96 +58,40 @@ const requestWithRetry = async (operation, attempts = 4) => {
   throw lastError;
 };
 
-const DEFAULT_VIDEO_DETAIL_DELAY_MS = 150;
-const DEFAULT_VIDEO_DETAIL_TOP_LIMIT = 50;
-const DEFAULT_VIDEO_DETAIL_MAX_FETCH = 200;
+const VIDEO_DETAIL_WINDOW = 'PAST_30_DAYS';
+const VIDEO_DETAIL_BATCH_SIZE = 30;
+const VIDEO_DETAIL_DELAY_MS = 2000;
+const VIDEO_DETAIL_REFRESH_MS = 24 * 60 * 60 * 1000;
+const VIDEO_DETAIL_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
+const VIDEO_DETAIL_COOLDOWN_NAMESPACE = 'video-performance-detail';
 
-const configuredVideoDetailDelayMs = () => {
-  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_DELAY_MS);
-  return Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_VIDEO_DETAIL_DELAY_MS;
-};
-
-const configuredVideoDetailTopLimit = () => {
-  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_TOP_LIMIT);
-  return Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_VIDEO_DETAIL_TOP_LIMIT;
-};
-
-const configuredVideoDetailMaxFetch = () => {
-  const configured = Number(process.env.TIKTOK_VIDEO_DETAIL_MAX_FETCH);
-  return Number.isFinite(configured) && configured >= 0
-    ? configured
-    : DEFAULT_VIDEO_DETAIL_MAX_FETCH;
-};
-
-const isVideoDetailEnabled = () => (
-  String(process.env.TIKTOK_VIDEO_DETAIL_ENABLED || 'false').trim().toLowerCase() === 'true'
+const videoActivityScore = (video) => (
+  moneyValue(video?.gmv) * 1_000_000
+  + numberValue(video?.sku_orders ?? video?.orders) * 10_000
+  + numberValue(video?.items_sold) * 1_000
+  + numberValue(video?.views)
 );
 
-const isVideoDetailFetchAll = () => (
-  String(process.env.TIKTOK_VIDEO_DETAIL_FETCH_ALL || '').trim().toLowerCase() === 'true'
-);
-
-const selectVideosForDetailFetch = (videos = []) => {
-  if (!isVideoDetailEnabled()) return new Set();
-  if (!Array.isArray(videos) || videos.length === 0) return new Set();
-  if (isVideoDetailFetchAll()) {
-    return new Set(videos.map((v) => String(v?.id || v?.video_id || '').trim()).filter(Boolean));
-  }
-
-  const topLimit = configuredVideoDetailTopLimit();
-  const maxFetch = configuredVideoDetailMaxFetch();
-  const selectedIds = new Set();
-
-  // 1. Top videos by GMV rank (list is already sorted by GMV DESC)
-  const topByRank = videos.slice(0, topLimit);
-  for (const video of topByRank) {
-    const id = String(video?.id || video?.video_id || '').trim();
-    if (id) selectedIds.add(id);
-  }
-
-  // 2. Top videos by interactions / views
-  if (topLimit > 0) {
-    const topByViews = [...videos]
-      .sort((a, b) => numberValue(b?.views) - numberValue(a?.views))
-      .slice(0, topLimit);
-    for (const video of topByViews) {
-      const id = String(video?.id || video?.video_id || '').trim();
-      if (id && numberValue(video?.views) > 0) selectedIds.add(id);
-    }
-  }
-
-  // 3. Videos with revenue (GMV > 0), orders (> 0), or items sold (> 0)
-  for (const video of videos) {
-    const id = String(video?.id || video?.video_id || '').trim();
-    if (!id) continue;
-    const gmv = moneyValue(video?.gmv);
-    const orders = numberValue(video?.sku_orders ?? video?.orders);
-    const itemsSold = numberValue(video?.items_sold);
-    if (gmv > 0 || orders > 0 || itemsSold > 0) {
-      selectedIds.add(id);
-    }
-  }
-
-  // If selected count exceeds maxFetch, prioritize by GMV, then orders, then views
-  if (maxFetch > 0 && selectedIds.size > maxFetch) {
-    const prioritized = videos
-      .filter((v) => selectedIds.has(String(v?.id || v?.video_id || '').trim()))
-      .sort((a, b) => {
-        const gmvDiff = moneyValue(b?.gmv) - moneyValue(a?.gmv);
-        if (gmvDiff !== 0) return gmvDiff;
-        const ordersDiff = numberValue(b?.sku_orders ?? b?.orders) - numberValue(a?.sku_orders ?? a?.orders);
-        if (ordersDiff !== 0) return ordersDiff;
-        return numberValue(b?.views) - numberValue(a?.views);
-      })
-      .slice(0, maxFetch);
-    return new Set(prioritized.map((v) => String(v?.id || v?.video_id || '').trim()));
-  }
-
-  return selectedIds;
+const selectBookingVideosForDetail = ({
+  videos = [], bookingVideoIds = new Set(), snapshots = [], now = new Date(), batchSize = VIDEO_DETAIL_BATCH_SIZE,
+}) => {
+  const snapshotByVideo = new Map(snapshots.map((snapshot) => [String(snapshot.video_id), snapshot]));
+  const nowMs = new Date(now).getTime();
+  return videos
+    .filter((video) => bookingVideoIds.has(String(video?.id || video?.video_id || '').trim()))
+    .map((video) => ({ video, snapshot: snapshotByVideo.get(String(video?.id || video?.video_id || '').trim()) }))
+    .filter(({ snapshot }) => {
+      const lastAttempt = snapshot?.last_attempted_at || snapshot?.synced_at;
+      return !lastAttempt || nowMs - new Date(lastAttempt).getTime() >= VIDEO_DETAIL_REFRESH_MS;
+    })
+    .sort((left, right) => {
+      const leftSync = left.snapshot?.synced_at ? new Date(left.snapshot.synced_at).getTime() : 0;
+      const rightSync = right.snapshot?.synced_at ? new Date(right.snapshot.synced_at).getTime() : 0;
+      if (leftSync !== rightSync) return leftSync - rightSync;
+      return videoActivityScore(right.video) - videoActivityScore(left.video);
+    })
+    .slice(0, batchSize)
+    .map(({ video }) => video);
 };
 
 const mapWithConcurrency = async (items, concurrency, mapper, delayMs = 0, signal = null) => {
@@ -310,8 +261,191 @@ const loadVideoDetail = (shop, video, { startDate, endDate, currency, signal }) 
       currency,
       granularity: 'ALL',
       signal,
-    })
+  })
 ));
+
+const loadBookingVideos = async (shopId) => {
+  const rows = await sequelize.query(`
+    SELECT DISTINCT bv.platform_video_id
+    FROM booking_videos bv
+    JOIN bookings b ON b.id = bv.booking_id
+    WHERE b.target_shop_id = :shopId
+      AND bv.status IN ('COLLECTING', 'SYNC_FAILED')
+    ORDER BY bv.platform_video_id
+  `, {
+    replacements: { shopId },
+    type: QueryTypes.SELECT,
+  });
+  return rows
+    .map((row) => String(row.platform_video_id || '').trim())
+    .filter((videoId) => /^\d{10,30}$/.test(videoId))
+    .map((videoId) => ({ id: videoId }));
+};
+
+const loadVideoDetailCooldown = async (shopId, now = new Date()) => {
+  const cooldown = await TikTokApiCooldown.findOne({
+    where: { shop_id: shopId, namespace: VIDEO_DETAIL_COOLDOWN_NAMESPACE },
+  });
+  if (!cooldown || new Date(cooldown.cooldown_until).getTime() <= new Date(now).getTime()) return null;
+  return cooldown;
+};
+
+const persistVideoDetailCooldown = async (shopId, error, now = new Date()) => {
+  const existing = await TikTokApiCooldown.findOne({
+    where: { shop_id: shopId, namespace: VIDEO_DETAIL_COOLDOWN_NAMESPACE },
+  });
+  const streak = (Number(existing?.consecutive_rate_limits) || 0) + 1;
+  const retryAfterMs = Number(error?.retryAfterMs);
+  const cooldownMs = Number.isFinite(retryAfterMs) && retryAfterMs > 0
+    ? retryAfterMs
+    : VIDEO_DETAIL_RATE_LIMIT_COOLDOWN_MS;
+  const cooldownUntil = new Date(new Date(now).getTime() + cooldownMs);
+  await TikTokApiCooldown.upsert({
+    shop_id: shopId,
+    namespace: VIDEO_DETAIL_COOLDOWN_NAMESPACE,
+    cooldown_until: cooldownUntil,
+    consecutive_rate_limits: streak,
+    reason: String(error?.message || error).slice(0, 2000),
+    updated_at: now,
+  });
+  return cooldownUntil;
+};
+
+const detailMetrics = (payload) => {
+  const traffic = payload?.data?.performance?.intervals?.[0]?.traffic || {};
+  return {
+    views: nullableNumber(traffic.views),
+    likes: nullableNumber(traffic.likes),
+    comments: nullableNumber(traffic.comments),
+    shares: nullableNumber(traffic.shares),
+  };
+};
+
+const saveVideoDetailSuccess = async ({ shopId, videoId, startDate, endDate, detail, now }) => {
+  const metrics = detailMetrics(detail);
+  await TikTokVideoDetailSnapshot.upsert({
+    shop_id: shopId,
+    video_id: videoId,
+    metric_window: VIDEO_DETAIL_WINDOW,
+    start_date: startDate,
+    end_date: endDate,
+    ...metrics,
+    raw_metrics: detail?.data || null,
+    synced_at: now,
+    last_attempted_at: now,
+    last_error: null,
+  });
+};
+
+const saveVideoDetailFailure = async ({ shopId, videoId, startDate, endDate, error, now }) => {
+  const existing = await TikTokVideoDetailSnapshot.findOne({
+    where: { shop_id: shopId, video_id: videoId, metric_window: VIDEO_DETAIL_WINDOW },
+  });
+  const values = {
+    start_date: startDate,
+    end_date: endDate,
+    last_attempted_at: now,
+    last_error: String(error?.message || error).slice(0, 2000),
+  };
+  if (existing) await existing.update(values);
+  else {
+    await TikTokVideoDetailSnapshot.create({
+      shop_id: shopId,
+      video_id: videoId,
+      metric_window: VIDEO_DETAIL_WINDOW,
+      ...values,
+    });
+  }
+};
+
+const prepareBookingVideoDetailBatch = async (shopId, now = new Date()) => {
+  const videos = await loadBookingVideos(shopId);
+  if (!videos.length) return { videos, due: [], selected: [], skippedFresh: 0 };
+  const bookingVideoIds = new Set(videos.map((video) => video.id));
+  const snapshots = await TikTokVideoDetailSnapshot.findAll({
+    where: {
+      shop_id: shopId,
+      video_id: { [Op.in]: [...bookingVideoIds] },
+      metric_window: VIDEO_DETAIL_WINDOW,
+    },
+  });
+  const due = selectBookingVideosForDetail({
+    videos, bookingVideoIds, snapshots, now, batchSize: videos.length,
+  });
+  return {
+    videos,
+    due,
+    selected: due.slice(0, VIDEO_DETAIL_BATCH_SIZE),
+    skippedFresh: videos.length - due.length,
+  };
+};
+
+const syncBookingVideoDetails = async (shop, {
+  startDate, endDate, currency = 'LOCAL', signal, now = new Date(),
+} = {}) => {
+  const batch = await prepareBookingVideoDetailBatch(shop.id, now);
+  const summary = {
+    metric_window: VIDEO_DETAIL_WINDOW,
+    start_date: startDate,
+    end_date: endDate,
+    total: batch.videos.length,
+    due: batch.due.length,
+    selected: batch.selected.length,
+    attempted: 0,
+    succeeded: 0,
+    failed: 0,
+    skipped_fresh: batch.skippedFresh,
+    deferred: Math.max(0, batch.due.length - batch.selected.length),
+    rate_limited: false,
+    cooldown_until: null,
+  };
+  const activeCooldown = await loadVideoDetailCooldown(shop.id, now);
+  if (activeCooldown) {
+    summary.deferred = batch.due.length;
+    summary.selected = 0;
+    summary.cooldown_until = activeCooldown.cooldown_until;
+    return summary;
+  }
+
+  for (let index = 0; index < batch.selected.length; index += 1) {
+    if (signal?.aborted) {
+      const error = new Error('Job was stopped by the user.');
+      error.name = 'AbortError';
+      throw error;
+    }
+    const video = batch.selected[index];
+    const videoId = String(video.id);
+    summary.attempted += 1;
+    try {
+      const detail = await loadVideoDetail(shop, video, {
+        startDate, endDate, currency, signal,
+      });
+      await saveVideoDetailSuccess({
+        shopId: shop.id, videoId, startDate, endDate, detail, now,
+      });
+      summary.succeeded += 1;
+    } catch (error) {
+      if (signal?.aborted || error.name === 'AbortError') throw error;
+      summary.failed += 1;
+      await saveVideoDetailFailure({
+        shopId: shop.id, videoId, startDate, endDate, error, now,
+      });
+      if (isRateLimitError(error)) {
+        summary.rate_limited = true;
+        summary.cooldown_until = await persistVideoDetailCooldown(shop.id, error, now);
+        break;
+      }
+    }
+    if (index < batch.selected.length - 1) await wait(VIDEO_DETAIL_DELAY_MS);
+  }
+  summary.deferred += Math.max(0, batch.selected.length - summary.attempted);
+  if (!summary.rate_limited && summary.selected) {
+    await TikTokApiCooldown.destroy({
+      where: { shop_id: shop.id, namespace: VIDEO_DETAIL_COOLDOWN_NAMESPACE },
+    });
+  }
+  return summary;
+};
 
 const processVideoPerformanceApiSync = async (shop, exportRecord, {
   startDate,
@@ -329,59 +463,22 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
       startDate, endDate, currency, signal,
     });
     await exportRecord.update({ row_count: videos.length });
-    const configuredConcurrency = Number(process.env.TIKTOK_VIDEO_DETAIL_CONCURRENCY);
-    const concurrency = Number.isInteger(configuredConcurrency)
-      ? Math.min(8, Math.max(1, configuredConcurrency))
-      : 4;
-    const detailVideoIds = selectVideosForDetailFetch(videos);
-    let failedDetails = 0;
     const syncedAt = new Date();
-    const detailDelayMs = configuredVideoDetailDelayMs();
-    const rows = detailVideoIds.size === 0
-      ? videos.map((video) => apiVideoRow({
+    const rows = videos.map((video) => {
+      if (signal?.aborted) {
+        const error = new Error('Job was stopped by the user.');
+        error.name = 'AbortError';
+        throw error;
+      }
+      return apiVideoRow({
         exportId: exportRecord.id,
         shopId: shop.id,
         video,
         detail: null,
         detailError: null,
         syncedAt,
-      }))
-      : await mapWithConcurrency(videos, concurrency, async (video) => {
-        if (signal?.aborted) {
-          const error = new Error('Job was stopped by the user.');
-          error.name = 'AbortError';
-          throw error;
-        }
-        const videoId = String(video?.id || video?.video_id || '').trim();
-        let detail = null;
-        let detailError = null;
-        if (detailVideoIds.has(videoId)) {
-          try {
-            detail = await loadVideoDetail(shop, video, { startDate, endDate, currency, signal });
-            if (detail?.request_id) requestIds.push(detail.request_id);
-          } catch (error) {
-            if (signal?.aborted || error.name === 'AbortError') throw error;
-            failedDetails += 1;
-            detailError = error;
-          }
-        }
-        return apiVideoRow({
-          exportId: exportRecord.id,
-          shopId: shop.id,
-          video,
-          detail,
-          detailError,
-          syncedAt,
-        });
-      }, detailDelayMs, signal);
-    if (failedDetails > 0) {
-      console.warn('[Video Performance API] Video detail requests failed; retaining list metrics', {
-        shopId: shop.id,
-        totalVideos: videos.length,
-        selectedDetails: detailVideoIds.size,
-        failedDetails,
       });
-    }
+    });
     await sequelize.transaction(async (transaction) => {
       if (rows.length) await TikTokVideoPerformanceSnapshot.bulkCreate(rows, { transaction });
       await upsertShopProducts(shop.id, rows.flatMap((row) => {
@@ -393,7 +490,7 @@ const processVideoPerformanceApiSync = async (shop, exportRecord, {
         status: 'SUCCEEDED',
         row_count: rows.length,
         request_id: uniqueValues(requestIds).join(',').slice(0, 255) || null,
-        error: failedDetails ? `${failedDetails}/${detailVideoIds.size} video detail request(s) failed; list metrics were retained.` : null,
+        error: null,
         completed_at: new Date(),
       }, { transaction });
     });
@@ -547,25 +644,22 @@ const importVideoPerformanceWorkbook = async (shop, buffer, {
 
 module.exports = {
   VIDEO_API_MODULE_TYPE,
-  DEFAULT_VIDEO_DETAIL_DELAY_MS,
-  configuredVideoDetailDelayMs,
   importVideoPerformanceWorkbook,
   parseVideoPerformanceWorkbook,
   processVideoPerformanceApiSync,
   startVideoPerformanceApiSync,
+  syncBookingVideoDetails,
   syncVideoPerformanceApi,
   __test: {
     apiVideoRow,
     mapWithConcurrency,
     productCtr,
+    isRateLimitError,
     retryableTikTokError,
-    selectVideosForDetailFetch,
-    DEFAULT_VIDEO_DETAIL_DELAY_MS,
-    DEFAULT_VIDEO_DETAIL_TOP_LIMIT,
-    DEFAULT_VIDEO_DETAIL_MAX_FETCH,
-    configuredVideoDetailDelayMs,
-    configuredVideoDetailTopLimit,
-    configuredVideoDetailMaxFetch,
-    isVideoDetailEnabled,
+    selectBookingVideosForDetail,
+    VIDEO_DETAIL_BATCH_SIZE,
+    VIDEO_DETAIL_DELAY_MS,
+    VIDEO_DETAIL_REFRESH_MS,
+    VIDEO_DETAIL_RATE_LIMIT_COOLDOWN_MS,
   },
 };
