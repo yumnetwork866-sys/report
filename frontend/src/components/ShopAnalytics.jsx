@@ -1174,8 +1174,8 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
                 ? 'shopAnalytics.manageHeroTitle'
                 : videoOnly
                   ? videoExportOnly
-                    ? 'shopAnalytics.videoExportHeroTitle'
-                    : 'shopAnalytics.videoHeroTitle'
+                    ? 'navigation.videos'
+                    : 'navigation.videoAnalytics'
                   : 'shopAnalytics.heroTitle')}
             </h1>
           </div>

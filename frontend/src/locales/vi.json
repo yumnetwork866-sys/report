@@ -195,6 +195,8 @@
     "support": "Hỗ trợ"
   },
   "navigation": {
+    "closeMenu": "Đóng menu",
+    "openMenu": "Mở menu",
     "tiktokShop": "TikTok Shop",
     "tiktokChannel": "TikTok Channel",
     "dashboard": "Bảng tổng quan",
@@ -202,12 +204,12 @@
     "affiliate": "Tiếp thị liên kết",
     "kocPerformance": "Hiệu quả KOC",
     "shopAnalytics": "Tổng quan",
-    "videoAnalytics": "Phân tích video",
+    "videoAnalytics": "Hiệu suất video",
     "orders": "Đơn hàng",
     "bookings": "Booking",
     "staffEvaluationBeta": "Đánh giá nhân viên (Beta)",
     "channels": "Kênh",
-    "videos": "Video",
+    "videos": "Kho video",
     "reports": "Báo cáo",
     "chat": "Hội thoại",
     "users": "Người dùng",

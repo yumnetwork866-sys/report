@@ -195,6 +195,8 @@
     "support": "Support"
   },
   "navigation": {
+    "closeMenu": "Close menu",
+    "openMenu": "Open menu",
     "tiktokShop": "TikTok Shop",
     "tiktokChannel": "TikTok Channel",
     "dashboard": "Dashboard",
@@ -202,7 +204,7 @@
     "affiliate": "Affiliate marketing",
     "kocPerformance": "KOC performance",
     "shopAnalytics": "Shop analytics",
-    "videoAnalytics": "Video Analytics",
+    "videoAnalytics": "Video performance",
     "bookings": "Bookings",
     "staffEvaluationBeta": "Staff Evaluation (Beta)",
     "activeBookings": "Active bookings",
@@ -211,7 +213,7 @@
     "dueSoon": "Due soon",
     "completed": "Completed",
     "channels": "Channels",
-    "videos": "Videos",
+    "videos": "Video library",
     "reports": "Reports",
     "chat": "Chat",
     "orders": "Orders",

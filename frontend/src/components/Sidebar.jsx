@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { hasPermission } from '../lib/session';
 import { useSession } from '../lib/useSession';
@@ -78,14 +78,14 @@ const sidebarIcons = {
 const routeIconMap = {
   '/dashboard': 'dashboard',
   '/channel-reports': 'reports',
-  '/manage/affiliate': 'analytics',
+  '/manage/affiliate': 'koc',
   '/manage/users': 'users',
   '/manage/shops': 'shop',
   '/manage/schedules': 'schedule',
   '/manage/queues': 'schedule',
   '/manage/koc-performance': 'koc',
   '/manage/shop-analytics': 'shopAnalytics',
-  '/manage/video-analytics': 'videos',
+  '/manage/video-analytics': 'analytics',
   '/bookings': 'bookings',
   '/orders': 'orders',
   '/manage/channels': 'channels',
@@ -105,29 +105,24 @@ const SidebarIcon = ({ name }) => {
   );
 };
 
-const CollapseIcon = ({ isCollapsed }) => (
-  <svg className="sidebar__toggle-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    <path d={isCollapsed ? 'm9 6 6 6-6 6' : 'm15 6-6 6 6 6'} />
-  </svg>
-);
-
-const PlatformIcon = ({ type }) => (
+const AdminIcon = () => (
   <svg className="sidebar__platform-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-    {type === 'admin' ? (
-      <>
-        <circle cx="12" cy="8" r="3.5" />
-        <path d="M5.5 20c.4-4.2 2.6-6.3 6.5-6.3s6.1 2.1 6.5 6.3h-13Z" />
-      </>
-    ) : (
-      <>
-        <path d="M13.2 3v10.1a3.2 3.2 0 1 1-2.5-3.1v3a1.3 1.3 0 1 0 .6 1.1V3h1.9Z" />
-        <path d="M13.2 3c.4 2.1 1.7 3.5 4 4v2.5a7.3 7.3 0 0 1-4-1.8V3Z" />
-      </>
-    )}
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5.5 20c.4-4.2 2.6-6.3 6.5-6.3s6.1 2.1 6.5 6.3h-13Z" />
   </svg>
 );
 
-const Sidebar = ({ isCollapsed, onToggle }) => {
+const TikTokIcon = () => (
+  <svg className="sidebar__platform-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <g stroke="none">
+      <path fill="#25f4ee" transform="translate(-.65 .45)" d="M13 3h3a5 5 0 0 0 5 5v3a8 8 0 0 1-5-1.75V16a6 6 0 1 1-6-6v3a3 3 0 1 0 3 3V3Z" />
+      <path fill="#fe2c55" transform="translate(.65 -.45)" d="M13 3h3a5 5 0 0 0 5 5v3a8 8 0 0 1-5-1.75V16a6 6 0 1 1-6-6v3a3 3 0 1 0 3 3V3Z" />
+      <path fill="#111827" d="M13 3h3a5 5 0 0 0 5 5v3a8 8 0 0 1-5-1.75V16a6 6 0 1 1-6-6v3a3 3 0 1 0 3 3V3Z" />
+    </g>
+  </svg>
+);
+
+const Sidebar = ({ id, isCollapsed = false, onToggle, isMobile = false, onNavigate }) => {
   const { t } = useI18n();
   const location = useLocation();
   const session = useSession();
@@ -136,53 +131,29 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
     || location.pathname.startsWith('/manage/schedules')
     || location.pathname.startsWith('/manage/queues');
 
-  const isTikTokShopArea = [
-    '/manage/affiliate',
-    '/manage/koc-performance',
-    '/manage/shop-analytics',
-    '/manage/video-analytics',
-    '/bookings',
-    '/orders',
-    '/reports',
-  ].some((prefix) => location.pathname.startsWith(prefix));
   const can = (permission) => hasPermission(session, permission);
   const activeSectionTitle = isAdminArea ? 'Admin' : 'TikTok';
   const visibleSections = sidebarSections.filter((section) => section.title === activeSectionTitle);
-  const activeTikTokGroup = isTikTokShopArea ? 'tiktok-shop' : 'tiktok-channel';
-  const [openGroups, setOpenGroups] = useState({ [activeTikTokGroup]: true });
-
-  useEffect(() => {
-    if (activeSectionTitle !== 'TikTok') return;
-    setOpenGroups((current) => ({ ...current, [activeTikTokGroup]: true }));
-  }, [activeSectionTitle, activeTikTokGroup]);
-
-  const toggleGroup = (groupId) => {
-    if (isCollapsed) {
-      onToggle();
-      setOpenGroups((current) => ({ ...current, [groupId]: true }));
-      return;
-    }
-    setOpenGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
-  };
-
   return (
-    <aside className={`sidebar${isCollapsed ? ' sidebar--collapsed' : ''}`}>
+    <aside id={id} className={`sidebar${isCollapsed ? ' sidebar--collapsed' : ''}`}>
       <div className="sidebar__header">
-        {!isCollapsed ? (
-          <span className="sidebar__header-label">
-            <PlatformIcon type={isAdminArea ? 'admin' : 'tiktok'} />
-            {activeSectionTitle}
-          </span>
-        ) : null}
+        <span className="sidebar__header-label">
+          {isAdminArea ? <AdminIcon /> : <TikTokIcon />}
+          {activeSectionTitle}
+        </span>
         <button
           type="button"
           className="sidebar__toggle"
           onClick={onToggle}
-          aria-label={isCollapsed ? t('navigation.expand') : t('navigation.collapse')}
-          aria-expanded={!isCollapsed}
-          title={isCollapsed ? t('navigation.expand') : t('navigation.collapse')}
+          aria-label={t(isMobile ? 'navigation.closeMenu' : isCollapsed ? 'navigation.expand' : 'navigation.collapse')}
+          title={t(isMobile ? 'navigation.closeMenu' : isCollapsed ? 'navigation.expand' : 'navigation.collapse')}
+          aria-expanded={isMobile ? undefined : !isCollapsed}
         >
-          <CollapseIcon isCollapsed={isCollapsed} />
+          {isMobile ? <span aria-hidden="true">&times;</span> : (
+            <svg className="sidebar__toggle-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          )}
         </button>
       </div>
       <nav className="sidebar__nav" aria-label={t('navigation.workspace')}>
@@ -194,39 +165,25 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
                 .map((item) => {
                   if (item.children) {
                     const visibleChildren = item.children.filter((child) => can(child.permission));
-                    const isGroupActive = visibleChildren.some((child) => location.pathname.startsWith(child.to));
-                    const isOpen = Boolean(openGroups[item.id]);
+                    if (!visibleChildren.length) return null;
                     return (
-                      <div className="sidebar__expandable" key={item.id}>
-                        <button
-                          className={`sidebar__link sidebar__link--button${isGroupActive ? ' sidebar__link--group-active' : ''}`}
-                          type="button"
-                          aria-expanded={isOpen}
-                          onClick={() => toggleGroup(item.id)}
-                          title={t(item.labelKey)}
-                        >
-                          <span className="sidebar__group-label">
-                            <SidebarIcon name={item.icon} />
-                            {!isCollapsed ? <span className="sidebar__link-label">{t(item.labelKey)}</span> : null}
-                          </span>
-                          {!isCollapsed ? (
-                            <span className={`sidebar__chevron${isOpen ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
-                          ) : null}
-                        </button>
-                        {isOpen && !isCollapsed ? (
-                          <div className="sidebar__subnav">
-                            {visibleChildren.map((child) => (
-                              <NavLink
-                                className={({ isActive }) => `sidebar__sublink${isActive ? ' sidebar__sublink--active' : ''}`}
-                                key={child.to}
-                                to={child.to}
-                              >
-                                <span>{t(child.labelKey)}</span>
-                              </NavLink>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                      <section className="sidebar__group" key={item.id} aria-label={t(item.labelKey)}>
+                        <h2 className="sidebar__group-title">{t(item.labelKey)}</h2>
+                        {visibleChildren.map((child) => (
+                          <NavLink
+                            className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}
+                            key={child.to}
+                            to={child.to}
+                            title={t(child.labelKey)}
+                            aria-label={t(child.labelKey)}
+                            onClick={onNavigate}
+                            end
+                          >
+                            <SidebarIcon name={routeIconMap[child.to]} />
+                            <span className="sidebar__link-label">{t(child.labelKey)}</span>
+                          </NavLink>
+                        ))}
+                      </section>
                     );
                   }
                   return (
@@ -234,10 +191,13 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
                       key={item.to}
                       to={item.to}
                       className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}
+                      aria-label={t(item.labelKey)}
+                      onClick={onNavigate}
+                      end
                       title={t(item.labelKey)}
                     >
                       <SidebarIcon name={routeIconMap[item.to]} />
-                      {!isCollapsed ? <span className="sidebar__link-label">{t(item.labelKey)}</span> : null}
+                      <span className="sidebar__link-label">{t(item.labelKey)}</span>
                     </NavLink>
                   );
                 })}

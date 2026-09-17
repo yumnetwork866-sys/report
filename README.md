@@ -5,8 +5,32 @@
 ```bash
 corepack enable
 pnpm install
+cp backend/.env.example backend/.env
+# Configure the local PostgreSQL database and secrets in backend/.env (see below).
+pnpm --filter backend db:migrate
 pnpm dev
 ```
+
+On PowerShell, use `Copy-Item backend/.env.example backend/.env` to create the
+environment file. Do not overwrite an existing `.env`.
+
+Before starting development:
+
+- Create a dedicated local PostgreSQL database, such as `manage_team_dev`, and
+  set `DATABASE_URL` in `backend/.env` to its connection string. The database
+  must already exist before running migrations.
+- Set `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `SESSION_SECRET`. Generate a
+  session secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+  Generate separate values for the token encryption keys if using TikTok.
+- Run Redis locally and set `REDIS_URL` (default `redis://127.0.0.1:6379/1`).
+- Keep `PORT=8000` and `FRONTEND_URL=http://localhost:3005` for local development.
+- Ensure PostgreSQL's `pg_dump` is on `PATH` for migration backups. For a newly
+  created, empty dev database only, initialize with
+  `pnpm --filter backend db:migrate --no-backup` instead.
+
+The backend loads `backend/.env`; `.env.example` is only a template. Missing
+database configuration stops the backend and causes Vite's `/api` proxy to
+report `ECONNREFUSED`.
 
 `pnpm dev` runs both backend and frontend in parallel from the repo root.
 `pnpm start` builds and serves the minified frontend on port 3005 and runs the
