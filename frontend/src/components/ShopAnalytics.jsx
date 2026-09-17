@@ -1441,7 +1441,6 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
                     <div className="section-card__header">
                       <div>
                         <h2 className="section-card__title">{t('shopAnalytics.gmvBreakdown')}</h2>
-                        <p className="section-card__meta">{t('shopAnalytics.gmvBreakdownMeta')}</p>
                       </div>
                     </div>
                     {analyticsLoading && !hasData ? (
@@ -1484,7 +1483,6 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
                     <div className="section-card__header">
                       <div>
                         <h2 className="section-card__title">{t('shopAnalytics.commerceFunnel')}</h2>
-                        <p className="section-card__meta">{t('shopAnalytics.commerceFunnelMeta')}</p>
                       </div>
                     </div>
                     {analyticsLoading && !hasData ? (
