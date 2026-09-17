@@ -421,7 +421,6 @@
     "chartType": "Chart type",
     "chartType_area": "Area Chart",
     "chartType_bar": "Bar Chart",
-    "peakVideo": "Peak video",
     "filteringByDate": "Filtering videos published on {{date}}",
     "clearDateFilter": "Clear date filter",
     "clickToFilterDay": "Click a day to filter videos",

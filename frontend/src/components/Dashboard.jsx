@@ -298,15 +298,6 @@ const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount,
         <span>{t('dashboard.totalComments')}</span>
         <b>{formatNumber(item.comments)}</b>
       </div>
-      {item.top_video ? (
-        <div className="dashboard-chart-tooltip__peak">
-          <span className="dashboard-chart-tooltip__peak-title">{t('dashboard.peakVideo')}:</span>
-          <div className="dashboard-chart-tooltip__peak-name">{item.top_video.title}</div>
-          <div className="dashboard-chart-tooltip__peak-stats">
-            {formatNumber(item.top_video.views)} {t('dashboard.views')} • {formatGmvAmount(item.top_video.gross_gmv || 0, currency)}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 };

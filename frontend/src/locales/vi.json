@@ -416,7 +416,6 @@
     "chartType": "Loại biểu đồ",
     "chartType_area": "Biểu đồ sóng",
     "chartType_bar": "Biểu đồ cột",
-    "peakVideo": "Top video đỉnh",
     "filteringByDate": "Đang lọc video đăng ngày {{date}}",
     "clearDateFilter": "Bỏ lọc ngày",
     "clickToFilterDay": "Nhấp vào ngày để lọc video",

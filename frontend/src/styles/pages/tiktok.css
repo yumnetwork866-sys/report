@@ -7360,33 +7360,6 @@
   border-color: #ef4444;
 }
 
-.dashboard-chart-tooltip__peak {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--color-border);
-  font-size: 0.75rem;
-}
-
-.dashboard-chart-tooltip__peak-title {
-  color: #0d9488;
-  font-weight: 600;
-}
-
-.dashboard-chart-tooltip__peak-name {
-  color: var(--color-text);
-  font-weight: 500;
-  margin: 2px 0;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.dashboard-chart-tooltip__peak-stats {
-  color: var(--color-muted);
-  font-size: 0.72rem;
-}
-
 .order-product-management__summary,
 .order-product-management__toolbar,
 .order-product-management__create,
