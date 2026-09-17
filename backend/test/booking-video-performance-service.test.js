@@ -4,7 +4,6 @@ const test = require('node:test');
 const {
   calculateActualPerformance,
   applyBookingProductPerformance,
-  loadOrderMetricsForBookingProducts,
   normalizeBookingProducts,
   __test: {
     affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingDateRange, matchesBookingProducts, metricOfAffiliateSnapshot,
@@ -359,4 +358,3 @@ test('applyBookingProductPerformance sets default product_performance when no db
   assert.equal(result[0].product_performance.breakdown[0].id, 'p-1');
   assert.equal(result[1].product_performance.has_products, false);
 });
-

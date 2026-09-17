@@ -62,9 +62,7 @@ TIKTOK_SCOPES=user.info.basic
 Before deploying, set `TIKTOK_TOKEN_ENCRYPTION_KEY` and `SESSION_SECRET` to separate, unique secrets of at least 32 characters. Set `VITE_PRIVACY_CONTACT_EMAIL` in the frontend environment to the monitored address used for privacy and deletion requests.
 If you want to override the default bootstrap admin account, set `ADMIN_USERNAME` in `backend/.env`. It can be a plain username like `megumin`; the backend will derive a valid internal email for the admin record automatically.
 
-For the Facebook webhook, Meta should call the public API origin that serves `GET /webhook`. In this project that is the backend host from `BASE_URL`, so the callback URL should be `https://backend_domain.vn/webhook` if you are using the current deployment values. Do not point Meta at the frontend host unless that host proxies `/webhook` to the backend.
-
-For Meta review, the public website should expose these direct URLs on the frontend host and they should all resolve without authentication:
+The public website exposes these direct URLs on the frontend host without authentication:
 
 - `/`
 - `/privacy`
@@ -135,6 +133,3 @@ If you are already inside `psql` and see `postgres=#`, switch to the right datab
 ```sql
 \c report
 ```
-
-Run seed
-pnpm backend:seed:facebook:test

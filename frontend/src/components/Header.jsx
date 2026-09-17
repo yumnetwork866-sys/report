@@ -3,13 +3,12 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Link2 } from 'lucide-react';
 import AppLogo from './AppLogo';
 import {
-  getFacebookOauthUrl,
   getTikTokOauthUrl,
   startTikTokPartnerOauth,
   startTikTokShopOauth,
   updateUser,
 } from '../lib/api';
-import { clearStoredSession, hasPermission, isAdminSession, saveStoredSession } from '../lib/session';
+import { clearStoredSession, hasPermission, saveStoredSession } from '../lib/session';
 import { useSession } from '../lib/useSession';
 import { useI18n } from '../lib/language';
 import { setStoredCurrency, useCurrency } from '../lib/currency';
@@ -24,17 +23,6 @@ const TikTokGlyph = () => (
 );
 
 const ConnectionIcon = ({ type }) => {
-  if (type === 'facebook') {
-    return (
-      <span className="topbar__connect-icon topbar__connect-icon--facebook" aria-hidden="true">
-        <svg viewBox="0 0 32 32" focusable="false">
-          <rect width="32" height="32" rx="8" fill="#1877f2" />
-          <path fill="#fff" d="M18.5 27V17.2h3.3l.5-3.8h-3.8V11c0-1.1.3-1.8 1.9-1.8h2V5.8c-.4 0-1.6-.2-3-.2-3 0-5 1.8-5 5.1v2.8H11v3.8h3.4V27h4.1Z" />
-        </svg>
-      </span>
-    );
-  }
-
   return (
     <span className={`topbar__connect-icon${type === 'creator' || type === 'shop' ? ' topbar__connect-icon--creator' : ''}`} aria-hidden="true">
       <TikTokGlyph />
@@ -82,7 +70,6 @@ const Header = () => {
   const location = useLocation();
   const session = useSession();
   const hasSession = Boolean(session);
-  const isAdmin = isAdminSession(session);
   const [activeMenu, setActiveMenu] = useState(null);
   const [connectingTarget, setConnectingTarget] = useState(null);
   const [connectionError, setConnectionError] = useState('');
@@ -162,7 +149,6 @@ const Header = () => {
 
   const navLabels = {
     '/dashboard': t('nav.tiktok'),
-    '/chatbot': t('nav.facebook'),
     '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
@@ -170,11 +156,9 @@ const Header = () => {
     { id: 'tiktok', group: 'tiktok', label: t('header.connectTikTok'), meta: t('header.connectTikTokMeta') },
     { id: 'creator', group: 'tiktok', label: t('header.connectTikTokCreator'), meta: t('header.connectTikTokCreatorMeta') },
     { id: 'shop', group: 'tiktok', label: t('header.connectTikTokShop'), meta: t('header.connectTikTokShopMeta') },
-    { id: 'facebook', group: 'facebook', label: t('header.connectFacebook'), meta: t('header.connectFacebookMeta') },
   ];
   const connectionGroups = [
     { id: 'tiktok', label: 'TikTok' },
-    { id: 'facebook', label: 'Facebook' },
   ];
   const canAccessTopNavItem = (item) => hasPermission(session, item.permission)
     || (item.alternatePermission && hasPermission(session, item.alternatePermission));
@@ -186,11 +170,7 @@ const Header = () => {
       return location.pathname.startsWith('/manage/users')
         || location.pathname.startsWith('/manage/shops')
         || location.pathname.startsWith('/manage/schedules')
-        || location.pathname.startsWith('/manage/queues')
-        || location.pathname.startsWith('/chatbot/chat-setting');
-    }
-    if (to === '/chatbot') {
-      return location.pathname.startsWith('/chatbot') && !location.pathname.startsWith('/chatbot/chat-setting');
+        || location.pathname.startsWith('/manage/queues');
     }
 
     if (to === '/dashboard') {
@@ -249,7 +229,6 @@ const Header = () => {
         ({ authorizeUrl } = await startTikTokPartnerOauth('/manage/koc-performance', { createKoc: true }));
       }
       if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth());
-      if (target === 'facebook') authorizeUrl = await getFacebookOauthUrl();
       if (!authorizeUrl) throw new Error(t('header.connectionError'));
       setActiveMenu(null);
       window.location.assign(authorizeUrl);
@@ -444,16 +423,6 @@ const Header = () => {
                     </div>
                     {userEmail ? <span>{userEmail}</span> : null}
                   </div>
-                  {isAdmin ? (
-                    <Link
-                      to="/chatbot/chat-setting"
-                      className="topbar__account-item"
-                      role="menuitem"
-                      onClick={() => setActiveMenu(null)}
-                    >
-                      {t('header.settings')}
-                    </Link>
-                  ) : null}
                   <button
                     type="button"
                     className="topbar__account-item"

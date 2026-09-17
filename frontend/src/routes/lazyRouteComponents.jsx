@@ -2,7 +2,6 @@ import { lazy } from 'react';
 
 export const ChannelManagement = lazy(() => import('../components/ChannelManagement'));
 export const ChannelReport = lazy(() => import('../components/ChannelReport'));
-export const ChatbotManagement = lazy(() => import('../components/ChatbotManagement'));
 export const BookingManagement = lazy(() => import('../components/BookingManagement'));
 export const Dashboard = lazy(() => import('../components/Dashboard'));
 export const EmployeeTable = lazy(() => import('../components/EmployeeTable'));

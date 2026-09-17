@@ -16,7 +16,6 @@
     "check": "pnpm lint && pnpm test && pnpm build",
     "backend:dev": "pnpm --filter backend dev",
     "backend:start": "pnpm --filter backend start",
-    "backend:seed:facebook:test": "pnpm --filter backend seed:facebook:test",
     "backend:seed:demo:full": "pnpm --filter backend seed:demo:full",
     "frontend:dev": "pnpm --filter frontend dev",
     "frontend:build": "pnpm --filter frontend build"

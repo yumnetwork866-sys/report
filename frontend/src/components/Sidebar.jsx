@@ -47,20 +47,6 @@ const sidebarIcons = {
     'M8 13h8',
     'M8 17h5',
   ],
-  chat: [
-    'M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4v-4H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z',
-  ],
-  settings: [
-    'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z',
-    'M4 12h2',
-    'M18 12h2',
-    'M12 4v2',
-    'M12 18v2',
-    'M5.6 5.6 7 7',
-    'M18.4 5.6l-1.4 1.4',
-    'M5.6 18.4l1.4-1.4',
-    'M18.4 18.4l-1.4-1.4',
-  ],
   schedule: [
     'M7 3v3',
     'M17 3v3',
@@ -105,11 +91,6 @@ const routeIconMap = {
   '/manage/channels': 'channels',
   '/videos': 'videos',
   '/reports': 'reports',
-  '/chatbot/dashboard': 'dashboard',
-  '/chatbot/chat': 'chat',
-  '/chatbot/chat-setting': 'settings',
-  '/chatbot/orders': 'orders',
-
 };
 
 const SidebarIcon = ({ name }) => {
@@ -137,8 +118,6 @@ const PlatformIcon = ({ type }) => (
         <circle cx="12" cy="8" r="3.5" />
         <path d="M5.5 20c.4-4.2 2.6-6.3 6.5-6.3s6.1 2.1 6.5 6.3h-13Z" />
       </>
-    ) : type === 'facebook' ? (
-      <path d="M14 21v-8h2.8l.4-3H14V8.1c0-.9.3-1.6 1.7-1.6h1.8V3.8c-.3 0-1.4-.1-2.6-.1-2.6 0-4.4 1.6-4.4 4.5V10H7.6v3h2.9v8H14Z" />
     ) : (
       <>
         <path d="M13.2 3v10.1a3.2 3.2 0 1 1-2.5-3.1v3a1.3 1.3 0 1 0 .6 1.1V3h1.9Z" />
@@ -155,9 +134,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
   const isAdminArea = location.pathname.startsWith('/manage/users')
     || location.pathname.startsWith('/manage/shops')
     || location.pathname.startsWith('/manage/schedules')
-    || location.pathname.startsWith('/manage/queues')
-    || location.pathname.startsWith('/chatbot/chat-setting');
-  const isFacebookArea = location.pathname.startsWith('/chatbot');
+    || location.pathname.startsWith('/manage/queues');
 
   const isTikTokShopArea = [
     '/manage/affiliate',
@@ -169,7 +146,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
     '/reports',
   ].some((prefix) => location.pathname.startsWith(prefix));
   const can = (permission) => hasPermission(session, permission);
-  const activeSectionTitle = isAdminArea ? 'Admin' : isFacebookArea ? 'Facebook' : 'TikTok';
+  const activeSectionTitle = isAdminArea ? 'Admin' : 'TikTok';
   const visibleSections = sidebarSections.filter((section) => section.title === activeSectionTitle);
   const activeTikTokGroup = isTikTokShopArea ? 'tiktok-shop' : 'tiktok-channel';
   const [openGroups, setOpenGroups] = useState({ [activeTikTokGroup]: true });
@@ -193,7 +170,7 @@ const Sidebar = ({ isCollapsed, onToggle }) => {
       <div className="sidebar__header">
         {!isCollapsed ? (
           <span className="sidebar__header-label">
-            <PlatformIcon type={isAdminArea ? 'admin' : isFacebookArea ? 'facebook' : 'tiktok'} />
+            <PlatformIcon type={isAdminArea ? 'admin' : 'tiktok'} />
             {activeSectionTitle}
           </span>
         ) : null}

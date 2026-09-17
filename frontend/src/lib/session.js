@@ -1,7 +1,5 @@
 const SESSION_STORAGE_KEY = 'content_report_session';
-const FB_CHATBOT_TOKEN_STORAGE_KEY = 'content_report_fb_chatbot_token';
 const SESSION_CHANGE_EVENT = 'content-report-session-change';
-const FB_CHATBOT_TOKEN_CHANGE_EVENT = 'content-report-fb-chatbot-token-change';
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 function decodeTokenPayload(token) {
@@ -175,34 +173,4 @@ export function hasPermission(session, permission) {
   if (!permission) return true;
   if (isAdminSession(session)) return true;
   return getSessionPermissions(session).includes(permission);
-}
-
-export function getStoredFacebookChatbotToken() {
-  return readStorage(FB_CHATBOT_TOKEN_STORAGE_KEY) || null;
-}
-
-export function saveStoredFacebookChatbotToken(token) {
-  if (!token) {
-    clearStoredFacebookChatbotToken();
-    return;
-  }
-
-  try {
-    const previousToken = localStorage.getItem(FB_CHATBOT_TOKEN_STORAGE_KEY);
-    localStorage.setItem(FB_CHATBOT_TOKEN_STORAGE_KEY, token);
-    if (previousToken !== token) dispatchChange(FB_CHATBOT_TOKEN_CHANGE_EVENT);
-  } catch {
-    // A blocked storage API must not crash the application shell.
-  }
-}
-
-export function clearStoredFacebookChatbotToken() {
-  try {
-    if (localStorage.getItem(FB_CHATBOT_TOKEN_STORAGE_KEY) === null) return false;
-    localStorage.removeItem(FB_CHATBOT_TOKEN_STORAGE_KEY);
-    dispatchChange(FB_CHATBOT_TOKEN_CHANGE_EVENT);
-    return true;
-  } catch {
-    return false;
-  }
 }

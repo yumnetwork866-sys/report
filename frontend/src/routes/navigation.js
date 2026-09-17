@@ -41,22 +41,12 @@ export const sidebarSections = [
     ],
   },
   {
-    title: 'Facebook',
-    items: [
-      { to: '/chatbot/dashboard', labelKey: 'navigation.dashboard', permission: 'chatbots' },
-      { to: '/chatbot/chat', labelKey: 'navigation.chat', permission: 'chatbots' },
-      { to: '/chatbot/orders', labelKey: 'navigation.orders', permission: 'chatbots' },
-    ],
-  },
-
-  {
     title: 'Admin',
     items: [
       { to: '/manage/users', labelKey: 'navigation.users', permission: 'users' },
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'tiktok' },
       { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin' },
       { to: '/manage/queues', labelKey: 'navigation.queues', permission: 'admin' },
-      { to: '/chatbot/chat-setting', labelKey: 'navigation.chatSettings', permission: 'chatbots' },
     ],
   },
 ];
@@ -164,48 +154,9 @@ export const protectedRouteCards = [
       heroSubtitle: '',
     },
   },
-  {
-    path: '/chatbot/dashboard',
-    component: 'ChatbotManagement',
-    permission: 'chatbots',
-    props: {
-      heroTitle: 'Facebook',
-      heroSubtitle: '',
-    },
-  },
-
-  {
-    path: '/chatbot/chat',
-    component: 'ChatbotManagement',
-    permission: 'chatbots',
-    props: {
-      heroTitle: 'Chat',
-      heroSubtitle: '',
-    },
-  },
-  {
-    path: '/chatbot/chat-setting',
-    component: 'ChatbotManagement',
-    permission: 'chatbots',
-    props: {
-      heroTitle: 'Chat setting',
-      heroSubtitle: '',
-    },
-  },
-  {
-    path: '/chatbot/orders',
-    component: 'ChatbotManagement',
-    permission: 'chatbots',
-    props: {
-      heroTitle: 'Orders',
-      heroSubtitle: '',
-    },
-  },
 ];
 
 export const redirectRoutes = [
   { path: '/manage', to: '/manage/users' },
   { path: '/manage/koc', to: '/manage/koc-performance' },
-  { path: '/chatbot', to: '/chatbot/dashboard' },
-  { path: '/chatbot/rag', to: '/chatbot/chat-setting' },
 ];

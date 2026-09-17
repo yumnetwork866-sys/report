@@ -2,12 +2,7 @@ require('dotenv').config();
 
 const {
   Booking,
-  ChatbotKnowledgeDoc,
-  ChatbotMessage,
-  ChatbotOrder,
   ChatbotSetting,
-  FacebookPage,
-  FacebookUserSession,
   Product,
   TikTokChannel,
   TikTokPartnerAuthorization,
@@ -383,84 +378,11 @@ const seed = async () => {
     summary.shops = shops.length;
     summary.shopAnalyticsSnapshots = shops.length * 3;
 
-    const pageSeeds = [
-      ['demo_full_fb_beauty', 'Demo Beauty Lab', 'Khách hàng Beauty'],
-      ['demo_full_fb_hair', 'Demo Hair Studio', 'Khách hàng Hair'],
-    ];
-    for (const [pageIndex, [pageId, pageName, customerPrefix]] of pageSeeds.entries()) {
-      await FacebookPage.upsert({
-        id: pageId,
-        name: pageName,
-        access_token_encrypted: `${DEMO_PREFIX}facebook_page_token_${pageIndex + 1}`,
-        owner_id: `${DEMO_PREFIX}owner`,
-        owner_name: 'Demo Social Team',
-        avatar_url: avatar(pageName),
-        connected_at: addDays(now, -45),
-        updated_at: now,
-      }, { transaction });
-      for (let customerIndex = 0; customerIndex < 6; customerIndex += 1) {
-        const senderId = `${DEMO_PREFIX}customer_${pageIndex}_${customerIndex}`;
-        await ChatbotMessage.destroy({ where: { sender_id: senderId }, transaction });
-        await ChatbotOrder.destroy({ where: { sender_id: senderId }, transaction });
-        await ChatbotMessage.bulkCreate([
-          {
-            sender_id: senderId,
-            page_id: pageId,
-            display_name: `${customerPrefix} ${customerIndex + 1}`,
-            avatar_url: avatar(senderId),
-            direction: 'in',
-            text: ['Shop tư vấn giúp mình sản phẩm phù hợp nhé', 'Sản phẩm này dùng bao lâu có hiệu quả?', 'Mình muốn kiểm tra phí giao hàng'][customerIndex % 3],
-            via: 'customer',
-            created_at: addDays(now, -customerIndex),
-          },
-          {
-            sender_id: senderId,
-            page_id: pageId,
-            display_name: pageName,
-            avatar_url: avatar(pageName),
-            direction: 'out',
-            text: 'Chào bạn, shop đã nhận được tin nhắn và sẽ tư vấn ngay ạ.',
-            via: customerIndex % 2 ? 'bot' : 'agent',
-            created_at: new Date(addDays(now, -customerIndex).getTime() + 5 * 60 * 1000),
-          },
-        ], { transaction });
-        if (customerIndex < 4) {
-          await ChatbotOrder.create({
-            sender_id: senderId,
-            page_id: pageId,
-            raw: `[DEMO] Đơn hàng ${customerIndex + 1}`,
-            name: `${customerPrefix} ${customerIndex + 1}`,
-            phone: `09000000${pageIndex}${customerIndex}`,
-            address: `${customerIndex + 10} Nguyễn Huệ, Quận 1, TP.HCM`,
-            status: ['new', 'confirmed', 'done', 'cancelled'][customerIndex % 4],
-            created_at: addDays(now, -customerIndex),
-          }, { transaction });
-        }
-      }
-    }
-    await FacebookUserSession.upsert({
-      sid: `${DEMO_PREFIX}facebook_session`,
-      user_id: `${DEMO_PREFIX}facebook_user`,
-      user_name: 'Demo Social Team',
-      avatar_url: avatar('Demo Social Team'),
-      user_token_encrypted: `${DEMO_PREFIX}facebook_user_token`,
-      expires_at: addDays(now, 30),
-      created_at: addDays(now, -45),
-    }, { transaction });
-    await ChatbotKnowledgeDoc.destroy({ where: { title: { [require('sequelize').Op.like]: '[DEMO]%' } }, transaction });
-    await ChatbotKnowledgeDoc.bulkCreate([
-      { title: '[DEMO] Chính sách giao hàng', content: 'Đơn hàng demo được giao trong 2–4 ngày làm việc. Miễn phí vận chuyển từ 500.000đ.', embedding: null, created_at: now },
-      { title: '[DEMO] Chính sách đổi trả', content: 'Hỗ trợ đổi trả trong 7 ngày nếu sản phẩm chưa qua sử dụng và còn nguyên tem.', embedding: null, created_at: now },
-      { title: '[DEMO] Hướng dẫn tư vấn', content: 'Luôn hỏi tình trạng hiện tại, mục tiêu và sản phẩm khách đang sử dụng trước khi đề xuất routine.', embedding: null, created_at: now },
-    ], { transaction });
     await ChatbotSetting.findOrCreate({
       where: { id: 1 },
       defaults: { id: 1, provider: 'gemini', model: 'gemma-3-27b-it', ollama_host: 'http://127.0.0.1:11434', updated_at: now },
       transaction,
     });
-    summary.facebookPages = pageSeeds.length;
-    summary.chatbotConversations = pageSeeds.length * 6;
-    summary.chatbotOrders = pageSeeds.length * 4;
   });
 
   console.log(JSON.stringify({ ok: true, seededAt: now.toISOString(), summary }, null, 2));

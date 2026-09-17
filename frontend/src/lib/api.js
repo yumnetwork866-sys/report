@@ -1,4 +1,4 @@
-import { clearStoredSessionIfTokenMatches, getStoredSession, getStoredFacebookChatbotToken } from './session.js';
+import { clearStoredSessionIfTokenMatches, getStoredSession } from './session.js';
 
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
@@ -8,11 +8,7 @@ async function apiRequest(path, options = {}) {
     : options.body;
 
   const sessionToken = getStoredSession()?.token || null;
-  const {
-    signal,
-    facebookToken: facebookChatbotToken = null,
-    ...restOptions
-  } = options;
+  const { signal, ...restOptions } = options;
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     cache: 'no-store',
@@ -20,7 +16,6 @@ async function apiRequest(path, options = {}) {
     headers: {
       'Content-Type': 'application/json',
       ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-      ...(facebookChatbotToken ? { 'X-FB-Chatbot-Token': facebookChatbotToken } : {}),
       ...(restOptions.headers || {}),
     },
     ...restOptions,
@@ -770,98 +765,6 @@ export function loginAdmin(payload) {
 
 export function getTikTokOauthUrl() {
   return apiRequest('/channels/oauth/tiktok/start').then((response) => response.authorizeUrl);
-}
-
-export function getFacebookOauthUrl() {
-  return apiRequest('/chatbot/facebook/start').then((response) => response.authorizeUrl);
-}
-
-export function fetchChatbotFacebookMe(signal) {
-  return apiRequest('/chatbot/facebook/me', { signal, facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function logoutChatbotFacebook() {
-  return apiRequest('/chatbot/facebook/logout', { method: 'POST', facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function revokeChatbotFacebookAccount() {
-  return apiRequest('/chatbot/facebook/revoke', { method: 'POST', facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function revokeChatbotFacebookAccountByUser(userId) {
-  return apiRequest(`/chatbot/facebook/users/${encodeURIComponent(userId)}/revoke`, {
-    method: 'POST',
-    facebookToken: getStoredFacebookChatbotToken(),
-  });
-}
-
-export function fetchFacebookManagedPages(signal) {
-  return apiRequest('/chatbot/facebook/me/pages', { signal, facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function connectFacebookPage(pageId) {
-  return apiRequest(`/chatbot/pages/${pageId}/connect`, { method: 'POST', facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function disconnectFacebookPage(pageId) {
-  return apiRequest(`/chatbot/pages/${pageId}`, { method: 'DELETE', facebookToken: getStoredFacebookChatbotToken() });
-}
-
-export function fetchChatbotPages(signal) {
-  return apiRequest('/chatbot/pages', { signal });
-}
-
-export function fetchChatbotStats(signal) {
-  return apiRequest('/chatbot/stats', { signal });
-}
-
-export function fetchChatbotConversations(signal) {
-  return apiRequest('/chatbot/conversations', { signal });
-}
-
-export function fetchChatbotMessages(senderId, pageId, signal) {
-  const params = new URLSearchParams({ senderId });
-  if (pageId) params.set('pageId', pageId);
-  return apiRequest(`/chatbot/messages?${params.toString()}`, { signal });
-}
-
-export function sendChatbotMessage(payload) {
-  return apiRequest('/chatbot/send', { method: 'POST', body: payload });
-}
-
-export function fetchChatbotOrders(signal) {
-  return apiRequest('/chatbot/orders', { signal });
-}
-
-export function updateChatbotOrder(orderId, payload) {
-  return apiRequest(`/chatbot/orders/${orderId}`, { method: 'PATCH', body: payload });
-}
-
-export function fetchChatbotKnowledgeDocs(signal) {
-  return apiRequest('/chatbot/kb', { signal });
-}
-
-export function createChatbotKnowledgeDoc(payload) {
-  return apiRequest('/chatbot/kb', { method: 'POST', body: payload });
-}
-
-export function deleteChatbotKnowledgeDoc(docId) {
-  return apiRequest(`/chatbot/kb/${docId}`, { method: 'DELETE' });
-}
-
-export function fetchChatbotSettings(signal) {
-  return apiRequest('/chatbot/settings', { signal });
-}
-
-export function fetchChatbotOllamaModels(signal) {
-  return apiRequest('/chatbot/ollama/models', { signal });
-}
-
-export function updateChatbotSettings(payload) {
-  return apiRequest('/chatbot/settings', {
-    method: 'PUT',
-    body: payload,
-  });
 }
 
 export function fetchQueues({ status = 'ALL', queueName = 'tiktok-sync', limit = 50 } = {}, signal) {

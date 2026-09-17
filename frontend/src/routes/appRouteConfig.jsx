@@ -5,7 +5,6 @@ import {
   BookingManagement,
   ChannelManagement,
   ChannelReport,
-  ChatbotManagement,
   Dashboard,
   DataDeletionPage,
   EmployeeTable,
@@ -33,7 +32,6 @@ const componentMap = {
   BookingManagement,
   ChannelManagement,
   ChannelReport,
-  ChatbotManagement,
 };
 
 export const publicRouteConfig = [

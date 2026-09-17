@@ -17,7 +17,6 @@
     "db:reset": "node src/migrations/run.js reset",
     "db:check": "node src/db/check.js",
     "seed:demo:full": "node src/scripts/seedFullDemoData.js",
-    "seed:facebook:test": "node src/scripts/seedFacebookTestData.js",
     "sync:tiktok": "node src/jobs/syncTiktokChannels.js",
     "backfill:creator-daily": "node src/scripts/backfillCreatorDailyPerformance.js",
     "sync:tiktok:scheduler": "node src/jobs/scheduleTiktokSync.js",
