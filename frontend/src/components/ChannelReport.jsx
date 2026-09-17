@@ -372,6 +372,65 @@ const TeamSelectDropdown = ({ teams, value, onChange }) => {
   );
 };
 
+const ReportSelectDropdown = ({ id, options, value, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+  const selectedOption = options.find((option) => String(option.value) === String(value)) || options[0];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === 'Escape'
+        || (event.type === 'pointerdown' && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', close);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', close);
+    };
+  }, [open]);
+
+  return (
+    <div className="channel-report-channel-picker channel-report-single-picker" ref={rootRef}>
+      <button
+        id={id}
+        className="channel-report-channel-picker__trigger"
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span className="channel-report-channel-picker__current">
+          <span title={selectedOption?.label}>{selectedOption?.label}</span>
+        </span>
+        <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
+      </button>
+      {open ? (
+        <div className="channel-report-channel-picker__menu" role="listbox">
+          {options.map((option) => {
+            const selected = String(option.value) === String(value);
+            return (
+              <button
+                type="button"
+                className={`channel-report-channel-picker__option${selected ? ' channel-report-channel-picker__option--active' : ''}`}
+                role="option"
+                aria-selected={selected}
+                key={option.value}
+                onClick={() => { onChange(option.value); setOpen(false); }}
+              >
+                <span><strong>{option.label}</strong></span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const ChannelReport = () => {
   const { language } = useI18n();
   const [report, setReport] = useState(null);
@@ -711,8 +770,7 @@ const ChannelReport = () => {
     };
   }, [activeReportTab, mergedMembers, previousGroups, previousRevenueGroups, visibleGroups]);
 
-  const changePeriodMode = (event) => {
-    const nextMode = event.target.value;
+  const changePeriodMode = (nextMode) => {
     if (nextMode === 'custom') {
       const range = monthRange(selectedMonth);
       setStartDate(range.startDate);
@@ -1236,27 +1294,25 @@ const ChannelReport = () => {
             </div>
             <div className="field channel-report-month">
               <label htmlFor="channel-report-period-mode">Kỳ báo cáo</label>
-              <select
+              <ReportSelectDropdown
                 id="channel-report-period-mode"
                 value={periodMode}
                 onChange={changePeriodMode}
-              >
-                <option value="month">Theo tháng</option>
-                <option value="custom">Tùy chỉnh</option>
-              </select>
+                options={[
+                  { value: 'month', label: 'Theo tháng' },
+                  { value: 'custom', label: 'Tùy chỉnh' },
+                ]}
+              />
             </div>
             {periodMode === 'month' ? (
               <div className="field channel-report-month">
                 <label htmlFor="channel-report-month">Tháng đánh giá</label>
-                <select
+                <ReportSelectDropdown
                   id="channel-report-month"
                   value={selectedMonth}
-                  onChange={(event) => setSelectedMonth(event.target.value)}
-                >
-                  {monthOptions.map((option) => (
-                    <option value={option.value} key={option.value}>{option.label}</option>
-                  ))}
-                </select>
+                  onChange={setSelectedMonth}
+                  options={monthOptions}
+                />
               </div>
             ) : (
               <>

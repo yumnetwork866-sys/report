@@ -1199,6 +1199,11 @@
   position: relative;
 }
 
+.channel-report-single-picker .channel-report-channel-picker__menu {
+  min-width: 100%;
+  width: 100%;
+}
+
 .channel-report-channel-picker__trigger {
   display: flex;
   align-items: center;
