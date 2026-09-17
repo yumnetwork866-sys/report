@@ -12,6 +12,7 @@ const BookingEvaluationTable = ({
   bookingTab,
   productPerformanceByBooking,
   videoPerformanceByBooking,
+  bookingInPeriodById,
   productOrdersByShop,
   onSelectProduct,
   formatMoney,
@@ -98,6 +99,7 @@ const BookingEvaluationTable = ({
                   bookingTab={bookingTab}
                   performance={performance}
                   videoData={videoData}
+                  showBookingCost={bookingInPeriodById.get(String(booking.id))}
                   shopOrders={shopOrders}
                   onSelectProduct={onSelectProduct}
                   formatMoney={formatMoney}

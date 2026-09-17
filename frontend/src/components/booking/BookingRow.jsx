@@ -21,6 +21,7 @@ const BookingRow = memo(({
   bookingTab,
   performance,
   videoData,
+  showBookingCost,
   shopOrders,
   onSelectProduct,
   formatMoney,
@@ -77,7 +78,7 @@ const BookingRow = memo(({
         </td>
         <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
         <td className="cell-number booking-total-cost-column">
-          <strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong>
+          <strong>{showBookingCost ? formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency) : '—'}</strong>
         </td>
         <td className="booking-video-column">
           <span className="booking-video-count">

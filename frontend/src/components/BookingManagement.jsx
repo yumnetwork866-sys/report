@@ -544,6 +544,7 @@ const BookingManagement = ({
     sortedBookingsOfGroup,
     productPerformanceByBooking,
     videoPerformanceByBooking,
+    bookingInPeriodById,
   } = useBookingAnalytics({
     bookings,
     users,
@@ -858,6 +859,7 @@ const BookingManagement = ({
               bookingTab,
               productPerformanceByBooking,
               videoPerformanceByBooking,
+              bookingInPeriodById,
               productOrdersByShop,
               onSelectProduct: setProductOrderDetailModal,
               formatMoney,
