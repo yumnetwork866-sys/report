@@ -174,6 +174,17 @@ export const finiteNumber = (value) => {
   return Number.isFinite(number) ? number : 0;
 };
 
+const BOOKING_PERFORMANCE_SORT_FIELDS = {
+  refunds: 'refunded_gmv',
+  items_sold: 'items_sold',
+  samples: 'samples_shipped',
+  commission: 'estimated_commission',
+};
+
+export const bookingPerformanceSortValue = (performance, sortKey) => (
+  finiteNumber(performance?.[BOOKING_PERFORMANCE_SORT_FIELDS[sortKey]])
+);
+
 export const optionalNumber = (value) => {
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);

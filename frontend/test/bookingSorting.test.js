@@ -1,5 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { bookingPerformanceSortValue } from '../src/lib/bookingMetrics.js';
+
+test('reads the correct performance value for every sortable metric column', () => {
+  const lower = {
+    items_sold: 2,
+    refunded_gmv: 10,
+    samples_shipped: 1,
+    estimated_commission: 5,
+  };
+  const higher = {
+    items_sold: 20,
+    refunded_gmv: 100,
+    samples_shipped: 10,
+    estimated_commission: 50,
+  };
+
+  for (const key of ['items_sold', 'refunds', 'samples', 'commission']) {
+    assert.ok(
+      bookingPerformanceSortValue(higher, key) > bookingPerformanceSortValue(lower, key),
+      `${key} must compare values from two different bookings`,
+    );
+  }
+});
 
 // Test sorting simulation logic mirroring BookingManagement
 test('sorting prioritizes period GMV over lifetime GMV when date range is selected', () => {
