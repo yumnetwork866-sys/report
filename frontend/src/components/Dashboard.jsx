@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Area,
   Bar,
   CartesianGrid,
   Cell,
@@ -92,7 +91,7 @@ const dashboardInitialFilters = () => {
     period,
     startDate: params.get('start_date') || fallback.startDate,
     endDate: params.get('end_date') || fallback.endDate,
-    metric: dailyMetricOptions.some((item) => item.value === params.get('metric')) ? params.get('metric') : 'views',
+    metric: dailyMetricOptions.some((item) => item.value === params.get('metric')) ? params.get('metric') : 'gmv',
   };
 };
 
@@ -204,8 +203,8 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled }) => {
 };
 
 const dailyMetricOptions = [
-  { value: 'views', labelKey: 'dashboard.metric_views_daily', Icon: Eye },
   { value: 'gmv', labelKey: 'dashboard.metric_gmv_daily', Icon: CircleDollarSign },
+  { value: 'views', labelKey: 'dashboard.metric_views_daily', Icon: Eye },
   { value: 'orders', labelKey: 'dashboard.totalOrders', Icon: ShoppingBag },
   { value: 'likes', labelKey: 'dashboard.metric_likes', Icon: Heart },
   { value: 'shares', labelKey: 'dashboard.metric_shares', Icon: Share2 },
@@ -751,9 +750,27 @@ const Dashboard = () => {
     });
   }, [chartMetric, chartRows, dailyMetric, locale, selectedChartDate, t]);
 
+  const averageGmv = chartData.length
+    ? chartData.reduce((sum, item) => sum + (Number(item.gross_gmv) || 0), 0) / chartData.length
+    : 0;
+
+  const averageViews = chartData.length
+    ? chartData.reduce((sum, item) => sum + (Number(item.views) || 0), 0) / chartData.length
+    : 0;
+
   const averageChartValue = chartData.length
     ? chartData.reduce((sum, item) => sum + item.value, 0) / chartData.length
     : 0;
+
+  const handleMetricChange = useCallback(
+    (nextMetric) => {
+      setDailyMetric(nextMetric);
+      if (nextMetric !== 'gmv' && chartType === 'area') {
+        setChartType('bar');
+      }
+    },
+    [chartType],
+  );
 
   const metricLabel = useMemo(() => {
     if (chartMetric === 'date') {
@@ -917,7 +934,7 @@ const Dashboard = () => {
               <MetricPicker
                 id="dashboard-daily-metric"
                 value={dailyMetric}
-                onChange={setDailyMetric}
+                onChange={handleMetricChange}
                 t={t}
               />
             </div>
@@ -989,15 +1006,6 @@ const Dashboard = () => {
                 <BarChart2 size={15} />
                 <span>{t('dashboard.chartType_bar')}</span>
               </button>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${chartType === 'dual' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setChartType('dual')}
-                title={t('dashboard.chartType_dual')}
-              >
-                <TrendingUp size={15} />
-                <span>{t('dashboard.chartType_dual')}</span>
-              </button>
             </div>
           </div>
         ) : null}
@@ -1009,11 +1017,29 @@ const Dashboard = () => {
           <div className="dashboard-chart-shell">
             <div className="dashboard-chart-summary" aria-hidden="true">
               <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
-              <span>{t('dashboard.averageMetric', { metric: metricLabel })} <strong>{dailyMetric === 'gmv' ? formatGmvAmount(Math.round(averageChartValue), totals.sales_currency) : formatNumber(Math.round(averageChartValue))}</strong></span>
+              <span>
+                {chartType === 'area' ? (
+                  <>
+                    <span>{t('dashboard.totalGmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
+                    {' · '}
+                    <span>{t('dashboard.totalViews')} <strong>{formatNumber(Math.round(averageViews))}</strong></span>
+                  </>
+                ) : (
+                  <>
+                    {t('dashboard.averageMetric', { metric: metricLabel })}
+                    {' '}
+                    <strong>
+                      {dailyMetric === 'gmv'
+                        ? formatGmvAmount(Math.round(averageChartValue), totals.sales_currency)
+                        : formatNumber(Math.round(averageChartValue))}
+                    </strong>
+                  </>
+                )}
+              </span>
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 26, right: chartType === 'dual' ? 12 : 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                <ComposedChart data={chartData} margin={{ top: 26, right: chartType === 'area' ? 12 : 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                   <defs>
                     <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
@@ -1022,12 +1048,29 @@ const Dashboard = () => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
                   <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
-                  {chartType === 'dual' ? (
+                  {chartType === 'area' ? (
                     <>
-                      <YAxis yAxisId="gmv" width={72} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={(value) => formatGmvAmount(value, totals.sales_currency, { compact: true })} />
-                      <YAxis yAxisId="views" orientation="right" width={58} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={(value) => Intl.NumberFormat(locale, { notation: 'compact' }).format(value)} />
+                      <YAxis
+                        yAxisId="gmv"
+                        width={72}
+                        tickLine={false}
+                        axisLine={false}
+                        tick={chartTick}
+                        tickFormatter={(value) => formatGmvAmount(value, totals.sales_currency, { compact: true })}
+                      />
+                      <YAxis
+                        yAxisId="views"
+                        orientation="right"
+                        width={58}
+                        tickLine={false}
+                        axisLine={false}
+                        tick={chartTick}
+                        tickFormatter={(value) => Intl.NumberFormat(locale, { notation: 'compact' }).format(value)}
+                      />
                     </>
-                  ) : <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />}
+                  ) : (
+                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
+                  )}
                   <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
                   <Legend
                     verticalAlign="top"
@@ -1037,8 +1080,29 @@ const Dashboard = () => {
                     iconSize={8}
                   />
                   {chartType === 'area' ? (
-                    <Area name={metricLabel} type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#dashboardAreaGradient)" activeDot={{ r: 5 }} />
-                  ) : chartType === 'bar' ? (
+                    <>
+                      <Line
+                        yAxisId="gmv"
+                        name={t('dashboard.totalGmv')}
+                        type="monotone"
+                        dataKey="gross_gmv"
+                        stroke="#f97316"
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 5 }}
+                      />
+                      <Line
+                        yAxisId="views"
+                        name={t('dashboard.totalViews')}
+                        type="monotone"
+                        dataKey="views"
+                        stroke="var(--color-primary, #0ea5e9)"
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 5 }}
+                      />
+                    </>
+                  ) : (
                     <Bar name={metricLabel} dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]} barSize={26}>
                       {chartData.map((entry) => <Cell key={`bar-cell-${entry.rawDate}`} fillOpacity={selectedChartDate && selectedChartDate !== entry.rawDate ? 0.45 : 1} />)}
                       <LabelList
@@ -1046,11 +1110,6 @@ const Dashboard = () => {
                         content={<DashboardBarLabel total={chartData.length} formatter={yAxisFormatter} />}
                       />
                     </Bar>
-                  ) : (
-                    <>
-                      <Line yAxisId="gmv" name={t('dashboard.totalGmv')} type="monotone" dataKey="gross_gmv" stroke="#f97316" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                      <Line yAxisId="views" name={t('dashboard.totalViews')} type="monotone" dataKey="views" stroke="var(--color-primary, #0ea5e9)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-                    </>
                   )}
                 </ComposedChart>
               </ResponsiveContainer>
