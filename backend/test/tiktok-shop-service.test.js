@@ -93,23 +93,23 @@ test('seller OAuth URL contains service id and a verifiable expiring state', (t)
   assert.equal(url.searchParams.get('service_id'), 'service-id');
   const state = parseShopAuthorizationState(url.searchParams.get('state'));
   assert.equal(state.oauthType, 'shop');
-  assert.equal(state.returnPath, '/manage/shop-analytics');
+  assert.equal(state.returnPath, '/shop/analytics');
   assert.ok(state.nonce);
   assert.ok(state.expiresAt > Date.now());
 });
 
-test('seller OAuth preserves the standalone affiliate return page', (t) => {
+test('seller OAuth preserves the affiliate return page', (t) => {
   configure(t);
-  const url = new URL(buildShopAuthorizationUrl('/manage/affiliate'));
+  const url = new URL(buildShopAuthorizationUrl('/shop/affiliate'));
   const state = parseShopAuthorizationState(url.searchParams.get('state'));
-  assert.equal(state.returnPath, '/manage/affiliate');
+  assert.equal(state.returnPath, '/shop/affiliate');
 });
 
-test('seller OAuth preserves the standalone video analytics return page', (t) => {
+test('seller OAuth preserves the video analytics return page', (t) => {
   configure(t);
-  const url = new URL(buildShopAuthorizationUrl('/manage/video-analytics'));
+  const url = new URL(buildShopAuthorizationUrl('/shop/videos'));
   const state = parseShopAuthorizationState(url.searchParams.get('state'));
-  assert.equal(state.returnPath, '/manage/video-analytics');
+  assert.equal(state.returnPath, '/shop/videos');
 });
 
 test('seller authorization code is exchanged through the TikTok Shop token endpoint', async (t) => {

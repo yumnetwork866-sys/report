@@ -155,7 +155,7 @@ export function fetchTikTokPartnerStatuses(signal) {
   return apiRequest('/bookings/tiktok-partner/status', { signal });
 }
 
-export function startTikTokPartnerOauth(returnPath = '/bookings', { creatorId, createKoc = false } = {}) {
+export function startTikTokPartnerOauth(returnPath = '/shop/bookings', { creatorId, createKoc = false } = {}) {
   const params = new URLSearchParams({ return_path: returnPath });
   if (creatorId) params.set('creator_id', creatorId);
   if (createKoc) params.set('create_koc', 'true');

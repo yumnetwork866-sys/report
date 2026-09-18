@@ -76,20 +76,19 @@ const sidebarIcons = {
 };
 
 const routeIconMap = {
-  '/dashboard': 'dashboard',
-  '/channel-reports': 'reports',
-  '/manage/affiliate': 'koc',
+  '/channels/overview': 'dashboard',
+  '/channels/reports': 'reports',
+  '/shop/affiliate': 'koc',
   '/manage/users': 'users',
   '/manage/shops': 'shop',
   '/manage/schedules': 'schedule',
   '/manage/queues': 'schedule',
   '/manage/koc-performance': 'koc',
-  '/manage/shop-analytics': 'shopAnalytics',
-  '/manage/video-analytics': 'analytics',
-  '/bookings': 'bookings',
-  '/orders': 'orders',
-  '/manage/channels': 'channels',
-  '/videos': 'videos',
+  '/shop/analytics': 'shopAnalytics',
+  '/shop/bookings': 'bookings',
+  '/shop/orders': 'orders',
+  '/channels/manage': 'channels',
+  '/shop/videos': 'videos',
   '/reports': 'reports',
 };
 

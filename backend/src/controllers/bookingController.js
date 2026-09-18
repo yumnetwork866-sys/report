@@ -1771,8 +1771,10 @@ const startTikTokPartnerOauth = async (req, res) => {
   }
 };
 
-const buildPartnerReturnUrl = (status, message, creatorId, returnPath = '/bookings') => {
-  const safeReturnPath = ['/bookings', '/manage/koc-performance'].includes(returnPath) ? returnPath : '/bookings';
+const buildPartnerReturnUrl = (status, message, creatorId, returnPath = '/shop/bookings') => {
+  const safeReturnPath = ['/shop/bookings', '/manage/koc-performance', '/bookings'].includes(returnPath)
+    ? returnPath
+    : '/shop/bookings';
   const url = new URL(safeReturnPath, process.env.FRONTEND_URL || 'http://localhost:3005');
   url.searchParams.set('partner_oauth_status', status);
   if (message) url.searchParams.set('partner_oauth_message', message);
@@ -1782,7 +1784,7 @@ const buildPartnerReturnUrl = (status, message, creatorId, returnPath = '/bookin
 
 const handleTikTokPartnerOauthCallback = async (req, res) => {
   let creatorId;
-  let returnPath = '/bookings';
+  let returnPath = '/shop/bookings';
   try {
     const state = parseAuthorizationState(req.query.state);
     if (state.oauthType === 'shop') return handleShopOauthCallback(req, res);

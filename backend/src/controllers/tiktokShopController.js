@@ -97,8 +97,12 @@ const addMarketplaceCategoryNames = async (creators, shop) => {
   });
 };
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:3005';
-const redirectUrl = (status, message, returnPath = '/manage/shop-analytics') => {
-  const safeReturnPath = ['/manage/shops', '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/koc-performance', '/manage/affiliate'].includes(returnPath) ? returnPath : '/manage/shop-analytics';
+const redirectUrl = (status, message, returnPath = '/shop/analytics') => {
+  const safeReturnPath = [
+    '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
+    '/manage/koc-performance',
+    '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/affiliate',
+  ].includes(returnPath) ? returnPath : '/shop/analytics';
   const url = new URL(safeReturnPath, FRONTEND_URL());
   url.searchParams.set('shop_oauth_status', status);
   if (message) url.searchParams.set('shop_oauth_message', message);
@@ -179,7 +183,7 @@ const startShopOauth = async (req, res) => {
 };
 
 const handleShopOauthCallback = async (req, res) => {
-  let returnPath = '/manage/shop-analytics';
+  let returnPath = '/shop/analytics';
   try {
     const oauthState = parseShopAuthorizationState(req.query.state);
     returnPath = oauthState.returnPath;
@@ -222,7 +226,7 @@ const handleShopOauthCallback = async (req, res) => {
       });
     });
     sellerAffiliateCache.clear();
-    const requestedAffiliate = ['/manage/koc-performance', '/manage/affiliate'].includes(oauthState.returnPath);
+    const requestedAffiliate = ['/manage/koc-performance', '/shop/affiliate', '/manage/affiliate'].includes(oauthState.returnPath);
     const requiredScope = requestedAffiliate ? 'seller.affiliate_collaboration.read' : 'data.shop_analytics.public.read';
     const hasRequiredScope = normalizedScopes.includes(requiredScope);
     return res.redirect(redirectUrl(

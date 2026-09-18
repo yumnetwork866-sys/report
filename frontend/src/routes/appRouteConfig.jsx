@@ -1,5 +1,4 @@
 import React from 'react';
-import { Navigate } from 'react-router-dom';
 import { LoginRoute, RequirePermission } from './guards';
 import {
   BookingManagement,
@@ -20,6 +19,7 @@ import {
   TermsPage,
 } from './lazyRouteComponents';
 import { protectedRouteCards, redirectRoutes } from './navigation';
+import LegacyRedirect from './LegacyRedirect';
 
 const componentMap = {
   Dashboard,
@@ -63,5 +63,5 @@ export const protectedRouteConfig = protectedRouteCards.map(({ path, component, 
 
 export const protectedRedirectConfig = redirectRoutes.map(({ path, to }) => ({
   path,
-  element: <Navigate to={to} replace />,
+  element: <LegacyRedirect to={to} />,
 }));

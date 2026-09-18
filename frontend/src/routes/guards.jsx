@@ -18,13 +18,13 @@ export function LoginRoute({ children }) {
   const session = useSession();
 
   if (session) {
-    return <Navigate to="/manage/shop-analytics" replace />;
+    return <Navigate to="/shop/analytics" replace />;
   }
 
   return children;
 }
 
-export function RequirePermission({ permission, children, fallback = '/dashboard' }) {
+export function RequirePermission({ permission, children, fallback = '/channels/overview' }) {
   const location = useLocation();
   const session = useSession();
 

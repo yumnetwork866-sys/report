@@ -1051,8 +1051,8 @@ const ShopAnalytics = ({
         managementOnly
           ? '/manage/shops'
           : videoOnly
-            ? videoExportOnly ? '/videos' : '/manage/video-analytics'
-            : '/manage/shop-analytics',
+            ? videoExportOnly ? '/shop/videos' : '/shop/videos?view=performance'
+            : '/shop/analytics',
       );
       if (!authorizeUrl) throw new Error(t('shopAnalytics.oauthError'));
       window.location.assign(authorizeUrl);

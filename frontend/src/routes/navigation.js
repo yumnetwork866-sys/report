@@ -1,10 +1,10 @@
 export const topNavItems = [
   {
-    to: '/manage/shop-analytics',
+    to: '/shop/analytics',
     label: 'TikTok',
     permission: 'tiktok',
     alternatePermission: 'reports',
-    fallbackTo: '/dashboard',
+    fallbackTo: '/channels/overview',
   },
   { to: '/manage/users', label: 'Admin', permission: 'users' },
 ];
@@ -19,11 +19,11 @@ export const sidebarSections = [
         icon: 'shop',
         permission: 'tiktok',
         children: [
-          { to: '/manage/shop-analytics', labelKey: 'navigation.shopAnalytics', permission: 'tiktok' },
-          { to: '/videos', labelKey: 'navigation.videos', permission: 'tiktok' },
-           { to: '/manage/affiliate', labelKey: 'navigation.affiliate', permission: 'tiktok' },
-           { to: '/orders', labelKey: 'navigation.orders', permission: 'tiktok' },
-           { to: '/bookings', labelKey: 'navigation.bookings', permission: 'tiktok' },
+          { to: '/shop/analytics', labelKey: 'navigation.shopAnalytics', permission: 'tiktok' },
+          { to: '/shop/videos', labelKey: 'navigation.videos', permission: 'tiktok' },
+           { to: '/shop/affiliate', labelKey: 'navigation.affiliate', permission: 'tiktok' },
+           { to: '/shop/orders', labelKey: 'navigation.orders', permission: 'tiktok' },
+           { to: '/shop/bookings', labelKey: 'navigation.bookings', permission: 'tiktok' },
          ],
       },
       {
@@ -32,9 +32,9 @@ export const sidebarSections = [
         icon: 'channels',
         permission: 'reports',
         children: [
-          { to: '/dashboard', labelKey: 'navigation.channelOverview', permission: 'reports' },
-          { to: '/channel-reports', labelKey: 'navigation.reports', permission: 'reports' },
-          { to: '/manage/channels', labelKey: 'navigation.channels', permission: 'reports' },
+          { to: '/channels/overview', labelKey: 'navigation.channelOverview', permission: 'reports' },
+          { to: '/channels/reports', labelKey: 'navigation.reports', permission: 'reports' },
+          { to: '/channels/manage', labelKey: 'navigation.channels', permission: 'reports' },
         ],
       },
     ],
@@ -52,7 +52,7 @@ export const sidebarSections = [
 
 export const protectedRouteCards = [
   {
-    path: '/dashboard',
+    path: '/channels/overview',
     component: 'Dashboard',
     permission: 'reports',
     props: {
@@ -61,7 +61,7 @@ export const protectedRouteCards = [
     },
   },
   {
-    path: '/channel-reports',
+    path: '/channels/reports',
     component: 'ChannelReport',
     permission: 'reports',
     props: {},
@@ -97,7 +97,7 @@ export const protectedRouteCards = [
     props: { managementOnly: true },
   },
   {
-    path: '/manage/affiliate',
+    path: '/shop/affiliate',
     component: 'SellerAffiliatePanel',
     permission: 'tiktok',
     props: {},
@@ -112,19 +112,19 @@ export const protectedRouteCards = [
     },
   },
   {
-    path: '/manage/shop-analytics',
+    path: '/shop/analytics',
     component: 'ShopAnalytics',
     permission: 'tiktok',
     props: { heroTitle: 'Shop analytics' },
   },
   {
-    path: '/videos',
+    path: '/shop/videos',
     component: 'ShopAnalytics',
     permission: 'tiktok',
     props: { videoOnly: true, combinedVideoTabs: true },
   },
   {
-    path: '/bookings',
+    path: '/shop/bookings',
     component: 'BookingManagement',
     permission: 'tiktok',
     props: {
@@ -133,13 +133,13 @@ export const protectedRouteCards = [
     },
   },
   {
-    path: '/orders',
+    path: '/shop/orders',
     component: 'SellerAffiliatePanel',
     permission: 'tiktok',
     props: { initialSection: 'orders', ordersOnly: true },
   },
   {
-    path: '/manage/channels',
+    path: '/channels/manage',
     component: 'ChannelManagement',
     permission: 'reports',
     props: {
@@ -152,5 +152,13 @@ export const protectedRouteCards = [
 export const redirectRoutes = [
   { path: '/manage', to: '/manage/users' },
   { path: '/manage/koc', to: '/manage/koc-performance' },
-  { path: '/manage/video-analytics', to: '/videos?view=performance' },
+  { path: '/manage/shop-analytics', to: '/shop/analytics' },
+  { path: '/videos', to: '/shop/videos' },
+  { path: '/manage/video-analytics', to: '/shop/videos?view=performance' },
+  { path: '/manage/affiliate', to: '/shop/affiliate' },
+  { path: '/orders', to: '/shop/orders' },
+  { path: '/bookings', to: '/shop/bookings' },
+  { path: '/dashboard', to: '/channels/overview' },
+  { path: '/channel-reports', to: '/channels/reports' },
+  { path: '/manage/channels', to: '/channels/manage' },
 ];

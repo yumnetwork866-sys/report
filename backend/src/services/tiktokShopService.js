@@ -54,12 +54,16 @@ const assertConfigured = (config, { oauth = false } = {}) => {
 
 const signState = (payload, secret) => crypto.createHmac('sha256', secret).update(payload).digest('base64url');
 
-const buildShopAuthorizationUrl = (returnPath = '/manage/shop-analytics') => {
+const buildShopAuthorizationUrl = (returnPath = '/shop/analytics') => {
   const config = getConfig();
   assertConfigured(config, { oauth: true });
   const payload = Buffer.from(JSON.stringify({
     oauthType: 'shop',
-    returnPath: ['/manage/shops', '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/koc-performance', '/manage/affiliate'].includes(returnPath) ? returnPath : '/manage/shop-analytics',
+    returnPath: [
+      '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
+      '/manage/koc-performance',
+      '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/affiliate',
+    ].includes(returnPath) ? returnPath : '/shop/analytics',
     nonce: crypto.randomBytes(16).toString('hex'),
     expiresAt: Date.now() + STATE_TTL_MS,
   })).toString('base64url');

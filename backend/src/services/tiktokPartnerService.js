@@ -38,13 +38,15 @@ const signState = (payload, appSecret) => crypto.createHmac('sha256', appSecret)
 
 const buildAuthorizationUrl = (options = {}) => {
   const normalizedOptions = typeof options === 'string' ? { returnPath: options } : options;
-  const returnPath = normalizedOptions.returnPath || '/bookings';
+  const returnPath = normalizedOptions.returnPath || '/shop/bookings';
   const creatorId = Number(normalizedOptions.creatorId);
   const config = getConfig();
   assertAppConfigured(config, { requireRedirect: true });
   const payload = Buffer.from(JSON.stringify({
     oauthType: 'creator',
-    returnPath: ['/bookings', '/manage/koc-performance'].includes(returnPath) ? returnPath : '/bookings',
+    returnPath: ['/shop/bookings', '/manage/koc-performance', '/bookings'].includes(returnPath)
+      ? returnPath
+      : '/shop/bookings',
     creator_id: Number.isInteger(creatorId) && creatorId > 0 ? creatorId : null,
     create_koc: normalizedOptions.createKoc === true,
     nonce: crypto.randomBytes(16).toString('hex'),

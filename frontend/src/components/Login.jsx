@@ -30,7 +30,7 @@ const Login = () => {
       setError('');
       const session = await loginAdmin(form);
       saveStoredSession(session);
-      navigate('/manage/shop-analytics', { replace: true });
+      navigate('/shop/analytics', { replace: true });
     } catch (err) {
       setError(err.message || t('login.error'));
     } finally {

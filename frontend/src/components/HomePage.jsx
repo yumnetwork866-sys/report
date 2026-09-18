@@ -19,7 +19,7 @@ const HomePage = () => {
             {t('home.heroPrefix')} <span>{t('home.heroHighlight')}</span>
           </h1>
           <div className="home-page__actions">
-            <Link to="/manage/shop-analytics" className="home-page__cta home-page__cta--primary">
+            <Link to="/shop/analytics" className="home-page__cta home-page__cta--primary">
               {t('home.startNow')}
               <span aria-hidden="true">→</span>
             </Link>

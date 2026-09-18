@@ -148,7 +148,7 @@ const Header = () => {
   };
 
   const navLabels = {
-    '/dashboard': t('nav.tiktok'),
+    '/shop/analytics': t('nav.tiktok'),
     '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
@@ -173,17 +173,11 @@ const Header = () => {
         || location.pathname.startsWith('/manage/queues');
     }
 
-    if (to === '/dashboard') {
+    if (to === '/shop/analytics') {
       return [
-        '/dashboard',
-        '/channel-reports',
-        '/manage/channels',
-        '/videos',
-        '/manage/affiliate',
+        '/shop',
+        '/channels',
         '/manage/koc-performance',
-        '/manage/shop-analytics',
-        '/manage/video-analytics',
-        '/bookings',
         '/reports',
       ].some((prefix) => location.pathname.startsWith(prefix));
     }
