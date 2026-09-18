@@ -105,7 +105,15 @@ const ChannelManagement = ({ heroTitle }) => {
 
   const renderChannelIdentity = (channel) => (
     <>
-      <AppAvatar src={channel.avatar_url} name={channel.display_name || channel.username || 'Channel'} seed={channel.id || channel.username} className="channel-cell__avatar" fallbackClassName="channel-cell__avatar--empty" alt={channel.display_name || channel.username || 'Channel avatar'} />
+      <AppAvatar
+        src={channel.avatar_url}
+        name={channel.display_name || channel.username || 'Channel'}
+        seed={channel.id || channel.username}
+        className="channel-cell__avatar"
+        fallbackClassName="channel-cell__avatar--empty"
+        alt={channel.display_name || channel.username || 'Channel avatar'}
+        generated={false}
+      />
       <div className="channel-cell__meta">
         <span className="row-title">{channel.display_name}</span>
         {!isFallbackUsername(channel.username) ? <div className="row-subtitle">@{channel.username}</div> : null}

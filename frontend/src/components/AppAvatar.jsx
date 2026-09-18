@@ -15,6 +15,11 @@ const AppAvatar = ({
   generated = true,
 }) => {
   const identity = String(seed || name || 'user').trim() || 'user';
+  const initial = String(name || seed || 'U')
+    .trim()
+    .replace(/^@/, '')
+    .charAt(0)
+    .toUpperCase() || 'U';
   const candidates = useMemo(() => [...new Set([
     src,
     ...sources,
@@ -26,7 +31,7 @@ const AppAvatar = ({
   useEffect(() => setSourceIndex(0), [sourceKey]);
 
   if (!candidates[sourceIndex]) {
-    return <span className={`${className} ${fallbackClassName}`.trim()} aria-hidden="true">{identity.charAt(0).toUpperCase()}</span>;
+    return <span className={`${className} ${fallbackClassName}`.trim()} aria-hidden="true">{initial}</span>;
   }
 
   return (

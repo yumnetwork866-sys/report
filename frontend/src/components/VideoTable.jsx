@@ -17,7 +17,17 @@ const PAGE_SIZE = 20;
 
 const ChannelAvatar = ({ channel, className, fallbackClassName, alt }) => {
   const name = channel?.display_name || channel?.username || 'Channel';
-  return <AppAvatar sources={[channel?.avatar_url, channel?.avatar_large_url]} name={name} seed={channel?.id || channel?.username} className={className} fallbackClassName={fallbackClassName} alt={alt} />;
+  return (
+    <AppAvatar
+      sources={[channel?.avatar_url, channel?.avatar_large_url]}
+      name={name}
+      seed={channel?.id || channel?.username}
+      className={className}
+      fallbackClassName={fallbackClassName}
+      alt={alt}
+      generated={false}
+    />
+  );
 };
 
 export const ChannelPicker = ({
