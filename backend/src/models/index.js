@@ -242,6 +242,8 @@ const BookingVideoPerformanceSnapshot = sequelize.define('BookingVideoPerformanc
   net_gmv: DataTypes.DECIMAL(20, 4),
   orders: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   items_sold: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 },
+  items_refunded: DataTypes.BIGINT,
+  estimated_commission: DataTypes.DECIMAL(20, 4),
   views: { type: DataTypes.BIGINT, allowNull: false, defaultValue: 0 },
   ctr: DataTypes.DECIMAL(12, 6),
   currency: DataTypes.STRING(16),

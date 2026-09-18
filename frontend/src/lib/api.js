@@ -84,7 +84,15 @@ export function fetchContentTeams(signal) {
   return apiRequest('/content-teams', { signal });
 }
 
-export function fetchBookings(signal, { windowType, startDate, endDate, month, creatorUsername, creatorOpenId } = {}) {
+export function fetchBookings(signal, {
+  windowType,
+  startDate,
+  endDate,
+  month,
+  creatorUsername,
+  creatorOpenId,
+  includeProductPerformance,
+} = {}) {
   const params = new URLSearchParams();
   if (windowType) params.set('window_type', windowType);
   if (startDate) params.set('start_date', startDate);
@@ -92,6 +100,9 @@ export function fetchBookings(signal, { windowType, startDate, endDate, month, c
   if (month && month !== 'all') params.set('month', month);
   if (creatorUsername) params.set('creator_username', creatorUsername);
   if (creatorOpenId) params.set('creator_open_id', creatorOpenId);
+  if (includeProductPerformance !== undefined) {
+    params.set('include_product_performance', String(Boolean(includeProductPerformance)));
+  }
   const query = params.toString();
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }

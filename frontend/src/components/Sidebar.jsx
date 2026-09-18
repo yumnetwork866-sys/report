@@ -139,7 +139,7 @@ const Sidebar = ({ id, isCollapsed = false, onToggle, isMobile = false, onNaviga
       <div className="sidebar__header">
         <span className="sidebar__header-label">
           {isAdminArea ? <AdminIcon /> : <TikTokIcon />}
-          {activeSectionTitle}
+          <span>{activeSectionTitle}</span>
         </span>
         <button
           type="button"

@@ -364,13 +364,8 @@ const Header = () => {
                     aria-busy={Boolean(connectingTarget)}
                     onKeyDown={handleConnectMenuKeyDown}
                   >
-                    <div className="topbar__connect-head">
-                      <strong>{t('header.connections')}</strong>
-                      <span>{t('header.connectionsMeta')}</span>
-                    </div>
                     {connectionGroups.map((group) => (
                       <div className="topbar__connect-group" key={group.id} role="presentation">
-                        <span className="topbar__connect-group-label">{group.label}</span>
                         {connectionOptions.filter((option) => option.group === group.id).map((option) => (
                           <button
                             className="topbar__connect-item"

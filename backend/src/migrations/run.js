@@ -89,6 +89,7 @@ const migrations = [
   require('./079_backfill_tiktok_video_detail_snapshots'),
   require('./080_split_booking_video_detail_schedule'),
   require('./081_remove_booking_committed_videos'),
+  require('./082_add_booking_video_refund_commission'),
 ];
 
 const createMigrationRunner = ({

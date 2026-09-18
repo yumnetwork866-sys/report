@@ -218,7 +218,23 @@ const loadOrderMetricsForVideos = async ({
         SUM(s.quantity)::bigint AS items_sold,
         SUM(s.refunded_quantity)::bigint AS refunded_quantity,
         SUM(s.quantity * COALESCE(s.price, 0))::numeric AS gross_gmv,
-        SUM(s.refunded_quantity * COALESCE(s.price, 0))::numeric AS refunded_gmv
+        SUM(s.refunded_quantity * COALESCE(s.price, 0))::numeric AS refunded_gmv,
+        COUNT(*) FILTER (
+          WHERE TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
+            ~ '^-?[0-9]+([.][0-9]+)?$'
+        )::bigint AS commission_rows,
+        SUM(CASE
+          WHEN TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
+            ~ '^-?[0-9]+([.][0-9]+)?$'
+          THEN COALESCE(s.price, 0)
+            * GREATEST(COALESCE(s.quantity, 0) - COALESCE(s.refunded_quantity, 0), 0)
+            * CASE
+              WHEN TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate'))::numeric > 100
+                THEN TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate'))::numeric / 10000
+              ELSE TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate'))::numeric / 100
+            END
+          ELSE 0
+        END)::numeric AS estimated_commission
       FROM tiktok_affiliate_order_skus s
       JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
       WHERE s.shop_id IN (:shopIds)
@@ -254,6 +270,7 @@ const loadOrderMetricsForVideos = async ({
         orders,
         items_sold: itemsSold,
         refunded_quantity: numberOrZero(row.refunded_quantity),
+        estimated_commission: numberOrZero(row.commission_rows) > 0 ? numberOrZero(row.estimated_commission) : null,
         gross_gmv: grossGmv,
         refunded_gmv: refundedGmv,
         net_gmv: netGmv,
@@ -503,6 +520,9 @@ const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) 
   let refundedGmv = 0;
   let orders = 0;
   let itemsSold = 0;
+  let itemsRefunded = 0;
+  let estimatedCommission = 0;
+  let hasCommission = false;
   let currency = null;
   const matchedProducts = [];
   let found = false;
@@ -514,6 +534,11 @@ const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) 
       refundedGmv += prodMetric.refunded_gmv;
       orders += prodMetric.orders;
       itemsSold += prodMetric.items_sold;
+      itemsRefunded += numberOrZero(prodMetric.refunded_quantity);
+      if (prodMetric.estimated_commission !== null && prodMetric.estimated_commission !== undefined) {
+        estimatedCommission += numberOrZero(prodMetric.estimated_commission);
+        hasCommission = true;
+      }
       currency = currency || prodMetric.currency;
       matchedProducts.push(prodId);
     }
@@ -527,6 +552,8 @@ const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) 
       net_gmv: 0,
       orders: 0,
       items_sold: 0,
+      items_refunded: 0,
+      estimated_commission: null,
       currency: null,
       product_ids: [],
     };
@@ -539,6 +566,8 @@ const resolveOrderMetricsForVideo = (videoData, selectedProductIds = new Set()) 
     net_gmv: grossGmv - refundedGmv,
     orders,
     items_sold: itemsSold,
+    items_refunded: itemsRefunded,
+    estimated_commission: hasCommission ? estimatedCommission : null,
     currency,
     product_ids: matchedProducts,
   };
@@ -634,6 +663,8 @@ const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), ord
     net_gmv: netGmv,
     orders,
     items_sold: itemsSold,
+    items_refunded: orderMetrics?.items_refunded ?? null,
+    estimated_commission: orderMetrics?.estimated_commission ?? null,
     views: numberOrZero(snapshot.video_views),
     ctr: hasSelectedProducts ? (scoped?.ctr ?? null) : productCtrOfSnapshot(snapshot),
     currency: currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
@@ -1017,6 +1048,8 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
         ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
       const orders = orderMetrics ? numberOrZero(orderMetrics.orders) : numberOrZero(latestShopSnapshot.orders);
       const itemsSold = orderMetrics ? numberOrZero(orderMetrics.items_sold) : numberOrZero(latestShopSnapshot.items_sold);
+      const itemsRefunded = orderMetrics?.items_refunded ?? null;
+      const estimatedCommission = orderMetrics?.estimated_commission ?? null;
       const views = numberOrZero(latestShopSnapshot.views);
       const ctr = latestShopSnapshot.ctr !== null && latestShopSnapshot.ctr !== undefined ? Number(latestShopSnapshot.ctr) : null;
       const currency = orderMetrics?.currency || latestShopSnapshot.currency || 'VND';
@@ -1027,6 +1060,8 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
         net_gmv: netGmv,
         orders,
         items_sold: itemsSold,
+        items_refunded: itemsRefunded,
+        estimated_commission: estimatedCommission,
         views,
         ctr,
         currency,
@@ -1151,11 +1186,14 @@ const calculateActualPerformance = (booking) => {
   const latest = videos.map(latestSnapshot).filter(Boolean);
   const bookingCost = numberOrZero(booking.total_cost ?? booking.booking_cost);
   const grossGmv = latest.reduce((sum, row) => sum + numberOrZero(row.gross_gmv), 0);
+  const hasAnyRefunds = latest.some((row) => row.refunded_gmv !== null && row.refunded_gmv !== undefined);
   const hasCompleteRefunds = latest.length > 0 && latest.every((row) => row.refunded_gmv !== null && row.refunded_gmv !== undefined);
-  const refundedGmv = hasCompleteRefunds
+  const refundedGmv = hasAnyRefunds
     ? latest.reduce((sum, row) => sum + numberOrZero(row.refunded_gmv), 0)
     : null;
   const netGmv = hasCompleteRefunds ? grossGmv - refundedGmv : null;
+  const hasAnyRefundedItems = latest.some((row) => row.items_refunded !== null && row.items_refunded !== undefined);
+  const hasAnyCommission = latest.some((row) => row.estimated_commission !== null && row.estimated_commission !== undefined);
   const statuses = new Set(videos.map((video) => video.status));
   const status = !videos.length ? 'AWAITING_VIDEO'
     : statuses.has('COLLECTING') ? 'COLLECTING'
@@ -1170,6 +1208,12 @@ const calculateActualPerformance = (booking) => {
     net_gmv: netGmv,
     orders: latest.reduce((sum, row) => sum + numberOrZero(row.orders), 0),
     items_sold: latest.reduce((sum, row) => sum + numberOrZero(row.items_sold), 0),
+    items_refunded: hasAnyRefundedItems
+      ? latest.reduce((sum, row) => sum + numberOrZero(row.items_refunded), 0)
+      : null,
+    estimated_commission: hasAnyCommission
+      ? latest.reduce((sum, row) => sum + numberOrZero(row.estimated_commission), 0)
+      : null,
     views: latest.reduce((sum, row) => sum + numberOrZero(row.views), 0),
     currency: latest.find((row) => row.currency)?.currency || booking.currency || null,
     gross_roas: bookingCost > 0 && latest.length ? grossGmv / bookingCost : null,

@@ -1161,6 +1161,9 @@ const getBookings = async (req, res) => {
     const requestedMonth = String(req.query?.month || '').trim();
     const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
     const requestedOpenId = String(req.query?.creator_open_id || '').trim();
+    const includeProductPerformance = !['false', '0'].includes(
+      String(req.query?.include_product_performance || '').trim().toLowerCase(),
+    );
     const customRange = requestedWindow === 'CUSTOM'
       ? customPerformanceRange(startDate, endDate)
       : {};
@@ -1228,7 +1231,7 @@ const getBookings = async (req, res) => {
       };
     }
 
-    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}`;
+    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await Booking.findAll({
         where: {
@@ -1257,10 +1260,12 @@ const getBookings = async (req, res) => {
           periodEndDate = `${requestedMonth}-${String(lastDay).padStart(2, '0')}`;
         }
       }
-      const withProductPerf = await applyBookingProductPerformance(serialized, {
-        startDate: periodStartDate,
-        endDate: periodEndDate,
-      });
+      const withProductPerf = includeProductPerformance
+        ? await applyBookingProductPerformance(serialized, {
+          startDate: periodStartDate,
+          endDate: periodEndDate,
+        })
+        : serialized;
       return addReferencePerformance(withProductPerf, requestedWindow, customRange);
     });
 

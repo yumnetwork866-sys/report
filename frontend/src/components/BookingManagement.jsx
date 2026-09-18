@@ -5,6 +5,7 @@ import {
   deleteBooking,
   fetchBookingTargetKocDetail,
   fetchBookingTargetKocs,
+  fetchBookingProductPerformance,
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
   fetchUser,
@@ -42,9 +43,9 @@ import BookingPageHero from './booking/BookingPageHero';
 import BookingListControls from './booking/BookingListControls';
 import BookingGroupsTable from './booking/BookingGroupsTable';
 import useBookingAnalytics from './booking/useBookingAnalytics';
-import useBookingProductOrders from './booking/useBookingProductOrders';
 
 const initialForm = defaultBookingForm();
+const emptyProductOrdersByShop = Object.freeze({});
 
 const BookingManagement = ({
   heroTitle,
@@ -107,14 +108,12 @@ const BookingManagement = ({
   const [detailProductsLoading, setDetailProductsLoading] = useState(false);
   const [creatorBookings, setCreatorBookings] = useState([]);
   const [, setCreatorBookingsLoading] = useState(false);
+  const [productPerformanceLoading, setProductPerformanceLoading] = useState(() => (
+    bookingUiSession().bookingTab === 'product'
+  ));
+  const [productPerformanceError, setProductPerformanceError] = useState('');
   const [error, setError] = useState('');
-  const { productOrdersByShop, productOrdersLoading, productOrdersError } = useBookingProductOrders({
-    bookings,
-    bookingTab,
-    selectedMonth,
-    customRange,
-    t,
-  });
+  const productOrdersByShop = emptyProductOrdersByShop;
 
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
@@ -326,6 +325,7 @@ const BookingManagement = ({
       creatorOpenId: selectedBooking.creator_open_id,
       month: 'all',
       windowType: performanceWindow,
+      includeProductPerformance: false,
     })
       .then((items) => {
         if (!controller.signal.aborted && Array.isArray(items) && items.length) {
@@ -386,12 +386,51 @@ const BookingManagement = ({
       windowType: range.windowType,
       ...(range.startDate ? { startDate: range.startDate, endDate: range.endDate } : {}),
       month: 'all',
+      includeProductPerformance: false,
     })
       .then((loadedBookings) => setBookings(loadedBookings))
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [customRange, selectedMonth, t]);
+
+  useEffect(() => {
+    if (bookingTab !== 'product') {
+      setProductPerformanceLoading(false);
+      setProductPerformanceError('');
+      return undefined;
+    }
+    if (loading) return undefined;
+
+    const controller = new AbortController();
+    const range = orderRangeForPeriod(selectedMonth, customRange);
+    setProductPerformanceLoading(true);
+    setProductPerformanceError('');
+    fetchBookingProductPerformance(controller.signal, {
+      startDate: range.startDate,
+      endDate: range.endDate,
+      startTime: range.startTime,
+      endTime: range.endTime,
+    })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        const performance = payload?.performance || {};
+        setBookings((current) => current.map((booking) => ({
+          ...booking,
+          product_performance: performance[String(booking.id)] || null,
+        })));
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setProductPerformanceError(err.message || t('booking.productOrdersError'));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setProductPerformanceLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [bookingTab, customRange, loading, selectedMonth, t]);
 
   useEffect(() => {
     if (loading) return;
@@ -432,6 +471,10 @@ const BookingManagement = ({
   }, [bookings, embeddedBookingId, embeddedMode, loading]);
 
   useEffect(() => {
+    if (!isCreateBookingOpen) {
+      setTargetKocsLoading(false);
+      return undefined;
+    }
     const controller = new AbortController();
     setTargetKocsLoading(true);
     const timeout = window.setTimeout(() => {
@@ -457,7 +500,7 @@ const BookingManagement = ({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [targetKocPage, targetKocQuery, t]);
+  }, [isCreateBookingOpen, targetKocPage, targetKocQuery, t]);
 
   const selectedKocSummary = useMemo(
     () => targetKocs.find((creator) => targetKocKey(creator) === form.creator_key) || null,
@@ -614,6 +657,7 @@ const BookingManagement = ({
           endDate: currentRange.endDate,
         } : {}),
         month: 'all',
+        includeProductPerformance: false,
       }).then(setBookings).catch(() => {});
       setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
       onEmbeddedChanged?.(created);
@@ -792,7 +836,7 @@ const BookingManagement = ({
       <section className="booking-create-action">
         <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
           <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
-          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('product')}>{t('booking.productTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { if (bookingTab !== 'product') setProductPerformanceLoading(true); setBookingTab('product'); }}>{t('booking.productTab')}</button>
         </div>
         <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
       </section>
@@ -839,8 +883,8 @@ const BookingManagement = ({
           onCustomRangeChange={setCustomRange}
           t={t}
         />
-        {productOrdersError && bookingTab === 'product' ? <p className="form-error" role="alert">{productOrdersError}</p> : null}
-        {loading || (bookingTab === 'product' && productOrdersLoading) ? (
+        {productPerformanceError && bookingTab === 'product' ? <p className="form-error" role="alert">{productPerformanceError}</p> : null}
+        {loading || (bookingTab === 'product' && productPerformanceLoading) ? (
           <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div>
         ) : bookingGroupsToRender.length ? (
           <BookingGroupsTable
@@ -946,7 +990,7 @@ const BookingManagement = ({
           video={productOrderDetailModal.video}
           snapshot={productOrderDetailModal.snapshot || productOrderDetailModal.video?.snapshot}
           orders={productOrdersByShop[String(productOrderDetailModal.booking?.target_shop_id)] || []}
-          loading={productOrdersLoading}
+          loading={false}
           onClose={() => setProductOrderDetailModal(null)}
           formatMoney={formatMoney}
           formatNumber={formatNumber}

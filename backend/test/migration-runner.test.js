@@ -88,6 +88,7 @@ const defaultMigrationNames = [
   '079_backfill_tiktok_video_detail_snapshots',
   '080_split_booking_video_detail_schedule',
   '081_remove_booking_committed_videos',
+  '082_add_booking_video_refund_commission',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

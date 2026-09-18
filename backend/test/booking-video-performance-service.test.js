@@ -156,11 +156,11 @@ test('actual booking performance calculates Net ROAS only with complete refund d
     booking_videos: [
       {
         status: 'FINALIZED',
-        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '4000', refunded_gmv: '500', orders: 12 }],
+        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '4000', refunded_gmv: '500', orders: 12, items_refunded: 2, estimated_commission: '350' }],
       },
       {
         status: 'FINALIZED',
-        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '2000', refunded_gmv: '100', orders: 8 }],
+        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '2000', refunded_gmv: '100', orders: 8, items_refunded: 1, estimated_commission: '150' }],
       },
     ],
   });
@@ -170,7 +170,29 @@ test('actual booking performance calculates Net ROAS only with complete refund d
   assert.equal(result.net_gmv, 5400);
   assert.equal(result.gross_roas, 6);
   assert.equal(result.net_roas, 5.4);
+  assert.equal(result.items_refunded, 3);
+  assert.equal(result.estimated_commission, 500);
   assert.equal(result.status, 'FINALIZED');
+});
+
+test('actual booking performance exposes known commission without hiding it behind unmatched videos', () => {
+  const result = calculateActualPerformance({
+    booking_cost: 1000,
+    booking_videos: [
+      {
+        status: 'COLLECTING',
+        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '4000', refunded_gmv: '0', estimated_commission: '350' }],
+      },
+      {
+        status: 'COLLECTING',
+        performance_snapshots: [{ snapshot_date: '2026-07-23', gross_gmv: '2000', refunded_gmv: null, estimated_commission: null }],
+      },
+    ],
+  });
+
+  assert.equal(result.refunded_gmv, 0);
+  assert.equal(result.net_gmv, null);
+  assert.equal(result.estimated_commission, 350);
 });
 
 test('resolveOrderMetricsForVideo aggregates order ledger data by selected products', () => {
@@ -178,8 +200,8 @@ test('resolveOrderMetricsForVideo aggregates order ledger data by selected produ
     shop_id: 1,
     video_id: '7123456789',
     by_product: new Map([
-      ['prod-1', { product_id: 'prod-1', currency: 'VND', orders: 5, items_sold: 8, refunded_quantity: 1, gross_gmv: 500000, refunded_gmv: 50000, net_gmv: 450000 }],
-      ['prod-2', { product_id: 'prod-2', currency: 'VND', orders: 3, items_sold: 4, refunded_quantity: 0, gross_gmv: 300000, refunded_gmv: 0, net_gmv: 300000 }],
+      ['prod-1', { product_id: 'prod-1', currency: 'VND', orders: 5, items_sold: 8, refunded_quantity: 1, gross_gmv: 500000, refunded_gmv: 50000, net_gmv: 450000, estimated_commission: 45000 }],
+      ['prod-2', { product_id: 'prod-2', currency: 'VND', orders: 3, items_sold: 4, refunded_quantity: 0, gross_gmv: 300000, refunded_gmv: 0, net_gmv: 300000, estimated_commission: 30000 }],
     ]),
     products: ['prod-1', 'prod-2'],
   };
@@ -192,6 +214,8 @@ test('resolveOrderMetricsForVideo aggregates order ledger data by selected produ
   assert.equal(scopedProd1.net_gmv, 450000);
   assert.equal(scopedProd1.orders, 5);
   assert.equal(scopedProd1.items_sold, 8);
+  assert.equal(scopedProd1.items_refunded, 1);
+  assert.equal(scopedProd1.estimated_commission, 45000);
   assert.deepEqual(scopedProd1.product_ids, ['prod-1']);
 
   // 2. Scoped to an unassociated product
@@ -208,6 +232,8 @@ test('resolveOrderMetricsForVideo aggregates order ledger data by selected produ
   assert.equal(allProducts.net_gmv, 750000);
   assert.equal(allProducts.orders, 8);
   assert.equal(allProducts.items_sold, 12);
+  assert.equal(allProducts.items_refunded, 1);
+  assert.equal(allProducts.estimated_commission, 75000);
 });
 
 test('metricOfAffiliateSnapshot uses order ledger metrics when video detail is omitted', () => {

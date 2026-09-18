@@ -209,6 +209,23 @@ test('Booking list helper sends the table reference period', async () => {
   });
 });
 
+test('Booking list helper can skip product performance for the video view', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchBookings(undefined, { includeProductPerformance: false });
+
+    assert.equal(requestUrl, '/api/bookings?include_product_performance=false');
+  });
+});
+
 test('Booking list helper sends an inclusive custom date range', async () => {
   await withBrowser(async () => {
     let requestUrl;
@@ -360,4 +377,3 @@ test('fetchDashboardVideos helper formats query parameters correctly', async () 
     assert.equal(request.options.signal, controller.signal);
   });
 });
-

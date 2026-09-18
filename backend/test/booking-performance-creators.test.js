@@ -105,6 +105,34 @@ test('booking list uses the latest creator profile avatar instead of an expired 
   assert.equal(response[1].creator_avatar_url, 'https://example.test/snapshot-avatar.webp');
 });
 
+test('booking list can skip product performance enrichment for the video view', async (t) => {
+  let productPerformanceCalls = 0;
+  const { getBookings } = loadController(
+    t,
+    { Booking: { findAll: async () => [] } },
+    {},
+    {
+      applyBookingProductPerformance: async (bookings) => {
+        productPerformanceCalls += 1;
+        return bookings;
+      },
+    },
+  );
+  let response;
+
+  await getBookings(
+    { query: { include_product_performance: 'false' } },
+    {
+      json: (value) => { response = value; },
+      status: () => ({ json: () => {} }),
+      setHeader: () => {},
+    },
+  );
+
+  assert.deepEqual(response, []);
+  assert.equal(productPerformanceCalls, 0);
+});
+
 test('booking list uses the requested Creator Performance period as its table reference', async (t) => {
   let performanceQuery;
   const { getBookings } = loadController(t, {
