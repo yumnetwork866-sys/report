@@ -249,7 +249,10 @@
     "pagination": "Video pagination",
     "pageOf": "Page {{page}} / {{total}}",
     "loadError": "Failed to load videos",
-    "publishedAt": "Published date"
+    "publishedAt": "Published date",
+    "searchPlaceholder": "Search title, hashtag, or TikTok ID...",
+    "previewVideo": "Preview video {{title}}",
+    "openTikTok": "Open on TikTok"
   },
   "reports": {
     "heroTitle": "KOC performance reports",
@@ -397,6 +400,11 @@
     "errorLoad": "Failed to load dashboard data",
     "totalViews": "Total views",
     "totalGmv": "Total GMV",
+    "totalOrders": "Total Orders",
+    "aov": "Average Order Value (AOV)",
+    "aovFormula": "Formula: Total GMV / Total Orders",
+    "rpm": "Revenue / 1k views (RPM)",
+    "rpmFormula": "Formula: (Total GMV / Total Views) * 1,000",
     "engagementRate": "Engagement Rate",
     "engagementFormula": "Formula: (Likes + Comments + Shares) / Views * 100%",
     "vsPreviousPeriod": "vs previous period",
@@ -423,6 +431,7 @@
     "chartType": "Chart type",
     "chartType_area": "Area Chart",
     "chartType_bar": "Bar Chart",
+    "chartType_dual": "GMV & Views",
     "filteringByDate": "Filtering videos published on {{date}}",
     "clearDateFilter": "Clear date filter",
     "clickToFilterDay": "Click a day to filter videos",
@@ -430,6 +439,11 @@
     "period_7d": "Last 7 days",
     "period_30d": "Last 30 days",
     "period_90d": "Last 90 days",
+    "period_today": "Today",
+    "period_yesterday": "Yesterday",
+    "period_this_week": "This week",
+    "period_this_month": "This month (MTD)",
+    "period_last_month": "Last month",
     "period_custom": "Custom",
     "startDate": "Start date",
     "endDate": "End date",
@@ -438,7 +452,11 @@
     "videosPerDay": "videos/day",
     "averageMetric": "Average {{metric}}",
     "loading": "Loading data...",
-    "noVideoData": "No videos match the selected filters."
+    "noVideoData": "No videos match the selected filters.",
+    "topVideos": "Top 5 videos by GMV",
+    "topVideosByMetric": "Top 5 videos by {{metric}}",
+    "lastSynced": "Last synced: {{time}}",
+    "notSynced": "No sync data yet"
   },
   "booking": {
     "heroTitle": "Booking",

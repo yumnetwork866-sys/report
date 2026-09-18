@@ -90,6 +90,7 @@ const migrations = [
   require('./080_split_booking_video_detail_schedule'),
   require('./081_remove_booking_committed_videos'),
   require('./082_add_booking_video_refund_commission'),
+  require('./083_optimize_dashboard_video_analytics'),
 ];
 
 const createMigrationRunner = ({

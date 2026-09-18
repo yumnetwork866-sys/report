@@ -28,14 +28,19 @@ test('dashboard query only accepts safe channel, date, and metric values', () =>
     end_date: '2026-07-31',
     user_id: '12',
     metric: 'shares',
+    top_metric: 'likes',
   }), {
     channelId: 9,
     startDate: '2026-07-01',
     endDate: '2026-07-31',
     userId: 12,
     metric: 'shares',
+    topMetric: 'likes',
     page: 1,
     pageSize: 20,
+    search: '',
+    sortBy: 'published_at',
+    sortDirection: 'desc',
   });
 
   assert.deepEqual(dashboardFilters({
@@ -43,13 +48,33 @@ test('dashboard query only accepts safe channel, date, and metric values', () =>
     start_date: 'yesterday',
     user_id: '-4',
     metric: 'DROP TABLE videos',
+    top_metric: 'sales.gross_gmv; DROP TABLE videos',
   }), {
     channelId: null,
     startDate: null,
     endDate: null,
     userId: null,
     metric: 'views',
+    topMetric: 'gmv',
     page: 1,
     pageSize: 20,
+    search: '',
+    sortBy: 'published_at',
+    sortDirection: 'desc',
   });
+});
+
+test('dashboard video query accepts bounded search and allowlisted sorting', () => {
+  const filters = dashboardFilters({
+    search: '  #summer  ',
+    sort_by: 'gmv',
+    sort_direction: 'asc',
+  });
+  assert.equal(filters.search, '#summer');
+  assert.equal(filters.sortBy, 'gmv');
+  assert.equal(filters.sortDirection, 'asc');
+
+  const unsafe = dashboardFilters({ sort_by: 'v.id; DROP TABLE videos', sort_direction: 'sideways' });
+  assert.equal(unsafe.sortBy, 'published_at');
+  assert.equal(unsafe.sortDirection, 'desc');
 });

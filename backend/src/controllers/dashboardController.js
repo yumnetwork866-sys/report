@@ -1,13 +1,29 @@
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
-const { getOrSetCache, delByPattern } = require('../lib/redis');
+const { getOrSetCache } = require('../lib/redis');
 
 const DASHBOARD_CACHE_TTL_SECONDS = 180; // 3 minutes
 
-const clearDashboardCache = () => delByPattern('dashboard:*');
-
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const DASHBOARD_METRICS = new Set(['views', 'likes', 'shares', 'date', 'gmv']);
+const DASHBOARD_METRICS = new Set(['views', 'likes', 'comments', 'shares', 'orders', 'video_count', 'date', 'gmv']);
+const TOP_VIDEO_SORT_EXPRESSIONS = Object.freeze({
+  views: 'v.views',
+  gmv: 'COALESCE(sales.gross_gmv, 0)',
+  orders: 'COALESCE(sales.orders, 0)',
+  likes: 'v.likes',
+  comments: 'v.comments',
+  shares: 'v.shares',
+  video_count: 'v.published_at',
+});
+const VIDEO_SORT_FIELDS = Object.freeze({
+  published_at: 'v.published_at',
+  views: 'v.views',
+  likes: 'v.likes',
+  comments: 'v.comments',
+  shares: 'v.shares',
+  orders: 'sales.orders',
+  gmv: 'sales.gross_gmv',
+});
 const number = (value) => Number(value || 0);
 const dateOnly = (value) => {
   const text = String(value || '');
@@ -26,6 +42,9 @@ const dashboardFilters = (query = {}) => {
   const metric = DASHBOARD_METRICS.has(String(query.metric || ''))
     ? String(query.metric)
     : 'views';
+  const topMetric = Object.hasOwn(TOP_VIDEO_SORT_EXPRESSIONS, String(query.top_metric || ''))
+    ? String(query.top_metric)
+    : 'gmv';
   const pageValue = Number(query.page);
   const page = Number.isInteger(pageValue) && pageValue > 0 ? pageValue : 1;
   const pageSizeValue = Number(query.page_size);
@@ -36,14 +55,23 @@ const dashboardFilters = (query = {}) => {
   const userId = Number.isInteger(userIdValue) && userIdValue > 0
     ? userIdValue
     : null;
+  const search = String(query.search || '').trim().slice(0, 120);
+  const sortBy = Object.hasOwn(VIDEO_SORT_FIELDS, String(query.sort_by || ''))
+    ? String(query.sort_by)
+    : 'published_at';
+  const sortDirection = String(query.sort_direction || '').toLowerCase() === 'asc' ? 'asc' : 'desc';
   return {
     channelId,
     startDate,
     endDate,
     userId,
     metric,
+    topMetric,
     page,
     pageSize,
+    search,
+    sortBy,
+    sortDirection,
   };
 };
 
@@ -93,6 +121,7 @@ const fillDailyDateSeries = (startDate, endDate, rows, topVideoMap) => {
         comments: 0,
         shares: 0,
         gross_gmv: 0,
+        orders: 0,
         top_video: null,
       });
     }
@@ -109,11 +138,12 @@ const getDashboard = async (req, res) => {
       endDate,
       userId,
       metric,
+      topMetric,
       page,
       pageSize,
     } = filters;
 
-    const cacheKey = `dashboard:${channelId || 'all'}:${startDate || 'all'}:${endDate || 'all'}:${userId || 'all'}:${metric}:${page}:${pageSize}`;
+    const cacheKey = `dashboard:${channelId || 'all'}:${startDate || 'all'}:${endDate || 'all'}:${userId || 'all'}:${metric}:${topMetric}:${page}:${pageSize}`;
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async () => {
       const filterSql = `
@@ -122,6 +152,10 @@ const getDashboard = async (req, res) => {
         AND (:endDate::date IS NULL OR v.published_at::date <= :endDate)
         AND (
           :userId::int IS NULL
+          OR EXISTS (
+            SELECT 1 FROM video_assignments va
+            WHERE va.video_id = v.id AND va.user_id = :userId
+          )
           OR EXISTS (
             SELECT 1
             FROM user_content_attributions attribution
@@ -132,9 +166,8 @@ const getDashboard = async (req, res) => {
               END
             ) configured_hashtag(value)
             WHERE attribution.user_id = :userId
-              AND LOWER(configured_hashtag.value) = ANY(
-                regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
-              )
+              AND regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
+                @> ARRAY[LOWER(configured_hashtag.value)]
           )
         )
     `;
@@ -196,9 +229,8 @@ const getDashboard = async (req, res) => {
               END
             ) configured_hashtag(value)
             WHERE v.channel_id = :channelId
-              AND LOWER(configured_hashtag.value) = ANY(
-                regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
-              )
+              AND regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
+                @> ARRAY[LOWER(configured_hashtag.value)]
           )
           OR EXISTS (
             SELECT 1
@@ -222,20 +254,13 @@ const getDashboard = async (req, res) => {
           COALESCE(SUM(v.shares), 0)::bigint AS shares,
           COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
           COALESCE(SUM(sales.orders), 0)::bigint AS orders,
-          COALESCE(MAX(sales.currency), 'MYR') AS sales_currency
+          COALESCE(MAX(sales.currency), 'MYR') AS sales_currency,
+          MAX(sales.synced_at) AS last_synced_at,
+          COUNT(CASE WHEN v.status = 'unavailable' THEN 1 END)::int AS unavailable_video_count,
+          COUNT(CASE WHEN sales.shop_video_id IS NULL THEN 1 END)::int AS unlinked_video_count
         FROM videos v
-        LEFT JOIN LATERAL (
-          SELECT
-            snapshot.gross_gmv,
-            snapshot.orders,
-            snapshot.currency
-          FROM shop_videos shop_video
-          JOIN shop_video_performance_snapshots snapshot
-            ON snapshot.shop_video_id = shop_video.id
-          WHERE shop_video.platform_video_id = v.platform_video_id
-          ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-          LIMIT 1
-        ) sales ON TRUE
+        LEFT JOIN v_latest_shop_video_performance sales
+          ON sales.platform_video_id = v.platform_video_id
         ${filterSql}
       `, { type: QueryTypes.SELECT, replacements }),
       prevPeriodInfo
@@ -247,19 +272,12 @@ const getDashboard = async (req, res) => {
             COALESCE(SUM(v.comments), 0)::bigint AS comments,
             COALESCE(SUM(v.shares), 0)::bigint AS shares,
             COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
-            COALESCE(SUM(sales.orders), 0)::bigint AS orders
+            COALESCE(SUM(sales.orders), 0)::bigint AS orders,
+            COUNT(CASE WHEN v.status = 'unavailable' THEN 1 END)::int AS unavailable_video_count,
+            COUNT(CASE WHEN sales.shop_video_id IS NULL THEN 1 END)::int AS unlinked_video_count
           FROM videos v
-          LEFT JOIN LATERAL (
-            SELECT
-              snapshot.gross_gmv,
-              snapshot.orders
-            FROM shop_videos shop_video
-            JOIN shop_video_performance_snapshots snapshot
-              ON snapshot.shop_video_id = shop_video.id
-            WHERE shop_video.platform_video_id = v.platform_video_id
-            ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-            LIMIT 1
-          ) sales ON TRUE
+          LEFT JOIN v_latest_shop_video_performance sales
+            ON sales.platform_video_id = v.platform_video_id
           ${filterSql}
         `, {
           type: QueryTypes.SELECT,
@@ -280,18 +298,11 @@ const getDashboard = async (req, res) => {
             COALESCE(SUM(v.likes), 0)::bigint AS likes,
             COALESCE(SUM(v.comments), 0)::bigint AS comments,
             COALESCE(SUM(v.shares), 0)::bigint AS shares,
-            COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv
+            COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
+            COALESCE(SUM(sales.orders), 0)::bigint AS orders
           FROM videos v
-          LEFT JOIN LATERAL (
-            SELECT
-              snapshot.gross_gmv
-            FROM shop_videos shop_video
-            JOIN shop_video_performance_snapshots snapshot
-              ON snapshot.shop_video_id = shop_video.id
-            WHERE shop_video.platform_video_id = v.platform_video_id
-            ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-            LIMIT 1
-          ) sales ON TRUE
+          LEFT JOIN v_latest_shop_video_performance sales
+            ON sales.platform_video_id = v.platform_video_id
           ${filterSql}
           AND v.published_at IS NOT NULL
           GROUP BY v.published_at::date
@@ -308,16 +319,8 @@ const getDashboard = async (req, res) => {
               v.shares,
               COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
             FROM videos v
-            LEFT JOIN LATERAL (
-              SELECT
-                snapshot.gross_gmv
-              FROM shop_videos shop_video
-              JOIN shop_video_performance_snapshots snapshot
-                ON snapshot.shop_video_id = shop_video.id
-              WHERE shop_video.platform_video_id = v.platform_video_id
-              ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-              LIMIT 1
-            ) sales ON TRUE
+            LEFT JOIN v_latest_shop_video_performance sales
+              ON sales.platform_video_id = v.platform_video_id
             ${filterSql}
             ORDER BY gross_gmv DESC, v.id DESC
             LIMIT 10
@@ -332,16 +335,8 @@ const getDashboard = async (req, res) => {
               v.shares,
               COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
             FROM videos v
-            LEFT JOIN LATERAL (
-              SELECT
-                snapshot.gross_gmv
-              FROM shop_videos shop_video
-              JOIN shop_video_performance_snapshots snapshot
-                ON snapshot.shop_video_id = shop_video.id
-              WHERE shop_video.platform_video_id = v.platform_video_id
-              ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-              LIMIT 1
-            ) sales ON TRUE
+            LEFT JOIN v_latest_shop_video_performance sales
+              ON sales.platform_video_id = v.platform_video_id
             ${filterSql}
             ORDER BY v.${metric} DESC, v.id DESC
             LIMIT 10
@@ -356,16 +351,8 @@ const getDashboard = async (req, res) => {
             v.thumbnail_url,
             COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
           FROM videos v
-          LEFT JOIN LATERAL (
-            SELECT
-              snapshot.gross_gmv
-            FROM shop_videos shop_video
-            JOIN shop_video_performance_snapshots snapshot
-              ON snapshot.shop_video_id = shop_video.id
-            WHERE shop_video.platform_video_id = v.platform_video_id
-            ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-            LIMIT 1
-          ) sales ON TRUE
+          LEFT JOIN v_latest_shop_video_performance sales
+            ON sales.platform_video_id = v.platform_video_id
           ${filterSql}
           AND v.published_at IS NOT NULL
           ORDER BY v.published_at::date, v.views DESC, v.id DESC
@@ -393,19 +380,8 @@ const getDashboard = async (req, res) => {
           sales.currency AS sales_currency,
           sales.synced_at AS sales_synced_at
         FROM videos v
-        LEFT JOIN LATERAL (
-          SELECT
-            snapshot.gross_gmv,
-            snapshot.orders,
-            snapshot.currency,
-            snapshot.synced_at
-          FROM shop_videos shop_video
-          JOIN shop_video_performance_snapshots snapshot
-            ON snapshot.shop_video_id = shop_video.id
-          WHERE shop_video.platform_video_id = v.platform_video_id
-          ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-          LIMIT 1
-        ) sales ON TRUE
+        LEFT JOIN v_latest_shop_video_performance sales
+          ON sales.platform_video_id = v.platform_video_id
         ${filterSql}
         ORDER BY v.published_at DESC NULLS LAST, v.id DESC
         LIMIT :pageSize
@@ -420,7 +396,34 @@ const getDashboard = async (req, res) => {
       }),
     ]);
 
-    const numericFields = ['video_count', 'views', 'likes', 'comments', 'shares', 'gross_gmv', 'orders', 'engagement_rate'];
+    const topVideos = await sequelize.query(`
+        SELECT
+          v.id, v.title, v.video_url, v.thumbnail_url, v.published_at,
+          v.views, v.likes, v.comments, v.shares,
+          COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv,
+          COALESCE(sales.orders, 0)::bigint AS orders
+        FROM videos v
+        LEFT JOIN v_latest_shop_video_performance sales
+          ON sales.platform_video_id = v.platform_video_id
+        ${filterSql}
+        ORDER BY ${TOP_VIDEO_SORT_EXPRESSIONS[topMetric]} DESC NULLS LAST, v.views DESC, v.id DESC
+        LIMIT 5
+      `, { type: QueryTypes.SELECT, replacements });
+
+    const numericFields = [
+      'video_count',
+      'views',
+      'likes',
+      'comments',
+      'shares',
+      'gross_gmv',
+      'orders',
+      'engagement_rate',
+      'aov',
+      'rpm',
+      'unavailable_video_count',
+      'unlinked_video_count',
+    ];
     const withNumbers = (row) => Object.fromEntries(
       Object.entries(row).map(([key, value]) => [key, numericFields.includes(key) ? number(value) : value]),
     );
@@ -431,16 +434,24 @@ const getDashboard = async (req, res) => {
       ? ((totals.likes + totals.comments + totals.shares) / totals.views) * 100
       : 0;
     totals.engagement_rate = Number(engagementRate.toFixed(2));
+    const aov = totals.orders > 0 ? totals.gross_gmv / totals.orders : 0;
+    totals.aov = Number(aov.toFixed(2));
+    const rpm = totals.views > 0 ? (totals.gross_gmv / totals.views) * 1000 : 0;
+    totals.rpm = Number(rpm.toFixed(2));
 
     if (prevPeriodInfo && previousTotalsRows.length) {
       const prevTotals = withNumbers(previousTotalsRows[0] || {});
       const prevEngagementRate = prevTotals.views > 0
         ? ((prevTotals.likes + prevTotals.comments + prevTotals.shares) / prevTotals.views) * 100
         : 0;
+      const prevAov = prevTotals.orders > 0 ? prevTotals.gross_gmv / prevTotals.orders : 0;
+      const prevRpm = prevTotals.views > 0 ? (prevTotals.gross_gmv / prevTotals.views) * 1000 : 0;
 
       totals.previous_period = {
         ...prevTotals,
         engagement_rate: Number(prevEngagementRate.toFixed(2)),
+        aov: Number(prevAov.toFixed(2)),
+        rpm: Number(prevRpm.toFixed(2)),
         start_date: prevPeriodInfo.prevStartDate,
         end_date: prevPeriodInfo.prevEndDate,
       };
@@ -451,7 +462,10 @@ const getDashboard = async (req, res) => {
         comments: calculateGrowthRate(totals.comments, prevTotals.comments),
         shares: calculateGrowthRate(totals.shares, prevTotals.shares),
         gross_gmv: calculateGrowthRate(totals.gross_gmv, prevTotals.gross_gmv),
+        orders: calculateGrowthRate(totals.orders, prevTotals.orders),
         engagement_rate: calculateGrowthRate(totals.engagement_rate, prevEngagementRate),
+        aov: calculateGrowthRate(totals.aov, prevAov),
+        rpm: calculateGrowthRate(totals.rpm, prevRpm),
       };
     } else {
       totals.previous_period = null;
@@ -478,6 +492,7 @@ const getDashboard = async (req, res) => {
       users,
       totals,
       chart,
+      top_videos: topVideos.map(withNumbers),
       videos: videos.map(withNumbers),
       video_pagination: {
         page,
@@ -491,6 +506,7 @@ const getDashboard = async (req, res) => {
         end_date: endDate,
         user_id: userId,
         metric,
+        top_metric: topMetric,
       },
     };
     });
@@ -514,10 +530,13 @@ const getDashboardVideos = async (req, res) => {
       userId,
       page,
       pageSize,
+      search,
+      sortBy,
+      sortDirection,
     } = filters;
     const publishedDate = dateOnly(req.query.date);
 
-    const cacheKey = `dashboard:videos:${channelId || 'all'}:${startDate || 'all'}:${endDate || 'all'}:${publishedDate || 'all'}:${userId || 'all'}:${page}:${pageSize}`;
+    const cacheKey = `dashboard:videos:${channelId || 'all'}:${startDate || 'all'}:${endDate || 'all'}:${publishedDate || 'all'}:${userId || 'all'}:${search || 'all'}:${sortBy}:${sortDirection}:${page}:${pageSize}`;
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async () => {
       const filterSql = `
@@ -526,7 +545,16 @@ const getDashboardVideos = async (req, res) => {
           AND (:endDate::date IS NULL OR v.published_at::date <= :endDate)
           AND (:publishedDate::date IS NULL OR v.published_at::date = :publishedDate)
           AND (
+            :search = ''
+            OR COALESCE(v.title, '') ILIKE :searchPattern
+            OR COALESCE(v.platform_video_id, '') ILIKE :searchPattern
+          )
+          AND (
             :userId::int IS NULL
+            OR EXISTS (
+              SELECT 1 FROM video_assignments va
+              WHERE va.video_id = v.id AND va.user_id = :userId
+            )
             OR EXISTS (
               SELECT 1
               FROM user_content_attributions attribution
@@ -537,13 +565,22 @@ const getDashboardVideos = async (req, res) => {
                 END
               ) configured_hashtag(value)
               WHERE attribution.user_id = :userId
-                AND LOWER(configured_hashtag.value) = ANY(
-                  regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
-                )
+                AND regexp_split_to_array(LOWER(COALESCE(v.title, '')), '[^[:alnum:]_#]+')
+                  @> ARRAY[LOWER(configured_hashtag.value)]
             )
           )
       `;
-      const replacements = { channelId, startDate, endDate, publishedDate, userId };
+      const replacements = {
+        channelId,
+        startDate,
+        endDate,
+        publishedDate,
+        userId,
+        search,
+        searchPattern: `%${search.replace(/[%_\\]/g, '\\$&')}%`,
+      };
+      const orderColumn = VIDEO_SORT_FIELDS[sortBy];
+      const orderDirection = sortDirection.toUpperCase();
 
       const [countRows, videos] = await Promise.all([
         sequelize.query(`
@@ -573,21 +610,10 @@ const getDashboardVideos = async (req, res) => {
             sales.currency AS sales_currency,
             sales.synced_at AS sales_synced_at
           FROM videos v
-          LEFT JOIN LATERAL (
-            SELECT
-              snapshot.gross_gmv,
-              snapshot.orders,
-              snapshot.currency,
-              snapshot.synced_at
-            FROM shop_videos shop_video
-            JOIN shop_video_performance_snapshots snapshot
-              ON snapshot.shop_video_id = shop_video.id
-            WHERE shop_video.platform_video_id = v.platform_video_id
-            ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
-            LIMIT 1
-          ) sales ON TRUE
+          LEFT JOIN v_latest_shop_video_performance sales
+            ON sales.platform_video_id = v.platform_video_id
           ${filterSql}
-          ORDER BY v.published_at DESC NULLS LAST, v.id DESC
+          ORDER BY ${orderColumn} ${orderDirection} NULLS LAST, v.id DESC
           LIMIT :pageSize
           OFFSET :offset
         `, {
@@ -615,6 +641,9 @@ const getDashboardVideos = async (req, res) => {
           total_pages: Math.max(1, Math.ceil(total / pageSize)),
         },
         filter_date: publishedDate,
+        search,
+        sort_by: sortBy,
+        sort_direction: sortDirection,
       };
     });
 
@@ -631,5 +660,4 @@ module.exports = {
   dashboardFilters,
   getDashboard,
   getDashboardVideos,
-  clearDashboardCache,
 };

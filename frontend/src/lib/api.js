@@ -514,6 +514,7 @@ export function fetchDashboard({
   endDate,
   userId,
   metric,
+  topMetric,
   page,
   pageSize,
 } = {}) {
@@ -523,6 +524,7 @@ export function fetchDashboard({
   if (endDate) params.set('end_date', endDate);
   if (userId) params.set('user_id', userId);
   if (metric) params.set('metric', metric);
+  if (topMetric) params.set('top_metric', topMetric);
   if (page) params.set('page', page);
   if (pageSize) params.set('page_size', pageSize);
   const query = params.toString();
@@ -538,6 +540,9 @@ export function fetchDashboardVideos({
   date,
   page,
   pageSize,
+  search,
+  sortBy,
+  sortDirection,
 } = {}) {
   const params = new URLSearchParams();
   if (channelId) params.set('channel_id', channelId);
@@ -547,6 +552,9 @@ export function fetchDashboardVideos({
   if (date) params.set('date', date);
   if (page) params.set('page', page);
   if (pageSize) params.set('page_size', pageSize);
+  if (search) params.set('search', search);
+  if (sortBy) params.set('sort_by', sortBy);
+  if (sortDirection) params.set('sort_direction', sortDirection);
   const query = params.toString();
   return apiRequest(`/reports/dashboard/videos${query ? `?${query}` : ''}`, { signal });
 }

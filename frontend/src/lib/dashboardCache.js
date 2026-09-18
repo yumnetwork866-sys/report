@@ -9,7 +9,8 @@ export const buildDashboardKey = ({
   startDate = '',
   endDate = '',
   metric = 'date',
-} = {}) => `${channelId || 'all'}|${userId || 'all'}|${startDate || 'none'}|${endDate || 'none'}|${metric || 'date'}`;
+  topMetric = 'gmv',
+} = {}) => `${channelId || 'all'}|${userId || 'all'}|${startDate || 'none'}|${endDate || 'none'}|${metric || 'date'}|${topMetric || 'gmv'}`;
 
 export const buildVideoKey = ({
   channelId = '',
@@ -19,7 +20,10 @@ export const buildVideoKey = ({
   date = '',
   page = 1,
   pageSize = 20,
-} = {}) => `${channelId || 'all'}|${userId || 'all'}|${startDate || 'none'}|${endDate || 'none'}|${date || 'none'}|${page}|${pageSize}`;
+  search = '',
+  sortBy = 'published_at',
+  sortDirection = 'desc',
+} = {}) => `${channelId || 'all'}|${userId || 'all'}|${startDate || 'none'}|${endDate || 'none'}|${date || 'none'}|${search}|${sortBy}|${sortDirection}|${page}|${pageSize}`;
 
 export const getCachedDashboard = (params, ttlMs = DASHBOARD_CACHE_TTL_MS) => {
   const key = buildDashboardKey(params);

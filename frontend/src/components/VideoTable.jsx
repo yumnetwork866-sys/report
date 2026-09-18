@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, Heart, MessageCircle, Share2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowDown, ArrowUp, ExternalLink, Eye, EyeOff, Heart, MessageCircle, Search, Share2 } from 'lucide-react';
 import { fetchChannels, fetchVideoPage } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
@@ -148,6 +149,11 @@ const VideoTable = ({
   pagination: controlledPagination = null,
   currentPage: controlledPage,
   onPageChange,
+  searchValue = '',
+  onSearchChange,
+  sortBy = 'published_at',
+  sortDirection = 'desc',
+  onSortChange,
 }) => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
@@ -179,6 +185,20 @@ const VideoTable = ({
       return null;
     }
   };
+  const formatPublishedTime = (value) => {
+    if (!value) return null;
+    try {
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return null;
+      return new Intl.DateTimeFormat(locale, {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(date);
+    } catch {
+      return null;
+    }
+  };
   const [localVideos, setLocalVideos] = useState([]);
   const [localChannels, setLocalChannels] = useState([]);
   const [localLoading, setLocalLoading] = useState(true);
@@ -187,6 +207,8 @@ const VideoTable = ({
   const [localPagination, setLocalPagination] = useState({ total: 0, total_pages: 1 });
   const [localSummary, setLocalSummary] = useState({});
   const [page, setPage] = useState(1);
+  const [search, setSearch] = useState(searchValue);
+  const [selectedVideo, setSelectedVideo] = useState(null);
   const usesProvidedData = Array.isArray(data?.videos) && Array.isArray(data?.channels);
   const videos = usesProvidedData ? data.videos : localVideos;
   const channels = usesProvidedData ? data.channels : localChannels;
@@ -204,6 +226,13 @@ const VideoTable = ({
   const activePage = isPageControlled ? Number(controlledPage) : page;
   const changePage = isPageControlled ? onPageChange : setPage;
   const usesServerPagination = Boolean(usesProvidedData && controlledPagination);
+
+  useEffect(() => setSearch(searchValue), [searchValue]);
+  useEffect(() => {
+    if (!onSearchChange || search === searchValue) return undefined;
+    const timeout = window.setTimeout(() => onSearchChange(search), 300);
+    return () => window.clearTimeout(timeout);
+  }, [onSearchChange, search, searchValue]);
 
   useEffect(() => {
     if (usesProvidedData) return undefined;
@@ -268,10 +297,28 @@ const VideoTable = ({
   }, [channels, isChannelControlled]);
 
   const filteredVideos = useMemo(() => {
-    if (selectedChannelId === 'all') return videos;
-    if (!selectedChannelId) return [];
-    return videos.filter((video) => String(video.channel_id) === selectedChannelId);
-  }, [videos, selectedChannelId]);
+    const channelVideos = selectedChannelId === 'all'
+      ? videos
+      : selectedChannelId
+        ? videos.filter((video) => String(video.channel_id) === selectedChannelId)
+        : [];
+    if (usesServerPagination || !search.trim()) return channelVideos;
+    const needle = search.trim().toLocaleLowerCase();
+    return channelVideos.filter((video) => [video.title, video.platform_video_id, ...getVideoHashtags(video)]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(needle)));
+  }, [search, selectedChannelId, usesServerPagination, videos]);
+
+  const toggleSort = (field) => {
+    if (!onSortChange) return;
+    onSortChange(field, sortBy === field && sortDirection === 'desc' ? 'asc' : 'desc');
+  };
+  const SortHeader = ({ field, children, className = '' }) => (
+    <th className={className} aria-sort={sortBy === field ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button type="button" className="video-table-sort" onClick={() => toggleSort(field)}>
+        {children}{sortBy === field && sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+      </button>
+    </th>
+  );
 
   const clientFilteredTotals = useMemo(() => {
     return filteredVideos.reduce((acc, video) => {
@@ -303,6 +350,15 @@ const VideoTable = ({
   useEffect(() => {
     if (!isPageControlled) setPage(1);
   }, [isPageControlled, selectedChannelId]);
+
+  useEffect(() => {
+    if (!selectedVideo) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [selectedVideo]);
 
   return (
     <div className={embedded ? 'dashboard-video-library' : 'page'} id={embedded ? 'videos' : undefined}>
@@ -344,21 +400,37 @@ const VideoTable = ({
           </div>
         </div> : null}
 
+        <div className="video-table-toolbar">
+          <label className="video-table-search">
+            <Search size={16} aria-hidden="true" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={t('videoLibrary.searchPlaceholder')}
+              aria-label={t('videoLibrary.searchPlaceholder')}
+            />
+          </label>
+        </div>
+
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
                 <th>{t('videoLibrary.videos')}</th>
-                <th>{t('videoLibrary.publishedAt')}</th>
+                <SortHeader field="published_at">{t('videoLibrary.publishedAt')}</SortHeader>
                 <th>{t('videoLibrary.hashtags')}</th>
-                <th className="cell-number">{t('videoLibrary.orders')}</th>
-                <th className="cell-number">{t('videoLibrary.gmv')}</th>
+                <SortHeader field="views" className="cell-number">{t('videoLibrary.views')}</SortHeader>
+                <SortHeader field="likes" className="cell-number">{t('videoLibrary.likes')}</SortHeader>
+                <SortHeader field="comments" className="cell-number">{t('videoLibrary.comments')}</SortHeader>
+                <SortHeader field="orders" className="cell-number">{t('videoLibrary.orders')}</SortHeader>
+                <SortHeader field="gmv" className="cell-number">{t('videoLibrary.gmv')}</SortHeader>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={8}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('videoLibrary.loading')}</div>
@@ -375,7 +447,20 @@ const VideoTable = ({
                     .trim() || fullTitle;
                   const displayTitle = compactVideoTitle(cleanTitle, 40);
                   const publishedDate = formatPublishedDate(video.published_at);
-                  return <tr key={video.id}>
+                  const publishedTime = formatPublishedTime(video.published_at);
+                  return <tr
+                    className="video-table-row"
+                    key={video.id}
+                    tabIndex={0}
+                    aria-label={t('videoLibrary.previewVideo', { title: fullTitle })}
+                    onClick={() => setSelectedVideo(video)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedVideo(video);
+                      }
+                    }}
+                  >
                     <td>
                       <div className="video-cell">
                         {video.status === 'unavailable' ? (
@@ -397,6 +482,7 @@ const VideoTable = ({
                                   target="_blank"
                                   rel="noreferrer"
                                   aria-label={t('videoLibrary.openVideo', { title: fullTitle })}
+                                  onClick={(event) => event.stopPropagation()}
                                 >
                                   <img
                                     className="video-cell__thumb"
@@ -448,6 +534,7 @@ const VideoTable = ({
                                 rel="noreferrer"
                                 className="row-title row-title--link"
                                 title={fullTitle}
+                                onClick={(event) => event.stopPropagation()}
                               >
                                 {displayTitle}
                               </a>
@@ -478,7 +565,14 @@ const VideoTable = ({
                         </div>
                       </div>
                     </td>
-                    <td className="cell-date">{publishedDate || '—'}</td>
+                    <td className="cell-date">
+                      {publishedDate ? (
+                        <span className="video-published-date">
+                          <span>{publishedDate}</span>
+                          {publishedTime ? <small>{publishedTime}</small> : null}
+                        </span>
+                      ) : '—'}
+                    </td>
                     <td>
                       {hashtags.length ? (
                         <div className="video-hashtags" title={hashtags.join(' ')}>
@@ -487,13 +581,16 @@ const VideoTable = ({
                         </div>
                       ) : '—'}
                     </td>
+                    <td className="cell-number">{formatNumber(video.views)}</td>
+                    <td className="cell-number">{formatNumber(video.likes)}</td>
+                    <td className="cell-number">{formatNumber(video.comments)}</td>
                     <td className="cell-number">{formatOrders(video)}</td>
                     <td className="cell-number"><strong>{formatGmv(video)}</strong></td>
                   </tr>;
                 })
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={5}>
+                  <td className="table-state-cell" colSpan={8}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('videoLibrary.noMatch')}</div>
                     </div>
@@ -514,6 +611,45 @@ const VideoTable = ({
           />
         ) : null}
       </section>
+      {selectedVideo ? createPortal((
+        <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedVideo(null); }}>
+          <aside className="koc-drawer booking-detail-drawer video-preview-drawer" role="dialog" aria-modal="true" aria-labelledby="video-preview-title">
+            <div className="koc-drawer__header">
+              <div className="booking-detail-drawer__heading">
+                <div>
+                  <h2 id="video-preview-title">{compactVideoTitle(selectedVideo.title, 70) || t('videoLibrary.untitledVideo')}</h2>
+                  <p>TikTok ID: {selectedVideo.platform_video_id || '—'}</p>
+                </div>
+              </div>
+              <div className="booking-detail-drawer__header-actions">
+                <button className="button button--ghost booking-detail-drawer__close" type="button" onClick={() => setSelectedVideo(null)} aria-label={t('common.close')}>×</button>
+              </div>
+            </div>
+            <div className="koc-drawer__body">
+              {selectedVideo.platform_video_id ? (
+                <iframe
+                  className="video-preview-drawer__player"
+                  src={`https://www.tiktok.com/player/v1/${encodeURIComponent(selectedVideo.platform_video_id)}?autoplay=0&loop=0`}
+                  title={selectedVideo.title || t('videoLibrary.untitledVideo')}
+                  allow="fullscreen; autoplay"
+                  loading="lazy"
+                />
+              ) : selectedVideo.thumbnail_url ? <img className="video-preview-drawer__image" src={selectedVideo.thumbnail_url} alt="" /> : null}
+              <section className="page__stats page__stats--four video-preview-drawer__stats">
+                <article className="stat-card"><p className="stat-card__label">{t('videoLibrary.views')}</p><p className="stat-card__value">{formatNumber(selectedVideo.views)}</p></article>
+                <article className="stat-card"><p className="stat-card__label">{t('videoLibrary.likes')}</p><p className="stat-card__value">{formatNumber(selectedVideo.likes)}</p></article>
+                <article className="stat-card"><p className="stat-card__label">{t('videoLibrary.orders')}</p><p className="stat-card__value">{formatOrders(selectedVideo)}</p></article>
+                <article className="stat-card"><p className="stat-card__label">{t('videoLibrary.gmv')}</p><p className="stat-card__value">{formatGmv(selectedVideo)}</p></article>
+              </section>
+              <section className="drawer-section video-preview-drawer__hashtags">
+                <h3>{t('videoLibrary.hashtags')}</h3>
+                <div className="video-hashtags">{getVideoHashtags(selectedVideo).map((tag) => <span className="chip" key={tag}>{tag}</span>)}</div>
+              </section>
+              {selectedVideo.video_url ? <a className="button video-preview-drawer__open" href={selectedVideo.video_url} target="_blank" rel="noreferrer"><ExternalLink size={15} /> {t('videoLibrary.openTikTok')}</a> : null}
+            </div>
+          </aside>
+        </div>
+      ), document.body) : null}
     </div>
   );
 };

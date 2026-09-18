@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
-  AreaChart,
   Bar,
-  BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   LabelList,
+  Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -21,6 +22,7 @@ import {
   MessageCircle,
   Minus,
   Share2,
+  ShoppingBag,
   TrendingDown,
   TrendingUp,
   UserRound,
@@ -46,6 +48,10 @@ import {
 } from '../lib/channelSelection';
 
 const chartTick = { fill: 'var(--color-muted)', fontSize: 12 };
+const compactVideoTitle = (value, maxLength = 40) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
+};
 const dateInputValue = (date) => [
   date.getFullYear(),
   String(date.getMonth() + 1).padStart(2, '0'),
@@ -55,9 +61,39 @@ const dateInputValue = (date) => [
 const dashboardPeriodRange = (preset) => {
   const end = new Date();
   const start = new Date(end);
-  const days = preset === '7d' ? 7 : preset === '90d' ? 90 : 30;
-  start.setDate(end.getDate() - (days - 1));
+  if (preset === 'today') return { startDate: dateInputValue(end), endDate: dateInputValue(end) };
+  if (preset === 'yesterday') {
+    start.setDate(end.getDate() - 1);
+    return { startDate: dateInputValue(start), endDate: dateInputValue(start) };
+  }
+  if (preset === 'this_week') {
+    const day = end.getDay() || 7;
+    start.setDate(end.getDate() - day + 1);
+  } else if (preset === 'this_month') {
+    start.setDate(1);
+  } else if (preset === 'last_month') {
+    start.setMonth(end.getMonth() - 1, 1);
+    end.setDate(0);
+  } else {
+    const days = preset === '7d' ? 7 : preset === '90d' ? 90 : 30;
+    start.setDate(end.getDate() - (days - 1));
+  }
   return { startDate: dateInputValue(start), endDate: dateInputValue(end) };
+};
+
+const dashboardInitialFilters = () => {
+  const params = new URLSearchParams(window.location.search);
+  const allowedPeriods = new Set(['today', 'yesterday', 'this_week', 'this_month', 'last_month', '7d', '30d', '90d', 'custom']);
+  const period = allowedPeriods.has(params.get('period')) ? params.get('period') : '30d';
+  const fallback = dashboardPeriodRange(period === 'custom' ? '30d' : period);
+  return {
+    channelId: params.get('channel') || '',
+    userId: params.get('user') || 'all',
+    period,
+    startDate: params.get('start_date') || fallback.startDate,
+    endDate: params.get('end_date') || fallback.endDate,
+    metric: dailyMetricOptions.some((item) => item.value === params.get('metric')) ? params.get('metric') : 'views',
+  };
 };
 
 const UserAvatar = ({ user, className, fallbackClassName }) => {
@@ -170,6 +206,7 @@ const UserPicker = ({ id, users, value, onChange, allLabel, disabled }) => {
 const dailyMetricOptions = [
   { value: 'views', labelKey: 'dashboard.metric_views_daily', Icon: Eye },
   { value: 'gmv', labelKey: 'dashboard.metric_gmv_daily', Icon: CircleDollarSign },
+  { value: 'orders', labelKey: 'dashboard.totalOrders', Icon: ShoppingBag },
   { value: 'likes', labelKey: 'dashboard.metric_likes', Icon: Heart },
   { value: 'shares', labelKey: 'dashboard.metric_shares', Icon: Share2 },
   { value: 'comments', labelKey: 'dashboard.metric_comments', Icon: MessageCircle },
@@ -264,6 +301,23 @@ const GrowthBadge = ({ value, label }) => {
   );
 };
 
+const DashboardBarLabel = ({ x, y, width, value, index, total, formatter }) => {
+  const numericValue = Number(value || 0);
+  if (!numericValue) return null;
+  const step = total > 60 ? 7 : total > 40 ? 5 : total > 28 ? 4 : total > 18 ? 3 : total > 10 ? 2 : 1;
+  if (Number(index || 0) % step !== 0) return null;
+  return (
+    <text
+      className="dashboard-chart-label"
+      x={Number(x || 0) + Number(width || 0) / 2}
+      y={Number(y || 0) - 7}
+      textAnchor="middle"
+    >
+      {formatter(numericValue)}
+    </text>
+  );
+};
+
 const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount, metric, currency, t }) => {
   const item = payload?.[0]?.payload;
   if (!active || !item) return null;
@@ -286,6 +340,10 @@ const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount,
         <b>{formatGmvAmount(item.gross_gmv || 0, currency)}</b>
       </div>
       <div>
+        <span>{t('dashboard.totalOrders')}</span>
+        <b>{formatNumber(item.orders || 0)}</b>
+      </div>
+      <div>
         <span>{t('dashboard.totalLikes')}</span>
         <b>{formatNumber(item.likes)}</b>
       </div>
@@ -305,6 +363,9 @@ const Dashboard = () => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const { formatMoney } = useMoneyFormatter(locale);
+  const initialFiltersRef = useRef(null);
+  if (!initialFiltersRef.current) initialFiltersRef.current = dashboardInitialFilters();
+  const initialFilters = initialFiltersRef.current;
 
   const [videos, setVideos] = useState([]);
   const [channels, setChannels] = useState([]);
@@ -316,12 +377,18 @@ const Dashboard = () => {
     comments: 0,
     shares: 0,
     gross_gmv: 0,
+    orders: 0,
+    aov: 0,
+    rpm: 0,
+    unavailable_video_count: 0,
+    unlinked_video_count: 0,
     sales_currency: 'MYR',
     engagement_rate: 0,
     previous_period: null,
     growth: null,
   });
   const [chartRows, setChartRows] = useState([]);
+  const [topVideos, setTopVideos] = useState([]);
   const [videoPage, setVideoPage] = useState(1);
   const [videoPagination, setVideoPagination] = useState({
     page: 1,
@@ -329,21 +396,26 @@ const Dashboard = () => {
     total: 0,
     total_pages: 1,
   });
-  const [selectedChannelId, setSelectedChannelId] = useState(() => getStoredSelectedChannelId() || '');
-  const [selectedUserId, setSelectedUserId] = useState('all');
+  const [selectedChannelId, setSelectedChannelId] = useState(() => initialFilters.channelId || getStoredSelectedChannelId() || '');
+  const [selectedUserId, setSelectedUserId] = useState(initialFilters.userId);
   const chartMetric = 'date';
-  const [dailyMetric, setDailyMetric] = useState('views');
+  const [dailyMetric, setDailyMetric] = useState(initialFilters.metric);
   const [chartType, setChartType] = useState('area');
   const [selectedChartDate, setSelectedChartDate] = useState(null);
 
-  const [periodPreset, setPeriodPreset] = useState('30d');
-  const initialPeriod = dashboardPeriodRange('30d');
-  const [startDate, setStartDate] = useState(initialPeriod.startDate);
-  const [endDate, setEndDate] = useState(initialPeriod.endDate);
+  const [periodPreset, setPeriodPreset] = useState(initialFilters.period);
+  const [startDate, setStartDate] = useState(initialFilters.startDate);
+  const [endDate, setEndDate] = useState(initialFilters.endDate);
 
   const [loading, setLoading] = useState(true);
   const [videosLoading, setVideosLoading] = useState(false);
   const [error, setError] = useState('');
+  const [videoSearch, setVideoSearch] = useState('');
+  const [videoSortBy, setVideoSortBy] = useState('published_at');
+  const [videoSortDirection, setVideoSortDirection] = useState('desc');
+  const videoQueryReadyRef = useRef(false);
+  const videoQueryRef = useRef({ search: '', sortBy: 'published_at', sortDirection: 'desc' });
+  videoQueryRef.current = { search: videoSearch, sortBy: videoSortBy, sortDirection: videoSortDirection };
 
   const handleChannelChange = (nextChannelId) => {
     const id = String(nextChannelId || '');
@@ -376,6 +448,9 @@ const Dashboard = () => {
         date: selectedChartDate || null,
         page: nextPage,
         pageSize: 20,
+        search: videoSearch,
+        sortBy: videoSortBy,
+        sortDirection: videoSortDirection,
       };
 
       const cached = getCachedVideos(videoParams);
@@ -384,8 +459,8 @@ const Dashboard = () => {
         setVideoPagination(cached.video_pagination || {
           page: nextPage,
           page_size: 20,
-          total: videoPagination.total,
-          total_pages: videoPagination.total_pages,
+          total: 0,
+          total_pages: 1,
         });
         return;
       }
@@ -407,7 +482,7 @@ const Dashboard = () => {
         setVideosLoading(false);
       }
     },
-    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate, videoPagination.total, videoPagination.total_pages],
+    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate, videoSearch, videoSortBy, videoSortDirection],
   );
 
   const handleDateClick = useCallback(
@@ -424,6 +499,9 @@ const Dashboard = () => {
         date: nextDate,
         page: 1,
         pageSize: 20,
+        search: videoSearch,
+        sortBy: videoSortBy,
+        sortDirection: videoSortDirection,
       };
 
       const cached = getCachedVideos(videoParams);
@@ -455,7 +533,7 @@ const Dashboard = () => {
         setVideosLoading(false);
       }
     },
-    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate],
+    [chartMetric, endDate, selectedChannelId, selectedChartDate, selectedUserId, startDate, videoSearch, videoSortBy, videoSortDirection],
   );
 
   useEffect(() => {
@@ -475,13 +553,20 @@ const Dashboard = () => {
         startDate: chartMetric === 'date' ? startDate : null,
         endDate: chartMetric === 'date' ? endDate : null,
         metric: chartMetric,
+        topMetric: dailyMetric,
         page: 1,
         pageSize: 20,
       };
 
       const cached = getCachedDashboard(params);
+      const hasDefaultVideoQuery = () => {
+        const current = videoQueryRef.current;
+        return !current.search && current.sortBy === 'published_at' && current.sortDirection === 'desc';
+      };
       if (cached) {
-        setVideos(cached.videos || []);
+        if (hasDefaultVideoQuery()) {
+          setVideos(cached.videos || []);
+        }
         setChannels(cached.channels || []);
         const cachedUsers = cached.users || [];
         setUsers(cachedUsers);
@@ -490,12 +575,15 @@ const Dashboard = () => {
         }
         setTotals(cached.totals || {});
         setChartRows(cached.chart || []);
-        setVideoPagination(cached.video_pagination || {
-          page: 1,
-          page_size: 20,
-          total: 0,
-          total_pages: 1,
-        });
+        setTopVideos(cached.top_videos || []);
+        if (hasDefaultVideoQuery()) {
+          setVideoPagination(cached.video_pagination || {
+            page: 1,
+            page_size: 20,
+            total: 0,
+            total_pages: 1,
+          });
+        }
         setLoading(false);
         setError('');
       } else {
@@ -509,7 +597,9 @@ const Dashboard = () => {
           ...params,
         });
         const nextUsers = payload.users || [];
-        setVideos(payload.videos || []);
+        if (hasDefaultVideoQuery()) {
+          setVideos(payload.videos || []);
+        }
         setChannels(payload.channels || []);
         setUsers(nextUsers);
         if (selectedUserId !== 'all' && !nextUsers.some((u) => String(u.id) === String(selectedUserId))) {
@@ -517,12 +607,15 @@ const Dashboard = () => {
         }
         setTotals(payload.totals || {});
         setChartRows(payload.chart || []);
-        setVideoPagination(payload.video_pagination || {
-          page: 1,
-          page_size: 20,
-          total: 0,
-          total_pages: 1,
-        });
+        setTopVideos(payload.top_videos || []);
+        if (hasDefaultVideoQuery()) {
+          setVideoPagination(payload.video_pagination || {
+            page: 1,
+            page_size: 20,
+            total: 0,
+            total_pages: 1,
+          });
+        }
         setCachedDashboard(params, payload);
         setCachedVideos({
           channelId: params.channelId,
@@ -557,7 +650,26 @@ const Dashboard = () => {
     load();
 
     return () => controller.abort();
-  }, [chartMetric, endDate, selectedChannelId, selectedUserId, startDate, t]);
+  }, [chartMetric, dailyMetric, endDate, selectedChannelId, selectedUserId, startDate, t]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (selectedChannelId) params.set('channel', selectedChannelId); else params.delete('channel');
+    if (selectedUserId !== 'all') params.set('user', selectedUserId); else params.delete('user');
+    params.set('period', periodPreset);
+    params.set('start_date', startDate);
+    params.set('end_date', endDate);
+    params.set('metric', dailyMetric);
+    window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+  }, [dailyMetric, endDate, periodPreset, selectedChannelId, selectedUserId, startDate]);
+
+  useEffect(() => {
+    if (!videoQueryReadyRef.current) {
+      videoQueryReadyRef.current = true;
+      return;
+    }
+    handlePageChange(1);
+  }, [handlePageChange, videoSearch, videoSortBy, videoSortDirection]);
 
   useEffect(() => {
     if (periodPreset === 'custom') return;
@@ -614,6 +726,7 @@ const Dashboard = () => {
           comments: Number(item.comments || 0),
           shares: Number(item.shares || 0),
           gross_gmv: Number(item.gross_gmv || 0),
+          orders: Number(item.orders || 0),
           name: dateLabel,
           fullName: fullDateLabel,
           value,
@@ -633,6 +746,7 @@ const Dashboard = () => {
         likes: Number(row.likes || 0),
         shares: Number(row.shares || 0),
         gross_gmv: Number(row.gross_gmv || 0),
+        orders: Number(row.orders || 0),
       };
     });
   }, [chartMetric, chartRows, dailyMetric, locale, selectedChartDate, t]);
@@ -644,6 +758,7 @@ const Dashboard = () => {
   const metricLabel = useMemo(() => {
     if (chartMetric === 'date') {
       if (dailyMetric === 'gmv') return t('dashboard.metric_gmv_daily');
+      if (dailyMetric === 'orders') return t('dashboard.totalOrders');
       if (dailyMetric === 'video_count') return t('dashboard.metric_videos_daily');
       if (dailyMetric === 'likes') return t('dashboard.metric_likes');
       if (dailyMetric === 'shares') return t('dashboard.metric_shares');
@@ -652,6 +767,16 @@ const Dashboard = () => {
     }
     return t(`dashboard.metric_${chartMetric}`);
   }, [chartMetric, dailyMetric, t]);
+
+  const formatTopVideoMetric = useCallback((video) => {
+    if (dailyMetric === 'gmv') {
+      return formatGmvAmount(video.gross_gmv, totals.sales_currency);
+    }
+    if (dailyMetric === 'video_count') {
+      return `1 ${t('dashboard.video').toLocaleLowerCase(locale)}`;
+    }
+    return `${formatNumber(video[dailyMetric])} ${metricLabel.toLocaleLowerCase(locale)}`;
+  }, [dailyMetric, formatGmvAmount, formatNumber, locale, metricLabel, t, totals.sales_currency]);
 
   const yAxisFormatter = useCallback(
     (value) => {
@@ -710,6 +835,27 @@ const Dashboard = () => {
           <GrowthBadge value={totals.growth?.gross_gmv} label={t('dashboard.vsPreviousPeriod')} />
         </article>
         <article className="stat-card stat-card--soft">
+          <p className="stat-card__label">{t('dashboard.totalOrders')}</p>
+          <p className="stat-card__value" title={loading ? undefined : formatNumber(totals.orders)}>
+            {loading ? '—' : formatNumber(totals.orders)}
+          </p>
+          <GrowthBadge value={totals.growth?.orders} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label" title={t('dashboard.aovFormula')}>{t('dashboard.aov')}</p>
+          <p className="stat-card__value" title={loading ? undefined : formatGmvAmount(totals.aov, totals.sales_currency)}>
+            {loading ? '—' : formatGmvAmount(totals.aov, totals.sales_currency)}
+          </p>
+          <GrowthBadge value={totals.growth?.aov} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
+          <p className="stat-card__label" title={t('dashboard.rpmFormula')}>{t('dashboard.rpm')}</p>
+          <p className="stat-card__value" title={loading ? undefined : formatGmvAmount(totals.rpm, totals.sales_currency)}>
+            {loading ? '—' : formatGmvAmount(totals.rpm, totals.sales_currency)}
+          </p>
+          <GrowthBadge value={totals.growth?.rpm} label={t('dashboard.vsPreviousPeriod')} />
+        </article>
+        <article className="stat-card stat-card--soft">
           <p className="stat-card__label">{t('dashboard.totalViews')}</p>
           <p className="stat-card__value" title={loading ? undefined : formatNumber(totals.views)}>
             {loading ? '—' : formatNumber(totals.views)}
@@ -732,11 +878,6 @@ const Dashboard = () => {
           <p className="stat-card__label">{t('dashboard.totalLikes')}</p>
           <p className="stat-card__value">{loading ? '—' : formatNumber(totals.likes)}</p>
           <GrowthBadge value={totals.growth?.likes} label={t('dashboard.vsPreviousPeriod')} />
-        </article>
-        <article className="stat-card stat-card--soft">
-          <p className="stat-card__label">{t('dashboard.totalShares')}</p>
-          <p className="stat-card__value">{loading ? '—' : formatNumber(totals.shares)}</p>
-          <GrowthBadge value={totals.growth?.shares} label={t('dashboard.vsPreviousPeriod')} />
         </article>
       </section>
 
@@ -787,6 +928,11 @@ const Dashboard = () => {
                   <option value="7d">{t('dashboard.period_7d')}</option>
                   <option value="30d">{t('dashboard.period_30d')}</option>
                   <option value="90d">{t('dashboard.period_90d')}</option>
+                  <option value="today">{t('dashboard.period_today')}</option>
+                  <option value="yesterday">{t('dashboard.period_yesterday')}</option>
+                  <option value="this_week">{t('dashboard.period_this_week')}</option>
+                  <option value="this_month">{t('dashboard.period_this_month')}</option>
+                  <option value="last_month">{t('dashboard.period_last_month')}</option>
                   <option value="custom">{t('dashboard.period_custom')}</option>
                 </select>
               </div>
@@ -821,6 +967,9 @@ const Dashboard = () => {
 
         {chartMetric === 'date' ? (
           <div className="dashboard-chart-header-actions dashboard-chart-header-actions--end">
+            <div className="dashboard-sync-status">
+              {totals.last_synced_at ? t('dashboard.lastSynced', { time: new Date(totals.last_synced_at).toLocaleString(locale) }) : t('dashboard.notSynced')}
+            </div>
             <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.chartType')}>
               <button
                 type="button"
@@ -840,6 +989,15 @@ const Dashboard = () => {
                 <BarChart2 size={15} />
                 <span>{t('dashboard.chartType_bar')}</span>
               </button>
+              <button
+                type="button"
+                className={`dashboard-toggle-btn ${chartType === 'dual' ? 'dashboard-toggle-btn--active' : ''}`}
+                onClick={() => setChartType('dual')}
+                title={t('dashboard.chartType_dual')}
+              >
+                <TrendingUp size={15} />
+                <span>{t('dashboard.chartType_dual')}</span>
+              </button>
             </div>
           </div>
         ) : null}
@@ -847,6 +1005,7 @@ const Dashboard = () => {
         {loading ? (
           <div className="empty-state"><div className="loading-dot" />{t('dashboard.loading')}</div>
         ) : chartData.length ? (
+          <div className="dashboard-analytics-grid">
           <div className="dashboard-chart-shell">
             <div className="dashboard-chart-summary" aria-hidden="true">
               <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
@@ -854,71 +1013,66 @@ const Dashboard = () => {
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
-                {chartType === 'area' && chartMetric === 'date' ? (
-                  <AreaChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
-                    <defs>
-                      <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
-                        <stop offset="95%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
-                    <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
-                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
-                    <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="var(--color-primary)"
-                      strokeWidth={2.5}
-                      fillOpacity={1}
-                      fill="url(#dashboardAreaGradient)"
-                      cursor="pointer"
-                      activeDot={{
-                        r: 6,
-                        stroke: '#fff',
-                        strokeWidth: 2,
-                        fill: 'var(--color-primary)',
-                        cursor: 'pointer',
-                        onClick: (e, payload) => {
-                          const clickedDate = payload?.payload?.rawDate;
-                          if (clickedDate) handleDateClick(clickedDate);
-                        },
-                      }}
-                    />
-                  </AreaChart>
-                ) : (
-                  <BarChart data={chartData} barSize={26} margin={{ top: 26, right: 12, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
-                    <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
-                    <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
-                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
-                    <Tooltip cursor={{ fill: 'var(--color-accent-soft)' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
-                    <Bar
-                      dataKey="value"
-                      fill="var(--color-primary)"
-                      radius={[6, 6, 0, 0]}
-                      cursor="pointer"
-                      onClick={(entry, index) => {
-                        const clickedDate = entry?.rawDate || entry?.payload?.rawDate || chartData[index]?.rawDate;
-                        if (clickedDate) handleDateClick(clickedDate);
-                      }}
-                    >
-                      {chartData.map((entry) => (
-                        <Cell
-                          key={`bar-cell-${entry.rawDate}`}
-                          fill={selectedChartDate === entry.rawDate ? 'var(--color-primary-active, #0284c7)' : 'var(--color-primary, #0ea5e9)'}
-                          fillOpacity={selectedChartDate ? (selectedChartDate === entry.rawDate ? 1 : 0.45) : 1}
-                          stroke={selectedChartDate === entry.rawDate ? 'var(--color-primary-dark, #0369a1)' : 'transparent'}
-                          strokeWidth={selectedChartDate === entry.rawDate ? 2 : 0}
-                          cursor="pointer"
-                        />
-                      ))}
-                      <LabelList dataKey="value" position="top" formatter={(val) => yAxisFormatter(val)} className="dashboard-chart-label" />
+                <ComposedChart data={chartData} margin={{ top: 26, right: chartType === 'dual' ? 12 : 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                  <defs>
+                    <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
+                  <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
+                  {chartType === 'dual' ? (
+                    <>
+                      <YAxis yAxisId="gmv" width={72} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={(value) => formatGmvAmount(value, totals.sales_currency, { compact: true })} />
+                      <YAxis yAxisId="views" orientation="right" width={58} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={(value) => Intl.NumberFormat(locale, { notation: 'compact' }).format(value)} />
+                    </>
+                  ) : <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />}
+                  <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
+                  <Legend
+                    verticalAlign="top"
+                    align="center"
+                    height={34}
+                    iconType="circle"
+                    iconSize={8}
+                  />
+                  {chartType === 'area' ? (
+                    <Area name={metricLabel} type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#dashboardAreaGradient)" activeDot={{ r: 5 }} />
+                  ) : chartType === 'bar' ? (
+                    <Bar name={metricLabel} dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]} barSize={26}>
+                      {chartData.map((entry) => <Cell key={`bar-cell-${entry.rawDate}`} fillOpacity={selectedChartDate && selectedChartDate !== entry.rawDate ? 0.45 : 1} />)}
+                      <LabelList
+                        dataKey="value"
+                        content={<DashboardBarLabel total={chartData.length} formatter={yAxisFormatter} />}
+                      />
                     </Bar>
-                  </BarChart>
-                )}
+                  ) : (
+                    <>
+                      <Line yAxisId="gmv" name={t('dashboard.totalGmv')} type="monotone" dataKey="gross_gmv" stroke="#f97316" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                      <Line yAxisId="views" name={t('dashboard.totalViews')} type="monotone" dataKey="views" stroke="var(--color-primary, #0ea5e9)" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                    </>
+                  )}
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
+          </div>
+          <aside className="dashboard-insights">
+            <section className="dashboard-insight-card">
+              <h3>{t('dashboard.topVideosByMetric', { metric: metricLabel })}</h3>
+              <div className="dashboard-top-videos">
+                {topVideos.map((video, index) => (
+                  <a className="dashboard-top-video" href={video.video_url || '#videos'} target={video.video_url ? '_blank' : undefined} rel="noreferrer" key={video.id}>
+                    <span className="dashboard-top-video__rank">{index + 1}</span>
+                    {video.thumbnail_url ? <img src={video.thumbnail_url} alt="" loading="lazy" /> : <span className="dashboard-top-video__placeholder"><Video size={15} /></span>}
+                    <span className="dashboard-top-video__meta">
+                      <strong>{compactVideoTitle(video.title, 32) || t('dashboard.video')}</strong>
+                      <small>{formatTopVideoMetric(video)}</small>
+                    </span>
+                  </a>
+                ))}
+              </div>
+            </section>
+          </aside>
           </div>
         ) : (
           <div className="empty-state">{t('dashboard.noVideoData')}</div>
@@ -940,6 +1094,14 @@ const Dashboard = () => {
         pagination={videoPagination}
         currentPage={videoPage}
         onPageChange={handlePageChange}
+        searchValue={videoSearch}
+        onSearchChange={setVideoSearch}
+        sortBy={videoSortBy}
+        sortDirection={videoSortDirection}
+        onSortChange={(nextSortBy, nextDirection) => {
+          setVideoSortBy(nextSortBy);
+          setVideoSortDirection(nextDirection);
+        }}
       />
     </div>
   );

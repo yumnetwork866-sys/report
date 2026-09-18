@@ -244,7 +244,10 @@
     "pagination": "Phân trang video",
     "pageOf": "Trang {{page}} / {{total}}",
     "loadError": "Không tải được video",
-    "publishedAt": "Ngày đăng"
+    "publishedAt": "Ngày đăng",
+    "searchPlaceholder": "Tìm tiêu đề, hashtag hoặc TikTok ID...",
+    "previewVideo": "Xem nhanh video {{title}}",
+    "openTikTok": "Mở trên TikTok"
   },
   "reports": {
     "heroTitle": "Báo cáo đánh giá hiệu quả KOC",
@@ -392,6 +395,11 @@
     "errorLoad": "Không tải được dữ liệu bảng tổng quan",
     "totalViews": "Tổng view",
     "totalGmv": "Tổng GMV",
+    "totalOrders": "Tổng đơn hàng",
+    "aov": "Giá trị đơn TB (AOV)",
+    "aovFormula": "Công thức: Tổng GMV / Tổng đơn hàng",
+    "rpm": "Doanh thu / 1k view (RPM)",
+    "rpmFormula": "Công thức: (Tổng GMV / Tổng Views) * 1,000",
     "engagementRate": "Tỷ lệ tương tác",
     "engagementFormula": "Công thức: (Likes + Comments + Shares) / Views * 100%",
     "vsPreviousPeriod": "so với kỳ trước",
@@ -418,6 +426,7 @@
     "chartType": "Loại biểu đồ",
     "chartType_area": "Biểu đồ sóng",
     "chartType_bar": "Biểu đồ cột",
+    "chartType_dual": "GMV & Views",
     "filteringByDate": "Đang lọc video đăng ngày {{date}}",
     "clearDateFilter": "Bỏ lọc ngày",
     "clickToFilterDay": "Nhấp vào ngày để lọc video",
@@ -425,6 +434,11 @@
     "period_7d": "7 ngày gần nhất",
     "period_30d": "30 ngày gần nhất",
     "period_90d": "90 ngày gần nhất",
+    "period_today": "Hôm nay",
+    "period_yesterday": "Hôm qua",
+    "period_this_week": "Tuần này",
+    "period_this_month": "Tháng này (MTD)",
+    "period_last_month": "Tháng trước",
     "period_custom": "Tùy chỉnh",
     "startDate": "Ngày bắt đầu",
     "endDate": "Ngày kết thúc",
@@ -433,7 +447,11 @@
     "videosPerDay": "video/ngày",
     "averageMetric": "Trung bình {{metric}}",
     "loading": "Đang tải dữ liệu...",
-    "noVideoData": "Không có video phù hợp với bộ lọc."
+    "noVideoData": "Không có video phù hợp với bộ lọc.",
+    "topVideos": "Top 5 video theo GMV",
+    "topVideosByMetric": "Top 5 video theo {{metric}}",
+    "lastSynced": "Đồng bộ lần cuối: {{time}}",
+    "notSynced": "Chưa có dữ liệu đồng bộ"
   },
   "booking": {
     "heroTitle": "Booking",

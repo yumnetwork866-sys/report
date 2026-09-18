@@ -13,20 +13,20 @@ import {
 test('dashboard cache builds consistent keys', () => {
   assert.equal(
     buildDashboardKey({ channelId: '5', userId: 'all', startDate: '2026-08-01', endDate: '2026-08-31', metric: 'date' }),
-    '5|all|2026-08-01|2026-08-31|date',
+    '5|all|2026-08-01|2026-08-31|date|gmv',
   );
   assert.equal(
     buildDashboardKey({}),
-    'all|all|none|none|date',
+    'all|all|none|none|date|gmv',
   );
 
   assert.equal(
     buildVideoKey({ channelId: '5', page: 2, pageSize: 20 }),
-    '5|all|none|none|none|2|20',
+    '5|all|none|none|none||published_at|desc|2|20',
   );
   assert.equal(
     buildVideoKey({ channelId: '5', date: '2026-08-15', page: 1, pageSize: 20 }),
-    '5|all|none|none|2026-08-15|1|20',
+    '5|all|none|none|2026-08-15||published_at|desc|1|20',
   );
 });
 
