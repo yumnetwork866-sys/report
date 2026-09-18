@@ -145,9 +145,11 @@ const getChannelAvatarIndex = async () => {
     for (const name of [channel.display_name, channel.username]) {
       const key = comparableShopName(name);
       const baseKey = simplifiedShopName(name);
+      const baseAlphaKey = alphanumericShopName(baseKey);
       const alphaKey = alphanumericShopName(name);
       if (key && !index.has(key)) index.set(key, avatar);
       if (baseKey && !index.has(baseKey)) index.set(baseKey, avatar);
+      if (baseAlphaKey && !index.has(baseAlphaKey)) index.set(baseAlphaKey, avatar);
       if (alphaKey && !index.has(alphaKey)) index.set(alphaKey, avatar);
     }
   }
@@ -157,9 +159,11 @@ const addMatchingChannelAvatar = (shop, avatarIndex) => {
   const value = shop?.toJSON ? shop.toJSON() : { ...shop };
   const exactKey = comparableShopName(value.name);
   const baseKey = simplifiedShopName(value.name);
+  const baseAlphaKey = alphanumericShopName(baseKey);
   const alphaKey = alphanumericShopName(value.name);
   const avatar = avatarIndex.get(exactKey)
     || avatarIndex.get(baseKey)
+    || avatarIndex.get(baseAlphaKey)
     || avatarIndex.get(alphaKey);
   return avatar ? { ...value, ...avatar } : value;
 };
@@ -1979,4 +1983,10 @@ module.exports = {
   importVideoPerformanceExport,
   listVideoPerformanceExport,
   getExchangeRates,
+  __test: {
+    comparableShopName,
+    simplifiedShopName,
+    alphanumericShopName,
+    addMatchingChannelAvatar,
+  },
 };

@@ -517,7 +517,6 @@ const ShopAnalytics = ({
   const [videoSortField, setVideoSortField] = useState('gmv');
   const [loading, setLoading] = useState(true);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState(null);
   const [error, setError] = useState('');
@@ -656,7 +655,6 @@ const ShopAnalytics = ({
         });
         let nextSnapshot = payload?.snapshots?.[0] || null;
         if (!nextSnapshot || !Array.isArray(nextSnapshot?.metrics?.comparison_intervals)) {
-          setSyncing(true);
           const syncPayload = await syncTikTokShopAnalytics(selectedShopId, {
             start_date: startDate,
             end_date: endDate,
@@ -673,7 +671,6 @@ const ShopAnalytics = ({
       } finally {
         if (!controller.signal.aborted) {
           setAnalyticsLoading(false);
-          setSyncing(false);
         }
       }
     };
@@ -1045,32 +1042,6 @@ const ShopAnalytics = ({
     return translationKeys[type] ? t(translationKeys[type]) : type;
   };
 
-  const syncAnalytics = async () => {
-    if (!selectedShopId || invalidRange || missingAnalyticsScope || tokenExpired || syncing) return;
-    try {
-      setSyncing(true);
-      setError('');
-      const payload = await syncTikTokShopAnalytics(selectedShopId, {
-        start_date: startDate,
-        end_date: endDate,
-        currency,
-      });
-      setSnapshot(payload?.snapshot || null);
-      if (payload?.shop) {
-        setShops((current) => current.map((shop) => (
-          String(shop.id) === String(payload.shop.id)
-            ? { ...shop, ...payload.shop, authorization: shop.authorization }
-            : shop
-        )));
-      }
-      setToast({ type: 'success', message: t('shopAnalytics.syncSuccess') });
-    } catch (requestError) {
-      setToast({ type: 'error', message: requestError.message || t('shopAnalytics.syncError') });
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const startConnect = async () => {
     if (disconnectingId !== null) return;
     try {
@@ -1211,24 +1182,23 @@ const ShopAnalytics = ({
 
   return (
     <div className={`page shop-analytics${managementOnly ? ' shop-analytics--management' : ''}`}>
-      <section className={`page__hero shop-analytics__hero${managementOnly ? ' admin-page__hero' : ''}`}>
-        <div className="shop-analytics__hero-row">
-          <div className="shop-analytics__hero-copy">
-            <h1 className="page__title">
-              {t(managementOnly
-                ? 'shopAnalytics.manageHeroTitle'
-                : videoOnly
-                  ? combinedVideoTabs
+      {managementOnly || videoOnly ? (
+        <section className={`page__hero shop-analytics__hero${managementOnly ? ' admin-page__hero' : ''}`}>
+          <div className="shop-analytics__hero-row">
+            <div className="shop-analytics__hero-copy">
+              <h1 className="page__title">
+                {t(managementOnly
+                  ? 'shopAnalytics.manageHeroTitle'
+                  : combinedVideoTabs
                     ? 'shopAnalytics.videoExportHeroTitle'
                     : videoExportOnly
                       ? 'navigation.videos'
-                      : 'navigation.videoAnalytics'
-                  : 'shopAnalytics.heroTitle')}
-            </h1>
+                      : 'navigation.videoAnalytics')}
+              </h1>
+            </div>
           </div>
-        </div>
-
-      </section>
+        </section>
+      ) : null}
 
       {videoOnly && combinedVideoTabs ? (
         <div className="shop-video-analytics__view-tabs" role="tablist" aria-label={t('navigation.videos')}>
@@ -1309,23 +1279,7 @@ const ShopAnalytics = ({
           className="shop-analytics__tab-panel"
           hidden={videoOnly}
         >
-          <section className="section-card shop-analytics__filters" aria-labelledby="shop-analytics-filters-title">
-            <div className="shop-analytics__filter-heading">
-              <div>
-                <h2 className="section-card__title" id="shop-analytics-filters-title">
-                  {t('shopAnalytics.filtersTitle')}
-                </h2>
-              </div>
-              <button
-                className="button shop-analytics__sync-button"
-                type="button"
-                onClick={syncAnalytics}
-                disabled={!selectedShopId || invalidRange || missingAnalyticsScope || tokenExpired || syncing}
-              >
-                <AnalyticsIcon name="sync" />
-                {syncing ? t('shopAnalytics.syncing') : t('shopAnalytics.syncNow')}
-              </button>
-            </div>
+          <section className="shop-analytics__filters" aria-label={t('shopAnalytics.filtersTitle')}>
             <div className="shop-analytics__filter-grid">
               <div className="field">
                 <label htmlFor="analytics-shop">{t('shopAnalytics.shop')}</label>
