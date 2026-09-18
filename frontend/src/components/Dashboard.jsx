@@ -5,6 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   LabelList,
   ResponsiveContainer,
   Tooltip,
@@ -14,7 +15,6 @@ import {
 import {
   AreaChart as AreaChartIcon,
   BarChart2,
-  Calendar,
   CircleDollarSign,
   Eye,
   Heart,
@@ -26,7 +26,6 @@ import {
   UserRound,
   UsersRound,
   Video,
-  X,
 } from 'lucide-react';
 import { fetchDashboard, fetchDashboardVideos } from '../lib/api';
 import {
@@ -664,12 +663,41 @@ const Dashboard = () => {
     [chartMetric, dailyMetric, formatGmvAmount, locale, totals.sales_currency],
   );
 
-  const handleChartClick = (state) => {
-    const rawDate = state?.activePayload?.[0]?.payload?.rawDate;
-    if (rawDate) {
-      handleDateClick(rawDate);
-    }
-  };
+  const handleChartClick = useCallback(
+    (state, indexArg) => {
+      let rawDate = state?.rawDate || state?.payload?.rawDate;
+
+      if (!rawDate && state?.activePayload?.[0]?.payload?.rawDate) {
+        rawDate = state.activePayload[0].payload.rawDate;
+      }
+
+      if (!rawDate) {
+        const rawIndex = typeof indexArg === 'number' && indexArg >= 0
+          ? indexArg
+          : (state?.activeTooltipIndex ?? state?.activeIndex);
+        if (rawIndex !== undefined && rawIndex !== null) {
+          const numIndex = Number(rawIndex);
+          if (!Number.isNaN(numIndex) && numIndex >= 0 && numIndex < chartData.length) {
+            rawDate = chartData[numIndex]?.rawDate;
+          }
+        }
+      }
+
+      if (!rawDate && state?.activeLabel) {
+        const matched = chartData.find(
+          (item) => item.name === state.activeLabel || item.fullName === state.activeLabel,
+        );
+        if (matched) {
+          rawDate = matched.rawDate;
+        }
+      }
+
+      if (rawDate) {
+        handleDateClick(rawDate);
+      }
+    },
+    [chartData, handleDateClick],
+  );
 
   return (
     <div className="page dashboard-page">
@@ -827,7 +855,7 @@ const Dashboard = () => {
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
                 {chartType === 'area' && chartMetric === 'date' ? (
-                  <AreaChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick}>
+                  <AreaChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                     <defs>
                       <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
@@ -838,15 +866,53 @@ const Dashboard = () => {
                     <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
                     <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
                     <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
-                    <Area type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2.5} fillOpacity={1} fill="url(#dashboardAreaGradient)" activeDot={{ r: 6, stroke: '#fff', strokeWidth: 2, fill: 'var(--color-primary)' }} />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="var(--color-primary)"
+                      strokeWidth={2.5}
+                      fillOpacity={1}
+                      fill="url(#dashboardAreaGradient)"
+                      cursor="pointer"
+                      activeDot={{
+                        r: 6,
+                        stroke: '#fff',
+                        strokeWidth: 2,
+                        fill: 'var(--color-primary)',
+                        cursor: 'pointer',
+                        onClick: (e, payload) => {
+                          const clickedDate = payload?.payload?.rawDate;
+                          if (clickedDate) handleDateClick(clickedDate);
+                        },
+                      }}
+                    />
                   </AreaChart>
                 ) : (
-                  <BarChart data={chartData} barSize={26} margin={{ top: 26, right: 12, bottom: 4, left: 4 }} onClick={handleChartClick}>
+                  <BarChart data={chartData} barSize={26} margin={{ top: 26, right: 12, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                     <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
                     <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
                     <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
                     <Tooltip cursor={{ fill: 'var(--color-accent-soft)' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
-                    <Bar dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]}>
+                    <Bar
+                      dataKey="value"
+                      fill="var(--color-primary)"
+                      radius={[6, 6, 0, 0]}
+                      cursor="pointer"
+                      onClick={(entry, index) => {
+                        const clickedDate = entry?.rawDate || entry?.payload?.rawDate || chartData[index]?.rawDate;
+                        if (clickedDate) handleDateClick(clickedDate);
+                      }}
+                    >
+                      {chartData.map((entry) => (
+                        <Cell
+                          key={`bar-cell-${entry.rawDate}`}
+                          fill={selectedChartDate === entry.rawDate ? 'var(--color-primary-active, #0284c7)' : 'var(--color-primary, #0ea5e9)'}
+                          fillOpacity={selectedChartDate ? (selectedChartDate === entry.rawDate ? 1 : 0.45) : 1}
+                          stroke={selectedChartDate === entry.rawDate ? 'var(--color-primary-dark, #0369a1)' : 'transparent'}
+                          strokeWidth={selectedChartDate === entry.rawDate ? 2 : 0}
+                          cursor="pointer"
+                        />
+                      ))}
                       <LabelList dataKey="value" position="top" formatter={(val) => yAxisFormatter(val)} className="dashboard-chart-label" />
                     </Bar>
                   </BarChart>
@@ -859,26 +925,7 @@ const Dashboard = () => {
         )}
       </section>
 
-      {selectedChartDate ? (
-        <div className="dashboard-active-filter-bar">
-          <div className="dashboard-active-filter-bar__content">
-            <Calendar size={16} color="#0284c7" />
-            <span className="dashboard-active-filter-bar__badge">
-              {t('dashboard.filteringByDate', { date: selectedChartDate })}
-            </span>
-            <span className="dashboard-active-filter-bar__count">
-              ({videoPagination.total} {t('dashboard.video')})
-            </span>
-          </div>
-          <button
-            type="button"
-            className="dashboard-active-filter-bar__clear"
-            onClick={() => handleDateClick(null)}
-          >
-            <X size={14} aria-hidden="true" /> {t('dashboard.clearDateFilter')}
-          </button>
-        </div>
-      ) : null}
+
 
       <VideoTable
         embedded

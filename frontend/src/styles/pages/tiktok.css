@@ -729,6 +729,12 @@
 
 .dashboard-chart {
   height: 350px;
+  cursor: pointer;
+}
+
+.dashboard-chart .recharts-surface,
+.dashboard-chart .recharts-wrapper {
+  cursor: pointer;
 }
 
 .dashboard-chart-shell {
