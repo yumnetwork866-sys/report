@@ -687,6 +687,8 @@ test('getBookings applies video performance for CUSTOM range and multi-month win
         refunded_gmv: 50,
         orders: 10,
         items_sold: 12,
+        items_refunded: 2,
+        estimated_commission: 25,
         currency: 'MYR',
         has_data: true,
       });
@@ -720,8 +722,58 @@ test('getBookings applies video performance for CUSTOM range and multi-month win
   assert.equal(orderQueryArgs.endDate, '2026-08-31');
   assert.equal(result[0].booking_videos[0].performance_snapshots[0].gross_gmv, 500);
   assert.equal(result[0].booking_videos[0].performance_snapshots[0].orders, 10);
+  assert.equal(result[0].booking_videos[0].performance_snapshots[0].items_refunded, 2);
+  assert.equal(result[0].booking_videos[0].performance_snapshots[0].estimated_commission, 25);
   assert.equal(result[0].actual_performance.gross_gmv, 500);
   assert.equal(result[0].actual_performance.orders, 10);
   assert.equal(result[0].actual_performance.start_date, '2026-06-01');
   assert.equal(result[0].actual_performance.end_date, '2026-08-31');
+});
+
+test('getBookings applies supplied dates even when the current period uses LIFETIME window', async (t) => {
+  const mockBooking = {
+    id: 41,
+    target_shop_id: 1,
+    booking_videos: [{ platform_video_id: 'vid-current', status: 'COLLECTING' }],
+    evaluation_snapshot: { dummy: true },
+    toJSON: () => mockBooking,
+  };
+  let orderQueryArgs;
+  const { getBookings } = loadController(t, {
+    Booking: { findAll: async () => [mockBooking] },
+    TikTokCreatorPerformanceSnapshot: {},
+    sequelize: { query: async () => [] },
+  }, {}, {
+    loadOrderMetricsForVideos: async (args) => {
+      orderQueryArgs = args;
+      return new Map();
+    },
+    calculateActualPerformance: (booking) => {
+      const snap = booking.booking_videos?.[0]?.performance_snapshots?.[0] || {};
+      return { orders: snap.orders || 0, estimated_commission: snap.estimated_commission ?? null };
+    },
+  });
+
+  let result;
+  await getBookings({
+    query: {
+      window_type: 'LIFETIME',
+      start_date: '2026-09-01',
+      end_date: '2026-09-30',
+      start_time: '1788192000',
+      end_time: '1790784000',
+    },
+  }, {
+    json: (data) => { result = data; },
+    status: () => ({ json: (data) => { result = data; } }),
+  });
+
+  assert.ok(orderQueryArgs, JSON.stringify(result));
+  assert.equal(orderQueryArgs.startDate, '2026-09-01');
+  assert.equal(orderQueryArgs.endDate, '2026-09-30');
+  assert.equal(orderQueryArgs.startTime, 1788192000);
+  assert.equal(orderQueryArgs.endTime, 1790784000);
+  assert.equal(result[0].actual_performance.orders, 0);
+  assert.equal(result[0].actual_performance.estimated_commission, 0);
+  assert.equal(result[0].actual_performance.window_type, 'CUSTOM');
 });

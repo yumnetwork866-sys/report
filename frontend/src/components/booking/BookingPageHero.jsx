@@ -10,6 +10,7 @@ const BookingPageHero = ({
   formatNumber,
   formatMoney,
   formatRatio,
+  loading = false,
   t,
 }) => (
   <section className="page__hero booking-page-hero">
@@ -29,11 +30,11 @@ const BookingPageHero = ({
       </label>
     </div>
     <div className="page__stats booking-stats booking-stats--evaluation">
-      <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{stats.total}</p></article>
-      <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{formatNumber(stats.videoCount)}</p></article>
-      <article className="stat-card"><p className="stat-card__label">{t('booking.totalCost')}</p><p className="stat-card__value">{formatMoney(stats.totalCost, selectedCurrency)}</p></article>
-      <article className="stat-card"><p className="stat-card__label">{t('booking.totalRevenue')}</p><p className="stat-card__value">{formatMoney(stats.totalRevenue, selectedCurrency)}</p></article>
-      <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{formatRatio(stats.totalRevenue > 0 ? stats.totalCost / stats.totalRevenue : null)}</p></article>
+      <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : stats.total}</p></article>
+      <article className="stat-card"><p className="stat-card__label">{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : formatNumber(stats.videoCount)}</p></article>
+      <article className="stat-card"><p className="stat-card__label">{t('booking.totalCost')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : formatMoney(stats.totalCost, selectedCurrency)}</p></article>
+      <article className="stat-card"><p className="stat-card__label">{t('booking.totalRevenue')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : formatMoney(stats.totalRevenue, selectedCurrency)}</p></article>
+      <article className="stat-card"><p className="stat-card__label">{t('booking.costRevenueRatio')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : formatRatio(stats.totalRevenue > 0 ? stats.totalCost / stats.totalRevenue : null)}</p></article>
     </div>
   </section>
 );

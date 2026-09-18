@@ -327,9 +327,17 @@ const BookingProductOrderDetailModal = ({
           </div>
 
           {isEffectiveLoading ? (
-            <div className="empty-state" style={{ padding: '36px 0' }}>
-              <span className="loading-dot" />
-              <span>Đang tải danh sách đơn hàng...</span>
+            <div className="booking-order-skeleton" role="status" aria-label="Đang tải danh sách đơn hàng">
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div className="booking-order-skeleton__row" key={row} aria-hidden="true">
+                  <span className="booking-skeleton booking-skeleton--order" />
+                  <span className="booking-skeleton booking-skeleton--date" />
+                  <span className="booking-skeleton booking-skeleton--product" />
+                  <span className="booking-skeleton booking-skeleton--value" />
+                  <span className="booking-skeleton booking-skeleton--value" />
+                </div>
+              ))}
+              <span className="sr-only">Đang tải danh sách đơn hàng...</span>
             </div>
           ) : filteredRows.length > 0 ? (
             <div className="booking-product-order-modal__table-wrap">

@@ -14,6 +14,66 @@
 
 .booking-page-hero__title-row .page__title { margin: 0; }
 
+.booking-skeleton {
+  display: block;
+  min-width: 32px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, #e8edf3 20%, #f5f7fa 38%, #e8edf3 58%);
+  background-size: 220% 100%;
+  animation: booking-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.booking-skeleton--kpi { width: min(112px, 76%); height: 25px; margin-top: 5px; }
+.booking-skeleton--avatar { width: 34px; height: 34px; min-width: 34px; border-radius: 50%; }
+.booking-skeleton--short { width: 58%; }
+.booking-skeleton--value { width: 64%; margin-left: auto; }
+
+.booking-table-skeleton {
+  margin-top: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.booking-table-skeleton__head,
+.booking-table-skeleton__row {
+  display: grid;
+  grid-template-columns: minmax(210px, 1.7fr) repeat(5, minmax(80px, .7fr));
+  align-items: center;
+  gap: 18px;
+  padding: 13px 16px;
+  min-width: 820px;
+}
+
+.booking-table-skeleton__head { min-height: 44px; background: var(--color-surface-subtle); }
+.booking-table-skeleton__row { min-height: 60px; border-top: 1px solid var(--color-border); }
+.booking-table-skeleton__identity { display: flex; align-items: center; gap: 10px; }
+.booking-table-skeleton__identity-copy { display: grid; flex: 1; gap: 7px; }
+
+.booking-order-skeleton { display: grid; padding: 8px 0; }
+.booking-order-skeleton__row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.7fr .6fr .7fr;
+  gap: 20px;
+  align-items: center;
+  min-height: 58px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--color-border);
+}
+.booking-skeleton--order { width: 76%; }
+.booking-skeleton--date { width: 70%; }
+.booking-skeleton--product { width: 88%; }
+
+@keyframes booking-skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .booking-skeleton { animation: none; }
+}
+
 .booking-hashtag-toggle {
   display: inline-flex;
   align-items: center;

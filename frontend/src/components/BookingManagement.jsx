@@ -42,6 +42,7 @@ import BookingDeleteConfirmModal from './booking/BookingDeleteConfirmModal';
 import BookingPageHero from './booking/BookingPageHero';
 import BookingListControls from './booking/BookingListControls';
 import BookingGroupsTable from './booking/BookingGroupsTable';
+import BookingTableSkeleton from './booking/BookingTableSkeleton';
 import useBookingAnalytics from './booking/useBookingAnalytics';
 
 const initialForm = defaultBookingForm();
@@ -385,6 +386,7 @@ const BookingManagement = ({
     fetchBookings(controller.signal, {
       windowType: range.windowType,
       ...(range.startDate ? { startDate: range.startDate, endDate: range.endDate } : {}),
+      ...(range.startTime ? { startTime: range.startTime, endTime: range.endTime } : {}),
       month: 'all',
       includeProductPerformance: false,
     })
@@ -816,6 +818,8 @@ const BookingManagement = ({
     return money ? formatMoney(value, performance.currency) : formatNumber(value);
   }, [formatMoney, formatNumber]);
 
+  const listLoading = loading || (bookingTab === 'product' && productPerformanceLoading);
+
   return (
     <div className={`page${embeddedMode ? ' booking-management--embedded' : ''}`}>
       <BookingPageHero
@@ -828,6 +832,7 @@ const BookingManagement = ({
         formatNumber={formatNumber}
         formatMoney={formatMoney}
         formatRatio={formatRatio}
+        loading={listLoading}
         t={t}
       />
 
@@ -884,8 +889,8 @@ const BookingManagement = ({
           t={t}
         />
         {productPerformanceError && bookingTab === 'product' ? <p className="form-error" role="alert">{productPerformanceError}</p> : null}
-        {loading || (bookingTab === 'product' && productPerformanceLoading) ? (
-          <div className="empty-state"><span className="loading-dot" />{t('booking.loading')}</div>
+        {listLoading ? (
+          <BookingTableSkeleton label={t('booking.loading')} />
         ) : bookingGroupsToRender.length ? (
           <BookingGroupsTable
             groups={sortedBookingGroupsToRender}

@@ -241,9 +241,11 @@ test('Booking list helper sends an inclusive custom date range', async () => {
       windowType: 'CUSTOM',
       startDate: '2026-07-01',
       endDate: '2026-07-31',
+      startTime: 1782835200,
+      endTime: 1785513600,
     });
 
-    assert.equal(requestUrl, '/api/bookings?window_type=CUSTOM&start_date=2026-07-01&end_date=2026-07-31');
+    assert.equal(requestUrl, '/api/bookings?window_type=CUSTOM&start_date=2026-07-01&end_date=2026-07-31&start_time=1782835200&end_time=1785513600');
   });
 });
 

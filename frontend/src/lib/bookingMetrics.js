@@ -450,6 +450,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
   let refundedGmv = 0;
   let itemsRefunded = 0;
   let estimatedCommission = 0;
+  let hasCompleteViews = true;
   let hasAnyRefunds = false;
   let hasAnyRefundedItems = false;
   let hasAnyCommission = false;
@@ -461,7 +462,8 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     const videoGmv = live ? live.grossGmv : finiteNumber(latest?.gross_gmv ?? video?.gross_gmv ?? video?.gmv);
     const videoOrders = live ? live.orderCount : finiteNumber(latest?.orders ?? video?.orders);
     const videoItems = live ? live.itemsSold : finiteNumber(latest?.items_sold ?? video?.items_sold);
-    const videoViews = finiteNumber(latest?.views ?? video?.views ?? latest?.raw_metrics?.views);
+    const rawViews = latest?.views ?? video?.views ?? latest?.raw_metrics?.views;
+    const videoViews = finiteNumber(rawViews);
     const rawRefunded = live ? live.refundedGmv : (latest?.refunded_gmv ?? video?.refunded_gmv);
     const rawItemsRefunded = live ? live.itemsRefunded : (latest?.items_refunded ?? video?.items_refunded);
     const rawCommission = live ? live.estimatedCommission : (latest?.estimated_commission ?? video?.estimated_commission);
@@ -475,6 +477,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     refundedGmv += videoRefunded;
     itemsRefunded += videoItemsRefunded;
     estimatedCommission += videoCommission;
+    hasCompleteViews = hasCompleteViews && rawViews !== null && rawViews !== undefined;
     hasAnyRefunds = hasAnyRefunds || (rawRefunded !== null && rawRefunded !== undefined);
     hasAnyRefundedItems = hasAnyRefundedItems || (rawItemsRefunded !== null && rawItemsRefunded !== undefined);
     hasAnyCommission = hasAnyCommission || (rawCommission !== null && rawCommission !== undefined);
@@ -483,7 +486,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
   }
   return {
     gross_gmv: grossGmv,
-    views,
+    views: hasCompleteViews ? views : null,
     orders,
     items_sold: itemsSold,
     refunded_gmv: hasAnyRefunds ? refundedGmv : null,
@@ -491,9 +494,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     currency,
     video_count: videos.length,
     samples_shipped: basePerformance?.samples_shipped ?? 0,
-    estimated_commission: hasAnyCommission
-      ? estimatedCommission
-      : (basePerformance?.estimated_commission ?? null),
+    estimated_commission: hasAnyCommission ? estimatedCommission : null,
   };
 };
 

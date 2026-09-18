@@ -270,6 +270,40 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.shop-video-analytics__view-tabs {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-subtle);
+  box-shadow: var(--shadow-xs);
+}
+
+.shop-video-analytics__view-tabs button {
+  min-height: 42px;
+  padding: 9px 18px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-soft);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.shop-video-analytics__view-tabs button.is-active {
+  background: var(--color-surface-raised);
+  color: var(--color-accent-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.shop-video-analytics__view-tabs button:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .shop-video-analytics__account-tabs {
   display: inline-flex;
   width: max-content;
@@ -955,7 +989,7 @@
 .shop-analytics__chart-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.55fr) minmax(310px, 0.72fr);
-  align-items: start;
+  align-items: stretch;
   gap: var(--space-4);
 }
 
@@ -966,6 +1000,9 @@
 
 
 .shop-analytics__chart-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   min-height: 474px;
 }
 
@@ -976,8 +1013,24 @@
 
 
 .shop-analytics__chart {
+  display: flex;
+  flex-direction: column;
   width: 100%;
-  height: 374px;
+  flex: 1 1 auto;
+  min-height: 374px;
+}
+
+
+.shop-analytics__chart > .recharts-responsive-container {
+  flex: 1 1 auto;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+
+.shop-analytics__chart-card .empty-state {
+  flex: 1 1 auto;
+  min-height: 374px;
 }
 
 
@@ -1337,6 +1390,11 @@
   }
 
 
+  .shop-analytics__chart-card {
+    height: auto;
+  }
+
+
   .shop-analytics__insight-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -1456,10 +1514,12 @@
 
   .shop-analytics__chart-card {
     min-height: 390px;
+    height: auto;
   }
 
 
   .shop-analytics__chart {
+    min-height: 290px;
     height: 290px;
   }
 

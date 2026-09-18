@@ -158,6 +158,23 @@ test('bookingVideoPerformanceForVideos aggregates metrics across videos', () => 
   assert.equal(perf.video_count, 2);
 });
 
+test('bookingVideoPerformanceForVideos never falls back to commission from unfiltered videos', () => {
+  const unknownCommissionVideos = [{
+    id: 1,
+    performance_snapshots: [{ gross_gmv: 0, orders: 0, items_sold: 0 }],
+  }];
+  const noOrderVideos = [{
+    id: 2,
+    performance_snapshots: [{ gross_gmv: 0, orders: 0, items_sold: 0, estimated_commission: 0 }],
+  }];
+
+  const unknown = bookingVideoPerformanceForVideos(unknownCommissionVideos, { estimated_commission: 999 });
+  const noOrder = bookingVideoPerformanceForVideos(noOrderVideos, { estimated_commission: 999 });
+  assert.equal(unknown.estimated_commission, null);
+  assert.equal(noOrder.orders, 0);
+  assert.equal(noOrder.estimated_commission, 0);
+});
+
 test('productsOfBookingVideo keeps per-product sold quantity from snapshot breakdown', () => {
   const snapshot = {
     items_sold: 3,

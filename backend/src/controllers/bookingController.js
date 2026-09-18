@@ -215,8 +215,7 @@ const shiftDateString = (dateStr, days) => {
 
 const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, customRange = {}) => {
   const days = Number(String(performanceWindow || '').match(/^PAST_(\d+)_DAYS$/)?.[1]);
-  const isCustomRange = performanceWindow === 'CUSTOM'
-    && customRange.startDate
+  const isCustomRange = customRange.startDate
     && customRange.endDate;
 
   const videoIds = [...new Set(bookings.flatMap((booking) => (
@@ -259,7 +258,13 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
 
   if (isCustomRange) {
     const key = `${customRange.startDate}:${customRange.endDate}`;
-    windows.set(key, { startDate: customRange.startDate, endDate: customRange.endDate, shopIds: [...shopIds] });
+    windows.set(key, {
+      startDate: customRange.startDate,
+      endDate: customRange.endDate,
+      startTime: customRange.startTime,
+      endTime: customRange.endTime,
+      shopIds: [...shopIds],
+    });
   } else if (days) {
     for (const shopId of shopIds) {
       const record = selectedExportByShop.get(shopId);
@@ -277,6 +282,8 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
       videoIds,
       startDate: win.startDate,
       endDate: win.endDate,
+      startTime: win.startTime,
+      endTime: win.endTime,
     });
     for (const [k, v] of metricsMap.entries()) {
       orderMetricsByShopAndVideo.set(k, v);
@@ -306,11 +313,14 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
       }] : (exportRecord || isCustomRange || days) ? [{
         snapshot_date: windowEndDate,
         gross_gmv: orderMetrics?.gross_gmv || 0,
-        refunded_gmv: orderMetrics?.refunded_gmv ?? null,
+        refunded_gmv: orderMetrics?.refunded_gmv ?? 0,
         net_gmv: orderMetrics?.net_gmv ?? null,
         orders: orderMetrics?.orders || 0,
         items_sold: orderMetrics?.items_sold || 0,
-        views: 0,
+        items_refunded: orderMetrics?.items_refunded ?? 0,
+        estimated_commission: orderMetrics?.estimated_commission
+          ?? ((orderMetrics?.orders || 0) === 0 ? 0 : null),
+        views: null,
         ctr: null,
         currency: orderMetrics?.currency || booking.currency || null,
         raw_metrics: {
@@ -326,7 +336,7 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
     }
     booking.actual_performance = {
       ...calculateActualPerformance(booking),
-      window_type: performanceWindow,
+      window_type: isCustomRange ? 'CUSTOM' : performanceWindow,
       start_date: windowStartDate,
       end_date: windowEndDate,
     };
@@ -1158,19 +1168,34 @@ const getBookings = async (req, res) => {
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
+    const startTime = req.query?.start_time ? Number(req.query.start_time) : null;
+    const endTime = req.query?.end_time ? Number(req.query.end_time) : null;
     const requestedMonth = String(req.query?.month || '').trim();
     const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
     const requestedOpenId = String(req.query?.creator_open_id || '').trim();
     const includeProductPerformance = !['false', '0'].includes(
       String(req.query?.include_product_performance || '').trim().toLowerCase(),
     );
-    const customRange = requestedWindow === 'CUSTOM'
+    let customRange = requestedWindow === 'CUSTOM'
       ? customPerformanceRange(startDate, endDate)
       : {};
     if (requestedWindow === 'CUSTOM' && !customRange) {
       return res.status(400).json({
         message: `Custom dates must be valid, end no later than yesterday, and span at most ${MAX_CUSTOM_PERFORMANCE_DAYS} days.`,
       });
+    }
+    if (requestedWindow !== 'CUSTOM' && parseDateOnly(startDate) && parseDateOnly(endDate)) {
+      const rangeStart = startDate <= endDate ? startDate : endDate;
+      const rangeEnd = startDate <= endDate ? endDate : startDate;
+      customRange = {
+        startDate: rangeStart,
+        endDate: rangeEnd,
+        requestedDays: Math.floor((parseDateOnly(rangeEnd) - parseDateOnly(rangeStart)) / 86400000) + 1,
+      };
+    }
+    if (customRange.startDate && Number.isFinite(startTime) && Number.isFinite(endTime)) {
+      customRange.startTime = startTime;
+      customRange.endTime = endTime;
     }
 
     let creatorWhere = {};
@@ -1231,7 +1256,7 @@ const getBookings = async (req, res) => {
       };
     }
 
-    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
+    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await Booking.findAll({
         where: {

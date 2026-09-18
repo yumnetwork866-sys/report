@@ -24,7 +24,9 @@ import {
 import { useI18n } from '../lib/language';
 import { formatDateOnly, parseDateOnly } from '../lib/date';
 import { useMoneyFormatter } from '../lib/currency';
+import { ArrowUpDown, CalendarDays } from 'lucide-react';
 import ShopDropdown from './ShopDropdown';
+import SelectDropdown from './SelectDropdown';
 import {
   getStoredSelectedShopId,
   resolveSelectedShopId,
@@ -484,7 +486,12 @@ const totalsFor = (rows) => {
 const percentage = (value, total) => (total > 0 ? value / total * 100 : 0);
 const boundedPercentage = (value) => Math.min(100, Math.max(0, value));
 
-const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportOnly = false }) => {
+const ShopAnalytics = ({
+  managementOnly = false,
+  videoOnly = false,
+  videoExportOnly: videoExportOnlyProp = false,
+  combinedVideoTabs = false,
+}) => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
@@ -515,6 +522,27 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
   const [disconnectingId, setDisconnectingId] = useState(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState(null);
+  const [combinedVideoView, setCombinedVideoView] = useState(() => (
+    new URLSearchParams(window.location.search).get('view') === 'performance'
+      ? 'performance'
+      : 'library'
+  ));
+  const videoExportOnly = combinedVideoTabs
+    ? combinedVideoView === 'library'
+    : videoExportOnlyProp;
+
+  const changeCombinedVideoView = (nextView) => {
+    if (nextView === combinedVideoView) return;
+    setCombinedVideoView(nextView);
+    setVideoAnalytics(null);
+    setVideoAnalyticsLoading(true);
+    setVideoPage(1);
+    const params = new URLSearchParams(window.location.search);
+    if (nextView === 'performance') params.set('view', 'performance');
+    else params.delete('view');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+  };
 
   const formatNumber = (value) => numericValue(value).toLocaleString(locale, {
     maximumFractionDigits: 2,
@@ -1095,8 +1123,8 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
     setStoredSelectedShopId(nextShopId);
   };
 
-  const changePeriodPreset = (event) => {
-    const nextPreset = event.target.value;
+  const changePeriodPreset = (eventOrValue) => {
+    const nextPreset = typeof eventOrValue === 'string' ? eventOrValue : eventOrValue?.target?.value;
     setPeriodPreset(nextPreset);
     if (nextPreset === 'custom') return;
     const days = Number(nextPreset.replace(/d$/, ''));
@@ -1105,6 +1133,23 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
     setStartDate(nextRange.startDate);
     setEndDate(nextRange.endDate);
   };
+
+  const periodOptions = useMemo(() => [
+    { value: '7d', label: t('shopAnalytics.period7d') },
+    { value: '30d', label: t('shopAnalytics.period30d') },
+    ...(!videoExportOnly ? [
+      { value: '90d', label: t('shopAnalytics.period90d') },
+      { value: 'custom', label: t('shopAnalytics.periodCustom') },
+    ] : []),
+  ], [t, videoExportOnly]);
+
+  const sortOptions = useMemo(() => [
+    { value: 'gmv', label: t('shopAnalytics.videoRevenue') },
+    { value: 'views', label: t('shopAnalytics.videoViews') },
+    { value: 'sku_orders', label: t('shopAnalytics.orders') },
+    { value: 'items_sold', label: t('shopAnalytics.unitsSold') },
+    { value: 'click_through_rate', label: t('shopAnalytics.videoCtr') },
+  ], [t]);
 
   const kpis = [
     { key: 'gmv', value: formatMoney(totals.gmv), change: changeFrom(totals.gmv, comparisonTotals.gmv) },
@@ -1173,15 +1218,40 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
               {t(managementOnly
                 ? 'shopAnalytics.manageHeroTitle'
                 : videoOnly
-                  ? videoExportOnly
-                    ? 'navigation.videos'
-                    : 'navigation.videoAnalytics'
+                  ? combinedVideoTabs
+                    ? 'shopAnalytics.videoExportHeroTitle'
+                    : videoExportOnly
+                      ? 'navigation.videos'
+                      : 'navigation.videoAnalytics'
                   : 'shopAnalytics.heroTitle')}
             </h1>
           </div>
         </div>
 
       </section>
+
+      {videoOnly && combinedVideoTabs ? (
+        <div className="shop-video-analytics__view-tabs" role="tablist" aria-label={t('navigation.videos')}>
+          <button
+            className={combinedVideoView === 'library' ? 'is-active' : ''}
+            type="button"
+            role="tab"
+            aria-selected={combinedVideoView === 'library'}
+            onClick={() => changeCombinedVideoView('library')}
+          >
+            {t('navigation.videos')}
+          </button>
+          <button
+            className={combinedVideoView === 'performance' ? 'is-active' : ''}
+            type="button"
+            role="tab"
+            aria-selected={combinedVideoView === 'performance'}
+            onClick={() => changeCombinedVideoView('performance')}
+          >
+            {t('navigation.videoAnalytics')}
+          </button>
+        </div>
+      ) : null}
 
       {toast ? (
         <div
@@ -1271,12 +1341,13 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
               </div>
               <div className="field">
                 <label htmlFor="analytics-period">{t('shopAnalytics.period')}</label>
-                <select id="analytics-period" value={periodPreset} onChange={changePeriodPreset}>
-                  <option value="7d">{t('shopAnalytics.period7d')}</option>
-                  <option value="30d">{t('shopAnalytics.period30d')}</option>
-                  {!videoExportOnly ? <option value="90d">{t('shopAnalytics.period90d')}</option> : null}
-                  {!videoExportOnly ? <option value="custom">{t('shopAnalytics.periodCustom')}</option> : null}
-                </select>
+                <SelectDropdown
+                  id="analytics-period"
+                  value={periodPreset}
+                  onChange={changePeriodPreset}
+                  icon={<CalendarDays size={16} />}
+                  options={periodOptions}
+                />
               </div>
               {!videoExportOnly && periodPreset === 'custom' ? (
                 <>
@@ -1673,13 +1744,13 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
               {!videoExportOnly ? (
                 <div className="field">
                   <label htmlFor="video-sort-field">{t('shopAnalytics.sortBy')}</label>
-                  <select id="video-sort-field" value={videoSortField} onChange={(event) => setVideoSortField(event.target.value)}>
-                    <option value="gmv">{t('shopAnalytics.videoRevenue')}</option>
-                    <option value="views">{t('shopAnalytics.videoViews')}</option>
-                    <option value="sku_orders">{t('shopAnalytics.orders')}</option>
-                    <option value="items_sold">{t('shopAnalytics.unitsSold')}</option>
-                    <option value="click_through_rate">{t('shopAnalytics.videoCtr')}</option>
-                  </select>
+                  <SelectDropdown
+                    id="video-sort-field"
+                    value={videoSortField}
+                    onChange={setVideoSortField}
+                    icon={<ArrowUpDown size={16} />}
+                    options={sortOptions}
+                  />
                 </div>
               ) : null}
               {videoExportOnly ? (
@@ -1702,12 +1773,13 @@ const ShopAnalytics = ({ managementOnly = false, videoOnly = false, videoExportO
               ) : null}
               <div className="field">
                 <label htmlFor="video-analytics-period">{t('shopAnalytics.period')}</label>
-                <select id="video-analytics-period" value={periodPreset} onChange={changePeriodPreset}>
-                  <option value="7d">{t('shopAnalytics.period7d')}</option>
-                  <option value="30d">{t('shopAnalytics.period30d')}</option>
-                  <option value="90d">{t('shopAnalytics.period90d')}</option>
-                  <option value="custom">{t('shopAnalytics.periodCustom')}</option>
-                </select>
+                <SelectDropdown
+                  id="video-analytics-period"
+                  value={periodPreset}
+                  onChange={changePeriodPreset}
+                  icon={<CalendarDays size={16} />}
+                  options={periodOptions}
+                />
               </div>
               {periodPreset === 'custom' ? (
                 <>

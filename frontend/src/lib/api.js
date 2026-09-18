@@ -88,6 +88,8 @@ export function fetchBookings(signal, {
   windowType,
   startDate,
   endDate,
+  startTime,
+  endTime,
   month,
   creatorUsername,
   creatorOpenId,
@@ -97,6 +99,8 @@ export function fetchBookings(signal, {
   if (windowType) params.set('window_type', windowType);
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
+  if (startTime) params.set('start_time', String(startTime));
+  if (endTime) params.set('end_time', String(endTime));
   if (month && month !== 'all') params.set('month', month);
   if (creatorUsername) params.set('creator_username', creatorUsername);
   if (creatorOpenId) params.set('creator_open_id', creatorOpenId);

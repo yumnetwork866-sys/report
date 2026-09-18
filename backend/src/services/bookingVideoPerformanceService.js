@@ -186,6 +186,8 @@ const loadOrderMetricsForVideos = async ({
   videoIds = [],
   startDate = null,
   endDate = null,
+  startTime = null,
+  endTime = null,
 } = {}) => {
   const targetShopIds = [...new Set([...(shopId ? [shopId] : []), ...shopIds].map(Number).filter(Number.isInteger))];
   const targetVideoIds = [...new Set(videoIds.map((id) => String(id || '').trim()).filter(Boolean))];
@@ -197,11 +199,17 @@ const loadOrderMetricsForVideos = async ({
     shopIds: targetShopIds,
     videoIds: targetVideoIds,
   };
-  if (startDate) {
+  if (startTime) {
+    replacements.startDateTime = new Date(Number(startTime) * 1000).toISOString();
+    dateClauses.push('o.create_time >= :startDateTime');
+  } else if (startDate) {
     replacements.startDateTime = `${dateOnly(startDate)}T00:00:00.000Z`;
     dateClauses.push('o.create_time >= :startDateTime');
   }
-  if (endDate) {
+  if (endTime) {
+    replacements.endDateTime = new Date(Number(endTime) * 1000).toISOString();
+    dateClauses.push('o.create_time < :endDateTime');
+  } else if (endDate) {
     replacements.endDateTime = `${shiftDate(endDate, 1)}T00:00:00.000Z`;
     dateClauses.push('o.create_time < :endDateTime');
   }
@@ -1194,6 +1202,7 @@ const calculateActualPerformance = (booking) => {
   const netGmv = hasCompleteRefunds ? grossGmv - refundedGmv : null;
   const hasAnyRefundedItems = latest.some((row) => row.items_refunded !== null && row.items_refunded !== undefined);
   const hasAnyCommission = latest.some((row) => row.estimated_commission !== null && row.estimated_commission !== undefined);
+  const hasCompleteViews = latest.length > 0 && latest.every((row) => row.views !== null && row.views !== undefined);
   const statuses = new Set(videos.map((video) => video.status));
   const status = !videos.length ? 'AWAITING_VIDEO'
     : statuses.has('COLLECTING') ? 'COLLECTING'
@@ -1214,7 +1223,7 @@ const calculateActualPerformance = (booking) => {
     estimated_commission: hasAnyCommission
       ? latest.reduce((sum, row) => sum + numberOrZero(row.estimated_commission), 0)
       : null,
-    views: latest.reduce((sum, row) => sum + numberOrZero(row.views), 0),
+    views: hasCompleteViews ? latest.reduce((sum, row) => sum + numberOrZero(row.views), 0) : null,
     currency: latest.find((row) => row.currency)?.currency || booking.currency || null,
     gross_roas: bookingCost > 0 && latest.length ? grossGmv / bookingCost : null,
     net_roas: bookingCost > 0 && netGmv !== null ? netGmv / bookingCost : null,

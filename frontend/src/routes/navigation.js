@@ -21,7 +21,6 @@ export const sidebarSections = [
         children: [
           { to: '/manage/shop-analytics', labelKey: 'navigation.shopAnalytics', permission: 'tiktok' },
           { to: '/videos', labelKey: 'navigation.videos', permission: 'tiktok' },
-           { to: '/manage/video-analytics', labelKey: 'navigation.videoAnalytics', permission: 'tiktok' },
            { to: '/manage/affiliate', labelKey: 'navigation.affiliate', permission: 'tiktok' },
            { to: '/orders', labelKey: 'navigation.orders', permission: 'tiktok' },
            { to: '/bookings', labelKey: 'navigation.bookings', permission: 'tiktok' },
@@ -122,13 +121,7 @@ export const protectedRouteCards = [
     path: '/videos',
     component: 'ShopAnalytics',
     permission: 'tiktok',
-    props: { videoOnly: true, videoExportOnly: true },
-  },
-  {
-    path: '/manage/video-analytics',
-    component: 'ShopAnalytics',
-    permission: 'tiktok',
-    props: { videoOnly: true },
+    props: { videoOnly: true, combinedVideoTabs: true },
   },
   {
     path: '/bookings',
@@ -159,4 +152,5 @@ export const protectedRouteCards = [
 export const redirectRoutes = [
   { path: '/manage', to: '/manage/users' },
   { path: '/manage/koc', to: '/manage/koc-performance' },
+  { path: '/manage/video-analytics', to: '/videos?view=performance' },
 ];
