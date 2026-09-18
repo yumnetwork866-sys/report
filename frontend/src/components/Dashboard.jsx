@@ -289,11 +289,11 @@ const GrowthBadge = ({ value, label }) => {
       title={`${formatted} ${label}`}
     >
       {isPositive ? (
-        <TrendingUp size={13} aria-hidden="true" />
+        <TrendingUp size={11} aria-hidden="true" />
       ) : isNegative ? (
-        <TrendingDown size={13} aria-hidden="true" />
+        <TrendingDown size={11} aria-hidden="true" />
       ) : (
-        <Minus size={13} aria-hidden="true" />
+        <Minus size={11} aria-hidden="true" />
       )}
       <span>{formatted}</span>
       <span className="stat-card__growth-label">{label}</span>
