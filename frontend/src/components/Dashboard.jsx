@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Area,
   Bar,
   CartesianGrid,
   Cell,
   ComposedChart,
   LabelList,
   Legend,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -317,42 +317,73 @@ const DashboardBarLabel = ({ x, y, width, value, index, total, formatter }) => {
   );
 };
 
-const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount, metric, currency, t }) => {
+const ActiveDotGlow = ({ cx, cy, stroke }) => {
+  if (cx == null || cy == null || Number.isNaN(cx) || Number.isNaN(cy)) return null;
+  const strokeColor = stroke || 'var(--color-primary, #0ea5e9)';
+  return (
+    <g className="dashboard-chart-active-dot">
+      <circle cx={cx} cy={cy} r={9} fill={strokeColor} fillOpacity={0.25} />
+      <circle cx={cx} cy={cy} r={4.5} fill="#ffffff" stroke={strokeColor} strokeWidth={2.5} />
+    </g>
+  );
+};
+
+const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount, currency, t }) => {
   const item = payload?.[0]?.payload;
   if (!active || !item) return null;
 
+  const videoCount = Number(item.videoCount || 0);
+
   return (
     <div className="dashboard-chart-tooltip">
-      <strong>{item.fullName}</strong>
-      {metric === 'date' ? (
-        <div>
-          <span>{t('dashboard.totalVideos')}</span>
-          <b>{formatNumber(item.videoCount)}</b>
+      <div className="dashboard-chart-tooltip__header">
+        <strong className="dashboard-chart-tooltip__title">{item.fullName}</strong>
+        {videoCount > 0 ? (
+          <span className="dashboard-chart-tooltip__badge">
+            <Video size={11} aria-hidden="true" />
+            <span>{formatNumber(videoCount)} {t('dashboard.video')}</span>
+          </span>
+        ) : null}
+      </div>
+
+      <div className="dashboard-chart-tooltip__hero">
+        <div className="dashboard-chart-tooltip__hero-card dashboard-chart-tooltip__hero-card--gmv">
+          <span className="dashboard-chart-tooltip__hero-label">
+            <span className="dashboard-chart-tooltip__indicator dashboard-chart-tooltip__indicator--gmv" />
+            {t('dashboard.totalGmv')}
+          </span>
+          <strong className="dashboard-chart-tooltip__hero-val">
+            {formatGmvAmount(item.gross_gmv || 0, currency)}
+          </strong>
         </div>
-      ) : null}
-      <div>
-        <span>{t('dashboard.views')}</span>
-        <b>{formatNumber(item.views)}</b>
+        <div className="dashboard-chart-tooltip__hero-card dashboard-chart-tooltip__hero-card--views">
+          <span className="dashboard-chart-tooltip__hero-label">
+            <span className="dashboard-chart-tooltip__indicator dashboard-chart-tooltip__indicator--views" />
+            {t('dashboard.totalViews')}
+          </span>
+          <strong className="dashboard-chart-tooltip__hero-val">
+            {formatNumber(item.views || 0)}
+          </strong>
+        </div>
       </div>
-      <div>
-        <span>{t('dashboard.totalGmv')}</span>
-        <b>{formatGmvAmount(item.gross_gmv || 0, currency)}</b>
-      </div>
-      <div>
-        <span>{t('dashboard.totalOrders')}</span>
-        <b>{formatNumber(item.orders || 0)}</b>
-      </div>
-      <div>
-        <span>{t('dashboard.totalLikes')}</span>
-        <b>{formatNumber(item.likes)}</b>
-      </div>
-      <div>
-        <span>{t('dashboard.totalShares')}</span>
-        <b>{formatNumber(item.shares)}</b>
-      </div>
-      <div>
-        <span>{t('dashboard.totalComments')}</span>
-        <b>{formatNumber(item.comments)}</b>
+
+      <div className="dashboard-chart-tooltip__grid">
+        <div className="dashboard-chart-tooltip__stat">
+          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalOrders')}</span>
+          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.orders || 0)}</b>
+        </div>
+        <div className="dashboard-chart-tooltip__stat">
+          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalLikes')}</span>
+          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.likes || 0)}</b>
+        </div>
+        <div className="dashboard-chart-tooltip__stat">
+          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalComments')}</span>
+          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.comments || 0)}</b>
+        </div>
+        <div className="dashboard-chart-tooltip__stat">
+          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalShares')}</span>
+          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.shares || 0)}</b>
+        </div>
       </div>
     </div>
   );
@@ -1041,8 +1072,12 @@ const Dashboard = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData} margin={{ top: 26, right: chartType === 'area' ? 12 : 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                   <defs>
-                    <linearGradient id="dashboardAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.35} />
+                    <linearGradient id="dashboardGmvGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f97316" stopOpacity={0.24} />
+                      <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="dashboardViewsGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0.2} />
                       <stop offset="95%" stopColor="var(--color-primary, #0ea5e9)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
@@ -1071,7 +1106,10 @@ const Dashboard = () => {
                   ) : (
                     <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
                   )}
-                  <Tooltip cursor={{ stroke: 'var(--color-primary)', strokeWidth: 1.5, strokeDasharray: '4 4' }} content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} metric={chartMetric} dailyMetric={dailyMetric} currency={totals.sales_currency} t={t} />} />
+                  <Tooltip
+                    cursor={{ stroke: 'rgba(148, 163, 184, 0.45)', strokeWidth: 1.5, strokeDasharray: '4 4' }}
+                    content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} currency={totals.sales_currency} t={t} />}
+                  />
                   <Legend
                     verticalAlign="top"
                     align="center"
@@ -1081,25 +1119,29 @@ const Dashboard = () => {
                   />
                   {chartType === 'area' ? (
                     <>
-                      <Line
+                      <Area
                         yAxisId="gmv"
                         name={t('dashboard.totalGmv')}
                         type="monotone"
                         dataKey="gross_gmv"
                         stroke="#f97316"
                         strokeWidth={2.5}
-                        dot={false}
-                        activeDot={{ r: 5 }}
+                        fill="url(#dashboardGmvGradient)"
+                        fillOpacity={1}
+                        dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: '#f97316', strokeWidth: 2 } : false}
+                        activeDot={<ActiveDotGlow stroke="#f97316" />}
                       />
-                      <Line
+                      <Area
                         yAxisId="views"
                         name={t('dashboard.totalViews')}
                         type="monotone"
                         dataKey="views"
                         stroke="var(--color-primary, #0ea5e9)"
                         strokeWidth={2.5}
-                        dot={false}
-                        activeDot={{ r: 5 }}
+                        fill="url(#dashboardViewsGradient)"
+                        fillOpacity={1}
+                        dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: 'var(--color-primary, #0ea5e9)', strokeWidth: 2 } : false}
+                        activeDot={<ActiveDotGlow stroke="var(--color-primary, #0ea5e9)" />}
                       />
                     </>
                   ) : (

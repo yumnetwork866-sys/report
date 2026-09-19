@@ -654,7 +654,10 @@ const ShopAnalytics = ({
           currency,
         });
         let nextSnapshot = payload?.snapshots?.[0] || null;
-        if (!nextSnapshot || !Array.isArray(nextSnapshot?.metrics?.comparison_intervals)) {
+        const syncedAt = Date.parse(nextSnapshot?.synced_at || '');
+        const snapshotIsStale = !Number.isFinite(syncedAt)
+          || Date.now() - syncedAt > 12 * 60 * 60 * 1000;
+        if (!nextSnapshot || !Array.isArray(nextSnapshot?.metrics?.comparison_intervals) || snapshotIsStale) {
           const syncPayload = await syncTikTokShopAnalytics(selectedShopId, {
             start_date: startDate,
             end_date: endDate,
@@ -831,6 +834,8 @@ const ShopAnalytics = ({
   const intervals = useMemo(() => (
     Array.isArray(snapshot?.metrics?.intervals) ? snapshot.metrics.intervals : []
   ), [snapshot]);
+  const hasRowsBeyondReportedDate = Boolean(snapshot?.latest_available_date)
+    && intervals.some((row) => String(row?.start_date || '').slice(0, 10) > snapshot.latest_available_date);
   const comparisonIntervals = useMemo(() => (
     Array.isArray(snapshot?.metrics?.comparison_intervals)
       ? snapshot.metrics.comparison_intervals
@@ -1079,10 +1084,14 @@ const ShopAnalytics = ({
     }
   };
 
-  const changeCustomDate = (setter, currentValue) => (event) => {
-    const nextValue = event.target.value;
+  const changeCustomDate = (setter, currentValue) => (nextValue) => {
     if (nextValue === currentValue) return;
     setter(nextValue);
+  };
+
+  const changeCustomEndDate = (selectedDate) => {
+    const nextEndDate = shiftDate(selectedDate, 1);
+    if (nextEndDate !== endDate) setEndDate(nextEndDate);
   };
 
   const changeSelectedShop = (nextShopId) => {
@@ -1311,7 +1320,7 @@ const ShopAnalytics = ({
                       id="analytics-start-date"
                       label={t('shopAnalytics.startDate')}
                       value={startDate}
-                      max={endDate ? shiftDate(endDate, -1) : undefined}
+                      max={dateOnly(new Date())}
                       onChange={changeCustomDate(setStartDate, startDate)}
                     />
                   </div>
@@ -1320,11 +1329,10 @@ const ShopAnalytics = ({
                     <DatePickerInput
                       id="analytics-end-date"
                       label={t('shopAnalytics.endDate')}
-                      value={endDate}
-                      min={startDate ? shiftDate(startDate, 1) : undefined}
+                      value={shiftDate(endDate, -1)}
                       max={dateOnly(new Date())}
                       invalid={invalidRange}
-                      onChange={changeCustomDate(setEndDate, endDate)}
+                      onChange={changeCustomEndDate}
                     />
                   </div>
                 </>
@@ -1551,6 +1559,9 @@ const ShopAnalytics = ({
                         ? `${t('shopAnalytics.lastSync')}: ${formatDateTime(snapshot.synced_at)} · ${t('shopAnalytics.latestDate')}: ${formatDate(snapshot.latest_available_date)}`
                         : t('shopAnalytics.noData')}
                     </p>
+                    {hasRowsBeyondReportedDate ? (
+                      <p className="section-card__meta">{t('shopAnalytics.newerRowsNotice')}</p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="table-wrap shop-analytics__table-wrap">
@@ -1739,15 +1750,18 @@ const ShopAnalytics = ({
                 <>
                   <div className="field">
                     <label htmlFor="video-start-date">{t('shopAnalytics.startDate')}</label>
-                    <DatePickerInput id="video-start-date" label={t('shopAnalytics.startDate')} value={startDate} max={endDate ? shiftDate(endDate, -1) : undefined} onChange={changeCustomDate(setStartDate, startDate)} />
+                    <DatePickerInput id="video-start-date" label={t('shopAnalytics.startDate')} value={startDate} max={dateOnly(new Date())} onChange={changeCustomDate(setStartDate, startDate)} />
                   </div>
                   <div className="field">
                     <label htmlFor="video-end-date">{t('shopAnalytics.endDate')}</label>
-                    <DatePickerInput id="video-end-date" label={t('shopAnalytics.endDate')} value={endDate} min={startDate ? shiftDate(startDate, 1) : undefined} max={dateOnly(new Date())} onChange={changeCustomDate(setEndDate, endDate)} />
+                    <DatePickerInput id="video-end-date" label={t('shopAnalytics.endDate')} value={shiftDate(endDate, -1)} max={dateOnly(new Date())} invalid={invalidRange} onChange={changeCustomEndDate} />
                   </div>
                 </>
               ) : null}
             </div>
+            {invalidRange ? (
+              <p className="shop-analytics__validation" role="alert">{t('shopAnalytics.invalidRange')}</p>
+            ) : null}
           </section>
 
           {selectedShop && (missingAnalyticsScope || tokenExpired) ? (

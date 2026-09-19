@@ -1394,7 +1394,7 @@ h6),
 .app-shell__layout > main.app-shell__content { grid-column: 2; grid-row: 1; }
 .app-shell__layout.app-shell__layout--sidebar-collapsed > .sidebar-menu-button { grid-column: 1; }
 .app-shell__layout.app-shell__layout--sidebar-collapsed > main.app-shell__content { grid-column: 2; }
-.sidebar--collapsed .sidebar__header { justify-content: center; }
+.sidebar--collapsed .sidebar__header { justify-content: center; padding: 0; }
 .sidebar--collapsed .sidebar__header-label,
 .sidebar--collapsed .sidebar__group-title,
 .sidebar--collapsed .sidebar__link-label { display: none; }
@@ -1412,10 +1412,10 @@ h6),
   color: var(--color-text-soft, #33445f);
   scrollbar-width: thin;
 }
-.sidebar__header { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; margin-bottom: 12px; }
-.sidebar__header-label { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 650; color: var(--color-text, #17243d); }
+.sidebar__header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 40px; margin-bottom: 12px; padding: 0 4px 0 12px; }
+.sidebar__header-label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; color: var(--color-text, #17243d); }
 .sidebar__platform-icon { width: 20px; height: 20px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.6; }
-.sidebar__toggle { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; font-size: 24px; transition: background-color 150ms, color 150ms; }
+.sidebar__toggle { display: grid; place-items: center; width: 32px; height: 32px; flex-shrink: 0; padding: 0; border: 0; border-radius: 6px; color: inherit; background: transparent; cursor: pointer; font-size: 24px; transition: background-color 150ms, color 150ms; }
 .sidebar__toggle:hover { background: var(--color-accent-soft, #edf4ff); color: var(--color-primary, #2f6fe4); }
 .sidebar__toggle-icon { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .sidebar__nav, .sidebar__section-links, .sidebar__group { display: grid; gap: 3px; }
