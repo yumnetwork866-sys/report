@@ -342,6 +342,81 @@
 .table-sort-btn:hover .table-sort-icon--idle { color: var(--color-accent); opacity: .8; }
 .table-sort-icon--active { color: var(--color-accent); opacity: 1; }
 
+.table-header-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-inline: 3px;
+  border-radius: 50%;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-strong, #cbd5e1);
+  color: var(--color-text-soft, #64748b);
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  vertical-align: middle;
+  transition: all .15s ease;
+  flex-shrink: 0;
+}
+
+.table-header-help:hover,
+.table-header-help:focus-visible {
+  border-color: var(--color-accent, #6366f1);
+  color: var(--color-accent, #6366f1);
+  background: var(--color-surface-hover, #f8fafc);
+  outline: none;
+}
+
+.table-header-help__icon {
+  display: block;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.68rem;
+  line-height: 1;
+  transform: translateY(-0.5px);
+  user-select: none;
+}
+
+.table-header-tooltip {
+  position: fixed;
+  z-index: 10000;
+  width: max-content;
+  max-width: 240px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: #1e293b;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  color: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+  pointer-events: none;
+  text-align: center;
+  text-transform: none;
+  white-space: normal;
+  animation: table-header-tooltip-in 140ms ease both;
+}
+
+.table-header-tooltip--above {
+  transform: translateY(-100%);
+  animation: table-header-tooltip-above-in 140ms ease both;
+}
+
+@keyframes table-header-tooltip-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes table-header-tooltip-above-in {
+  from { opacity: 0; transform: translateY(-100%) scale(0.95); }
+  to { opacity: 1; transform: translateY(-100%) scale(1); }
+}
+
 .booking-staff-row__trigger {
   display: inline-flex;
   align-items: center;

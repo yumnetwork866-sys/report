@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { bookingPerformanceSortValue } from '../src/lib/bookingMetrics.js';
+import {
+  bookingPerformanceSortValue,
+  defaultBookingSortForTab,
+  DEFAULT_BOOKING_SORT_BY_TAB,
+} from '../src/lib/bookingMetrics.js';
 
 test('reads the correct performance value for every sortable metric column', () => {
   const lower = {
@@ -108,4 +112,47 @@ test('sorting prioritizes period GMV over lifetime GMV when date range is select
   const sortedAugustVideos = sortBookings(bookings, augustMap, 'videos');
   assert.equal(sortedAugustVideos[0].id, 2, 'In August view, Creator 2 has 1 video in period and should be first');
   assert.equal(sortedAugustVideos[1].id, 1, 'In August view, Creator 1 has 0 videos in period and should be second');
+});
+
+test('defaultBookingSortForTab returns cost for video tab and revenue for product tab', () => {
+  assert.deepEqual(defaultBookingSortForTab('video'), { key: 'cost', direction: 'desc' });
+  assert.deepEqual(defaultBookingSortForTab('product'), { key: 'revenue', direction: 'desc' });
+  assert.deepEqual(defaultBookingSortForTab(), { key: 'cost', direction: 'desc' });
+  assert.equal(DEFAULT_BOOKING_SORT_BY_TAB.video.key, 'cost');
+  assert.equal(DEFAULT_BOOKING_SORT_BY_TAB.product.key, 'revenue');
+});
+
+test('sorting bookings by cost prioritizes higher cost in period', () => {
+  const bookings = [
+    { id: 1, total_cost: 2000000, booking_cost: 2000000 },
+    { id: 2, total_cost: 5000000, booking_cost: 5000000 },
+    { id: 3, total_cost: 0, booking_cost: 0 },
+    { id: 4, total_cost: 1000000, booking_cost: 1000000 },
+  ];
+
+  const sorted = [...bookings].sort((a, b) => (Number(b.total_cost) - Number(a.total_cost)));
+  assert.equal(sorted[0].id, 2);
+  assert.equal(sorted[1].id, 1);
+  assert.equal(sorted[2].id, 4);
+  assert.equal(sorted[3].id, 3);
+});
+
+test('sorting bookings by cost falls back to GMV when bookings have no cost or equal cost', () => {
+  const bookings = [
+    { id: 1, total_cost: 0, actual_performance: { gross_gmv: 10000000 } },
+    { id: 2, total_cost: 0, actual_performance: { gross_gmv: 50000000 } },
+    { id: 3, total_cost: 2000000, actual_performance: { gross_gmv: 5000000 } },
+    { id: 4, total_cost: 0, actual_performance: { gross_gmv: 20000000 } },
+  ];
+
+  const sorted = [...bookings].sort((a, b) => {
+    const costDiff = Number(b.total_cost || 0) - Number(a.total_cost || 0);
+    if (costDiff !== 0) return costDiff;
+    return Number(b.actual_performance?.gross_gmv || 0) - Number(a.actual_performance?.gross_gmv || 0);
+  });
+
+  assert.equal(sorted[0].id, 3, 'Booking with 2M cost should be first');
+  assert.equal(sorted[1].id, 2, 'Among 0 cost bookings, 50M GMV should be second');
+  assert.equal(sorted[2].id, 4, 'Among 0 cost bookings, 20M GMV should be third');
+  assert.equal(sorted[3].id, 1, 'Among 0 cost bookings, 10M GMV should be fourth');
 });

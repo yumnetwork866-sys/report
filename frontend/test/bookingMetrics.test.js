@@ -11,13 +11,29 @@ import {
   bookingVideoSocialMetrics,
   filterVideosByPeriod,
   bookingVideoPerformanceForVideos,
+  countPaidBookingKocs,
   productsOfBookingVideo,
   extractProductOrderRows,
   formatOrderTimestamp,
   finiteNumber,
   optionalNumber,
   editableCurrencyAmount,
+  currentBookingMonth,
 } from '../src/lib/bookingMetrics.js';
+
+test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
+  const bookings = [
+    { id: 1, creator_open_id: 'creator-a', total_cost: 100 },
+    { id: 2, creator_open_id: 'creator-a', total_cost: 50 },
+    { id: 3, creator_username: 'free-creator', total_cost: 0 },
+    { id: 4, creator_username: 'paid-creator', booking_cost: 25 },
+    { id: 5, creator_username: 'outside-period', total_cost: 40 },
+  ];
+
+  const count = countPaidBookingKocs(bookings, (booking) => booking.id !== 5);
+
+  assert.equal(count, 2);
+});
 
 test('cleanDisplayProductName removes brackets and cleans name', () => {
   assert.equal(cleanDisplayProductName('[HOT] Dầu gội Follicas - Chai 300ml'), 'Dầu gội Follicas');
@@ -45,6 +61,13 @@ test('orderRangeForPeriod formats all, custom, and monthly periods', () => {
   assert.equal(monthly.startDate, '2026-08-01');
   assert.equal(monthly.endDate, '2026-08-31');
   assert.equal(monthly.windowType, 'CUSTOM');
+});
+
+test('currentBookingMonth formats YYYY-MM correctly for dates', () => {
+  assert.equal(currentBookingMonth(new Date('2026-09-15T12:00:00Z')), '2026-09');
+  assert.equal(currentBookingMonth(new Date('2026-01-05T00:00:00Z')), '2026-01');
+  assert.equal(typeof currentBookingMonth(), 'string');
+  assert.match(currentBookingMonth(), /^\d{4}-\d{2}$/);
 });
 
 test('isBookingInPeriod scopes booking targets to the selected booking month', () => {

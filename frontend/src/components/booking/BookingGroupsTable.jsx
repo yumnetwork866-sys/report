@@ -1,7 +1,7 @@
 import React from 'react';
 import BookingEvaluationTable from './BookingEvaluationTable';
 import TargetKocAvatar from './TargetKocAvatar';
-import { SortIcon } from './BookingIcons';
+import { HeaderTooltip, SortIcon } from './BookingIcons';
 
 const BookingGroupsTable = ({
   groups,
@@ -32,6 +32,9 @@ const BookingGroupsTable = ({
             <th key={key} className={`${className} sortable-th`.trim()}>
               <button type="button" className="table-sort-btn" onClick={() => onOverviewSort(key)}>
                 <span>{t(label)}</span>
+                {key === 'koc' && bookingTableProps.bookingTab === 'video' ? (
+                  <HeaderTooltip text={t('booking.paidKocTooltip')} />
+                ) : null}
                 <SortIcon active={overviewSort.key === key} direction={overviewSort.direction} />
               </button>
             </th>
@@ -64,7 +67,7 @@ const BookingGroupsTable = ({
                     </span>
                   </button>
                 </td>
-                <td className="cell-number">{formatNumber(group.bookings.length)}</td>
+                <td className="cell-number">{formatNumber(group.kocCount)}</td>
                 <td className="cell-number">{formatNumber(group.videoCount)}</td>
                 <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                 <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>

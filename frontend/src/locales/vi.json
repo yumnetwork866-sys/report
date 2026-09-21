@@ -686,6 +686,7 @@
     "noData": "Chưa có booking nào.",
     "staffColumn": "Staff",
     "kocColumn": "KOC",
+    "paidKocTooltip": "Đây là số lượng KOC đã chi tiền",
     "costColumn": "Cost",
     "deadlineColumn": "Deadline",
     "statusColumn": "Trạng thái",

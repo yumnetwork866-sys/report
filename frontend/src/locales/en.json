@@ -685,6 +685,7 @@
     "noData": "No bookings yet.",
     "staffColumn": "Staff",
     "kocColumn": "KOC",
+    "paidKocTooltip": "This is the number of paid KOCs",
     "costColumn": "Cost",
     "deadlineColumn": "Deadline",
     "statusColumn": "Status",

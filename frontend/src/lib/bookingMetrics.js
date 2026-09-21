@@ -4,6 +4,13 @@ export const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
 export const BOOKING_UI_SESSION_KEY = 'booking-management-ui';
 export const PRODUCT_ORDERS_CACHE_SESSION_KEY = 'booking-product-orders-cache';
 
+export const currentBookingMonth = (date = new Date()) => {
+  const d = date instanceof Date ? date : new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
 export const generateBookingMonthOptions = (count = 3) => {
   const options = [{ value: 'all', labelKey: 'booking.allMonths' }];
   const d = new Date();
@@ -129,6 +136,25 @@ export const bookingProductsOf = (booking) => {
   return [...byId.values()].filter((product) => String(product.id || product.product_id || '').trim());
 };
 
+const bookingCreatorKey = (booking) => {
+  const openId = String(booking?.creator_open_id || '').trim();
+  if (openId) return `open:${openId}`;
+  const username = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase('en');
+  if (username) return `username:${username}`;
+  const creatorId = String(booking?.creator_id || '').trim();
+  if (creatorId) return `creator:${creatorId}`;
+  return `booking:${booking?.id || ''}`;
+};
+
+export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => new Set(
+  (Array.isArray(bookings) ? bookings : [])
+    .filter((booking) => (
+      isInPeriod(booking)
+      && finiteNumber(booking?.total_cost ?? booking?.booking_cost) > 0
+    ))
+    .map(bookingCreatorKey),
+).size;
+
 export const orderRangeForPeriod = (period, customRange) => {
   if (!period || period === 'all') {
     return { startTime: null, endTime: null, windowType: 'LIFETIME' };
@@ -183,6 +209,15 @@ const BOOKING_PERFORMANCE_SORT_FIELDS = {
 
 export const bookingPerformanceSortValue = (performance, sortKey) => (
   finiteNumber(performance?.[BOOKING_PERFORMANCE_SORT_FIELDS[sortKey]])
+);
+
+export const DEFAULT_BOOKING_SORT_BY_TAB = Object.freeze({
+  video: Object.freeze({ key: 'cost', direction: 'desc' }),
+  product: Object.freeze({ key: 'revenue', direction: 'desc' }),
+});
+
+export const defaultBookingSortForTab = (tab) => (
+  DEFAULT_BOOKING_SORT_BY_TAB[tab] || DEFAULT_BOOKING_SORT_BY_TAB.video
 );
 
 export const optionalNumber = (value) => {

@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 const BOOKING_VIDEO_ICON_PATHS = {
   views: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
@@ -35,6 +36,70 @@ export const SortIcon = ({ active, direction }) => {
           <path d="m6 9 6 6 6-6" />
         </svg>
       )}
+    </span>
+  );
+};
+
+export const HeaderTooltip = ({ text }) => {
+  const [show, setShow] = useState(false);
+  const [position, setPosition] = useState(null);
+  const triggerRef = useRef(null);
+
+  const handleShow = (e) => {
+    e?.stopPropagation?.();
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const showAbove = rect.bottom + 80 > window.innerHeight;
+    setPosition({
+      left: Math.min(window.innerWidth - 220, Math.max(12, rect.left + rect.width / 2 - 100)),
+      top: showAbove ? rect.top - 8 : rect.bottom + 8,
+      showAbove,
+    });
+    setShow(true);
+  };
+
+  const handleHide = (e) => {
+    e?.stopPropagation?.();
+    setShow(false);
+  };
+
+  return (
+    <span
+      ref={triggerRef}
+      className="table-header-help"
+      title={text}
+      role="button"
+      tabIndex={0}
+      aria-label={text}
+      onMouseEnter={handleShow}
+      onMouseLeave={handleHide}
+      onFocus={handleShow}
+      onBlur={handleHide}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (show) handleHide(e);
+        else handleShow(e);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.stopPropagation();
+          e.preventDefault();
+          if (show) handleHide(e);
+          else handleShow(e);
+        }
+      }}
+    >
+      <span className="table-header-help__icon" aria-hidden="true">i</span>
+      {show && position && typeof document !== 'undefined' ? createPortal(
+        <span
+          className={`table-header-tooltip${position.showAbove ? ' table-header-tooltip--above' : ''}`}
+          role="tooltip"
+          style={{ left: position.left, top: position.top }}
+        >
+          {text}
+        </span>,
+        document.body,
+      ) : null}
     </span>
   );
 };

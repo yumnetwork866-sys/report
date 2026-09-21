@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import {
   bookingPerformanceSortValue,
   bookingProductOrderPerformance,
+  countPaidBookingKocs,
   bookingVideoMatchesHashtags,
   bookingVideoPerformanceForVideos,
   bookingVideosByRevenue,
@@ -169,9 +170,23 @@ export default function useBookingAnalytics({
         : (performance?.gross_gmv ?? performance?.affiliate_gmv));
       return convertAmount(revenue, performance?.currency) ?? revenue;
     };
+    const costOf = (booking) => {
+      if (!bookingInPeriodById.get(String(booking.id))) return 0;
+      const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      return convertAmount(raw, booking.currency) ?? raw;
+    };
     for (const group of groups.values()) {
+      group.kocCount = bookingTab === 'video'
+        ? countPaidBookingKocs(
+          group.bookings,
+          (booking) => bookingInPeriodById.get(String(booking.id)),
+        )
+        : group.bookings.length;
+      const defaultSortOf = bookingTab === 'video' ? costOf : revenueOf;
       group.bookings.sort((left, right) => (
-        revenueOf(right) - revenueOf(left) || Number(right.id || 0) - Number(left.id || 0)
+        defaultSortOf(right) - defaultSortOf(left)
+        || revenueOf(right) - revenueOf(left)
+        || Number(right.id || 0) - Number(left.id || 0)
       ));
     }
     return [...groups.values()].sort((left, right) => {
@@ -198,7 +213,7 @@ export default function useBookingAnalytics({
     return list.sort((a, b) => {
       if (key === 'staff') return factor * collator.compare(a.manager.name, b.manager.name);
       const value = (group) => {
-        if (key === 'koc') return group.bookings.length;
+        if (key === 'koc') return group.kocCount;
         if (key === 'videos') return group.videoCount;
         if (key === 'cost') return group.totalCost;
         if (key === 'revenue') return group.totalRevenue;
@@ -209,9 +224,14 @@ export default function useBookingAnalytics({
       };
       const valA = value(a);
       const valB = value(b);
-      return valA !== valB
-        ? factor * (valA > valB ? 1 : -1)
-        : collator.compare(a.manager.name, b.manager.name);
+      if (valA !== valB) {
+        return factor * (valA > valB ? 1 : -1);
+      }
+      if (key === 'ratio' || key === 'cost') {
+        const revDiff = b.totalRevenue - a.totalRevenue;
+        if (revDiff !== 0) return revDiff;
+      }
+      return collator.compare(a.manager.name, b.manager.name);
     });
   }, [bookingGroupsToRender, collator, overviewSort]);
 
@@ -259,9 +279,14 @@ export default function useBookingAnalytics({
       }
       const valA = value(a);
       const valB = value(b);
-      return valA !== valB
-        ? factor * (valA > valB ? 1 : -1)
-        : Number(b.id || 0) - Number(a.id || 0);
+      if (valA !== valB) {
+        return factor * (valA > valB ? 1 : -1);
+      }
+      if (key === 'cost') {
+        const revDiff = revenueOf(b) - revenueOf(a);
+        if (revDiff !== 0) return revDiff;
+      }
+      return Number(b.id || 0) - Number(a.id || 0);
     });
   }, [bookingInPeriodById, bookingSort, bookingTab, collator, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
 

@@ -32,6 +32,8 @@ import {
   finiteNumber,
   optionalNumber,
   editableCurrencyAmount,
+  defaultBookingSortForTab,
+  currentBookingMonth,
 } from '../lib/bookingMetrics';
 
 import BookingProductOrderDetailModal from './booking/BookingProductOrderDetailModal';
@@ -68,7 +70,9 @@ const BookingManagement = ({
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const performanceWindow = DEFAULT_PERFORMANCE_WINDOW;
-  const [selectedMonth, setSelectedMonth] = useState('all');
+  const [selectedMonth, setSelectedMonth] = useState(() => (
+    bookingUiSession().selectedMonth || currentBookingMonth()
+  ));
   const monthOptions = useMemo(() => generateBookingMonthOptions(), []);
   const [bookingTab, setBookingTab] = useState(() => (
     bookingUiSession().bookingTab === 'product' ? 'product' : 'video'
@@ -173,7 +177,11 @@ const BookingManagement = ({
   }, []);
 
   const [overviewSort, setOverviewSort] = useState({ key: 'ratio', direction: 'desc' });
-  const [bookingSort, setBookingSort] = useState({ key: 'revenue', direction: 'desc' });
+  const [bookingSortByTab, setBookingSortByTab] = useState(() => ({
+    video: { ...defaultBookingSortForTab('video') },
+    product: { ...defaultBookingSortForTab('product') },
+  }));
+  const bookingSort = bookingSortByTab[bookingTab] || defaultBookingSortForTab(bookingTab);
 
   const handleOverviewSort = (key) => {
     setOverviewSort((current) => {
@@ -185,13 +193,17 @@ const BookingManagement = ({
   };
 
   const handleBookingSort = useCallback((key) => {
-    setBookingSort((current) => {
-      if (current.key === key) {
-        return { key, direction: current.direction === 'desc' ? 'asc' : 'desc' };
-      }
-      return { key, direction: 'desc' };
+    setBookingSortByTab((current) => {
+      const currentSort = current[bookingTab] || defaultBookingSortForTab(bookingTab);
+      const nextSort = currentSort.key === key
+        ? { key, direction: currentSort.direction === 'desc' ? 'asc' : 'desc' }
+        : { key, direction: 'desc' };
+      return {
+        ...current,
+        [bookingTab]: nextSort,
+      };
     });
-  }, []);
+  }, [bookingTab]);
 
   useEffect(() => {
     try {
@@ -199,11 +211,12 @@ const BookingManagement = ({
         bookingTab,
         selectedManagerKey,
         expandedBookingId,
+        selectedMonth,
       }));
     } catch {
       // The page still works when session storage is unavailable.
     }
-  }, [bookingTab, expandedBookingId, selectedManagerKey]);
+  }, [bookingTab, expandedBookingId, selectedManagerKey, selectedMonth]);
 
   useEffect(() => {
     try {
