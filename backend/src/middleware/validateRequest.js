@@ -6,7 +6,7 @@ const buildValidationMiddleware = (source) => (schema) => (req, res, next) => {
       message: issue.message,
     }));
     return res.status(400).json({
-      message: issues[0]?.message || 'Invalid request.',
+      message: 'Invalid request.',
       errors: issues,
     });
   }

@@ -36,10 +36,10 @@ test('validateParams returns structured errors for an invalid booking id', () =>
   validateParams(bookingIdParamsSchema)(req, res, () => assert.fail('next should not run'));
 
   assert.equal(res.statusCode, 400);
-  assert.equal(res.body.message, 'A valid booking ID is required.');
+  assert.equal(res.body.message, 'Invalid request.');
   assert.deepEqual(res.body.errors, [{
     path: 'id',
-    message: 'A valid booking ID is required.',
+    message: 'Invalid booking ID.',
   }]);
 });
 

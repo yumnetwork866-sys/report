@@ -1,0 +1,320 @@
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+
+import { fetchTikTokShopVideoThumbnail } from '../../../lib/api';
+import { getAffiliateOrderProductIds, getAffiliateOrderSources } from '../../../lib/sellerAffiliate';
+import AppAvatar from '../../AppAvatar';
+import DatePickerInput from '../../DatePickerInput';
+import { internationalPhone } from '../utils/sellerAffiliateUtils';
+
+const COUNTRY_DIAL_CODES = [
+  { code: '+84', label: 'VN +84' },
+  { code: '+60', label: 'MY +60' },
+  { code: '+65', label: 'SG +65' },
+  { code: '+62', label: 'ID +62' },
+  { code: '+66', label: 'TH +66' },
+  { code: '+63', label: 'PH +63' },
+  { code: '+1', label: 'US +1' },
+  { code: '+44', label: 'UK +44' },
+];
+export const CreatorAvatar = ({ src, name }) => <AppAvatar src={src} name={name || 'Creator'} />;
+export const MetricTooltip = ({ text }) => {
+  const id = useId();
+  const triggerRef = useRef(null);
+  const [position, setPosition] = useState(null);
+  const show = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const showAbove = rect.bottom + 100 > window.innerHeight;
+    setPosition({
+      left: Math.min(window.innerWidth - 252, Math.max(12, rect.left + rect.width / 2 - 120)),
+      top: showAbove ? rect.top - 8 : rect.bottom + 8,
+      showAbove,
+    });
+  };
+  const hide = () => setPosition(null);
+  return (
+    <span className="seller-affiliate__metric-help">
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-describedby={position ? id : undefined}
+        aria-label={text}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+        onClick={() => position ? hide() : show()}
+      >
+        ?
+      </button>
+      {position ? createPortal(
+        <span
+          className={`seller-affiliate__metric-tooltip${position.showAbove ? ' seller-affiliate__metric-tooltip--above' : ''}`}
+          id={id}
+          role="tooltip"
+          style={{ left: position.left, top: position.top }}
+        >
+          {text}
+        </span>,
+        document.body,
+      ) : null}
+    </span>
+  );
+};
+const arrayValue = (value) => Array.isArray(value) ? value : value ? [value] : [];
+const percentageValue = (value) => {
+  const raw = typeof value === 'object'
+    ? value?.percentage ?? value?.percentage_value ?? value?.ratio ?? value?.value
+    : value;
+  const numeric = Number(String(raw ?? '').replace('%', ''));
+  if (!Number.isFinite(numeric)) return null;
+  if (String(raw).includes('%')) return numeric;
+  if (numeric <= 1) return numeric * 100;
+  return numeric > 100 ? numeric / 100 : numeric;
+};
+const distributionItems = (values, labelKeys) => {
+  if (Array.isArray(values)) return values;
+  if (!values || typeof values !== 'object') return arrayValue(values);
+  if (labelKeys.some((key) => values[key])) return [values];
+  return Object.entries(values).map(([label, value]) => ({ label, value }));
+};
+const distributionWinner = (values, labelKeys) => distributionItems(values, labelKeys)
+  .map((item) => ({
+    label: typeof item === 'string' ? item : item?.label || labelKeys.map((key) => item?.[key]).find(Boolean),
+    percentage: percentageValue(item),
+  }))
+  .filter((item) => item.label)
+  .sort((left, right) => (right.percentage ?? -1) - (left.percentage ?? -1))[0] || null;
+const creatorLevelLabel = (creator) => {
+  const value = creator.creator_level?.level ?? creator.creator_level ?? creator.level?.level ?? creator.level;
+  if (value === undefined || value === null || value === '') return '';
+  const match = String(value).match(/(\d+)/);
+  return match ? `Lv. ${match[1]}` : String(value);
+};
+const creatorCategoryLabels = (creator) => {
+  const candidates = [creator.categories, creator.category_names, creator.top_categories, creator.category_info, creator.category_ids]
+    .flatMap(arrayValue)
+    .map((category) => typeof category === 'string'
+      ? category
+      : category?.local_name || category?.name || category?.category_name)
+    .filter(Boolean);
+  return [...new Set(candidates)];
+};
+const normalizeAudienceLabel = (value) => String(value || '')
+  .replace(/^(?:AGE_RANGE_|FOLLOWER_AGE_)/, '')
+  .replace(/_/g, '-')
+  .replace(/^([A-Z])([A-Z]+)$/i, (_, first, rest) => `${first.toUpperCase()}${rest.toLowerCase()}`);
+const creatorFollowerDemographics = (creator) => {
+  const demographics = creator.follower_demographics || creator.follower_audience || {};
+  const topDemographics = creator.top_follower_demographics || {};
+  const gender = distributionWinner(
+    creator.follower_gender_distribution || creator.gender_distribution || demographics.gender_distribution
+      || creator.follower_gender || demographics.gender || topDemographics.major_gender,
+    ['gender', 'type', 'name', 'key'],
+  );
+  const age = distributionWinner(
+    creator.follower_age_distribution || creator.age_distribution || demographics.age_distribution
+      || creator.follower_age_ranges || creator.follower_age || demographics.age_ranges || topDemographics.age_ranges,
+    ['age_range', 'range', 'type', 'name', 'key'],
+  );
+  const genderLabel = gender
+    ? `${normalizeAudienceLabel(gender.label)}${gender.percentage === null ? '' : ` ${gender.percentage.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}`
+    : '';
+  const ageLabel = age
+    ? `${normalizeAudienceLabel(age.label)}${age.percentage === null ? '' : ` ${age.percentage.toLocaleString('en-US', { maximumFractionDigits: 0 })}%`}`
+    : '';
+  return { gender: genderLabel, age: ageLabel };
+};
+export const MarketplaceCreatorCell = ({ creator, followerCount, t }) => {
+  const level = creatorLevelLabel(creator);
+  const categories = creatorCategoryLabels(creator);
+  const demographics = creatorFollowerDemographics(creator);
+  const audience = [followerCount, demographics.gender, demographics.age].filter((value) => value && value !== '—');
+  return <td className="marketplace-creator-cell"><div className="creator-identity marketplace-creator"><CreatorAvatar src={creator.avatar?.url || creator.avatar_url} name={creator.nickname || creator.username} /><span className="marketplace-creator__details"><span className="marketplace-creator__username">{creator.username || '—'}{level ? <span className="marketplace-creator__level">{level}</span> : null}</span><strong>{creator.nickname || creator.username || '—'}</strong>{creator.previously_invited ? <span className="marketplace-creator__previously-invited" title={t('sellerAffiliate.previouslyInvitedDescription')}>{t('sellerAffiliate.previouslyInvited')}</span> : null}{categories.length ? <span className="marketplace-creator__category">{categories[0]}{categories.length > 1 ? `, +${categories.length - 1}` : ''}</span> : null}{audience.length ? <span className="marketplace-creator__audience">{audience.join(' · ')}</span> : null}</span></div></td>;
+};
+const AffiliateOrderProducts = ({ row }) => {
+  const products = Array.isArray(row.products) && row.products.length
+    ? row.products
+    : getAffiliateOrderProductIds(row).map((id) => ({ id }));
+  if (!products.length) return '—';
+  return <div className="seller-affiliate__order-products">{products.map((product) => <div className="seller-affiliate__product" key={product.id} title={product.title || product.id}>{product.main_image_url ? <img src={product.main_image_url} alt={product.title || product.id} loading="lazy" /> : null}</div>)}</div>;
+};
+export const AffiliateOrderSummary = ({ row }) => <div className="seller-affiliate__order-summary"><AffiliateOrderProducts row={row} /><strong className="seller-affiliate__order-id">{row.order_id || row.id}</strong></div>;
+const AffiliateOrderSource = ({ shopId, source, href, t }) => {
+  const [thumbnail, setThumbnail] = useState(source.thumbnail || null);
+  const [title, setTitle] = useState(source.title || '');
+  const [failed, setFailed] = useState(false);
+  const username = String(source.username || '').trim().replace(/^@+/, '');
+  const isVideo = source.type === 'VIDEO';
+
+  useEffect(() => {
+    setThumbnail(source.thumbnail || null);
+    setTitle(source.title || '');
+    setFailed(false);
+    if (!isVideo || (source.thumbnail && source.title) || !shopId || !/^\d{10,30}$/.test(source.id) || !username) return undefined;
+    const controller = new AbortController();
+    fetchTikTokShopVideoThumbnail(shopId, source.id, username, controller.signal)
+      .then((payload) => {
+        setThumbnail((current) => current || payload?.thumbnail_url || null);
+        setTitle((current) => current || payload?.title || '');
+      })
+      .catch((error) => { if (error.name !== 'AbortError') setFailed(true); });
+    return () => controller.abort();
+  }, [isVideo, shopId, source.id, source.thumbnail, source.title, username]);
+
+  const content = thumbnail && !failed
+    ? <img src={thumbnail} alt={title} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
+    : <span className="seller-affiliate__order-video-placeholder" aria-hidden="true">{isVideo ? '▶' : source.type === 'LIVE' || source.type === 'PRE_LIVE' ? '●' : source.type === 'SHOP' ? '▣' : '↗'}</span>;
+  const thumbnailElement = href ? <a className="seller-affiliate__order-video-thumbnail" href={href} target="_blank" rel="noreferrer" tabIndex={-1}>{content}</a> : <span className="seller-affiliate__order-video-thumbnail">{content}</span>;
+  const label = title || t(`sellerAffiliate.orderSource_${source.type}`, { defaultValue: source.type });
+  const meta = [username ? `@${username}` : '', source.id].filter(Boolean).join(' · ');
+  return <div className="seller-affiliate__order-video">{thumbnailElement}<span>{href ? <a href={href} target="_blank" rel="noreferrer">{label}</a> : <strong>{label}</strong>}{meta ? <span className="row-subtitle">{meta}</span> : null}</span></div>;
+};
+export const AffiliateOrderVideos = ({ row, shopId, t }) => {
+  const sources = getAffiliateOrderSources(row);
+  if (!sources.length) return t('sellerAffiliate.orderSource_UNKNOWN');
+  return <div className="seller-affiliate__order-videos">{sources.map((source) => {
+    const username = String(source.username || '').trim().replace(/^@+/, '');
+    const suppliedUrl = /^https?:\/\//i.test(String(source.url || '')) ? source.url : null;
+    const href = suppliedUrl || (source.type === 'VIDEO' && username && source.id ? `https://www.tiktok.com/@${encodeURIComponent(username)}/video/${encodeURIComponent(source.id)}` : null);
+    return <AffiliateOrderSource shopId={shopId} source={source} href={href} t={t} key={`${source.type}:${source.id}`} />;
+  })}</div>;
+};
+
+const invitationDate = (invitation) => (
+  invitation.update_time
+  || invitation.modified_time
+  || invitation.last_modified_time
+  || invitation.create_time
+  || invitation.created_time
+);
+
+export const InviteCreatorModal = ({
+  t,
+  locale,
+  creator,
+  activeTab,
+  onTabChange,
+  invitations,
+  selectedInvitationId,
+  onSelectInvitation,
+  search,
+  onSearchChange,
+  products,
+  form,
+  setForm,
+  onToggleProduct,
+  loading,
+  onClose,
+  onSubmit,
+}) => {
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
+  const sampleOptionsRef = useRef(null);
+  useEffect(() => {
+    if (!form.hasFreeSample) return undefined;
+    const frame = requestAnimationFrame(() => {
+      sampleOptionsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [form.hasFreeSample]);
+  const matchingInvitations = invitations
+    .filter((invitation) => String(invitation.name || '').toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()))
+    .slice(0, 5);
+  const formatInvitationDate = (value) => {
+    if (!value) return '—';
+    const numeric = Number(value);
+    const date = Number.isFinite(numeric)
+      ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+      : new Date(value);
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : new Intl.DateTimeFormat(locale, { dateStyle: 'medium' }).format(date);
+  };
+  return (
+    <div className="seller-affiliate__modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !loading) onClose(); }}>
+      <section className="seller-affiliate__invite-modal seller-affiliate__invite-picker" role="dialog" aria-modal="true" aria-labelledby="affiliate-invite-title">
+        <header>
+          <h2 id="affiliate-invite-title">{t('sellerAffiliate.inviteCollaborateHeader', { username: String(creator.username || '').replace(/^@/, '') })}</h2>
+          <button type="button" className="seller-affiliate__invite-close" aria-label={t('common.close')} disabled={loading} onClick={onClose}>×</button>
+        </header>
+        <form onSubmit={onSubmit}>
+          <nav className="seller-affiliate__invite-tabs" aria-label={t('sellerAffiliate.invitationTabs')}>
+            <button className={activeTab === 'ongoing' ? 'is-active' : ''} type="button" onClick={() => { setProductPickerOpen(false); onTabChange('ongoing'); }}>{t('sellerAffiliate.ongoing')}</button>
+            <button className={activeTab === 'create' ? 'is-active' : ''} type="button" onClick={() => onTabChange('create')}>{t('sellerAffiliate.createInvitation')}</button>
+          </nav>
+          {activeTab === 'ongoing' ? (
+            <div className="seller-affiliate__invite-existing">
+              <div className="seller-affiliate__invite-search">
+                <select aria-label={t('sellerAffiliate.invitationSearchType')} defaultValue="name">
+                  <option value="name">{t('sellerAffiliate.invitationName')}</option>
+                </select>
+                <input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder={t('sellerAffiliate.searchInvitationName')} aria-label={t('sellerAffiliate.searchInvitationName')} />
+                <button type="button" aria-label={t('common.search')}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
+                </button>
+              </div>
+              <div className="seller-affiliate__invitation-list">
+                {loading && !invitations.length ? <div className="empty-state"><span className="loading-dot" />{t('common.loading')}</div> : null}
+                {!loading && !matchingInvitations.length ? <div className="empty-state">{t('sellerAffiliate.noOngoingInvitations')}</div> : null}
+                {matchingInvitations.map((invitation) => {
+                  const id = String(invitation.id);
+                  const selected = id === String(selectedInvitationId || '');
+                  const productCount = Number(invitation.products?.length ?? invitation.product_count ?? 0);
+                  const creatorCount = Number(invitation.creators?.length ?? invitation.creator_count ?? 0);
+                  return (
+                    <article className={`seller-affiliate__invitation-card${selected ? ' is-selected' : ''}`} key={id} onClick={() => onSelectInvitation(id)}>
+                      <input type="radio" name="ongoing-invitation" value={id} checked={selected} onChange={() => onSelectInvitation(id)} aria-label={invitation.name || id} />
+                      <div className="seller-affiliate__invitation-card-body">
+                        <div><strong>{invitation.name || t('sellerAffiliate.untitledInvitation')}</strong><span className="seller-affiliate__invitation-id">ID</span></div>
+                        <p>{t('sellerAffiliate.invitationCardMeta', { date: formatInvitationDate(invitationDate(invitation)), products: productCount, creators: creatorCount })}</p>
+                      </div>
+                      <button type="button" onClick={(event) => { event.stopPropagation(); onSelectInvitation(id); }}>{t('sellerAffiliate.viewDetails')}</button>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="seller-affiliate__invite-grid">
+              <div className="seller-affiliate__invite-method seller-affiliate__invite-grid--wide">
+                <input type="radio" checked readOnly aria-label={t('sellerAffiliate.commissionOnly')} />
+                <div><strong>{t('sellerAffiliate.commissionOnly')}</strong><p>{t('sellerAffiliate.commissionOnlyDescription')}</p></div>
+              </div>
+              <aside className="seller-affiliate__invite-notes seller-affiliate__invite-grid--wide"><strong>{t('sellerAffiliate.notes')}</strong><ul><li>{t('sellerAffiliate.invitationNameNote')}</li><li>{t('sellerAffiliate.invitationExpiryNote')}</li></ul></aside>
+              <div className="field"><label htmlFor="affiliate-invite-name">{t('sellerAffiliate.invitationName')}</label><input id="affiliate-invite-name" value={form.name} maxLength={100} required onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} /></div>
+              <div className="field"><label htmlFor="affiliate-invite-end">{t('sellerAffiliate.validity')}</label><DatePickerInput id="affiliate-invite-end" label={t('sellerAffiliate.validity')} min={new Date().toISOString().slice(0, 10)} value={form.endDate} required onChange={(value) => setForm((current) => ({ ...current, endDate: value }))} /></div>
+              <details className="seller-affiliate__invite-compact seller-affiliate__invite-grid--wide">
+                <summary><span><strong>{t('sellerAffiliate.contactInfo')}</strong><small>{t('sellerAffiliate.contactInfoDescription')}</small></span><em>{[form.whatsapp, form.facebook, form.telegram].filter(Boolean).length}/3</em></summary>
+                <div className="seller-affiliate__invite-compact-body seller-affiliate__invite-compact-body--grid">
+                  <div className="field"><label htmlFor="affiliate-invite-whatsapp">{t('sellerAffiliate.whatsappAccount')}</label><div className="seller-affiliate__invite-phone"><select value={form.whatsappCountry} aria-label={`${t('sellerAffiliate.whatsappAccount')} · ${t('sellerAffiliate.countryCode')}`} onChange={(event) => setForm((current) => ({ ...current, whatsappCountry: event.target.value }))}>{COUNTRY_DIAL_CODES.map((country) => <option value={country.code} key={country.code}>{country.label}</option>)}</select><input id="affiliate-invite-whatsapp" type="tel" inputMode="tel" value={form.whatsapp} placeholder={t('sellerAffiliate.phoneNumber')} onChange={(event) => setForm((current) => ({ ...current, whatsapp: event.target.value }))} /></div></div>
+                  <div className="field"><label htmlFor="affiliate-invite-facebook">{t('sellerAffiliate.facebookAccount')}</label><input id="affiliate-invite-facebook" value={form.facebook} onChange={(event) => setForm((current) => ({ ...current, facebook: event.target.value }))} /></div>
+                  <div className="field seller-affiliate__invite-grid--wide"><label htmlFor="affiliate-invite-telegram">{t('sellerAffiliate.telegram')}</label><div className="seller-affiliate__invite-phone"><select value={form.telegramCountry} aria-label={`${t('sellerAffiliate.telegram')} · ${t('sellerAffiliate.countryCode')}`} onChange={(event) => setForm((current) => ({ ...current, telegramCountry: event.target.value }))}>{COUNTRY_DIAL_CODES.map((country) => <option value={country.code} key={country.code}>{country.label}</option>)}</select><input id="affiliate-invite-telegram" type="tel" inputMode="tel" value={form.telegram} placeholder={t('sellerAffiliate.phoneNumber')} onChange={(event) => setForm((current) => ({ ...current, telegram: event.target.value }))} /></div></div>
+                </div>
+              </details>
+              <details className="seller-affiliate__invite-compact seller-affiliate__invite-grid--wide">
+                <summary><span><strong>{t('sellerAffiliate.invitationText')}</strong><small>{form.message || t('sellerAffiliate.invitationTextDescription')}</small></span></summary>
+                <div className="seller-affiliate__invite-compact-body field"><textarea id="affiliate-invite-message" rows="4" aria-label={t('sellerAffiliate.invitationText')} value={form.message} onChange={(event) => setForm((current) => ({ ...current, message: event.target.value }))} /></div>
+              </details>
+              <details className="seller-affiliate__invite-compact seller-affiliate__invite-grid--wide">
+                <summary><span><strong>{t('sellerAffiliate.preferredContentType')}</strong><small>{form.contentType === 'VIDEO' ? t('sellerAffiliate.shoppableVideos') : form.contentType === 'LIVE' ? t('sellerAffiliate.liveSessions') : t('sellerAffiliate.noContentPreference')}</small></span></summary>
+                <div className="seller-affiliate__invite-compact-body field"><label htmlFor="affiliate-invite-content-type">{t('sellerAffiliate.contentType')}</label><select id="affiliate-invite-content-type" value={form.contentType} onChange={(event) => setForm((current) => ({ ...current, contentType: event.target.value }))}><option value="ANY">{t('sellerAffiliate.noContentPreference')}</option><option value="VIDEO">{t('sellerAffiliate.shoppableVideos')}</option><option value="LIVE">{t('sellerAffiliate.liveSessions')}</option></select><small>{t('sellerAffiliate.preferredContentDescription')}</small></div>
+              </details>
+              <div className="seller-affiliate__invite-product-summary seller-affiliate__invite-grid--wide">
+                <button className="seller-affiliate__invite-product-trigger" type="button" onClick={() => setProductPickerOpen(true)}><span>＋ {t('sellerAffiliate.chooseAndAddProducts')}</span><small>{t('sellerAffiliate.productsSelected', { count: form.products.length })}</small></button>
+                {form.products.length ? <div className="seller-affiliate__selected-product-list">{form.products.map((selection) => { const item = products.find((product) => String(product.product.id) === String(selection.id)); return <div key={selection.id}>{item?.product.main_image_url ? <img src={item.product.main_image_url} alt="" /> : null}<span><strong>{item?.product.title || selection.id}</strong><small>{selection.commission}%</small></span></div>; })}</div> : null}
+              </div>
+              <label className="seller-affiliate__sample-offer seller-affiliate__invite-grid--wide"><span><strong>{t('sellerAffiliate.setupFreeSamples')}</strong><small>{t('sellerAffiliate.offerFreeSamples')}</small></span><input className="seller-affiliate__switch" type="checkbox" checked={form.hasFreeSample} onChange={(event) => setForm((current) => ({ ...current, hasFreeSample: event.target.checked, sampleApprovalExempt: event.target.checked ? current.sampleApprovalExempt : false }))} /></label>
+              {form.hasFreeSample ? <div ref={sampleOptionsRef} className="seller-affiliate__sample-options seller-affiliate__invite-grid--wide"><label className={form.sampleApprovalExempt ? 'is-selected' : ''}><input type="radio" name="sample-approval" checked={form.sampleApprovalExempt} onChange={() => setForm((current) => ({ ...current, sampleApprovalExempt: true }))} /><span><strong>{t('sellerAffiliate.autoApproveRequests')}</strong><em>{t('sellerAffiliate.moreExposure')}</em><small>{t('sellerAffiliate.autoApproveDescription')}</small></span></label><label className={!form.sampleApprovalExempt ? 'is-selected' : ''}><input type="radio" name="sample-approval" checked={!form.sampleApprovalExempt} onChange={() => setForm((current) => ({ ...current, sampleApprovalExempt: false }))} /><span><strong>{t('sellerAffiliate.manualReviewRequests')}</strong><small>{t('sellerAffiliate.manualReviewDescription')}</small></span></label><p>{form.sampleApprovalExempt ? t('sellerAffiliate.autoApproveSummary') : t('sellerAffiliate.manualReviewSummary')}</p></div> : null}
+            </div>
+          )}
+          <footer>
+            <button className="button button--ghost" type="button" disabled={loading} onClick={onClose}>{t('common.cancel')}</button>
+            <button className="button" type="submit" disabled={loading || (activeTab === 'ongoing' ? !selectedInvitationId : !form.products.length || (!internationalPhone(form.whatsappCountry, form.whatsapp) && !internationalPhone(form.telegramCountry, form.telegram)))}>{loading ? t('common.loading') : t('sellerAffiliate.inviteAction')}</button>
+          </footer>
+        </form>
+        {productPickerOpen ? <div className="seller-affiliate__product-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setProductPickerOpen(false); }}><aside className="seller-affiliate__product-drawer" role="dialog" aria-modal="true" aria-labelledby="affiliate-product-picker-title"><header><div><h3 id="affiliate-product-picker-title">{t('sellerAffiliate.chooseProducts')}</h3><p>{t('sellerAffiliate.chooseProductsDescription')}</p></div><button type="button" aria-label={t('common.close')} onClick={() => setProductPickerOpen(false)}>×</button></header><div className="seller-affiliate__invite-products">{!products.length ? <div className="empty-state">{t('sellerAffiliate.noInviteProducts')}</div> : products.map((item) => { const id = String(item.product.id); const selection = form.products.find((product) => String(product.id) === id); return <div className={`seller-affiliate__invite-product-option${selection ? ' is-selected' : ''}`} key={id}><label><input type="checkbox" checked={Boolean(selection)} onChange={() => onToggleProduct(item)} /><span>{item.product.main_image_url ? <img src={item.product.main_image_url} alt="" /> : null}<strong>{item.product.title || id}</strong></span></label>{selection ? <div className="field"><label htmlFor={`affiliate-commission-${id}`}>{t('sellerAffiliate.commissionPercent')}</label><input id={`affiliate-commission-${id}`} type="number" min="0.01" max="80" step="0.01" value={selection.commission} required onChange={(event) => setForm((current) => ({ ...current, products: current.products.map((product) => String(product.id) === id ? { ...product, commission: event.target.value } : product) }))} /></div> : null}</div>; })}</div><footer><span>{t('sellerAffiliate.productsSelected', { count: form.products.length })}</span><button className="button" type="button" onClick={() => setProductPickerOpen(false)}>{t('sellerAffiliate.done')}</button></footer></aside></div> : null}
+      </section>
+    </div>
+  );
+};

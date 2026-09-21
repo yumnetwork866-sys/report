@@ -1,8 +1,7 @@
 const { z } = require('zod');
-
-const positiveId = (label) => z.coerce.number({
-  error: `A valid ${label} is required.`,
-}).int(`A valid ${label} is required.`).positive(`A valid ${label} is required.`);
+const {
+  booleanQuery, currency, optionalIsoDate, paginationFields, positiveId, withDateRange,
+} = require('./commonSchemas');
 
 const bookingIdParamsSchema = z.object({
   id: positiveId('booking ID'),
@@ -12,4 +11,27 @@ const creatorIdParamsSchema = z.object({
   creatorId: positiveId('creator ID'),
 });
 
-module.exports = { bookingIdParamsSchema, creatorIdParamsSchema };
+const bookingListQuerySchema = withDateRange(z.object({
+  ...paginationFields,
+  month: z.string().trim().optional(),
+  start_date: optionalIsoDate('start_date'),
+  end_date: optionalIsoDate('end_date'),
+  include_product_performance: booleanQuery.optional(),
+}).passthrough());
+
+const bookingBodySchema = z.object({
+  total_cost: z.coerce.number().nonnegative().optional(),
+  booking_cost: z.coerce.number().nonnegative().optional(),
+  currency: currency.optional(),
+  status: z.enum(['draft', 'booked', 'waiting_video', 'video_posted', 'done', 'cancelled']).optional(),
+  start_date: optionalIsoDate('start_date'),
+  end_date: optionalIsoDate('end_date'),
+  deadline: optionalIsoDate('deadline'),
+}).passthrough();
+
+module.exports = {
+  bookingBodySchema,
+  bookingIdParamsSchema,
+  bookingListQuerySchema,
+  creatorIdParamsSchema,
+};

@@ -61,11 +61,9 @@ class AppErrorBoundary extends React.Component {
         <main className="page">
           <section className="section-card empty-state" role="alert">
             <h1>Không thể hiển thị giao diện</h1>
-            <p>
-              {isChunkError
-                ? 'Phiên bản giao diện vừa được cập nhật. Hãy tải lại ứng dụng để dùng phiên bản mới nhất.'
-                : 'Ứng dụng gặp lỗi khi hiển thị. Phiên đăng nhập của bạn vẫn được giữ an toàn.'}
-            </p>
+            {isChunkError ? (
+              <p>Phiên bản giao diện vừa được cập nhật. Hãy tải lại ứng dụng để dùng phiên bản mới nhất.</p>
+            ) : null}
             <div className="error-boundary__card">
               <details className="error-boundary__details">
                 <summary>Chi tiết lỗi</summary>
