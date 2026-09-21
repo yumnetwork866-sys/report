@@ -50,3 +50,16 @@ export const dashboardInitialFilters = () => {
   };
 };
 
+export const metricToVideoSortField = (metric) => {
+  const map = {
+    gmv: 'gmv',
+    views: 'views',
+    orders: 'orders',
+    likes: 'likes',
+    comments: 'comments',
+    shares: 'shares',
+    video_count: 'published_at',
+  };
+  return map[metric] || 'gmv';
+};
+

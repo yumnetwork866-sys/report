@@ -1,9 +1,12 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { CheckCheck, Lock, Trash2, X } from 'lucide-react';
 import AppAvatar from '../AppAvatar';
 import Pagination from '../Pagination';
+import { PERMISSIONS, permissionLabelKey } from '../../lib/permissions';
 import { EmployeeOverlays } from './components/EmployeeOverlays';
 import { useEmployeeManagement } from './hooks/useEmployeeManagement';
+import { createRoleKey } from './utils/employeeUtils';
 import '../../styles/pages/admin.css';
 
 const EmployeeTable = ({ heroTitle, heroSubtitle }) => {

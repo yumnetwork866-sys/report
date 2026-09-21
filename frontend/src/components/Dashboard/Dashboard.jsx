@@ -1,19 +1,15 @@
 import {
   Area,
-  Bar,
   CartesianGrid,
-  Cell,
   ComposedChart,
-  LabelList,
   Legend,
+  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import {
-  AreaChart as AreaChartIcon,
-  BarChart2,
   Video,
 } from 'lucide-react';
 import VideoTable, { ChannelPicker } from '../VideoTable';
@@ -21,7 +17,6 @@ import DatePickerInput from '../DatePickerInput';
 
 import {
   ActiveDotGlow,
-  DashboardBarLabel,
   DashboardChartTooltip,
   GrowthBadge,
   MetricPicker,
@@ -29,6 +24,7 @@ import {
 } from './components/DashboardPresentation';
 import { CHART_TICK as chartTick } from './constants';
 import { useDashboardData } from './hooks/useDashboardData';
+import { compactVideoTitle, dateInputValue } from './utils/dashboardUtils';
 const Dashboard = () => {
   const {
     averageChartValue,
@@ -37,7 +33,6 @@ const Dashboard = () => {
     channels,
     chartData,
     chartMetric,
-    chartType,
     dailyMetric,
     endDate,
     error,
@@ -53,9 +48,7 @@ const Dashboard = () => {
     metricLabel,
     periodPreset,
     selectedChannelId,
-    selectedChartDate,
     selectedUserId,
-    setChartType,
     setEndDate,
     setPeriodPreset,
     setSelectedUserId,
@@ -75,7 +68,6 @@ const Dashboard = () => {
     videoSortDirection,
     videos,
     videosLoading,
-    yAxisFormatter,
   } = useDashboardData();
   return (
     <div className="page dashboard-page">
@@ -223,26 +215,6 @@ const Dashboard = () => {
             <div className="dashboard-sync-status">
               {totals.last_synced_at ? t('dashboard.lastSynced', { time: new Date(totals.last_synced_at).toLocaleString(locale) }) : t('dashboard.notSynced')}
             </div>
-            <div className="dashboard-chart-toggle-group" role="group" aria-label={t('dashboard.chartType')}>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${chartType === 'area' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setChartType('area')}
-                title={t('dashboard.chartType_area')}
-              >
-                <AreaChartIcon size={15} />
-                <span>{t('dashboard.chartType_area')}</span>
-              </button>
-              <button
-                type="button"
-                className={`dashboard-toggle-btn ${chartType === 'bar' ? 'dashboard-toggle-btn--active' : ''}`}
-                onClick={() => setChartType('bar')}
-                title={t('dashboard.chartType_bar')}
-              >
-                <BarChart2 size={15} />
-                <span>{t('dashboard.chartType_bar')}</span>
-              </button>
-            </div>
           </div>
         ) : null}
 
@@ -254,28 +226,24 @@ const Dashboard = () => {
             <div className="dashboard-chart-summary" aria-hidden="true">
               <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
               <span>
-                {chartType === 'area' ? (
+                {dailyMetric === 'gmv' ? (
                   <>
-                    <span>{t('dashboard.totalGmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
+                    <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
                     {' · '}
                     <span>{t('dashboard.totalViews')} <strong>{formatNumber(Math.round(averageViews))}</strong></span>
                   </>
                 ) : (
                   <>
-                    {t('dashboard.averageMetric', { metric: metricLabel })}
-                    {' '}
-                    <strong>
-                      {dailyMetric === 'gmv'
-                        ? formatGmvAmount(Math.round(averageChartValue), totals.sales_currency)
-                        : formatNumber(Math.round(averageChartValue))}
-                    </strong>
+                    <span>{metricLabel} <strong>{formatNumber(Math.round(averageChartValue))}</strong></span>
+                    {' · '}
+                    <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
                   </>
                 )}
               </span>
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 26, right: chartType === 'area' ? 12 : 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                <ComposedChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
                   <defs>
                     <linearGradient id="dashboardGmvGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#f97316" stopOpacity={0.24} />
@@ -288,32 +256,26 @@ const Dashboard = () => {
                   </defs>
                   <CartesianGrid strokeDasharray="3 6" vertical={false} stroke="var(--color-border)" />
                   <XAxis dataKey="name" height={40} interval="preserveStartEnd" minTickGap={24} tickLine={false} axisLine={false} tick={chartTick} />
-                  {chartType === 'area' ? (
-                    <>
-                      <YAxis
-                        yAxisId="gmv"
-                        width={72}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={chartTick}
-                        tickFormatter={(value) => formatGmvAmount(value, totals.sales_currency, { compact: true })}
-                      />
-                      <YAxis
-                        yAxisId="views"
-                        orientation="right"
-                        width={58}
-                        tickLine={false}
-                        axisLine={false}
-                        tick={chartTick}
-                        tickFormatter={(value) => Intl.NumberFormat(locale, { notation: 'compact' }).format(value)}
-                      />
-                    </>
-                  ) : (
-                    <YAxis width={68} tickLine={false} axisLine={false} tick={chartTick} tickFormatter={yAxisFormatter} />
-                  )}
+                  <YAxis
+                    yAxisId="gmv"
+                    width={72}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    tickFormatter={(value) => formatGmvAmount(value, totals.sales_currency, { compact: true })}
+                  />
+                  <YAxis
+                    yAxisId="metric"
+                    orientation="right"
+                    width={58}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    tickFormatter={(value) => Intl.NumberFormat(locale, { notation: 'compact' }).format(value)}
+                  />
                   <Tooltip
                     cursor={{ stroke: 'rgba(148, 163, 184, 0.45)', strokeWidth: 1.5, strokeDasharray: '4 4' }}
-                    content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} currency={totals.sales_currency} t={t} />}
+                    content={<DashboardChartTooltip formatNumber={formatNumber} formatGmvAmount={formatGmvAmount} currency={totals.sales_currency} t={t} dailyMetric={dailyMetric} metricLabel={metricLabel} />}
                   />
                   <Legend
                     verticalAlign="top"
@@ -322,11 +284,11 @@ const Dashboard = () => {
                     iconType="circle"
                     iconSize={8}
                   />
-                  {chartType === 'area' ? (
+                  {dailyMetric === 'gmv' ? (
                     <>
                       <Area
                         yAxisId="gmv"
-                        name={t('dashboard.totalGmv')}
+                        name={t('dashboard.metric_gmv')}
                         type="monotone"
                         dataKey="gross_gmv"
                         stroke="#f97316"
@@ -336,11 +298,24 @@ const Dashboard = () => {
                         dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: '#f97316', strokeWidth: 2 } : false}
                         activeDot={<ActiveDotGlow stroke="#f97316" />}
                       />
-                      <Area
-                        yAxisId="views"
+                      <Line
+                        yAxisId="metric"
                         name={t('dashboard.totalViews')}
                         type="monotone"
                         dataKey="views"
+                        stroke="var(--color-primary, #0ea5e9)"
+                        strokeWidth={2.5}
+                        dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: 'var(--color-primary, #0ea5e9)', strokeWidth: 2 } : false}
+                        activeDot={<ActiveDotGlow stroke="var(--color-primary, #0ea5e9)" />}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Area
+                        yAxisId="metric"
+                        name={metricLabel}
+                        type="monotone"
+                        dataKey="value"
                         stroke="var(--color-primary, #0ea5e9)"
                         strokeWidth={2.5}
                         fill="url(#dashboardViewsGradient)"
@@ -348,15 +323,17 @@ const Dashboard = () => {
                         dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: 'var(--color-primary, #0ea5e9)', strokeWidth: 2 } : false}
                         activeDot={<ActiveDotGlow stroke="var(--color-primary, #0ea5e9)" />}
                       />
-                    </>
-                  ) : (
-                    <Bar name={metricLabel} dataKey="value" fill="var(--color-primary)" radius={[6, 6, 0, 0]} barSize={26}>
-                      {chartData.map((entry) => <Cell key={`bar-cell-${entry.rawDate}`} fillOpacity={selectedChartDate && selectedChartDate !== entry.rawDate ? 0.45 : 1} />)}
-                      <LabelList
-                        dataKey="value"
-                        content={<DashboardBarLabel total={chartData.length} formatter={yAxisFormatter} />}
+                      <Line
+                        yAxisId="gmv"
+                        name={t('dashboard.metric_gmv')}
+                        type="monotone"
+                        dataKey="gross_gmv"
+                        stroke="#f97316"
+                        strokeWidth={2.5}
+                        dot={chartData.length <= 14 ? { r: 3, fill: '#ffffff', stroke: '#f97316', strokeWidth: 2 } : false}
+                        activeDot={<ActiveDotGlow stroke="#f97316" />}
                       />
-                    </Bar>
+                    </>
                   )}
                 </ComposedChart>
               </ResponsiveContainer>

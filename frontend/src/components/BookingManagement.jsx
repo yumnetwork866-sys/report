@@ -19,6 +19,7 @@ import { hasPermission } from '../lib/session';
 import { useSession } from '../lib/useSession';
 
 import {
+  BOOKING_UI_SESSION_KEY,
   DEFAULT_PERFORMANCE_WINDOW,
   generateBookingMonthOptions,
   bookingUiSession,

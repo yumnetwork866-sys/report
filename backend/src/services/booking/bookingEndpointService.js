@@ -112,11 +112,24 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
   const exportIds = [...selectedExportByShop.values()].map((record) => record.id);
   const snapshots = exportIds.length && videoIds.length ? await bookingRepository.findVideoPerformanceSnapshots({
     where: { export_id: { [Op.in]: exportIds }, video_id: { [Op.in]: videoIds } },
-  }) : [];
-  const snapshotByExportAndVideo = new Map(snapshots.map((snapshot) => [
+  }).catch(() => []) : [];
+  const snapshotByExportAndVideo = new Map((snapshots || []).map((snapshot) => [
     `${snapshot.export_id}:${snapshot.video_id}`,
     snapshot,
   ]));
+
+  const fallbackSnapshots = videoIds.length && typeof bookingRepository.findVideoPerformanceSnapshots === 'function'
+    ? await bookingRepository.findVideoPerformanceSnapshots({
+      where: { video_id: { [Op.in]: videoIds } },
+      order: [['export_id', 'DESC'], ['id', 'DESC']],
+    }).catch(() => [])
+    : [];
+  const latestSnapshotByVideoId = new Map();
+  for (const snap of fallbackSnapshots) {
+    if (!latestSnapshotByVideoId.has(snap.video_id)) {
+      latestSnapshotByVideoId.set(snap.video_id, snap);
+    }
+  }
 
   const orderMetricsByShopAndVideo = new Map();
   const windows = new Map();
@@ -170,11 +183,42 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
       : (exportRecord?.start_date || (days ? shiftDateString(windowEndDate, -days) : null));
 
     for (const video of booking.booking_videos || []) {
+      const existingSnapshots = Array.isArray(video.performance_snapshots) ? video.performance_snapshots : [];
+      const existingLatest = existingSnapshots[0] || null;
+      const fallbackSnap = latestSnapshotByVideoId.get(video.platform_video_id);
       const snapshot = exportRecord
         ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
         : null;
       const videoData = orderMetricsByShopAndVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`);
       const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedIds);
+      const resolvedViews = existingLatest?.views
+        ?? fallbackSnap?.video_views
+        ?? (existingLatest?.raw_metrics?.views !== undefined ? existingLatest.raw_metrics.views : null)
+        ?? (existingLatest?.raw_metrics?.video?.list?.views !== undefined ? existingLatest.raw_metrics.video.list.views : null);
+      const resolvedCtr = existingLatest?.ctr ?? fallbackSnap?.ctr ?? null;
+      const hasExistingSocial = Boolean(
+        existingLatest?.raw_metrics?.social_metrics
+        && (
+          existingLatest.raw_metrics.social_metrics.available
+          || existingLatest.raw_metrics.social_metrics.likes !== null
+          || existingLatest.raw_metrics.social_metrics.comments !== null
+          || existingLatest.raw_metrics.social_metrics.shares !== null
+        )
+      );
+      const fallbackSocial = fallbackSnap ? {
+        available: true,
+        views: fallbackSnap.video_views !== null && fallbackSnap.video_views !== undefined ? Number(fallbackSnap.video_views) : null,
+        likes: fallbackSnap.likes !== null && fallbackSnap.likes !== undefined ? Number(fallbackSnap.likes) : null,
+        comments: fallbackSnap.comments !== null && fallbackSnap.comments !== undefined ? Number(fallbackSnap.comments) : null,
+        shares: fallbackSnap.shares !== null && fallbackSnap.shares !== undefined ? Number(fallbackSnap.shares) : null,
+        metric_window: 'PAST_30_DAYS',
+        synced_at: fallbackSnap.synced_at || null,
+      } : null;
+      const resolvedSocial = (hasExistingSocial ? existingLatest.raw_metrics.social_metrics : null)
+        || fallbackSocial
+        || existingLatest?.raw_metrics?.social_metrics
+        || null;
+
       video.performance_snapshots = snapshot ? [{
         snapshot_date: exportRecord.end_date,
         ...metricOfAffiliateSnapshot(snapshot, selectedIds, orderMetrics),
@@ -189,8 +233,8 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
         items_refunded: orderMetrics?.items_refunded ?? 0,
         estimated_commission: orderMetrics?.estimated_commission
           ?? ((orderMetrics?.orders || 0) === 0 ? 0 : null),
-        views: null,
-        ctr: null,
+        views: resolvedViews !== null && resolvedViews !== undefined ? Number(resolvedViews) : null,
+        ctr: resolvedCtr !== null && resolvedCtr !== undefined ? Number(resolvedCtr) : null,
         currency: orderMetrics?.currency || booking.currency || null,
         raw_metrics: {
           source: orderMetrics?.has_data ? 'AFFILIATE_ORDER_LEDGER' : 'AFFILIATE_VIDEO_PERFORMANCE',
@@ -199,6 +243,8 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
           no_activity_in_window: !orderMetrics?.has_data,
           order_ledger_used: Boolean(orderMetrics),
           order_metrics: orderMetrics || null,
+          video: existingLatest?.raw_metrics?.video || fallbackSnap?.raw_metrics || null,
+          social_metrics: resolvedSocial,
         },
         synced_at: exportRecord?.completed_at || exportRecord?.created_at || new Date().toISOString(),
       }] : [];

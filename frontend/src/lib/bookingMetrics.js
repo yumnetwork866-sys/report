@@ -456,7 +456,9 @@ export const filterVideosByPeriod = (videos = [], periodRange = null) => {
   return list.filter((video) => {
     const rawPostDate = video?.posted_at || video?.video_post_time || video?.post_date || video?.post_time;
     if (!rawPostDate) return false;
-    const postDate = String(rawPostDate).slice(0, 10);
+    const postDate = rawPostDate instanceof Date
+      ? dateInputValue(rawPostDate)
+      : String(rawPostDate).slice(0, 10);
     if (periodRange.startDate && postDate < periodRange.startDate) return false;
     if (periodRange.endDate && postDate > periodRange.endDate) return false;
     return true;
@@ -486,6 +488,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
   let itemsRefunded = 0;
   let estimatedCommission = 0;
   let hasCompleteViews = true;
+  let hasAnyViews = false;
   let hasAnyRefunds = false;
   let hasAnyRefundedItems = false;
   let hasAnyCommission = false;
@@ -499,7 +502,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     const videoGmv = live ? live.grossGmv : finiteNumber(latest?.gross_gmv ?? video?.gross_gmv ?? video?.gmv);
     const videoOrders = live ? live.orderCount : finiteNumber(latest?.orders ?? video?.orders);
     const videoItems = live ? live.itemsSold : finiteNumber(latest?.items_sold ?? video?.items_sold);
-    const rawViews = latest?.views ?? video?.views ?? latest?.raw_metrics?.views;
+    const rawViews = latest?.views ?? video?.views ?? latest?.raw_metrics?.views ?? latest?.raw_metrics?.video?.list?.views ?? latest?.raw_metrics?.social_metrics?.views;
     const videoViews = finiteNumber(rawViews);
     const rawRefunded = live ? live.refundedGmv : (latest?.refunded_gmv ?? video?.refunded_gmv);
     const rawItemsRefunded = live ? live.itemsRefunded : (latest?.items_refunded ?? video?.items_refunded);
@@ -515,6 +518,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     itemsRefunded += videoItemsRefunded;
     estimatedCommission += videoCommission;
     hasCompleteViews = hasCompleteViews && rawViews !== null && rawViews !== undefined;
+    hasAnyViews = hasAnyViews || (rawViews !== null && rawViews !== undefined);
     hasAnyRefunds = hasAnyRefunds || (rawRefunded !== null && rawRefunded !== undefined);
     hasAnyRefundedItems = hasAnyRefundedItems || (rawItemsRefunded !== null && rawItemsRefunded !== undefined);
     hasAnyCommission = hasAnyCommission || (rawCommission !== null && rawCommission !== undefined);
@@ -529,7 +533,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
   }
   return {
     gross_gmv: grossGmv,
-    views: hasCompleteViews ? views : null,
+    views: (hasCompleteViews || hasAnyViews || views > 0) ? views : (videos.length ? 0 : null),
     orders,
     items_sold: itemsSold,
     refunded_gmv: hasAnyRefunds ? refundedGmv : null,
@@ -547,22 +551,30 @@ export const bookingVideoSocialMetrics = (snapshot) => {
   const traffic = rawVideo?.detail?.performance?.intervals?.[0]?.traffic || {};
   const shared = snapshot?.raw_metrics?.social_metrics;
   if (shared) {
+    const isAvailable = Boolean(
+      shared.available
+      || (shared.available !== false && (shared.likes !== null || shared.comments !== null || shared.shares !== null))
+      || shared.likes > 0
+      || shared.comments > 0
+      || shared.shares > 0
+    );
     return {
       views: optionalNumber(shared.views) ?? optionalNumber(snapshot?.views) ?? optionalNumber(listVideo?.views),
-      likes: shared.available ? optionalNumber(shared.likes) : null,
-      comments: shared.available ? optionalNumber(shared.comments) : null,
-      shares: shared.available ? optionalNumber(shared.shares) : null,
-      available: Boolean(shared.available),
+      likes: isAvailable ? optionalNumber(shared.likes) : null,
+      comments: isAvailable ? optionalNumber(shared.comments) : null,
+      shares: isAvailable ? optionalNumber(shared.shares) : null,
+      available: isAvailable,
       metricWindow: shared.metric_window || 'PAST_30_DAYS',
       syncedAt: shared.synced_at || null,
     };
   }
-  const available = ['likes', 'comments', 'shares'].some((key) => traffic[key] !== null && traffic[key] !== undefined);
+  const available = ['likes', 'comments', 'shares'].some((key) => traffic[key] !== null && traffic[key] !== undefined)
+    || ['likes', 'comments', 'shares'].some((key) => snapshot?.[key] !== null && snapshot?.[key] !== undefined && Number(snapshot[key]) >= 0);
   return {
-    views: optionalNumber(snapshot?.views ?? listVideo?.views ?? traffic.views),
-    likes: available ? optionalNumber(traffic.likes ?? listVideo?.likes ?? rawVideo?.likes) : null,
-    comments: available ? optionalNumber(traffic.comments ?? listVideo?.comments ?? rawVideo?.comments) : null,
-    shares: available ? optionalNumber(traffic.shares ?? listVideo?.shares ?? rawVideo?.shares) : null,
+    views: optionalNumber(snapshot?.views ?? listVideo?.views ?? traffic.views ?? snapshot?.video_views),
+    likes: available ? optionalNumber(traffic.likes ?? listVideo?.likes ?? rawVideo?.likes ?? snapshot?.likes) : null,
+    comments: available ? optionalNumber(traffic.comments ?? listVideo?.comments ?? rawVideo?.comments ?? snapshot?.comments) : null,
+    shares: available ? optionalNumber(traffic.shares ?? listVideo?.shares ?? rawVideo?.shares ?? snapshot?.shares) : null,
     available,
     metricWindow: available ? 'PAST_30_DAYS' : null,
     syncedAt: available ? snapshot?.synced_at || null : null,

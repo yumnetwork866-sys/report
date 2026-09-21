@@ -14,7 +14,11 @@ import {
   setStoredSelectedChannelId,
   subscribeSelectedChannel,
 } from '../../../lib/channelSelection';
-import { dashboardInitialFilters, dashboardPeriodRange } from '../utils/dashboardUtils';
+import {
+  dashboardInitialFilters,
+  dashboardPeriodRange,
+  metricToVideoSortField,
+} from '../utils/dashboardUtils';
 
 export const useDashboardData = () => {
   const { t, language } = useI18n();
@@ -68,11 +72,16 @@ export const useDashboardData = () => {
   const [videosLoading, setVideosLoading] = useState(false);
   const [error, setError] = useState('');
   const [videoSearch, setVideoSearch] = useState('');
-  const [videoSortBy, setVideoSortBy] = useState('published_at');
+  const [videoSortBy, setVideoSortBy] = useState(() => metricToVideoSortField(initialFilters.metric));
   const [videoSortDirection, setVideoSortDirection] = useState('desc');
   const videoQueryReadyRef = useRef(false);
-  const videoQueryRef = useRef({ search: '', sortBy: 'published_at', sortDirection: 'desc' });
+  const videoQueryRef = useRef({ search: '', sortBy: metricToVideoSortField(initialFilters.metric), sortDirection: 'desc' });
   videoQueryRef.current = { search: videoSearch, sortBy: videoSortBy, sortDirection: videoSortDirection };
+
+  const hasDefaultVideoQuery = useCallback(() => {
+    const current = videoQueryRef.current;
+    return !current.search && current.sortBy === 'published_at' && current.sortDirection === 'desc';
+  }, []);
   
   const handleChannelChange = (nextChannelId) => {
     const id = String(nextChannelId || '');
@@ -216,10 +225,6 @@ export const useDashboardData = () => {
       };
   
       const cached = getCachedDashboard(params);
-      const hasDefaultVideoQuery = () => {
-        const current = videoQueryRef.current;
-        return !current.search && current.sortBy === 'published_at' && current.sortDirection === 'desc';
-      };
       if (cached) {
         if (hasDefaultVideoQuery()) {
           setVideos(cached.videos || []);
@@ -307,7 +312,7 @@ export const useDashboardData = () => {
     load();
   
     return () => controller.abort();
-  }, [chartMetric, dailyMetric, endDate, selectedChannelId, selectedUserId, startDate, t]);
+  }, [chartMetric, dailyMetric, endDate, hasDefaultVideoQuery, selectedChannelId, selectedUserId, startDate, t]);
   
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -323,10 +328,12 @@ export const useDashboardData = () => {
   useEffect(() => {
     if (!videoQueryReadyRef.current) {
       videoQueryReadyRef.current = true;
-      return;
+      if (hasDefaultVideoQuery()) {
+        return;
+      }
     }
     handlePageChange(1);
-  }, [handlePageChange, videoSearch, videoSortBy, videoSortDirection]);
+  }, [handlePageChange, hasDefaultVideoQuery, videoSearch, videoSortBy, videoSortDirection]);
   
   useEffect(() => {
     if (periodPreset === 'custom') return;
@@ -423,11 +430,12 @@ export const useDashboardData = () => {
   const handleMetricChange = useCallback(
     (nextMetric) => {
       setDailyMetric(nextMetric);
-      if (nextMetric !== 'gmv' && chartType === 'area') {
-        setChartType('bar');
-      }
+      const nextSortBy = metricToVideoSortField(nextMetric);
+      setVideoSortBy(nextSortBy);
+      setVideoSortDirection('desc');
+      setVideoPage(1);
     },
-    [chartType],
+    [],
   );
   
   const metricLabel = useMemo(() => {

@@ -8,6 +8,7 @@ import {
 import { MemberTable } from './components/MemberTable';
 import { RevenueDetailModal } from './components/RevenueDetailModal';
 import { useChannelReportData } from './hooks/useChannelReportData';
+import { compactProductName, todayValue } from './utils/reportUtils';
 
 const ChannelReport = () => {
   const {
@@ -26,6 +27,7 @@ const ChannelReport = () => {
     formatPublishedDate,
     formatPublishedTime,
     formatRevenue,
+    groups,
     isAllTeams,
     loadMemberDetail,
     loading,
@@ -41,6 +43,7 @@ const ChannelReport = () => {
     productSearchQuery,
     productTeamFilter,
     renderMetricChange,
+    revenueGroups,
     selectedChannelId,
     selectedMonth,
     selectedTeamIds,
@@ -71,6 +74,7 @@ const ChannelReport = () => {
       expandedMemberIds={expandedMemberIds}
       formatNumber={formatNumber}
       formatPublishedDate={formatPublishedDate}
+      formatPublishedTime={formatPublishedTime}
       formatRevenue={formatRevenue}
       loadMemberDetail={loadMemberDetail}
       memberDetails={memberDetails}

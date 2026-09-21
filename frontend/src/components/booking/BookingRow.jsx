@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Eye } from 'lucide-react';
 import TargetKocAvatar from './TargetKocAvatar';
 import BookingVideoThumbnail from '../BookingVideoThumbnail';
 import BookingVideoProducts from './BookingVideoProducts';
@@ -11,6 +11,7 @@ import {
   latestBookingVideoSnapshot,
   bookingVideoOrderMetrics,
   productCtrOfBookingVideo,
+  optionalNumber,
 } from '../../lib/bookingMetrics';
 
 const BookingRow = memo(({
@@ -132,6 +133,7 @@ const BookingRow = memo(({
                       const displayGrossGmv = liveMetrics ? liveMetrics.grossGmv : Number(latest?.gross_gmv || 0);
                       const displayItemsSold = liveMetrics ? liveMetrics.itemsSold : Number(latest?.items_sold || 0);
                       const displayCurrency = (liveMetrics && liveMetrics.currency) || latest?.currency || booking.currency;
+                      const displayViews = optionalNumber(latest?.views ?? video?.views);
                       return (
                         <article className="booking-video-expansion__item" key={video.id || video.platform_video_id}>
                           <div className="booking-video-expansion__identity">
@@ -153,6 +155,12 @@ const BookingRow = memo(({
                                   <strong>{video.title || video.platform_video_id}</strong>
                                 )}
                                 <small>{formatDate(video.posted_at)}</small>
+                                <div className="video-engagement video-engagement--inline booking-video-expansion__stats-line">
+                                  <span title={t('videoLibrary.views', 'Lượt xem')} aria-label={`${t('videoLibrary.views', 'Lượt xem')}: ${formatNumber(displayViews ?? 0)}`}>
+                                    <Eye size={13} strokeWidth={1.8} aria-hidden="true" />
+                                    {formatNumber(displayViews ?? 0)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -176,7 +184,10 @@ const BookingRow = memo(({
                                 <span>{t('booking.videoItemsSold')}</span>
                                 <strong>{formatNumber(displayItemsSold)}</strong>
                               </button>
-                              <div><span>{t('booking.videoCtr')}</span><strong>{formatRate(productCtrOfBookingVideo(latest))}</strong></div>
+                              <div>
+                                <span>{t('booking.videoCtr')}</span>
+                                <strong>{formatRate(productCtrOfBookingVideo(latest))}</strong>
+                              </div>
                               <BookingVideoProducts
                                 shopId={booking.target_shop_id}
                                 video={video}

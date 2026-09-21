@@ -247,11 +247,24 @@ export const ActiveDotGlow = ({ cx, cy, stroke }) => {
   );
 };
 
-export const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmvAmount, currency, t }) => {
+export const DashboardChartTooltip = ({
+  active,
+  payload,
+  formatNumber,
+  formatGmvAmount,
+  currency,
+  t,
+  dailyMetric,
+  metricLabel,
+}) => {
   const item = payload?.[0]?.payload;
   if (!active || !item) return null;
 
   const videoCount = Number(item.videoCount || 0);
+  const isGmv = !dailyMetric || dailyMetric === 'gmv';
+  const selectedMetricValue = dailyMetric === 'video_count'
+    ? videoCount
+    : (item[dailyMetric] ?? item.value ?? 0);
 
   return (
     <div className="dashboard-chart-tooltip">
@@ -269,7 +282,7 @@ export const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmv
         <div className="dashboard-chart-tooltip__hero-card dashboard-chart-tooltip__hero-card--gmv">
           <span className="dashboard-chart-tooltip__hero-label">
             <span className="dashboard-chart-tooltip__indicator dashboard-chart-tooltip__indicator--gmv" />
-            {t('dashboard.totalGmv')}
+            {t('dashboard.metric_gmv')}
           </span>
           <strong className="dashboard-chart-tooltip__hero-val">
             {formatGmvAmount(item.gross_gmv || 0, currency)}
@@ -278,31 +291,45 @@ export const DashboardChartTooltip = ({ active, payload, formatNumber, formatGmv
         <div className="dashboard-chart-tooltip__hero-card dashboard-chart-tooltip__hero-card--views">
           <span className="dashboard-chart-tooltip__hero-label">
             <span className="dashboard-chart-tooltip__indicator dashboard-chart-tooltip__indicator--views" />
-            {t('dashboard.totalViews')}
+            {isGmv ? t('dashboard.totalViews') : (metricLabel || t(`dashboard.metric_${dailyMetric}`))}
           </span>
           <strong className="dashboard-chart-tooltip__hero-val">
-            {formatNumber(item.views || 0)}
+            {formatNumber(isGmv ? item.views || 0 : selectedMetricValue)}
           </strong>
         </div>
       </div>
 
       <div className="dashboard-chart-tooltip__grid">
-        <div className="dashboard-chart-tooltip__stat">
-          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalOrders')}</span>
-          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.orders || 0)}</b>
-        </div>
-        <div className="dashboard-chart-tooltip__stat">
-          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalLikes')}</span>
-          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.likes || 0)}</b>
-        </div>
-        <div className="dashboard-chart-tooltip__stat">
-          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalComments')}</span>
-          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.comments || 0)}</b>
-        </div>
-        <div className="dashboard-chart-tooltip__stat">
-          <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalShares')}</span>
-          <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.shares || 0)}</b>
-        </div>
+        {!isGmv && dailyMetric !== 'views' ? (
+          <div className="dashboard-chart-tooltip__stat">
+            <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalViews')}</span>
+            <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.views || 0)}</b>
+          </div>
+        ) : null}
+        {dailyMetric !== 'orders' ? (
+          <div className="dashboard-chart-tooltip__stat">
+            <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalOrders')}</span>
+            <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.orders || 0)}</b>
+          </div>
+        ) : null}
+        {dailyMetric !== 'likes' ? (
+          <div className="dashboard-chart-tooltip__stat">
+            <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalLikes')}</span>
+            <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.likes || 0)}</b>
+          </div>
+        ) : null}
+        {dailyMetric !== 'comments' ? (
+          <div className="dashboard-chart-tooltip__stat">
+            <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalComments')}</span>
+            <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.comments || 0)}</b>
+          </div>
+        ) : null}
+        {dailyMetric !== 'shares' ? (
+          <div className="dashboard-chart-tooltip__stat">
+            <span className="dashboard-chart-tooltip__stat-label">{t('dashboard.totalShares')}</span>
+            <b className="dashboard-chart-tooltip__stat-value">{formatNumber(item.shares || 0)}</b>
+          </div>
+        ) : null}
       </div>
     </div>
   );

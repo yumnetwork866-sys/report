@@ -42,9 +42,15 @@ const updateInstance = (booking, payload) => booking.update(payload);
 const query = (...args) => sequelize.query(...args);
 const findBookings = (options = {}) => Booking.findAll({ ...options, include: bookingInclude });
 const findSellerShop = () => TikTokShop.findOne({ order: [['id', 'ASC']] });
-const findVideoPerformanceExports = (options) => TikTokCreatorPerformanceExport.findAll(options);
-const findVideoPerformanceSnapshots = (options) => TikTokVideoPerformanceSnapshot.findAll(options);
-const findCreatorPerformanceSnapshots = (options) => TikTokCreatorPerformanceSnapshot.findAll(options);
+const findVideoPerformanceExports = (options) => (
+  TikTokCreatorPerformanceExport?.findAll ? TikTokCreatorPerformanceExport.findAll(options) : Promise.resolve([])
+);
+const findVideoPerformanceSnapshots = (options) => (
+  TikTokVideoPerformanceSnapshot?.findAll ? TikTokVideoPerformanceSnapshot.findAll(options) : Promise.resolve([])
+);
+const findCreatorPerformanceSnapshots = (options) => (
+  TikTokCreatorPerformanceSnapshot?.findAll ? TikTokCreatorPerformanceSnapshot.findAll(options) : Promise.resolve([])
+);
 const findPartnerAuthorization = (options) => TikTokPartnerAuthorization.findOne(options);
 const createPartnerAuthorization = (values) => TikTokPartnerAuthorization.create(values);
 const updatePartnerAuthorizations = (values, options) => TikTokPartnerAuthorization.update(values, options);

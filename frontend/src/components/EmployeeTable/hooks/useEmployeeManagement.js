@@ -16,6 +16,7 @@ import {
   updateUser,
 } from '../../../lib/api';
 import { useI18n } from '../../../lib/language';
+import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../../../lib/permissions';
 import { isAdminSession } from '../../../lib/session';
 import { useSession } from '../../../lib/useSession';
 import {

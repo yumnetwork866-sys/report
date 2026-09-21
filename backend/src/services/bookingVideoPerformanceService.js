@@ -653,17 +653,29 @@ const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), ord
         shares: numberOrNull(fallbackTraffic.shares),
         synced_at: snapshot.synced_at || null,
       }
-      : {
-        available: false,
-        metric_window: 'PAST_30_DAYS',
-        start_date: null,
-        end_date: null,
-        views: null,
-        likes: null,
-        comments: null,
-        shares: null,
-        synced_at: null,
-      };
+      : (snapshot.likes !== undefined && snapshot.likes !== null)
+        ? {
+          available: true,
+          metric_window: 'PAST_30_DAYS',
+          start_date: null,
+          end_date: null,
+          views: numberOrNull(snapshot.video_views),
+          likes: numberOrNull(snapshot.likes),
+          comments: numberOrNull(snapshot.comments),
+          shares: numberOrNull(snapshot.shares),
+          synced_at: snapshot.synced_at || null,
+        }
+        : {
+          available: false,
+          metric_window: 'PAST_30_DAYS',
+          start_date: null,
+          end_date: null,
+          views: null,
+          likes: null,
+          comments: null,
+          shares: null,
+          synced_at: null,
+        };
 
   return {
     gross_gmv: grossGmv,
@@ -1203,6 +1215,7 @@ const calculateActualPerformance = (booking) => {
   const hasAnyRefundedItems = latest.some((row) => row.items_refunded !== null && row.items_refunded !== undefined);
   const hasAnyCommission = latest.some((row) => row.estimated_commission !== null && row.estimated_commission !== undefined);
   const hasCompleteViews = latest.length > 0 && latest.every((row) => row.views !== null && row.views !== undefined);
+  const hasAnyViews = latest.some((row) => row.views !== null && row.views !== undefined);
   const statuses = new Set(videos.map((video) => video.status));
   const status = !videos.length ? 'AWAITING_VIDEO'
     : statuses.has('COLLECTING') ? 'COLLECTING'
@@ -1233,7 +1246,7 @@ const calculateActualPerformance = (booking) => {
     estimated_commission: hasAnyCommission
       ? latest.reduce((sum, row) => sum + numberOrZero(row.estimated_commission), 0)
       : null,
-    views: hasCompleteViews ? latest.reduce((sum, row) => sum + numberOrZero(row.views), 0) : null,
+    views: (hasCompleteViews || hasAnyViews) ? latest.reduce((sum, row) => sum + numberOrZero(row.views), 0) : null,
     currency,
     gross_roas: bookingCost > 0 && latest.length ? grossGmv / bookingCost : null,
     net_roas: bookingCost > 0 && netGmv !== null ? netGmv / bookingCost : null,

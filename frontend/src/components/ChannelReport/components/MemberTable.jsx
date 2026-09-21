@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { EyeOff } from 'lucide-react';
 
-import { compactVideoTitle } from '../utils/reportUtils';
+import { compactProductName, compactVideoTitle } from '../utils/reportUtils';
 import { ProductRowThumb, VideoProductThumb } from './ReportControls';
 
 export const MemberTable = ({
@@ -10,6 +10,7 @@ export const MemberTable = ({
   expandedMemberIds,
   formatNumber,
   formatPublishedDate,
+  formatPublishedTime,
   formatRevenue,
   loadMemberDetail,
   memberDetails,
