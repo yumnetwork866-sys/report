@@ -1,4 +1,6 @@
 const express = require('express');
+const { validateParams } = require('../middleware/validateRequest');
+const { bookingIdParamsSchema, creatorIdParamsSchema } = require('../schemas/bookingSchemas');
 const router = express.Router();
 const {
   getBookings,
@@ -23,12 +25,12 @@ router.get('/target-kocs/detail', getTargetKocDetail);
 router.get('/tiktok-partner/collaborations', getTikTokPartnerCollaborations);
 router.get('/tiktok-partner/status', getTikTokPartnerStatuses);
 router.get('/tiktok-partner/oauth/start', startTikTokPartnerOauth);
-router.get('/tiktok-partner/creators/:creatorId/overview', getTikTokPartnerCreatorOverview);
-router.delete('/tiktok-partner/:creatorId', disconnectTikTokPartner);
-router.get('/:id', getBookingById);
+router.get('/tiktok-partner/creators/:creatorId/overview', validateParams(creatorIdParamsSchema), getTikTokPartnerCreatorOverview);
+router.delete('/tiktok-partner/:creatorId', validateParams(creatorIdParamsSchema), disconnectTikTokPartner);
+router.get('/:id', validateParams(bookingIdParamsSchema), getBookingById);
 router.post('/', createBooking);
-router.post('/:id/video-match', matchBookingVideo);
-router.put('/:id', updateBooking);
-router.delete('/:id', deleteBooking);
+router.post('/:id/video-match', validateParams(bookingIdParamsSchema), matchBookingVideo);
+router.put('/:id', validateParams(bookingIdParamsSchema), updateBooking);
+router.delete('/:id', validateParams(bookingIdParamsSchema), deleteBooking);
 
 module.exports = router;
