@@ -158,6 +158,20 @@ test('bookingVideoPerformanceForVideos aggregates metrics across videos', () => 
   assert.equal(perf.video_count, 2);
 });
 
+test('bookingVideoPerformanceForVideos keeps the currency of revenue-producing snapshots', () => {
+  const videos = [
+    { performance_snapshots: [{ gross_gmv: 297.47, orders: 2, currency: 'MYR' }] },
+    { performance_snapshots: [{ gross_gmv: 153, orders: 1, currency: 'MYR' }] },
+    { performance_snapshots: [{ gross_gmv: 149.6, orders: 1, currency: 'MYR' }] },
+    { performance_snapshots: [{ gross_gmv: 0, orders: 0, currency: 'VND' }] },
+  ];
+
+  const performance = bookingVideoPerformanceForVideos(videos, { currency: 'VND' });
+
+  assert.equal(performance.gross_gmv, 600.07);
+  assert.equal(performance.currency, 'MYR');
+});
+
 test('bookingVideoPerformanceForVideos never falls back to commission from unfiltered videos', () => {
   const unknownCommissionVideos = [{
     id: 1,

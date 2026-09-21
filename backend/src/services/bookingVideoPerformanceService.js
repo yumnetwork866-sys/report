@@ -1207,6 +1207,16 @@ const calculateActualPerformance = (booking) => {
   const status = !videos.length ? 'AWAITING_VIDEO'
     : statuses.has('COLLECTING') ? 'COLLECTING'
       : statuses.has('SYNC_FAILED') ? 'SYNC_FAILED' : 'FINALIZED';
+  const currency = latest.find((row) => numberOrZero(row.gross_gmv) !== 0 && row.currency)?.currency
+    || latest.find((row) => (
+      numberOrZero(row.orders) !== 0
+      || numberOrZero(row.items_sold) !== 0
+      || numberOrZero(row.refunded_gmv) !== 0
+      || numberOrZero(row.estimated_commission) !== 0
+    ) && row.currency)?.currency
+    || latest.find((row) => row.currency)?.currency
+    || booking.currency
+    || null;
   return {
     status,
     attribution_days: 30,
@@ -1224,7 +1234,7 @@ const calculateActualPerformance = (booking) => {
       ? latest.reduce((sum, row) => sum + numberOrZero(row.estimated_commission), 0)
       : null,
     views: hasCompleteViews ? latest.reduce((sum, row) => sum + numberOrZero(row.views), 0) : null,
-    currency: latest.find((row) => row.currency)?.currency || booking.currency || null,
+    currency,
     gross_roas: bookingCost > 0 && latest.length ? grossGmv / bookingCost : null,
     net_roas: bookingCost > 0 && netGmv !== null ? netGmv / bookingCost : null,
     roi: null,

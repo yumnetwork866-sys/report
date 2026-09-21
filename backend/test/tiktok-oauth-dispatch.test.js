@@ -6,8 +6,10 @@ const { mockModule } = require('./helpers/mockModule');
 test('the shared TikTok Partner callback dispatches Seller state to the Shop handler', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const partnerServicePath = require.resolve('../src/services/tiktokPartnerService');
-  const shopControllerPath = require.resolve('../src/controllers/tiktokShopController');
+  const shopServicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
   const bookingControllerPath = require.resolve('../src/controllers/bookingController');
+  const bookingEndpointServicePath = require.resolve('../src/services/booking/bookingEndpointService');
+  const bookingRepositoryPath = require.resolve('../src/repositories/bookingRepository');
   let shopHandlerCalls = 0;
 
   const restores = [
@@ -15,7 +17,7 @@ test('the shared TikTok Partner callback dispatches Seller state to the Shop han
     mockModule(partnerServicePath, {
       parseAuthorizationState: () => ({ oauthType: 'shop', returnPath: '/manage/shop-analytics' }),
     }),
-    mockModule(shopControllerPath, {
+    mockModule(shopServicePath, {
       handleShopOauthCallback: async (_req, res) => {
         shopHandlerCalls += 1;
         return res.redirect('/manage/shop-analytics');
@@ -23,8 +25,12 @@ test('the shared TikTok Partner callback dispatches Seller state to the Shop han
     }),
   ];
   delete require.cache[bookingControllerPath];
+  delete require.cache[bookingEndpointServicePath];
+  delete require.cache[bookingRepositoryPath];
   t.after(() => {
     delete require.cache[bookingControllerPath];
+    delete require.cache[bookingEndpointServicePath];
+    delete require.cache[bookingRepositoryPath];
     restores.reverse().forEach((restore) => restore());
   });
 
@@ -42,8 +48,10 @@ test('the shared TikTok Partner callback dispatches Seller state to the Shop han
 test('Creator callback updates the KOC selected in signed state without creating a duplicate', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const partnerServicePath = require.resolve('../src/services/tiktokPartnerService');
-  const shopControllerPath = require.resolve('../src/controllers/tiktokShopController');
+  const shopServicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
   const bookingControllerPath = require.resolve('../src/controllers/bookingController');
+  const bookingEndpointServicePath = require.resolve('../src/services/booking/bookingEndpointService');
+  const bookingRepositoryPath = require.resolve('../src/repositories/bookingRepository');
   const creator = { id: 42, role: 'koc' };
   let createdUsers = 0;
   let savedValues = null;
@@ -75,11 +83,15 @@ test('Creator callback updates the KOC selected in signed state without creating
       tokenFields: () => ({ open_id: 'creator-open-id', access_token_encrypted: 'encrypted' }),
       CREATOR_PROFILE_SCOPE: 'creator.affiliate.info',
     }),
-    mockModule(shopControllerPath, { handleShopOauthCallback: async () => {} }),
+    mockModule(shopServicePath, { handleShopOauthCallback: async () => {} }),
   ];
   delete require.cache[bookingControllerPath];
+  delete require.cache[bookingEndpointServicePath];
+  delete require.cache[bookingRepositoryPath];
   t.after(() => {
     delete require.cache[bookingControllerPath];
+    delete require.cache[bookingEndpointServicePath];
+    delete require.cache[bookingRepositoryPath];
     restores.reverse().forEach((restore) => restore());
   });
 
@@ -99,8 +111,10 @@ test('Creator callback updates the KOC selected in signed state without creating
 test('Creator callback only creates a KOC for explicit create_koc state', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const partnerServicePath = require.resolve('../src/services/tiktokPartnerService');
-  const shopControllerPath = require.resolve('../src/controllers/tiktokShopController');
+  const shopServicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
   const bookingControllerPath = require.resolve('../src/controllers/bookingController');
+  const bookingEndpointServicePath = require.resolve('../src/services/booking/bookingEndpointService');
+  const bookingRepositoryPath = require.resolve('../src/repositories/bookingRepository');
   let createdUsers = 0;
   let authorizationValues = null;
   const restores = [
@@ -125,11 +139,15 @@ test('Creator callback only creates a KOC for explicit create_koc state', async 
       tokenFields: () => ({ open_id: 'new-open-id', access_token_encrypted: 'encrypted' }),
       CREATOR_PROFILE_SCOPE: 'creator.affiliate.info',
     }),
-    mockModule(shopControllerPath, { handleShopOauthCallback: async () => {} }),
+    mockModule(shopServicePath, { handleShopOauthCallback: async () => {} }),
   ];
   delete require.cache[bookingControllerPath];
+  delete require.cache[bookingEndpointServicePath];
+  delete require.cache[bookingRepositoryPath];
   t.after(() => {
     delete require.cache[bookingControllerPath];
+    delete require.cache[bookingEndpointServicePath];
+    delete require.cache[bookingRepositoryPath];
     restores.reverse().forEach((restore) => restore());
   });
 

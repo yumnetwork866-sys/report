@@ -454,7 +454,9 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
   let hasAnyRefunds = false;
   let hasAnyRefundedItems = false;
   let hasAnyCommission = false;
-  let currency = basePerformance?.currency || 'MYR';
+  let revenueCurrency = null;
+  let activityCurrency = null;
+  let observedCurrency = null;
 
   for (const video of videos) {
     const latest = latestBookingVideoSnapshot(video);
@@ -481,8 +483,14 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     hasAnyRefunds = hasAnyRefunds || (rawRefunded !== null && rawRefunded !== undefined);
     hasAnyRefundedItems = hasAnyRefundedItems || (rawItemsRefunded !== null && rawItemsRefunded !== undefined);
     hasAnyCommission = hasAnyCommission || (rawCommission !== null && rawCommission !== undefined);
-    if (latest?.currency) currency = latest.currency;
-    else if (video?.currency) currency = video.currency;
+    const videoCurrency = latest?.currency || video?.currency || null;
+    if (videoCurrency) {
+      observedCurrency ||= videoCurrency;
+      if (videoGmv !== 0) revenueCurrency ||= videoCurrency;
+      if (videoOrders !== 0 || videoItems !== 0 || videoRefunded !== 0 || videoCommission !== 0) {
+        activityCurrency ||= videoCurrency;
+      }
+    }
   }
   return {
     gross_gmv: grossGmv,
@@ -491,7 +499,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
     items_sold: itemsSold,
     refunded_gmv: hasAnyRefunds ? refundedGmv : null,
     items_refunded: hasAnyRefundedItems ? itemsRefunded : null,
-    currency,
+    currency: revenueCurrency || activityCurrency || observedCurrency || basePerformance?.currency || 'MYR',
     video_count: videos.length,
     samples_shipped: basePerformance?.samples_shipped ?? 0,
     estimated_commission: hasAnyCommission ? estimatedCommission : null,

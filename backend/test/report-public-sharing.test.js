@@ -19,6 +19,7 @@ const makeResponse = () => ({
 test('report sharing creates a stable token and public lookup exposes only report content', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const controllerPath = require.resolve('../src/controllers/reportController');
+  const endpointServicePath = require.resolve('../src/services/report/reportEndpointService');
   const report = {
     id: 7,
     week_start: '2026-07-01',
@@ -43,8 +44,10 @@ test('report sharing creates a stable token and public lookup exposes only repor
     },
   });
   delete require.cache[controllerPath];
+  delete require.cache[endpointServicePath];
   t.after(() => {
     delete require.cache[controllerPath];
+    delete require.cache[endpointServicePath];
     restoreModels();
   });
   const { getPublicReport, shareReport } = require(controllerPath);

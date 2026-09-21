@@ -11,6 +11,18 @@ const loadController = (
   creatorProfileService = {},
 ) => {
   const controllerPath = require.resolve('../src/controllers/bookingController');
+  const bookingLayerPaths = [
+    require.resolve('../src/controllers/controllerAdapter'),
+    require.resolve('../src/services/booking/bookingEndpointService'),
+    require.resolve('../src/repositories/bookingRepository'),
+    require.resolve('../src/presenters/bookingPresenter'),
+    require.resolve('../src/services/booking/bookingQueryService'),
+    require.resolve('../src/services/booking/bookingCommandService'),
+    require.resolve('../src/services/booking/bookingPerformanceService'),
+    require.resolve('../src/services/booking/bookingTargetService'),
+    require.resolve('../src/services/booking/bookingVideoService'),
+  ];
+  bookingLayerPaths.forEach((modulePath) => delete require.cache[modulePath]);
   const restores = [
     mockModule(require.resolve('../src/models'), models),
     mockModule(require.resolve('../src/services/tiktokCreatorProfileService'), {
@@ -41,13 +53,14 @@ const loadController = (
       loadOrderMetricsForBookingProducts: async () => new Map(),
       ...bookingVideoService,
     }),
-    mockModule(require.resolve('../src/controllers/tiktokShopController'), {
+    mockModule(require.resolve('../src/services/tiktokShop/tiktokShopEndpointService'), {
       handleShopOauthCallback: async () => {},
     }),
   ];
   delete require.cache[controllerPath];
   t.after(() => {
     delete require.cache[controllerPath];
+    bookingLayerPaths.forEach((modulePath) => delete require.cache[modulePath]);
     restores.reverse().forEach((restore) => restore());
   });
   return require(controllerPath);

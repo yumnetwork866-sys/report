@@ -150,6 +150,21 @@ test('actual booking performance uses latest snapshot and does not invent Net GM
   assert.equal(result.roi_status, 'MISSING_COST_DATA');
 });
 
+test('actual booking performance ignores zero-value snapshots when choosing currency', () => {
+  const result = calculateActualPerformance({
+    currency: 'VND',
+    booking_videos: [
+      { status: 'COLLECTING', performance_snapshots: [{ gross_gmv: 0, orders: 0, currency: 'VND' }] },
+      { status: 'COLLECTING', performance_snapshots: [{ gross_gmv: 297.47, orders: 2, currency: 'MYR' }] },
+      { status: 'COLLECTING', performance_snapshots: [{ gross_gmv: 153, orders: 1, currency: 'MYR' }] },
+      { status: 'COLLECTING', performance_snapshots: [{ gross_gmv: 149.6, orders: 1, currency: 'MYR' }] },
+    ],
+  });
+
+  assert.equal(result.gross_gmv, 600.07);
+  assert.equal(result.currency, 'MYR');
+});
+
 test('actual booking performance calculates Net ROAS only with complete refund data', () => {
   const result = calculateActualPerformance({
     booking_cost: 1000,

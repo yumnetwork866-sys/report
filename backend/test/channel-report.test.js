@@ -9,6 +9,7 @@ const loadController = (t, query, revenueLoader = async () => ({
 }), dailyRevenueLoader = async () => ({ days: [] })) => {
   const modelsPath = require.resolve('../src/models');
   const controllerPath = require.resolve('../src/controllers/reportController');
+  const endpointServicePath = require.resolve('../src/services/report/reportEndpointService');
   const revenueServicePath = require.resolve('../src/services/channelReportRevenueService');
   const restoreModels = mockModule(modelsPath, {
     Booking: {},
@@ -23,8 +24,10 @@ const loadController = (t, query, revenueLoader = async () => ({
     loadVideoDailyRevenue: dailyRevenueLoader,
   });
   delete require.cache[controllerPath];
+  delete require.cache[endpointServicePath];
   t.after(() => {
     delete require.cache[controllerPath];
+    delete require.cache[endpointServicePath];
     restoreRevenueService();
     restoreModels();
   });
@@ -526,4 +529,3 @@ test('channel report filters multiple teams via team_ids', async (t) => {
   assert.equal(response.body.revenue.teams[1].key, '5');
   assert.equal(response.body.filters.teams.length, 3);
 });
-

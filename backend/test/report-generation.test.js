@@ -19,6 +19,7 @@ const makeResponse = () => ({
 test('generated report uses Booking Management snapshots and Ollama analysis', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const controllerPath = require.resolve('../src/controllers/reportController');
+  const endpointServicePath = require.resolve('../src/services/report/reportEndpointService');
   let savedReport;
   const restoreModels = mockModule(modelsPath, {
     Booking: {
@@ -76,9 +77,11 @@ test('generated report uses Booking Management snapshots and Ollama analysis', a
     };
   };
   delete require.cache[controllerPath];
+  delete require.cache[endpointServicePath];
   t.after(() => {
     global.fetch = originalFetch;
     delete require.cache[controllerPath];
+    delete require.cache[endpointServicePath];
     restoreModels();
   });
 
@@ -105,6 +108,7 @@ test('generated report uses Booking Management snapshots and Ollama analysis', a
 test('invalid report period is rejected before querying data', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const controllerPath = require.resolve('../src/controllers/reportController');
+  const endpointServicePath = require.resolve('../src/services/report/reportEndpointService');
   let queried = false;
   const restoreModels = mockModule(modelsPath, {
     Booking: { findAll: async () => { queried = true; return []; } },
@@ -113,8 +117,10 @@ test('invalid report period is rejected before querying data', async (t) => {
     sequelize: {},
   });
   delete require.cache[controllerPath];
+  delete require.cache[endpointServicePath];
   t.after(() => {
     delete require.cache[controllerPath];
+    delete require.cache[endpointServicePath];
     restoreModels();
   });
 
