@@ -834,8 +834,6 @@ const ShopAnalytics = ({
   const intervals = useMemo(() => (
     Array.isArray(snapshot?.metrics?.intervals) ? snapshot.metrics.intervals : []
   ), [snapshot]);
-  const hasRowsBeyondReportedDate = Boolean(snapshot?.latest_available_date)
-    && intervals.some((row) => String(row?.start_date || '').slice(0, 10) > snapshot.latest_available_date);
   const comparisonIntervals = useMemo(() => (
     Array.isArray(snapshot?.metrics?.comparison_intervals)
       ? snapshot.metrics.comparison_intervals
@@ -1559,9 +1557,6 @@ const ShopAnalytics = ({
                         ? `${t('shopAnalytics.lastSync')}: ${formatDateTime(snapshot.synced_at)} · ${t('shopAnalytics.latestDate')}: ${formatDate(snapshot.latest_available_date)}`
                         : t('shopAnalytics.noData')}
                     </p>
-                    {hasRowsBeyondReportedDate ? (
-                      <p className="section-card__meta">{t('shopAnalytics.newerRowsNotice')}</p>
-                    ) : null}
                   </div>
                 </div>
                 <div className="table-wrap shop-analytics__table-wrap">
