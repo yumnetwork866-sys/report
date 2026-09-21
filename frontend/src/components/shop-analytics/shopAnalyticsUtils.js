@@ -134,3 +134,6 @@ export const totalsFor = (rows) => {
 
 export const percentage = (value, total) => (total > 0 ? value / total * 100 : 0);
 export const boundedPercentage = (value) => Math.min(100, Math.max(0, value));
+export const percentageChange = (current, previous, hasComparison = true) => (
+  !hasComparison || previous === 0 ? null : (current - previous) / Math.abs(previous) * 100
+);

@@ -3,10 +3,21 @@ import assert from 'node:assert/strict';
 import {
   creatorForVideo,
   formatVideoPostDate,
+  percentageChange,
   productsForVideo,
+  rangeForDays,
+  shiftDate,
   scopesOf,
   totalsFor,
 } from '../src/components/shop-analytics/shopAnalyticsUtils.js';
+import { canLoadShopAnalytics } from '../src/components/shop-analytics/hooks/useShopAnalyticsData.js';
+import {
+  canLoadShopVideos,
+  creatorOptionsForVideos,
+  filterVideoRows,
+  videoRequestOptions,
+  videoTotalsFor,
+} from '../src/components/shop-analytics/hooks/useShopVideoAnalytics.js';
 
 test('totalsFor preserves financial and cancellation semantics', () => {
   assert.deepEqual(totalsFor([
@@ -73,4 +84,93 @@ test('creator and scope normalization remain stable', () => {
 test('formatVideoPostDate formats an ISO-like timestamp without timezone drift', () => {
   assert.equal(formatVideoPostDate('2026-09-21T13:04:05Z'), '21/09/2026 13:04:05');
   assert.equal(formatVideoPostDate('not-a-date', 'N/A'), 'N/A');
+});
+
+test('date range helpers preserve the exclusive end-date contract', () => {
+  const range = rangeForDays(7);
+  assert.equal(shiftDate(range.startDate, 7), range.endDate);
+  assert.equal(shiftDate('2026-02-28', 1), '2026-03-01');
+  assert.equal(shiftDate('invalid', 1), '');
+});
+
+test('video creator filtering and multi-term search are deterministic', () => {
+  const rows = [
+    {
+      video_id: 'v1',
+      video_title: 'Summer blue shirt',
+      creator_username: 'alice',
+      creator_name: 'Alice',
+      gmv: 120,
+      video_views: 50,
+      orders: 2,
+    },
+    {
+      video_id: 'v2',
+      video_title: 'Red shoes',
+      creator_username: 'bob',
+      creator_name: 'Bob',
+      gmv: 80,
+      video_views: 25,
+      orders: 1,
+    },
+  ];
+  const options = creatorOptionsForVideos(rows, 'en-US');
+  assert.deepEqual(options.map((option) => option.value), ['username:alice', 'username:bob']);
+  assert.deepEqual(filterVideoRows({
+    creatorKey: 'username:alice', locale: 'en-US', rows,
+    search: 'blue alice', videoExportOnly: true,
+  }).map((row) => row.video_id), ['v1']);
+  assert.deepEqual(videoTotalsFor(rows), { gmv: 200, views: 75, orders: 3, itemsSold: 0 });
+});
+
+test('video sorting request keeps the selected server-side sort contract', () => {
+  const options = videoRequestOptions({
+    accountType: 'AFFILIATE_ACCOUNTS',
+    currency: 'LOCAL',
+    endDate: '2026-09-22',
+    signal: 'signal',
+    sortField: 'views',
+    startDate: '2026-09-15',
+  });
+  assert.equal(options.sortField, 'views');
+  assert.equal(options.sortOrder, 'DESC');
+  assert.equal(options.pageSize, 100);
+});
+
+test('KPI comparison handles increases, decreases and missing comparison data', () => {
+  assert.equal(percentageChange(120, 100), 20);
+  assert.equal(percentageChange(80, 100), -20);
+  assert.equal(percentageChange(10, 0), null);
+  assert.equal(percentageChange(10, 5, false), null);
+});
+
+test('data hooks are guarded when scope, date range or selection is invalid', () => {
+  assert.equal(canLoadShopAnalytics({
+    invalidRange: true, managementOnly: false, missingAnalyticsScope: false,
+    selectedShopId: '1', tokenExpired: false, videoOnly: false,
+  }), false);
+  assert.equal(canLoadShopAnalytics({
+    invalidRange: false, managementOnly: false, missingAnalyticsScope: true,
+    selectedShopId: '1', tokenExpired: false, videoOnly: false,
+  }), false);
+  assert.equal(canLoadShopAnalytics({
+    invalidRange: false, managementOnly: false, missingAnalyticsScope: false,
+    selectedShopId: '1', tokenExpired: false, videoOnly: false,
+  }), true);
+  assert.equal(canLoadShopVideos({
+    invalidRange: false,
+    managementOnly: false,
+    missingAnalyticsScope: true,
+    selectedShopId: '1',
+    tokenExpired: false,
+    videoOnly: true,
+  }), false);
+  assert.equal(canLoadShopVideos({
+    invalidRange: false,
+    managementOnly: false,
+    missingAnalyticsScope: false,
+    selectedShopId: '1',
+    tokenExpired: false,
+    videoOnly: true,
+  }), true);
 });

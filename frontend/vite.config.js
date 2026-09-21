@@ -13,8 +13,20 @@ const apiProxy = {
   },
 }
 
-const productionCacheHeaders = () => ({
-  name: 'production-cache-headers',
+const cacheHeaders = () => ({
+  name: 'cache-headers',
+  configureServer(server) {
+    server.middlewares.use((_req, res, next) => {
+      // Source modules and HMR responses must never be cached by a reverse proxy.
+      const setHeader = res.setHeader.bind(res)
+      res.setHeader = (name, value) => setHeader(
+        name,
+        String(name).toLowerCase() === 'cache-control' ? 'no-store, max-age=0' : value,
+      )
+      res.setHeader('Cache-Control', 'no-store, max-age=0')
+      next()
+    })
+  },
   configurePreviewServer(server) {
     server.middlewares.use((req, res, next) => {
       const pathname = req.url?.split('?', 1)[0] || '/'
@@ -60,7 +72,7 @@ const preloadBuiltFonts = () => ({
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), productionCacheHeaders(), preloadBuiltFonts()],
+  plugins: [react(), cacheHeaders(), preloadBuiltFonts()],
   build: {
     minify: 'oxc',
     sourcemap: false,
