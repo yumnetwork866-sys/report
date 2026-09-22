@@ -27,7 +27,7 @@
     "connectTikTokShop": "TikTok Seller",
     "connectTikTokShopMeta": "Kết nối Seller để đồng bộ Shop Analytics",
     "connectTikTokOms": "TikTok OMS",
-    "connectTikTokOmsMeta": "Kết nối App Đơn hàng Shop (seller.order.info)",
+    "connectTikTokOmsMeta": "Kết nối App Đơn hàng Shop",
     "connecting": "Đang chuyển hướng…",
     "connectionError": "Không thể bắt đầu kết nối. Vui lòng thử lại.",
     "changePassword": "Đổi mật khẩu",
@@ -1164,7 +1164,7 @@
     "noData": "Không có dữ liệu phù hợp.",
     "page": "Trang {{page}}",
     "orderAppNoticeTitle": "Chưa kết nối App Đơn Hàng Shop (Custom App)",
-    "orderAppNoticeDesc": "Hiện tại trang chỉ hiển thị các đơn hàng Affiliate từ Partner App (CAP). Để đồng bộ toàn bộ đơn hàng trực tiếp và quảng cáo (seller.order.info), vui lòng kết nối App Đơn Hàng.",
+    "orderAppNoticeDesc": "Hiện tại trang chỉ hiển thị các đơn hàng Affiliate từ Partner App (CAP). Để đồng bộ toàn bộ đơn hàng trực tiếp và quảng cáo, vui lòng kết nối App Đơn Hàng.",
     "connectOrderApp": "Kết nối App Đơn Hàng",
     "orderAppConnected": "Đã kết nối App Đơn Hàng"
   },

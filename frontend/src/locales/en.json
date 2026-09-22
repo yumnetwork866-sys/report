@@ -27,7 +27,7 @@
     "connectTikTokShop": "TikTok Seller",
     "connectTikTokShopMeta": "Connect a Seller account to sync Shop Analytics",
     "connectTikTokOms": "TikTok OMS",
-    "connectTikTokOmsMeta": "Connect Shop Order App (seller.order.info)",
+    "connectTikTokOmsMeta": "Connect Shop Order App",
     "connecting": "Redirecting…",
     "connectionError": "Unable to start the connection. Please try again.",
     "changePassword": "Change password",
@@ -1163,7 +1163,7 @@
     "noData": "No matching data.",
     "page": "Page {{page}}",
     "orderAppNoticeTitle": "Shop Order App Not Connected (Custom App)",
-    "orderAppNoticeDesc": "Currently displaying Affiliate orders from Partner App (CAP). To sync all direct and ads orders (seller.order.info), please connect the Shop Order App.",
+    "orderAppNoticeDesc": "Currently displaying Affiliate orders from Partner App (CAP). To sync all direct and ads orders, please connect the Shop Order App.",
     "connectOrderApp": "Connect Order App",
     "orderAppConnected": "Order App Connected"
   },
