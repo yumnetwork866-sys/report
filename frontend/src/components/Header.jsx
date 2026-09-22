@@ -161,6 +161,7 @@ const Header = () => {
     { id: 'tiktok', group: 'tiktok', label: t('header.connectTikTok'), meta: t('header.connectTikTokMeta') },
     { id: 'creator', group: 'tiktok', label: t('header.connectTikTokCreator'), meta: t('header.connectTikTokCreatorMeta') },
     { id: 'shop', group: 'tiktok', label: t('header.connectTikTokShop'), meta: t('header.connectTikTokShopMeta') },
+    { id: 'oms', group: 'tiktok', label: t('header.connectTikTokOms'), meta: t('header.connectTikTokOmsMeta') },
   ];
   const connectionGroups = [
     { id: 'tiktok', label: 'TikTok' },
@@ -228,6 +229,7 @@ const Header = () => {
         ({ authorizeUrl } = await startTikTokPartnerOauth('/manage/koc-performance', { createKoc: true }));
       }
       if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth());
+      if (target === 'oms') ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom'));
       if (!authorizeUrl) throw new Error(t('header.connectionError'));
       setActiveMenu(null);
       window.location.assign(authorizeUrl);

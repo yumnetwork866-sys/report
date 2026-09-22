@@ -26,6 +26,8 @@
     "connectTikTokCreatorMeta": "Connect a Creator affiliate account",
     "connectTikTokShop": "TikTok Seller",
     "connectTikTokShopMeta": "Connect a Seller account to sync Shop Analytics",
+    "connectTikTokOms": "TikTok OMS",
+    "connectTikTokOmsMeta": "Connect Shop Order App (seller.order.info)",
     "connecting": "Redirecting…",
     "connectionError": "Unable to start the connection. Please try again.",
     "changePassword": "Change password",

@@ -26,6 +26,8 @@
     "connectTikTokCreatorMeta": "Kết nối tài khoản affiliate Creator",
     "connectTikTokShop": "TikTok Seller",
     "connectTikTokShopMeta": "Kết nối Seller để đồng bộ Shop Analytics",
+    "connectTikTokOms": "TikTok OMS",
+    "connectTikTokOmsMeta": "Kết nối App Đơn hàng Shop (seller.order.info)",
     "connecting": "Đang chuyển hướng…",
     "connectionError": "Không thể bắt đầu kết nối. Vui lòng thử lại.",
     "changePassword": "Đổi mật khẩu",
