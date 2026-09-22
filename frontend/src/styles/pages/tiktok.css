@@ -5383,6 +5383,19 @@
   background: var(--color-surface-raised);
 }
 
+.seller-affiliate__quick-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.seller-affiliate__quick-filter-select {
+  min-width: 0;
+}
+
 .seller-affiliate__controls--management {
   padding: 14px;
   border-color: color-mix(in srgb, var(--color-primary) 18%, var(--color-border));
@@ -7117,6 +7130,7 @@
   .seller-affiliate__controls--two-columns .seller-affiliate__filter-grid,
   .seller-affiliate__controls--orders .seller-affiliate__filter-grid,
   .seller-affiliate__controls--orders-custom .seller-affiliate__filter-grid,
+  .seller-affiliate__quick-filters,
   .seller-affiliate__summary {
     grid-template-columns: 1fr;
   }

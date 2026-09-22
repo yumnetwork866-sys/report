@@ -94,6 +94,8 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     openCreatorDetail,
     openInvite,
     orderCategories,
+    orderCategoryFilter,
+    orderCategoryFilterOptions,
     orderCategoryNameMap,
     orderMode,
     orderOverview,
@@ -104,7 +106,9 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     orderProductCategoryMap,
     orderProducts,
     orderRange,
+    orderSourceFilter,
     orderStatistics,
+    orderStatusFilter,
     performanceBreakdown,
     performanceBreakdownTotal,
     performanceColumns,
@@ -134,8 +138,11 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     setInviteTab,
     setKeyword,
     setOrderMode,
+    setOrderCategoryFilter,
     setOrderPeriod,
     setOrderRange,
+    setOrderSourceFilter,
+    setOrderStatusFilter,
     setPageTokens,
     setPerformanceWindow,
     setProductSearch,
@@ -209,7 +216,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
           {(!ordersOnly || orderMode === 'orders') ? (
             <form className="seller-affiliate__search" onSubmit={submitSearch}>
               <div className="field seller-affiliate__search-field">
-                <label htmlFor="affiliate-search">{t(section === 'orders' ? 'sellerAffiliate.orderId' : 'common.search')}</label>
+                <label htmlFor="affiliate-search">{t(ordersOnly && section === 'orders' ? 'sellerAffiliate.orderSearchLabel' : section === 'orders' ? 'sellerAffiliate.orderId' : 'common.search')}</label>
                 <input
                   id="affiliate-search"
                   value={keyword}
@@ -326,6 +333,59 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
             </div>
           ) : null}
         </div>
+        {ordersOnly && orderMode === 'orders' ? (
+          <div className="seller-affiliate__quick-filters">
+            <div className="field seller-affiliate__quick-filter-select">
+              <label htmlFor="affiliate-orders-status">{t('sellerAffiliate.orderStatusFilter')}</label>
+              <SelectDropdown
+                id="affiliate-orders-status"
+                value={orderStatusFilter}
+                onChange={(value) => {
+                  setOrderStatusFilter(value);
+                  setPageTokens([]);
+                }}
+                icon={<Filter size={16} />}
+                options={[
+                  { value: 'all', label: t('sellerAffiliate.orderFilterAll') },
+                  { value: 'SETTLED', label: t('sellerAffiliate.orderFilterCompleted') },
+                  { value: 'UNSETTLED', label: t('sellerAffiliate.orderFilterUnsettled') },
+                  { value: 'REFUNDED', label: t('sellerAffiliate.orderFilterRefunded') },
+                ]}
+              />
+            </div>
+            <div className="field seller-affiliate__quick-filter-select">
+              <label htmlFor="affiliate-orders-source">{t('sellerAffiliate.salesSource')}</label>
+              <SelectDropdown
+                id="affiliate-orders-source"
+                value={orderSourceFilter}
+                onChange={(value) => {
+                  setOrderSourceFilter(value);
+                  setPageTokens([]);
+                }}
+                icon={<Filter size={16} />}
+                options={[
+                  { value: 'all', label: t('sellerAffiliate.orderFilterAll') },
+                  { value: 'VIDEO', label: t('sellerAffiliate.orderSource_VIDEO') },
+                  { value: 'LIVE', label: t('sellerAffiliate.orderSource_LIVE') },
+                  { value: 'SHOP', label: t('sellerAffiliate.orderSource_SHOP') },
+                ]}
+              />
+            </div>
+            <div className="field seller-affiliate__quick-filter-select">
+              <label htmlFor="affiliate-orders-category">{t('sellerAffiliate.productGroup')}</label>
+              <SelectDropdown
+                id="affiliate-orders-category"
+                value={orderCategoryFilter}
+                onChange={(value) => {
+                  setOrderCategoryFilter(value);
+                  setPageTokens([]);
+                }}
+                icon={<Filter size={16} />}
+                options={orderCategoryFilterOptions}
+              />
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {!shops.length && !loading ? <section className="section-card empty-state"><h2>{t('sellerAffiliate.noShop')}</h2><p>{t('sellerAffiliate.noShopMeta')}</p></section> : null}
@@ -335,11 +395,11 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
 
       {selectedShop && hasScope && ordersOnly && orderMode === 'orders' ? <>
         <section className="seller-affiliate__summary seller-affiliate__order-kpis" aria-label={t('sellerAffiliate.orderOverview')}>
-          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiOrders')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.orders)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiGmv')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.affiliate_gmv)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiItems')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.items_sold)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiCommission')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.estimated_commission)}</p></article>
-          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiRefundRate')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : `${Number(orderOverview.refund_return_rate || 0).toLocaleString(locale, { maximumFractionDigits: 2 })}%`}</p><span className="row-subtitle">{t('sellerAffiliate.orderKpiRefundedOrders', { count: formatNumber(orderOverview.refunded_returned_orders) })}</span></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiOrders')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.kpis?.orders)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiGmv')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.kpis?.affiliate_gmv)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiItems')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.kpis?.items_sold)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiCommission')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.kpis?.estimated_commission)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiRefundRate')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : `${Number(orderOverview.kpis?.refund_return_rate || 0).toLocaleString(locale, { maximumFractionDigits: 2 })}%`}</p><span className="row-subtitle">{t('sellerAffiliate.orderKpiRefundedOrders', { count: formatNumber(orderOverview.kpis?.refunded_returned_orders) })}</span></article>
         </section>
         {orderOverviewError ? <section className="section-card empty-state empty-state--compact" role="alert">{orderOverviewError}</section> : null}
       </> : null}

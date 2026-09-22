@@ -53,5 +53,8 @@ module.exports = {
       required: skuRequired,
     }],
   }),
+  findAffiliateOrders: (options) => models().TikTokAffiliateOrder.findAll(options),
+  findAffiliateOrderSkus: (options) => models().TikTokAffiliateOrderSku.findAll(options),
+  findCreatorProfiles: (options) => models().TikTokCreatorProfile.findAll(options),
   findShopProducts: (options) => models().TikTokShopProduct.findAll(options),
 };

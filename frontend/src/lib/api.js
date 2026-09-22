@@ -298,6 +298,8 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
   if (filters.productId) params.set('product_id', filters.productId);
   if (filters.creatorUsername) params.set('creator_username', filters.creatorUsername);
   if (filters.categoryId) params.set('category_id', filters.categoryId);
+  if (filters.contentType) params.set('content_type', filters.contentType);
+  if (filters.settlementStatus) params.set('settlement_status', filters.settlementStatus);
   if (filters.source) params.set('source', filters.source);
   const query = params.toString();
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/${resource}${query ? `?${query}` : ''}`, { signal: filters.signal });

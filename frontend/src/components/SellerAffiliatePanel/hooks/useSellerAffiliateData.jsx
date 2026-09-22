@@ -65,6 +65,9 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const [orderMode, setOrderMode] = useState('orders');
   const [orderPeriod, setOrderPeriod] = useState('30d');
   const [orderRange, setOrderRange] = useState(() => defaultStatisticsRange(30));
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [orderSourceFilter, setOrderSourceFilter] = useState('all');
+  const [orderCategoryFilter, setOrderCategoryFilter] = useState('all');
   const [orderCategories, setOrderCategories] = useState([]);
   const [orderCatalogProducts, setOrderCatalogProducts] = useState([]);
   const [categoryName, setCategoryName] = useState('');
@@ -146,7 +149,13 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     { value: '90d', label: t('shopAnalytics.period90d') },
     { value: 'custom', label: t('shopAnalytics.periodCustom') },
   ], [t]);
-  
+
+  const orderCategoryFilterOptions = useMemo(() => [
+    { value: 'all', label: t('sellerAffiliate.allProductGroups') },
+    { value: 'uncategorized', label: t('sellerAffiliate.uncategorized') },
+    ...orderCategories.map((category) => ({ value: String(category.id), label: category.name })),
+  ], [orderCategories, t]);
+
   const targetStatusOptions = useMemo(() => [
     'ONGOING',
     'EXPIRING',
@@ -297,10 +306,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   }, [resetMarketplaceSearch, shops]);
   
   useEffect(() => {
-    if (!ordersOnly || orderMode !== 'management') return undefined;
+    if (!ordersOnly || !['orders', 'management'].includes(orderMode)) return undefined;
     const controller = new AbortController();
     loadOrderCategories(controller.signal);
-    loadOrderCatalogProducts(controller.signal);
+    if (orderMode === 'management') loadOrderCatalogProducts(controller.signal);
     return () => controller.abort();
   }, [loadOrderCatalogProducts, loadOrderCategories, orderMode, ordersOnly]);
   
@@ -347,7 +356,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       startTime: localDateUnix(orderRange.start),
       endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
     }).then((result) => {
-      if (orderOverviewRequestId.current === requestId) setOrderOverview(result?.kpis || {});
+      if (orderOverviewRequestId.current === requestId) setOrderOverview(result || {});
     })
       .catch((err) => {
         if (err.name !== 'AbortError' && orderOverviewRequestId.current === requestId) {
@@ -382,6 +391,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         ...(ordersOnly && section === 'orders' ? {
           startTime: localDateUnix(orderRange.start),
           endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+          source: 'db',
+          settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
+          contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
+          categoryId: orderCategoryFilter === 'all' ? '' : orderCategoryFilter,
         } : {}),
         ...(section === 'discover' && marketplaceSearchKey.current
           ? { searchKey: marketplaceSearchKey.current }
@@ -441,7 +454,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         }
         return;
       } else {
-        result = await fetchTikTokSellerAffiliateOrders(shopId, { ...filters, orderId: submittedKeyword });
+        result = await fetchTikTokSellerAffiliateOrders(shopId, {
+          ...filters,
+          orderId: ordersOnly ? '' : submittedKeyword,
+        });
       }
       if (!signal?.aborted) setData(result || {});
       if (section === 'performance') setProfileRefreshing(result?.profile_refresh?.status === 'PROCESSING');
@@ -450,7 +466,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
+  }, [currentPageToken, hasMarketplaceScope, hasScope, orderCategoryFilter, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
   
   useEffect(() => {
     const controller = new AbortController();
@@ -637,7 +653,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const currentPage = pageTokens.length + 1;
   const supportsNumberedPagination = section === 'performance'
     || section === 'discover'
-    || (section === 'target' && data.source === 'DATABASE_SNAPSHOT');
+    || (section === 'target' && data.source === 'DATABASE_SNAPSHOT')
+    || (ordersOnly && section === 'orders');
   const totalPages = Math.max(
     currentPage + (nextPageToken ? 1 : 0),
     supportsNumberedPagination
@@ -667,6 +684,13 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       return;
     }
     if (section === 'target' && data.source === 'DATABASE_SNAPSHOT') {
+      setPageTokens(Array.from(
+        { length: target - 1 },
+        (_, index) => String((index + 1) * PAGE_SIZE),
+      ));
+      return;
+    }
+    if (ordersOnly && section === 'orders') {
       setPageTokens(Array.from(
         { length: target - 1 },
         (_, index) => String((index + 1) * PAGE_SIZE),
@@ -1207,6 +1231,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     openInvite,
     orderCategories,
     orderCategoryNameMap,
+    orderCategoryFilter,
+    orderCategoryFilterOptions,
     orderMode,
     orderOverview,
     orderOverviewError,
@@ -1216,7 +1242,9 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     orderProductCategoryMap,
     orderProducts,
     orderRange,
+    orderSourceFilter,
     orderStatistics,
+    orderStatusFilter,
     performanceBreakdown,
     performanceBreakdownTotal,
     performanceColumns,
@@ -1246,8 +1274,11 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     setInviteTab,
     setKeyword,
     setOrderMode,
+    setOrderCategoryFilter,
     setOrderPeriod,
     setOrderRange,
+    setOrderSourceFilter,
+    setOrderStatusFilter,
     setPageTokens,
     setPerformanceWindow,
     setProductSearch,

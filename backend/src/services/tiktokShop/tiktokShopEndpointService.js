@@ -733,15 +733,110 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
 
-    const skuWhere = {};
+    const skuConditions = [];
     const filterProductId = String(req.query.product_id || '').trim();
     const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
     const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
-    if (filterProductId) skuWhere.product_id = filterProductId;
-    if (filterVideoId) skuWhere.content_id = filterVideoId;
-    if (filterCreator) skuWhere.creator_username = { [Op.iLike]: filterCreator };
+    const filterCategoryId = String(req.query.category_id || '').trim();
+    const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
+    const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
+    const searchKeyword = String(req.query.keyword || '').trim();
+    if (filterProductId) skuConditions.push({ product_id: filterProductId });
+    if (filterVideoId) skuConditions.push({ content_id: filterVideoId });
+    if (filterCreator) skuConditions.push({ creator_username: { [Op.iLike]: filterCreator } });
 
-    const hasSkuFilter = Object.keys(skuWhere).length > 0;
+    if (filterCategoryId && filterCategoryId !== 'all') {
+      const categoryItems = await tiktokShopRepository.findCategoryItems({
+        where: {
+          shop_id: shop.id,
+          ...(filterCategoryId === 'uncategorized' ? {} : { category_id: filterCategoryId }),
+        },
+      });
+      const categorizedIds = categoryItems.map((item) => String(item.product_id));
+      if (filterCategoryId === 'uncategorized') {
+        if (categorizedIds.length) skuConditions.push({ product_id: { [Op.notIn]: categorizedIds } });
+      } else {
+        skuConditions.push({ product_id: { [Op.in]: categorizedIds } });
+      }
+    }
+
+    if (filterContentType === 'LIVE') {
+      skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
+    } else if (filterContentType === 'SHOP') {
+      skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
+    } else if (filterContentType) {
+      skuConditions.push({ content_type: filterContentType });
+    }
+
+    if (filterSettlement === 'REFUNDED') {
+      skuConditions.push({
+        [Op.or]: [
+          { fully_return: true },
+          { refunded_quantity: { [Op.gt]: 0 } },
+          { settlement_status: { [Op.iLike]: '%REFUND%' } },
+          { settlement_status: { [Op.iLike]: '%RETURN%' } },
+          { settlement_status: { [Op.iLike]: '%CANCEL%' } },
+        ],
+      });
+    } else if (filterSettlement === 'UNSETTLED') {
+      skuConditions.push({
+        [Op.or]: [
+          { settlement_status: { [Op.iLike]: '%UNSETTLED%' } },
+          { settlement_status: { [Op.iLike]: '%PENDING%' } },
+          { settlement_status: { [Op.iLike]: '%PROCESSING%' } },
+        ],
+      });
+    } else if (filterSettlement === 'SETTLED') {
+      skuConditions.push({
+        fully_return: false,
+        refunded_quantity: 0,
+        [Op.or]: [
+          { settlement_status: { [Op.iLike]: 'SETTLED' } },
+          { settlement_status: { [Op.iLike]: 'COMPLETED' } },
+        ],
+      });
+    }
+
+    if (searchKeyword && !orderId) {
+      const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
+      const profiles = await tiktokShopRepository.findCreatorProfiles({
+        where: {
+          shop_id: shop.id,
+          [Op.or]: [
+            { username: { [Op.iLike]: pattern } },
+            { nickname: { [Op.iLike]: pattern } },
+          ],
+        },
+        attributes: ['username'],
+      });
+      const profileUsernames = profiles.map((profile) => profile.username).filter(Boolean);
+      const [matchingOrders, matchingSkus] = await Promise.all([
+        tiktokShopRepository.findAffiliateOrders({
+          where: { shop_id: shop.id, order_id: { [Op.iLike]: pattern } },
+          attributes: ['order_id'],
+        }),
+        tiktokShopRepository.findAffiliateOrderSkus({
+          where: {
+            shop_id: shop.id,
+            [Op.or]: [
+              { product_id: { [Op.iLike]: pattern } },
+              { product_name: { [Op.iLike]: pattern } },
+              { creator_username: { [Op.iLike]: pattern } },
+              ...(profileUsernames.length ? [{ creator_username: { [Op.in]: profileUsernames } }] : []),
+            ],
+          },
+          attributes: ['order_id'],
+        }),
+      ]);
+      const matchingOrderIds = [...new Set([
+        ...matchingOrders.map((order) => String(order.order_id)),
+        ...matchingSkus.map((sku) => String(sku.order_id)),
+      ])];
+      where.order_id = { [Op.in]: matchingOrderIds };
+    }
+
+    const skuWhere = skuConditions.length ? { [Op.and]: skuConditions } : undefined;
+    const hasSkuFilter = skuConditions.length > 0;
 
     const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders({
       where,
@@ -749,7 +844,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       order: [['create_time', 'DESC']],
       limit: pageSize,
       offset,
-    }, hasSkuFilter ? skuWhere : undefined, hasSkuFilter);
+    }, skuWhere, hasSkuFilter);
 
     const nextOffset = offset + rows.length;
     const nextPageToken = nextOffset < count ? String(nextOffset) : '';
