@@ -260,10 +260,16 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
     create_time: Math.floor(Date.now() / 1000) - index * 21600,
   });
   });
+  const startTime = Number(query.create_time_ge);
+  const endTime = Number(query.create_time_lt);
+  const periodOrders = orders.filter((order) => (
+    (!Number.isFinite(startTime) || order.create_time >= startTime)
+    && (!Number.isFinite(endTime) || order.create_time < endTime)
+  ));
   if (namespace === 'order-statistics') {
     const creatorUsername = String(query.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
     const categoryId = String(query.category_id || 'all');
-    const matchingOrders = orders.filter((order) => !creatorUsername
+    const matchingOrders = periodOrders.filter((order) => !creatorUsername
       || order.skus.some((sku) => sku.creator_username.toLowerCase() === creatorUsername));
     const rows = categoryId !== 'all' && categoryId !== 'uncategorized' ? [] : products.map((product) => {
       const matchingSkus = matchingOrders.flatMap((order) => order.skus.map((sku) => ({ order, sku })))
@@ -279,15 +285,38 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
         creator_count: new Set(matchingSkus.map(({ sku }) => sku.creator_username)).size,
       };
     }).filter((row) => row.quantity > 0).sort((left, right) => right.quantity - left.quantity);
+    const kpiGmv = new Map();
+    const kpiCommission = new Map();
+    let kpiItemsSold = 0;
+    let returnedOrders = 0;
+    for (const order of matchingOrders) {
+      if (order.skus.some((sku) => sku.fully_return || /REFUND|RETURN|CANCEL/.test(String(sku.settlement_status)))) returnedOrders += 1;
+      for (const sku of order.skus) {
+        const currency = sku.price.currency;
+        const amount = Number(sku.price.amount) * Number(sku.quantity);
+        const rate = Number(sku.creator_commission_rate) / 100;
+        kpiItemsSold += Number(sku.quantity);
+        kpiGmv.set(currency, (kpiGmv.get(currency) || 0) + amount);
+        kpiCommission.set(currency, (kpiCommission.get(currency) || 0) + amount * rate / 100);
+      }
+    }
     return {
       data: {
         rows,
-        creators: [...new Set(orders.flatMap((order) => order.skus.map((sku) => sku.creator_username)))].map((username) => ({ username })),
+        creators: [...new Set(periodOrders.flatMap((order) => order.skus.map((sku) => sku.creator_username)))].map((username) => ({ username })),
         categories: [],
         totals: {
           quantity: rows.reduce((sum, row) => sum + row.quantity, 0),
           products: rows.length,
           orders: new Set(matchingOrders.map((order) => order.order_id)).size,
+        },
+        kpis: {
+          orders: matchingOrders.length,
+          affiliate_gmv: [...kpiGmv].map(([currency, amount]) => ({ currency, amount })),
+          items_sold: kpiItemsSold,
+          estimated_commission: [...kpiCommission].map(([currency, amount]) => ({ currency, amount })),
+          refunded_returned_orders: returnedOrders,
+          refund_return_rate: matchingOrders.length ? returnedOrders / matchingOrders.length * 100 : 0,
         },
         truncated: false,
       },
@@ -295,7 +324,7 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
     };
   }
   return {
-    data: { total_count: orders.length, next_page_token: null, orders },
+    data: { total_count: periodOrders.length, next_page_token: null, orders: periodOrders },
     request_id: requestId,
   };
 };

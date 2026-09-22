@@ -18,6 +18,7 @@ const {
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrders,
+  summarizeAffiliateOrderKpis,
   getOpenCollaborationSettings,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,
@@ -944,6 +945,7 @@ const listAffiliateOrderStatistics = affiliateResponse('order-statistics', async
   return {
     data: {
       ...summary,
+      kpis: summarizeAffiliateOrderKpis(orders),
       rows: summary.rows.map((row) => ({
         ...row,
         category_name: row.category_id ? categoryNames.get(String(row.category_id)) || null : null,

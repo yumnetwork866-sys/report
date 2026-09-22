@@ -514,6 +514,102 @@ const summarizeAffiliateOrders = (orders = [], { categoryItems = [], creatorUser
   };
 };
 
+const affiliateOrderMoney = (value, fallbackCurrency) => {
+  const amount = Number(typeof value === 'object' ? value?.amount : value);
+  if (!Number.isFinite(amount)) return null;
+  return {
+    amount,
+    currency: String((typeof value === 'object' ? value?.currency : null) || fallbackCurrency || 'USD').toUpperCase(),
+  };
+};
+
+const addAffiliateOrderMoney = (totals, money, multiplier = 1) => {
+  if (!money) return;
+  totals.set(money.currency, (totals.get(money.currency) || 0) + money.amount * multiplier);
+};
+
+const affiliateOrderMoneyTotals = (totals) => [...totals.entries()]
+  .map(([currency, amount]) => ({ currency, amount }));
+
+const affiliateCommissionRate = (value) => {
+  const raw = typeof value === 'object' ? value?.percentage ?? value?.rate ?? value?.value : value;
+  if (raw === undefined || raw === null || raw === '') return null;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) return null;
+  return numeric > 100 ? numeric / 100 : numeric;
+};
+
+const summarizeAffiliateOrderKpis = (orders = []) => {
+  const orderIds = new Set();
+  const returnedOrderIds = new Set();
+  const gmv = new Map();
+  const commission = new Map();
+  let itemsSold = 0;
+
+  orders.forEach((order, orderIndex) => {
+    const id = String(order?.id || order?.order_id || `order-${orderIndex}`);
+    orderIds.add(id);
+    const skus = Array.isArray(order?.skus) ? order.skus : [];
+    const orderStatus = String(order?.settlement_status || order?.order_status || order?.status || '').toUpperCase();
+    const returned = /REFUND|RETURN|CANCEL/.test(orderStatus) || skus.some((sku) => {
+      const quantity = Math.max(0, Number(sku?.quantity) || 0);
+      const refundedQuantity = Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0);
+      return sku?.fully_return === true
+        || String(sku?.fully_return).toLowerCase() === 'true'
+        || refundedQuantity > 0
+        || (quantity > 0 && refundedQuantity >= quantity)
+        || /REFUND|RETURN|CANCEL/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
+    });
+    if (returned) returnedOrderIds.add(id);
+
+    const topLevelCommissionValue = order?.commission_amount ?? order?.actual_commission ?? order?.estimated_commission;
+    const hasTopLevelCommission = topLevelCommissionValue !== undefined
+      && topLevelCommissionValue !== null && topLevelCommissionValue !== '';
+    if (hasTopLevelCommission) {
+      addAffiliateOrderMoney(commission, affiliateOrderMoney(topLevelCommissionValue, order?.currency));
+    }
+
+    let hasSkuGmv = false;
+    for (const sku of skus) {
+      const quantity = Math.max(0, Number(sku?.quantity) || 0);
+      const refundedQuantity = Math.min(quantity, Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0));
+      const price = affiliateOrderMoney(
+        sku?.price ?? sku?.price_amount ?? sku?.original_price,
+        sku?.currency || order?.currency,
+      );
+      itemsSold += quantity;
+      if (price) {
+        addAffiliateOrderMoney(gmv, price, quantity);
+        hasSkuGmv = true;
+      }
+      if (hasTopLevelCommission) continue;
+      const explicitCommissionValue = sku?.commission_amount ?? sku?.actual_commission ?? sku?.estimated_commission;
+      const explicitCommission = affiliateOrderMoney(explicitCommissionValue, price?.currency || order?.currency);
+      if (explicitCommissionValue !== undefined && explicitCommissionValue !== null && explicitCommissionValue !== '') {
+        addAffiliateOrderMoney(commission, explicitCommission);
+        continue;
+      }
+      const rate = affiliateCommissionRate(sku?.creator_commission_rate ?? sku?.commission_rate);
+      if (price && rate !== null) addAffiliateOrderMoney(commission, price, (quantity - refundedQuantity) * rate / 100);
+    }
+    if (!hasSkuGmv) {
+      addAffiliateOrderMoney(gmv, affiliateOrderMoney(
+        order?.gmv ?? order?.order_amount ?? order?.total_amount,
+        order?.currency,
+      ));
+    }
+  });
+
+  return {
+    orders: orderIds.size,
+    affiliate_gmv: affiliateOrderMoneyTotals(gmv),
+    items_sold: itemsSold,
+    estimated_commission: affiliateOrderMoneyTotals(commission),
+    refunded_returned_orders: returnedOrderIds.size,
+    refund_return_rate: orderIds.size ? returnedOrderIds.size / orderIds.size * 100 : 0,
+  };
+};
+
 const getOpenCollaborationSettings = ({ authorization, shopCipher } = {}, fetchImpl) => sellerAffiliateRequest({
   authorization,
   shopCipher,
@@ -861,6 +957,7 @@ module.exports = {
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrders,
+  summarizeAffiliateOrderKpis,
   getOpenCollaborationSettings,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,

@@ -5643,6 +5643,18 @@
   gap: 12px;
 }
 
+.seller-affiliate__order-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.seller-affiliate__order-kpis .stat-card__value {
+  font-size: clamp(1.1rem, 1.7vw, 1.55rem);
+}
+
+.seller-affiliate__order-kpis .row-subtitle {
+  margin-top: 5px;
+}
+
 
 .seller-affiliate__setting-value {
   font-size: 1.45rem;
@@ -7094,6 +7106,11 @@
   resize: none;
 }
 
+@media (max-width: 1180px) {
+  .seller-affiliate__order-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
 
 @media (max-width: 820px) {
   .seller-affiliate__filter-grid,

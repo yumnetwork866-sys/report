@@ -78,6 +78,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [categoryError, setCategoryError] = useState('');
   const [orderStatistics, setOrderStatistics] = useState({ rows: [], creators: [], categories: [], totals: {} });
+  const [orderOverview, setOrderOverview] = useState({});
+  const [orderOverviewLoading, setOrderOverviewLoading] = useState(false);
+  const [orderOverviewError, setOrderOverviewError] = useState('');
+  const orderOverviewRequestId = useRef(0);
   const [statisticsPeriod, setStatisticsPeriod] = useState('30d');
   const [statisticsRange, setStatisticsRange] = useState(defaultStatisticsRange);
   const [statisticsCreator, setStatisticsCreator] = useState('');
@@ -329,6 +333,33 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       .finally(() => { if (!controller.signal.aborted) setStatisticsLoading(false); });
     return () => controller.abort();
   }, [orderMode, ordersOnly, shopId, statisticsRequest]);
+
+  useEffect(() => {
+    if (!ordersOnly || orderMode !== 'orders' || !shopId || !hasScope) return undefined;
+    const controller = new AbortController();
+    const requestId = orderOverviewRequestId.current + 1;
+    orderOverviewRequestId.current = requestId;
+    setOrderOverviewLoading(true);
+    setOrderOverviewError('');
+    setOrderOverview({});
+    fetchTikTokSellerAffiliateOrderStatistics(shopId, {
+      signal: controller.signal,
+      startTime: localDateUnix(orderRange.start),
+      endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+    }).then((result) => {
+      if (orderOverviewRequestId.current === requestId) setOrderOverview(result?.kpis || {});
+    })
+      .catch((err) => {
+        if (err.name !== 'AbortError' && orderOverviewRequestId.current === requestId) {
+          setOrderOverview({});
+          setOrderOverviewError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && orderOverviewRequestId.current === requestId) setOrderOverviewLoading(false);
+      });
+    return () => controller.abort();
+  }, [hasScope, orderMode, orderRange, ordersOnly, shopId]);
   
   const load = useCallback(async (signal) => {
     // searchVersion intentionally participates in this request so submitting the
@@ -1177,6 +1208,9 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     orderCategories,
     orderCategoryNameMap,
     orderMode,
+    orderOverview,
+    orderOverviewError,
+    orderOverviewLoading,
     orderPeriod,
     orderPeriodOptions,
     orderProductCategoryMap,

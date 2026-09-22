@@ -42,6 +42,7 @@ const {
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrders,
+  summarizeAffiliateOrderKpis,
   searchSellerSampleApplications,
   searchSellerSampleApplicationFulfillments,
   summarizeSampleFulfillments,
@@ -590,6 +591,34 @@ test('affiliate order statistics filter by creator and product category', () => 
   }]);
   assert.deepEqual(result.creators, [{ username: 'koc.one' }, { username: 'koc.two' }]);
   assert.deepEqual(result.totals, { quantity: 5, products: 1, orders: 2 });
+});
+
+test('affiliate order KPIs aggregate the full period with commission and return rate', () => {
+  const result = summarizeAffiliateOrderKpis([
+    { id: 'order-1', skus: [{
+      quantity: 2,
+      refunded_quantity: 0,
+      price: { amount: '25', currency: 'MYR' },
+      creator_commission_rate: 1200,
+      settlement_status: 'SETTLED',
+    }] },
+    { id: 'order-2', skus: [{
+      quantity: 1,
+      refunded_quantity: 1,
+      price: { amount: '10', currency: 'MYR' },
+      commission_amount: { amount: '1.50', currency: 'MYR' },
+      settlement_status: 'REFUNDED',
+    }] },
+  ]);
+
+  assert.deepEqual(result, {
+    orders: 2,
+    affiliate_gmv: [{ amount: 60, currency: 'MYR' }],
+    items_sold: 3,
+    estimated_commission: [{ amount: 7.5, currency: 'MYR' }],
+    refunded_returned_orders: 1,
+    refund_return_rate: 50,
+  });
 });
 
 test('search Seller sample applications uses the existing Seller Affiliate read scope', async (t) => {

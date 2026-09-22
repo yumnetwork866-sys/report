@@ -96,6 +96,9 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     orderCategories,
     orderCategoryNameMap,
     orderMode,
+    orderOverview,
+    orderOverviewError,
+    orderOverviewLoading,
     orderPeriod,
     orderPeriodOptions,
     orderProductCategoryMap,
@@ -329,6 +332,17 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
       {selectedShop && !hasScope ? <section className="section-card seller-affiliate__permission" role="alert"><div><strong>{t('sellerAffiliate.missingScope')}</strong><p>{t('sellerAffiliate.missingScopeMeta')}</p><code>{REQUIRED_SCOPE}</code></div></section> : null}
       {error ? <section className="section-card empty-state empty-state--compact" role="alert">{error}</section> : null}
       {contactNotice ? <section className={`section-card seller-affiliate__contact-notice seller-affiliate__contact-notice--${contactNotice.type}`} role={contactNotice.type === 'error' ? 'alert' : 'status'}><span>{contactNotice.text}</span><button type="button" aria-label={t('common.close')} onClick={() => setContactNotice(null)}>×</button></section> : null}
+
+      {selectedShop && hasScope && ordersOnly && orderMode === 'orders' ? <>
+        <section className="seller-affiliate__summary seller-affiliate__order-kpis" aria-label={t('sellerAffiliate.orderOverview')}>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiOrders')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.orders)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiGmv')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.affiliate_gmv)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiItems')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.items_sold)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiCommission')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.estimated_commission)}</p></article>
+          <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiRefundRate')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : `${Number(orderOverview.refund_return_rate || 0).toLocaleString(locale, { maximumFractionDigits: 2 })}%`}</p><span className="row-subtitle">{t('sellerAffiliate.orderKpiRefundedOrders', { count: formatNumber(orderOverview.refunded_returned_orders) })}</span></article>
+        </section>
+        {orderOverviewError ? <section className="section-card empty-state empty-state--compact" role="alert">{orderOverviewError}</section> : null}
+      </> : null}
 
       {selectedShop && hasScope ? <>
         {section === 'performance' ? <section className="section-card"><div className="section-card__header"><div><h2 className="section-card__title">{t('sellerAffiliate.performanceTitle')}</h2><p className="section-card__meta">{selectedPerformanceExport ? `${formatReportDate(selectedPerformanceExport.start_date)} – ${formatReportDate(selectedPerformanceExport.end_date)}` : t(`sellerAffiliate.performanceStatus_${data.export?.status || 'EMPTY'}`)}</p></div></div>{baseMetrics.length ? <section className="seller-affiliate__summary seller-affiliate__base-summary">{baseMetrics.map(([key, value]) => <article className="stat-card" key={key}><p className="stat-card__label">{t(`sellerAffiliate.${key}`)}</p><p className="stat-card__value seller-affiliate__setting-value">{value}</p></article>)}</section> : null}</section> : null}
