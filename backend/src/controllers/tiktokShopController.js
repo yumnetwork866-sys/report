@@ -5,7 +5,7 @@ const actions = [
   'startShopOauth', 'handleShopOauthCallback', 'listShopConnections', 'listShops',
   'getShopAnalytics', 'syncShopAnalytics', 'disconnectShopAuthorization', 'disconnectShop',
   'listShopVideoPerformance', 'getShopVideoThumbnail', 'listOpenCollaborations',
-  'listTargetCollaborations', 'listAffiliateOrders', 'listAffiliateOrderStatistics',
+  'listTargetCollaborations', 'listAffiliateOrders', 'listAffiliateOrderOverview',
   'showOpenCollaborationSettings', 'listAffiliateCreators', 'showAffiliateCreatorFulfillments',
   'listMarketplaceCreators', 'showMarketplaceCreator', 'createMarketplaceCreatorInvitation',
   'addMarketplaceCreatorToInvitation', 'getMarketplaceCreatorConversation',

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import ShopDropdown from '../ShopDropdown';
 import SelectDropdown from '../SelectDropdown';
-import { BarChart3, CalendarDays, Filter, Users } from 'lucide-react';
+import { BarChart3, CalendarDays, Filter } from 'lucide-react';
 import { setStoredSelectedShopId } from '../../lib/shopSelection';
 import Pagination from '../Pagination';
 import DatePickerInput from '../DatePickerInput';
@@ -35,19 +35,9 @@ import {
 
 const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) => {
   const {
-    allVisibleProductsSelected,
-    assignSelectedProducts,
     baseMetrics,
-    bulkCategoryId,
-    bulkCategoryOptions,
-    catalogLoading,
-    categoryError,
-    categoryFilter,
-    categoryLoading,
-    categoryName,
     changePage,
     changeSection,
-    clearProductDragState,
     closeCreatorDetail,
     contactNotice,
     creatorBreakdown,
@@ -60,12 +50,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     creatorStatusOptions,
     currentPage,
     data,
-    dragOverCategoryId,
-    draggedProductId,
-    dropProductsOnCategory,
     error,
-    expandedStatisticCategories,
-    filteredOrderProducts,
     formatCreatorCount,
     formatCreatorGmv,
     formatEngagementRate,
@@ -75,7 +60,6 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     formatRate,
     formatTime,
     formatUnitsSold,
-    groupedOrderStatistics,
     hasMarketplaceScope,
     hasProductScope,
     hasScope,
@@ -88,26 +72,17 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     keyword,
     loading,
     locale,
-    managementCategoryOptions,
     ongoingInvitations,
     openCollaborationSettings,
     openCreatorDetail,
     openInvite,
-    orderCategories,
-    orderCategoryFilter,
-    orderCategoryFilterOptions,
-    orderCategoryNameMap,
-    orderMode,
     orderOverview,
     orderOverviewError,
     orderOverviewLoading,
     orderPeriod,
     orderPeriodOptions,
-    orderProductCategoryMap,
-    orderProducts,
     orderRange,
     orderSourceFilter,
-    orderStatistics,
     orderStatusFilter,
     performanceBreakdown,
     performanceBreakdownTotal,
@@ -115,85 +90,51 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     performanceCreatorCell,
     performanceWindow,
     performanceWindowOptions,
-    productSearch,
-    removeOrderCategory,
     resetMarketplaceSearch,
     rows,
     section,
     selectedCreatorApplication,
     selectedInvitationId,
     selectedPerformanceExport,
-    selectedProductIds,
     selectedShop,
-    setBulkCategoryId,
-    setCategoryFilter,
-    setCategoryName,
     setContactNotice,
     setCreatorBreakdownMetric,
     setData,
-    setDragOverCategoryId,
     setInvitationSearch,
     setInviteCreator,
     setInviteForm,
     setInviteTab,
     setKeyword,
-    setOrderMode,
-    setOrderCategoryFilter,
     setOrderPeriod,
     setOrderRange,
     setOrderSourceFilter,
     setOrderStatusFilter,
     setPageTokens,
     setPerformanceWindow,
-    setProductSearch,
     setSelectedInvitationId,
-    setSelectedProductIds,
     setShopId,
-    setStatisticsCategory,
-    setStatisticsCreator,
-    setStatisticsPeriod,
-    setStatisticsRange,
     setStatus,
     shopId,
     shops,
-    startProductDrag,
-    statisticsCategory,
-    statisticsCategoryOptions,
-    statisticsCreator,
-    statisticsCreatorOptions,
-    statisticsError,
-    statisticsLoading,
-    statisticsPeriod,
-    statisticsPeriodOptions,
-    statisticsRange,
     status,
     submitExistingInvite,
     submitInvite,
-    submitOrderCategory,
     submitSearch,
     submittedKeyword,
     t,
     tableColumnCount,
     targetStatusOptions,
     toggleInviteProduct,
-    toggleSelectedProduct,
-    toggleStatisticCategory,
     totalPages,
-    visibleProductIds,
   } = useSellerAffiliateData({ initialSection, ordersOnly });
   return (
     <div className="page seller-affiliate">
-      {ordersOnly ? <div className="seller-affiliate__subtabs" role="tablist" aria-label={t('sellerAffiliate.orderSections')}>
-        <button className={orderMode === 'orders' ? 'is-active' : ''} type="button" role="tab" aria-selected={orderMode === 'orders'} onClick={() => setOrderMode('orders')}>{t('sellerAffiliate.orderListTab')}</button>
-        <button className={orderMode === 'management' ? 'is-active' : ''} type="button" role="tab" aria-selected={orderMode === 'management'} onClick={() => setOrderMode('management')}>{t('sellerAffiliate.orderManagementTab')}</button>
-        <button className={orderMode === 'statistics' ? 'is-active' : ''} type="button" role="tab" aria-selected={orderMode === 'statistics'} onClick={() => setOrderMode('statistics')}>{t('sellerAffiliate.orderStatisticsTab')}</button>
-      </div> : null}
       {selectedShop && hasScope && !ordersOnly ? (
         <div className="seller-affiliate__subtabs" role="tablist" aria-label={t('sellerAffiliate.sections')}>
           {['open', 'target', 'discover', 'performance', 'creators', 'orders'].map((value) => <button className={section === value ? 'is-active' : ''} type="button" role="tab" aria-selected={section === value} onClick={() => changeSection(value)} key={value}>{t(`sellerAffiliate.${value}Tab`)}</button>)}
         </div>
       ) : null}
-      <section className={`section-card seller-affiliate__controls${ordersOnly && orderMode === 'management' ? ' seller-affiliate__controls--management' : ''}${ordersOnly && orderMode === 'orders' ? ' seller-affiliate__controls--orders' : ''}${ordersOnly && orderMode === 'orders' && orderPeriod === 'custom' ? ' seller-affiliate__controls--orders-custom' : ''}${(!ordersOnly && (section === 'open' || section === 'discover')) ? ' seller-affiliate__controls--two-columns' : ''}`}>
+      <section className={`section-card seller-affiliate__controls${ordersOnly ? ' seller-affiliate__controls--orders' : ''}${ordersOnly && orderPeriod === 'custom' ? ' seller-affiliate__controls--orders-custom' : ''}${(!ordersOnly && (section === 'open' || section === 'discover')) ? ' seller-affiliate__controls--two-columns' : ''}`}>
         <div className="seller-affiliate__filter-grid">
           <div className="field">
             <label htmlFor="affiliate-shop">{t('sellerAffiliate.shop')}</label>
@@ -213,8 +154,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
               unknownLabel={t('common.unknown')}
             />
           </div>
-          {(!ordersOnly || orderMode === 'orders') ? (
-            <form className="seller-affiliate__search" onSubmit={submitSearch}>
+          <form className="seller-affiliate__search" onSubmit={submitSearch}>
               <div className="field seller-affiliate__search-field">
                 <label htmlFor="affiliate-search">{t(ordersOnly && section === 'orders' ? 'sellerAffiliate.orderSearchLabel' : section === 'orders' ? 'sellerAffiliate.orderId' : 'common.search')}</label>
                 <input
@@ -230,9 +170,8 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
                   </svg>
                 </button>
               </div>
-            </form>
-          ) : null}
-          {ordersOnly && orderMode === 'orders' ? (
+          </form>
+          {ordersOnly ? (
             <div className="field">
               <label htmlFor="affiliate-orders-period">{t('shopAnalytics.period')}</label>
               <SelectDropdown
@@ -250,7 +189,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
               />
             </div>
           ) : null}
-          {ordersOnly && orderMode === 'orders' && orderPeriod === 'custom' ? (
+          {ordersOnly && orderPeriod === 'custom' ? (
             <>
               <div className="field">
                 <label htmlFor="affiliate-orders-start">{t('sellerAffiliate.startDate')}</label>
@@ -311,29 +250,8 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
               />
             </div>
           ) : null}
-          {ordersOnly && orderMode === 'management' ? (
-            <div className="seller-affiliate__management-filters">
-              <div className="order-product-management__search">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="m16 16 4 4" /></svg>
-                <input
-                  type="search"
-                  value={productSearch}
-                  onChange={(event) => setProductSearch(event.target.value)}
-                  placeholder={t('sellerAffiliate.searchProducts')}
-                  aria-label={t('sellerAffiliate.searchProducts')}
-                />
-              </div>
-              <SelectDropdown
-                id="management-category-filter"
-                value={categoryFilter}
-                onChange={setCategoryFilter}
-                icon={<Filter size={16} />}
-                options={managementCategoryOptions}
-              />
-            </div>
-          ) : null}
         </div>
-        {ordersOnly && orderMode === 'orders' ? (
+        {ordersOnly ? (
           <div className="seller-affiliate__quick-filters">
             <div className="field seller-affiliate__quick-filter-select">
               <label htmlFor="affiliate-orders-status">{t('sellerAffiliate.orderStatusFilter')}</label>
@@ -371,19 +289,6 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
                 ]}
               />
             </div>
-            <div className="field seller-affiliate__quick-filter-select">
-              <label htmlFor="affiliate-orders-category">{t('sellerAffiliate.productGroup')}</label>
-              <SelectDropdown
-                id="affiliate-orders-category"
-                value={orderCategoryFilter}
-                onChange={(value) => {
-                  setOrderCategoryFilter(value);
-                  setPageTokens([]);
-                }}
-                icon={<Filter size={16} />}
-                options={orderCategoryFilterOptions}
-              />
-            </div>
           </div>
         ) : null}
       </section>
@@ -393,7 +298,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
       {error ? <section className="section-card empty-state empty-state--compact" role="alert">{error}</section> : null}
       {contactNotice ? <section className={`section-card seller-affiliate__contact-notice seller-affiliate__contact-notice--${contactNotice.type}`} role={contactNotice.type === 'error' ? 'alert' : 'status'}><span>{contactNotice.text}</span><button type="button" aria-label={t('common.close')} onClick={() => setContactNotice(null)}>×</button></section> : null}
 
-      {selectedShop && hasScope && ordersOnly && orderMode === 'orders' ? <>
+      {selectedShop && hasScope && ordersOnly ? <>
         <section className="seller-affiliate__summary seller-affiliate__order-kpis" aria-label={t('sellerAffiliate.orderOverview')}>
           <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiOrders')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatNumber(orderOverview.kpis?.orders)}</p></article>
           <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.orderKpiGmv')}</p><p className="stat-card__value">{orderOverviewLoading ? '—' : formatMoneyValues(orderOverview.kpis?.affiliate_gmv)}</p></article>
@@ -430,95 +335,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
             ariaLabel={t('sellerAffiliate.page', { page: currentPage })}
           />
         </section> : null}
-        {ordersOnly && orderMode === 'management' ? <section className="section-card order-product-management">
-          <div className="section-card__header"><div><h2 className="section-card__title">{t('sellerAffiliate.orderManagementTitle')}</h2></div><div className="order-product-management__summary"><span className="chip">{t('sellerAffiliate.categoryCount', { count: orderCategories.length })}</span><span className="chip">{t('sellerAffiliate.productCount', { count: orderProducts.length })}</span></div></div>
-
-          {categoryError ? <div className="empty-state empty-state--compact" role="alert">{categoryError}</div> : null}
-          {(categoryLoading || catalogLoading) && !orderCategories.length && !orderProducts.length ? <div className="empty-state"><span className="loading-dot" />{t('common.loading')}</div> : <>
-            <div className="order-product-management__workspace order-product-management__workspace--grouping">
-              <section className="order-product-management__products" aria-labelledby="all-products-title">
-                <div className="order-product-management__column-heading"><div><span className="order-product-management__eyebrow">{t('sellerAffiliate.allProducts')}</span><strong id="all-products-title">{formatNumber(filteredOrderProducts.length)} / {formatNumber(orderProducts.length)}</strong></div></div>
-                {selectedProductIds.length ? <div className="order-product-management__bulk" role="region" aria-label={t('sellerAffiliate.bulkActions')}><strong>{t('sellerAffiliate.productsSelected', { count: selectedProductIds.length })}</strong><SelectDropdown id="bulk-category-select" className="order-product-management__bulk-dropdown" value={bulkCategoryId} onChange={setBulkCategoryId} options={bulkCategoryOptions} placeholder={t('sellerAffiliate.uncategorized')} /><button className="button button--small" type="button" disabled={categoryLoading} onClick={assignSelectedProducts}>{t('sellerAffiliate.apply')}</button><button className="button button--small button--ghost" type="button" onClick={() => setSelectedProductIds([])}>{t('common.close')}</button></div> : null}
-                <div className="order-product-management__product-list">
-                  <div className="order-product-management__list-select"><label><input type="checkbox" checked={allVisibleProductsSelected} onChange={() => setSelectedProductIds((current) => allVisibleProductsSelected ? current.filter((id) => !visibleProductIds.includes(id)) : [...new Set([...current, ...visibleProductIds])])} aria-label={t('sellerAffiliate.selectVisibleProducts')} /> {t('sellerAffiliate.selectVisibleProducts')}</label></div>
-                  {filteredOrderProducts.length ? filteredOrderProducts.map((product) => { const categoryId = orderProductCategoryMap.get(String(product.id)); return <div className={`order-product-management__product-card${selectedProductIds.includes(String(product.id)) ? ' is-selected' : ''}${draggedProductId === String(product.id) ? ' is-dragging' : ''}`} draggable="true" tabIndex="0" role="button" aria-pressed={selectedProductIds.includes(String(product.id))} onClick={(event) => { if (event.target.closest('input')) return; toggleSelectedProduct(product.id); }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSelectedProduct(product.id); } }} onDragStart={(event) => startProductDrag(event, product)} onDragEnd={clearProductDragState} key={product.id}><input type="checkbox" checked={selectedProductIds.includes(String(product.id))} onClick={(event) => event.stopPropagation()} onChange={() => toggleSelectedProduct(product.id)} aria-label={t('sellerAffiliate.selectProduct', { product: product.title || product.id })} /><div className="seller-affiliate__product order-product-management__product-info">{product.main_image_url ? <img src={product.main_image_url} alt="" loading="lazy" /> : <span className="order-product-management__product-placeholder">P</span>}<div><strong>{product.title || product.id}</strong>{product.title ? <span>{product.id}</span> : null}<span className={`order-product-management__category-tag${categoryId ? '' : ' is-uncategorized'}`}>{categoryId ? orderCategoryNameMap.get(categoryId) : t('sellerAffiliate.uncategorized')}</span></div></div></div>; }) : <div className="empty-state">{orderProducts.length ? t('sellerAffiliate.noProductMatches') : t('sellerAffiliate.noOrderProducts')}</div>}
-                </div>
-              </section>
-              <section className="order-product-management__groups" aria-labelledby="groups-title"><div className="order-product-management__column-heading"><div><span className="order-product-management__eyebrow" id="groups-title">{t('sellerAffiliate.groups')}</span></div><form className="order-product-management__create" onSubmit={submitOrderCategory}><label className="sr-only" htmlFor="order-category-name">{t('sellerAffiliate.categoryName')}</label><input id="order-category-name" value={categoryName} maxLength={120} onChange={(event) => setCategoryName(event.target.value)} placeholder={t('sellerAffiliate.categoryNamePlaceholder')} /><button type="submit" disabled={categoryLoading || !categoryName.trim()} aria-label={t('sellerAffiliate.createCategory')} title={t('sellerAffiliate.createCategory')}>＋</button></form></div><div className="order-product-management__group-list">{orderCategories.map((category) => { const groupProducts = orderProducts.filter((product) => orderProductCategoryMap.get(String(product.id)) === String(category.id)); return <div className={`order-product-group${categoryFilter === String(category.id) ? ' is-filter-active' : ''}${dragOverCategoryId === String(category.id) ? ' is-drag-over' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverCategoryId(String(category.id)); }} onDragLeave={() => setDragOverCategoryId(null)} onDrop={(event) => dropProductsOnCategory(event, category.id)} key={category.id}><div className="order-product-group__header"><strong>{category.name}</strong><span>{groupProducts.length}</span><button className="order-product-category__delete" type="button" disabled={categoryLoading} aria-label={`${t('sellerAffiliate.deleteCategory')}: ${category.name}`} title={t('sellerAffiliate.deleteCategory')} onClick={() => removeOrderCategory(category)}>×</button></div><div className="order-product-group__products">{groupProducts.map((product) => <div className="order-product-group__product" key={product.id}>{product.main_image_url ? <img src={product.main_image_url} alt="" /> : <span className="order-product-management__product-placeholder">P</span>}<span title={product.title || product.id}>{product.title || product.id}</span></div>)}</div></div>; })}{!orderCategories.length ? <div className="empty-state empty-state--compact">{t('sellerAffiliate.noCategories')}</div> : null}<div className={`order-product-group order-product-group--uncategorized${categoryFilter === 'uncategorized' ? ' is-filter-active' : ''}${dragOverCategoryId === '' ? ' is-drag-over' : ''}`} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverCategoryId(''); }} onDragLeave={() => setDragOverCategoryId(null)} onDrop={(event) => dropProductsOnCategory(event, '')}><div className="order-product-group__header"><span className="order-product-group__trash-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7l1-3h4l1 3" /></svg></span><strong>{t('sellerAffiliate.removeCategory')}</strong></div></div></div></section>
-            </div>
-          </>}
-        </section> : null}
-        {ordersOnly && orderMode === 'statistics' ? <section className="section-card order-statistics">
-          <div className="section-card__header"><div><h2 className="section-card__title">{t('sellerAffiliate.orderStatisticsTitle')}</h2></div></div>
-          <form className="order-statistics__filters" onSubmit={(event) => event.preventDefault()}>
-            <div className="field">
-              <label htmlFor="order-statistics-period">{t('sellerAffiliate.statisticsPeriod')}</label>
-              <SelectDropdown
-                id="order-statistics-period"
-                value={statisticsPeriod}
-                onChange={setStatisticsPeriod}
-                icon={<CalendarDays size={16} />}
-                options={statisticsPeriodOptions}
-              />
-            </div>
-            {statisticsPeriod === 'custom' ? (
-              <>
-                <div className="field">
-                  <label htmlFor="order-statistics-start">{t('sellerAffiliate.startDate')}</label>
-                  <DatePickerInput
-                    id="order-statistics-start"
-                    label={t('sellerAffiliate.startDate')}
-                    value={statisticsRange.start}
-                    max={statisticsRange.end}
-                    onChange={(value) => setStatisticsRange((current) => ({ ...current, start: value }))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="order-statistics-end">{t('sellerAffiliate.endDate')}</label>
-                  <DatePickerInput
-                    id="order-statistics-end"
-                    label={t('sellerAffiliate.endDate')}
-                    value={statisticsRange.end}
-                    min={statisticsRange.start}
-                    max={new Date().toISOString().slice(0, 10)}
-                    onChange={(value) => setStatisticsRange((current) => ({ ...current, end: value }))}
-                  />
-                </div>
-              </>
-            ) : null}
-            <div className="field">
-              <label htmlFor="order-statistics-creator">{t('sellerAffiliate.koc')}</label>
-              <SelectDropdown
-                id="order-statistics-creator"
-                value={statisticsCreator}
-                onChange={setStatisticsCreator}
-                icon={<Users size={16} />}
-                options={statisticsCreatorOptions}
-              />
-            </div>
-            <div className="field">
-              <label htmlFor="order-statistics-category">{t('sellerAffiliate.category')}</label>
-              <SelectDropdown
-                id="order-statistics-category"
-                value={statisticsCategory}
-                onChange={setStatisticsCategory}
-                icon={<Filter size={16} />}
-                options={statisticsCategoryOptions}
-              />
-            </div>
-          </form>
-          {statisticsError ? <div className="empty-state empty-state--compact" role="alert">{statisticsError}</div> : null}
-          <div className="order-statistics__summary">
-            <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.totalProductQuantity')}</p><p className="stat-card__value">{formatNumber(orderStatistics.totals?.quantity)}</p></article>
-            <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.distinctProducts')}</p><p className="stat-card__value">{formatNumber(orderStatistics.totals?.products)}</p></article>
-            <article className="stat-card"><p className="stat-card__label">{t('sellerAffiliate.matchedOrders')}</p><p className="stat-card__value">{formatNumber(orderStatistics.totals?.orders)}</p></article>
-          </div>
-          {orderStatistics.truncated ? <div className="empty-state empty-state--compact" role="status">{t('sellerAffiliate.statisticsTruncated')}</div> : null}
-          <div className="table-wrap"><table className="data-table order-statistics__table"><thead><tr><th>{t('sellerAffiliate.category')}</th><th className="cell-number">{t('sellerAffiliate.productCount')}</th><th className="cell-number">{t('sellerAffiliate.quantity')}</th><th className="cell-number">{t('sellerAffiliate.orderCount')}</th><th className="cell-number">{t('sellerAffiliate.kocCount')}</th></tr></thead><tbody>
-            {statisticsLoading ? <tr><td colSpan={5}><div className="empty-state"><span className="loading-dot" />{t('common.loading')}</div></td></tr> : groupedOrderStatistics.length ? groupedOrderStatistics.map((category) => { const expanded = expandedStatisticCategories.has(category.id); return <React.Fragment key={category.id}><tr className={`order-statistics__category-row${expanded ? ' is-expanded' : ''}`} onClick={() => toggleStatisticCategory(category.id)} tabIndex="0" onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleStatisticCategory(category.id); } }}><td><span className="order-statistics__expand-icon" aria-hidden="true">{expanded ? '⌄' : '›'}</span><strong>{category.name}</strong></td><td className="cell-number">{formatNumber(category.products.length)}</td><td className="cell-number"><strong>{formatNumber(category.quantity)}</strong></td><td className="cell-number">{formatNumber(category.orderCount)}</td><td className="cell-number">{formatNumber(category.creatorCount)}</td></tr>{expanded ? <tr className="order-statistics__products-row"><td colSpan={5}><div className="order-statistics__products"><div className="order-statistics__products-heading">{t('sellerAffiliate.productsInCategory', { count: category.products.length })}</div>{category.products.map((product) => <div className="order-statistics__product-row" key={product.product_id}><div className="seller-affiliate__product">{product.image_url ? <img src={product.image_url} alt="" loading="lazy" /> : null}<div><strong>{product.product_name || product.product_id}</strong><span>{product.product_id}</span></div></div><strong className="cell-number">{formatNumber(product.quantity)}</strong><span className="cell-number">{formatNumber(product.order_count)}</span><span className="cell-number">{formatNumber(product.creator_count)}</span></div>)}</div></td></tr> : null}</React.Fragment>; }) : <tr><td colSpan={5}><div className="empty-state">{t('sellerAffiliate.noStatisticsData')}</div></td></tr>}
-          </tbody></table></div>
-        </section> : null}
-        {section !== 'performance' && (section !== 'discover' || hasMarketplaceScope) && (!ordersOnly || orderMode === 'orders') ? <section className="section-card">
+        {section !== 'performance' && (section !== 'discover' || hasMarketplaceScope) ? <section className="section-card">
           <div className="section-card__header"><div><h2 className="section-card__title">{t(`sellerAffiliate.${section}Title`)}</h2>{section !== 'target' && section !== 'discover' && section !== 'open' && !(ordersOnly && section === 'orders') ? <p className="section-card__meta">{t(`sellerAffiliate.${section}Meta`)}</p> : null}</div><span className="chip">{formatNumber(data.total_count ?? rows.length)}</span></div>
           <div className="table-wrap"><table className={`data-table seller-affiliate__table${section === 'orders' ? ' seller-affiliate__table--orders' : ''}`}><thead><tr>{section === 'open' ? <><th>{t('sellerAffiliate.product')}</th><th>{t('sellerAffiliate.commission')}</th><th>{t('sellerAffiliate.creators')}</th><th>{t('sellerAffiliate.status')}</th></> : section === 'target' ? <><th>{t('sellerAffiliate.invitation')}</th><th>{t('sellerAffiliate.products')}</th><th>{t('sellerAffiliate.creators')}</th><th>{t('sellerAffiliate.validity')}</th><th>{t('sellerAffiliate.status')}</th></> : section === 'discover' ? <><th>{t('sellerAffiliate.creator')}</th><th>{t('sellerAffiliate.creatorGmv30')}</th><th>{t('sellerAffiliate.itemsSold')}</th><th>{t('sellerAffiliate.avgVideoViews')}</th><th>{t('sellerAffiliate.engagementRate')}</th><th>{t('sellerAffiliate.actions')}</th></> : section === 'performance' ? <><th>{t('sellerAffiliate.creator')}</th><th>{t('sellerAffiliate.creatorGmv')}</th><th>{t('sellerAffiliate.affiliateOrders')}</th><th>{t('sellerAffiliate.itemsSold')}</th><th>{t('sellerAffiliate.productImpressions')}</th><th>{t('sellerAffiliate.refundedGmv')}</th><th>{t('sellerAffiliate.followers')}</th></> : section === 'creators' ? <><th>{t('sellerAffiliate.creator')}</th><th>{t('sellerAffiliate.followers')}</th><th>{t('sellerAffiliate.creatorGmv30')}</th><th>{t('sellerAffiliate.content')}</th><th>{t('sellerAffiliate.fulfillment')}</th><th>{t('sellerAffiliate.status')}</th><th>{t('sellerAffiliate.actions')}</th></> : <><th>{t('sellerAffiliate.order')}</th><th>{t('sellerAffiliate.orderValue')}</th><th>{t('sellerAffiliate.koc')}</th><th>{t('sellerAffiliate.salesSource')}</th><th>{t('sellerAffiliate.settlementStatus')}</th><th>{t('sellerAffiliate.commission')}</th><th>{t('sellerAffiliate.createdAt')}</th></>}</tr></thead><tbody>
             {loading ? <tr><td colSpan={section === 'orders' ? 7 : section === 'discover' ? 6 : 7}><div className="empty-state"><span className="loading-dot" />{t('common.loading')}</div></td></tr> : section !== 'discover' && rows.length ? rows.map((row, index) => section === 'open' ? <tr key={row.id || index}><td><div className="seller-affiliate__product">{row.product?.main_image_url ? <img src={row.product.main_image_url} alt="" loading="lazy" /> : null}<div><strong>{row.product?.title || row.product?.id || row.id}</strong><span>{row.product?.id}</span></div></div></td><td>{formatRate(row.current_commission?.rate ?? row.commission_rate)}</td><td>{formatNumber(row.showcase_creator_count)} / {formatNumber(row.content_creator_count)}</td><td><span className="chip">{formatStatus(row.status, t)}</span></td></tr> : section === 'target' ? <tr key={row.id || index}><td><strong>{row.name || row.id}</strong><span className="row-subtitle">{row.id}</span><div className="target-collaboration__creators">{(row.creators || []).slice(0, 3).map((creator, creatorIndex) => <div className="creator-identity" key={creator.creator_open_id || creator.user_id || creator.username || creatorIndex}><CreatorAvatar src={creator.avatar?.url || creator.avatar_url} name={creator.nickname || creator.username} /><span><strong>{creator.nickname || creator.username || '—'}</strong><span className="row-subtitle">{creator.username ? `@${creator.username.replace(/^@/, '')}` : '—'}</span></span></div>)}{row.creators?.length > 3 ? <span className="target-collaboration__more">+{formatNumber(row.creators.length - 3)}</span> : null}</div></td><td>{formatNumber(row.products?.length ?? row.product_count)}</td><td>{formatNumber(row.showcase_creator_count)} / {formatNumber(row.content_creator_count)}</td><td>{formatTime(row.end_time)}</td><td><span className="chip">{formatStatus(row.status || row.collaboration_status, t)}</span></td></tr> : section === 'performance' ? <tr key={row.id || index}>{performanceCreatorCell(row)}<td>{formatMoney({ amount: row.affiliate_gmv, currency: row.currency })}</td><td>{formatNumber(row.affiliate_orders)}</td><td>{formatNumber(row.items_sold)}</td><td>{formatNumber(row.product_impressions)}</td><td>{formatMoney({ amount: row.refunded_gmv, currency: row.currency })}</td><td>{formatNumber(row.followers)}</td></tr> : section === 'creators' ? <tr key={row.id || index}><td><div className="creator-identity"><CreatorAvatar src={row.creator?.avatar_url} name={row.creator?.nickname || row.creator?.username} /><span><strong>{row.creator?.nickname || row.creator?.username || '—'}</strong><span className="row-subtitle">{row.creator?.username ? `@${row.creator.username.replace(/^@/, '')}` : row.creator?.user_id}</span></span></div></td><td>{formatNumber(row.creator?.follower_count)}</td><td>{formatMoney(row.creator?.gmv)}</td><td>{row.sample_content_status === 'UNAVAILABLE' ? t('common.noData') : row.sample_content_status === 'PENDING_SYNC' ? t('sellerAffiliate.loadContent') : row.sample_content_count ? <>{formatNumber(row.sample_content_count)}<span className="row-subtitle">{formatNumber(row.sample_content_views)} {t('common.views')}</span></> : t('sellerAffiliate.notPosted')}</td><td>{row.creator?.fulfillment_percentage ? `${row.creator.fulfillment_percentage}%` : formatStatus(row.fulfillment_status, t)}</td><td><span className="chip">{formatStatus(row.status, t)}</span></td><td><button className="button button--small button--ghost" type="button" onClick={() => openCreatorDetail(row)}>{t('sellerAffiliate.view')}</button></td></tr> : <tr key={row.order_id || row.id || index}><td><AffiliateOrderSummary row={row} t={t} /></td><td><AffiliateOrderMoney row={row} formatMoneyValues={formatMoneyValues} /></td><td><AffiliateOrderCreators row={row} t={t} /></td><td><AffiliateOrderVideos row={row} shopId={shopId} t={t} /></td><td><AffiliateOrderSettlement row={row} t={t} /></td><td><AffiliateOrderCommission row={row} locale={locale} formatMoneyValues={formatMoneyValues} /></td><td className="seller-affiliate__order-created">{formatTime(row.create_time || row.created_time)}</td></tr>) : !rows.length ? <tr><td colSpan={section === 'orders' ? 7 : section === 'discover' ? 6 : 7}><div className="empty-state">{t(section === 'discover' && data.search_pending ? 'sellerAffiliate.discoverSearchPending' : section === 'discover' && !submittedKeyword ? 'sellerAffiliate.discoverSyncPending' : 'sellerAffiliate.noData')}</div></td></tr> : null}
@@ -532,7 +349,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
             previousLabel={t('common.previous')}
             nextLabel={t('common.next')}
             ariaLabel={t('sellerAffiliate.page', { page: currentPage })}
-            alwaysVisible={ordersOnly && orderMode === 'orders'}
+            alwaysVisible={ordersOnly}
           />
         </section> : null}
       </> : null}

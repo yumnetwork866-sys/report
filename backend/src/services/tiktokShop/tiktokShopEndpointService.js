@@ -17,7 +17,6 @@ const {
   sendAffiliateMessage,
   searchAffiliateOrders,
   attachAffiliateOrderMetadata,
-  summarizeAffiliateOrders,
   summarizeAffiliateOrderKpis,
   getOpenCollaborationSettings,
   searchSellerSampleApplications,
@@ -737,28 +736,12 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const filterProductId = String(req.query.product_id || '').trim();
     const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
     const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
-    const filterCategoryId = String(req.query.category_id || '').trim();
     const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
     const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
     const searchKeyword = String(req.query.keyword || '').trim();
     if (filterProductId) skuConditions.push({ product_id: filterProductId });
     if (filterVideoId) skuConditions.push({ content_id: filterVideoId });
     if (filterCreator) skuConditions.push({ creator_username: { [Op.iLike]: filterCreator } });
-
-    if (filterCategoryId && filterCategoryId !== 'all') {
-      const categoryItems = await tiktokShopRepository.findCategoryItems({
-        where: {
-          shop_id: shop.id,
-          ...(filterCategoryId === 'uncategorized' ? {} : { category_id: filterCategoryId }),
-        },
-      });
-      const categorizedIds = categoryItems.map((item) => String(item.product_id));
-      if (filterCategoryId === 'uncategorized') {
-        if (categorizedIds.length) skuConditions.push({ product_id: { [Op.notIn]: categorizedIds } });
-      } else {
-        skuConditions.push({ product_id: { [Op.in]: categorizedIds } });
-      }
-    }
 
     if (filterContentType === 'LIVE') {
       skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
@@ -998,18 +981,14 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   };
 });
 
-const listAffiliateOrderStatistics = affiliateResponse('order-statistics', async (shop, req) => {
+const listAffiliateOrderOverview = affiliateResponse('order-overview', async (shop, req) => {
   const startTime = unixTimeValue(req.query.create_time_ge);
   const endTime = unixTimeValue(req.query.create_time_lt);
   if (!startTime || !endTime || endTime <= startTime) {
-    const error = new Error('A valid order statistics date range is required.');
+    const error = new Error('A valid order overview date range is required.');
     error.statusCode = 400;
     throw error;
   }
-  const [categoryItems, categories] = await Promise.all([
-    tiktokShopRepository.findCategoryItems({ where: { shop_id: shop.id } }),
-    tiktokShopRepository.findCategories({ where: { shop_id: shop.id }, order: [['name', 'ASC']] }),
-  ]);
   const orders = [];
   let pageToken;
   let truncated = false;
@@ -1031,21 +1010,9 @@ const listAffiliateOrderStatistics = affiliateResponse('order-statistics', async
     pageToken = nextPageToken;
     truncated = page === 99;
   }
-  const summary = summarizeAffiliateOrders(orders, {
-    categoryItems,
-    creatorUsername: req.query.creator_username,
-    categoryId: req.query.category_id,
-  });
-  const categoryNames = new Map(categories.map((category) => [String(category.id), category.name]));
   return {
     data: {
-      ...summary,
       kpis: summarizeAffiliateOrderKpis(orders),
-      rows: summary.rows.map((row) => ({
-        ...row,
-        category_name: row.category_id ? categoryNames.get(String(row.category_id)) || null : null,
-      })),
-      categories: categories.map((category) => ({ id: category.id, name: category.name })),
       range: { start_time: startTime, end_time: endTime },
       truncated,
     },
@@ -2092,7 +2059,7 @@ const service = {
   startShopOauth, handleShopOauthCallback, listShopConnections, listShops,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, getShopVideoThumbnail,
-  listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderStatistics, showOpenCollaborationSettings,
+  listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
   listAffiliateCreators, showAffiliateCreatorFulfillments, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
   getMarketplaceCreatorConversation, sendMarketplaceCreatorMessage,

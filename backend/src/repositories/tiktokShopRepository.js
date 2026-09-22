@@ -42,8 +42,6 @@ module.exports = {
   findMarketplaceDiscoveryStateById: (id, options) => models().TikTokMarketplaceDiscoveryState.findByPk(id, options),
   findTargetCollaborations: (options) => models().TikTokTargetCollaborationSnapshot.findAll(options),
   findAndCountTargetCollaborations: (options) => models().TikTokTargetCollaborationSnapshot.findAndCountAll(options),
-  findCategories: (options) => models().OrderProductCategory.findAll(options),
-  findCategoryItems: (options) => models().OrderProductCategoryItem.findAll(options),
   findAndCountAffiliateOrders: (options = {}, skuWhere, skuRequired = false) => models().TikTokAffiliateOrder.findAndCountAll({
     ...options,
     include: [{

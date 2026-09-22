@@ -1,12 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   fetchTikTokSellerAffiliateOrders,
-  fetchTikTokSellerAffiliateOrderStatistics,
-  fetchOrderProductCategories,
-  createOrderProductCategory,
-  deleteOrderProductCategory,
-  assignOrderProductCategory,
-  unassignOrderProductCategory,
+  fetchTikTokSellerAffiliateOrderOverview,
   fetchTikTokSellerAffiliateCreators,
   fetchTikTokSellerSampleApplicationFulfillments,
   fetchTikTokSellerMarketplaceCreators,
@@ -62,37 +57,14 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const [shops, setShops] = useState([]);
   const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [section, setSection] = useState(ordersOnly ? 'orders' : initialSection);
-  const [orderMode, setOrderMode] = useState('orders');
   const [orderPeriod, setOrderPeriod] = useState('30d');
   const [orderRange, setOrderRange] = useState(() => defaultStatisticsRange(30));
   const [orderStatusFilter, setOrderStatusFilter] = useState('all');
   const [orderSourceFilter, setOrderSourceFilter] = useState('all');
-  const [orderCategoryFilter, setOrderCategoryFilter] = useState('all');
-  const [orderCategories, setOrderCategories] = useState([]);
-  const [orderCatalogProducts, setOrderCatalogProducts] = useState([]);
-  const [categoryName, setCategoryName] = useState('');
-  const [productSearch, setProductSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [selectedProductIds, setSelectedProductIds] = useState([]);
-  const [draggedProductId, setDraggedProductId] = useState('');
-  const [dragOverCategoryId, setDragOverCategoryId] = useState(null);
-  const [bulkCategoryId, setBulkCategoryId] = useState('');
-  const [categoryLoading, setCategoryLoading] = useState(false);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [categoryError, setCategoryError] = useState('');
-  const [orderStatistics, setOrderStatistics] = useState({ rows: [], creators: [], categories: [], totals: {} });
   const [orderOverview, setOrderOverview] = useState({});
   const [orderOverviewLoading, setOrderOverviewLoading] = useState(false);
   const [orderOverviewError, setOrderOverviewError] = useState('');
   const orderOverviewRequestId = useRef(0);
-  const [statisticsPeriod, setStatisticsPeriod] = useState('30d');
-  const [statisticsRange, setStatisticsRange] = useState(defaultStatisticsRange);
-  const [statisticsCreator, setStatisticsCreator] = useState('');
-  const [statisticsCategory, setStatisticsCategory] = useState('all');
-  const [statisticsRequest, setStatisticsRequest] = useState(() => ({ range: defaultStatisticsRange(), creator: '', category: 'all' }));
-  const [statisticsLoading, setStatisticsLoading] = useState(false);
-  const [statisticsError, setStatisticsError] = useState('');
-  const [expandedStatisticCategories, setExpandedStatisticCategories] = useState(new Set());
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [searchVersion, setSearchVersion] = useState(0);
@@ -150,12 +122,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     { value: 'custom', label: t('shopAnalytics.periodCustom') },
   ], [t]);
 
-  const orderCategoryFilterOptions = useMemo(() => [
-    { value: 'all', label: t('sellerAffiliate.allProductGroups') },
-    { value: 'uncategorized', label: t('sellerAffiliate.uncategorized') },
-    ...orderCategories.map((category) => ({ value: String(category.id), label: category.name })),
-  ], [orderCategories, t]);
-
   const targetStatusOptions = useMemo(() => [
     'ONGOING',
     'EXPIRING',
@@ -187,87 +153,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     { value: 'postedContent', label: t('sellerAffiliate.creatorsPosted') },
     { value: 'withSales', label: t('sellerAffiliate.creatorsWithSales') },
   ], [t]);
-  
-  const managementCategoryOptions = useMemo(() => [
-    { value: 'all', label: t('sellerAffiliate.allCategories') },
-    { value: 'uncategorized', label: t('sellerAffiliate.uncategorized') },
-    ...orderCategories.map((category) => ({ value: String(category.id), label: category.name })),
-  ], [t, orderCategories]);
-  
-  const bulkCategoryOptions = useMemo(() => [
-    { value: '', label: t('sellerAffiliate.uncategorized') },
-    ...orderCategories.map((category) => ({ value: String(category.id), label: category.name })),
-  ], [t, orderCategories]);
-  
-  const statisticsPeriodOptions = useMemo(() => [
-    { value: '7d', label: t('sellerAffiliate.statisticsPeriod7Days') },
-    { value: '30d', label: t('sellerAffiliate.statisticsPeriod30Days') },
-    { value: 'custom', label: t('sellerAffiliate.statisticsPeriodCustom') },
-  ], [t]);
-  
-  const statisticsCreatorOptions = useMemo(() => [
-    { value: '', label: t('sellerAffiliate.allKocs') },
-    ...(orderStatistics.creators || []).map((creator) => ({
-      value: creator.username,
-      label: `@${creator.username}`,
-    })),
-  ], [t, orderStatistics.creators]);
-  
-  const statisticsCategoryOptions = useMemo(() => [
-    { value: 'all', label: t('sellerAffiliate.allCategories') },
-    { value: 'uncategorized', label: t('sellerAffiliate.uncategorized') },
-    ...(orderStatistics.categories || []).map((category) => ({
-      value: String(category.id),
-      label: category.name,
-    })),
-  ], [t, orderStatistics.categories]);
-  
-  const loadOrderCategories = useCallback(async (signal) => {
-    if (!shopId) {
-      setOrderCategories([]);
-      return;
-    }
-    setCategoryLoading(true);
-    setCategoryError('');
-    try {
-      setOrderCategories(await fetchOrderProductCategories(shopId, signal));
-    } catch (err) {
-      if (err.name !== 'AbortError') setCategoryError(err.message);
-    } finally {
-      if (!signal?.aborted) setCategoryLoading(false);
-    }
-  }, [shopId]);
-  
-  const loadOrderCatalogProducts = useCallback(async (signal) => {
-    if (!shopId) {
-      setOrderCatalogProducts([]);
-      return;
-    }
-    setCatalogLoading(true);
-    setCategoryError('');
-    try {
-      const productsById = new Map();
-      let pageToken = '';
-      for (let page = 0; page < 100; page += 1) {
-        const result = await fetchTikTokSellerOpenCollaborations(shopId, {
-          signal,
-          pageSize: 100,
-          pageToken,
-        });
-        for (const item of result.open_collaborations || []) {
-          if (item.product?.id) productsById.set(String(item.product.id), item.product);
-        }
-        const nextPageToken = result.next_page_token || '';
-        if (!nextPageToken || nextPageToken === pageToken) break;
-        pageToken = nextPageToken;
-      }
-      if (!signal?.aborted) setOrderCatalogProducts([...productsById.values()]);
-    } catch (err) {
-      if (err.name !== 'AbortError') setCategoryError(err.message);
-    } finally {
-      if (!signal?.aborted) setCatalogLoading(false);
-    }
-  }, [shopId]);
   
   useEffect(() => {
     const controller = new AbortController();
@@ -306,52 +191,14 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   }, [resetMarketplaceSearch, shops]);
   
   useEffect(() => {
-    if (!ordersOnly || !['orders', 'management'].includes(orderMode)) return undefined;
-    const controller = new AbortController();
-    loadOrderCategories(controller.signal);
-    if (orderMode === 'management') loadOrderCatalogProducts(controller.signal);
-    return () => controller.abort();
-  }, [loadOrderCatalogProducts, loadOrderCategories, orderMode, ordersOnly]);
-  
-  useEffect(() => {
-    const range = statisticsPeriod === 'custom'
-      ? { ...statisticsRange }
-      : defaultStatisticsRange(statisticsPeriod === '7d' ? 7 : 30);
-    setStatisticsRequest((current) => {
-      if (current.creator === statisticsCreator
-        && current.category === statisticsCategory
-        && current.range.start === range.start
-        && current.range.end === range.end) return current;
-      return { range, creator: statisticsCreator, category: statisticsCategory };
-    });
-  }, [statisticsCategory, statisticsCreator, statisticsPeriod, statisticsRange]);
-  
-  useEffect(() => {
-    if (!ordersOnly || orderMode !== 'statistics' || !shopId) return undefined;
-    const controller = new AbortController();
-    setStatisticsLoading(true);
-    setStatisticsError('');
-    fetchTikTokSellerAffiliateOrderStatistics(shopId, {
-      signal: controller.signal,
-      startTime: localDateUnix(statisticsRequest.range.start),
-      endTime: localDateUnix(shiftDateValue(statisticsRequest.range.end, 1)),
-      creatorUsername: statisticsRequest.creator,
-      categoryId: statisticsRequest.category,
-    }).then(setOrderStatistics)
-      .catch((err) => { if (err.name !== 'AbortError') setStatisticsError(err.message); })
-      .finally(() => { if (!controller.signal.aborted) setStatisticsLoading(false); });
-    return () => controller.abort();
-  }, [orderMode, ordersOnly, shopId, statisticsRequest]);
-
-  useEffect(() => {
-    if (!ordersOnly || orderMode !== 'orders' || !shopId || !hasScope) return undefined;
+    if (!ordersOnly || !shopId || !hasScope) return undefined;
     const controller = new AbortController();
     const requestId = orderOverviewRequestId.current + 1;
     orderOverviewRequestId.current = requestId;
     setOrderOverviewLoading(true);
     setOrderOverviewError('');
     setOrderOverview({});
-    fetchTikTokSellerAffiliateOrderStatistics(shopId, {
+    fetchTikTokSellerAffiliateOrderOverview(shopId, {
       signal: controller.signal,
       startTime: localDateUnix(orderRange.start),
       endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
@@ -368,7 +215,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         if (!controller.signal.aborted && orderOverviewRequestId.current === requestId) setOrderOverviewLoading(false);
       });
     return () => controller.abort();
-  }, [hasScope, orderMode, orderRange, ordersOnly, shopId]);
+  }, [hasScope, orderRange, ordersOnly, shopId]);
   
   const load = useCallback(async (signal) => {
     // searchVersion intentionally participates in this request so submitting the
@@ -394,7 +241,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
           source: 'db',
           settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
           contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
-          categoryId: orderCategoryFilter === 'all' ? '' : orderCategoryFilter,
         } : {}),
         ...(section === 'discover' && marketplaceSearchKey.current
           ? { searchKey: marketplaceSearchKey.current }
@@ -466,7 +312,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [currentPageToken, hasMarketplaceScope, hasScope, orderCategoryFilter, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
+  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
   
   useEffect(() => {
     const controller = new AbortController();
@@ -531,48 +377,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         : section === 'performance'
           ? (data.creators || [])
         : (data.orders || data.affiliate_orders || []), [data, section]);
-  const orderProducts = useMemo(() => {
-    const productsById = new Map();
-    for (const category of orderCategories) {
-      for (const product of category.products || []) {
-        productsById.set(String(product.product_id), {
-          id: String(product.product_id),
-          title: product.title,
-          main_image_url: product.image_url,
-        });
-      }
-    }
-    for (const product of orderCatalogProducts) {
-      if (!product.id) continue;
-      const id = String(product.id);
-      const current = productsById.get(id) || {};
-      productsById.set(id, {
-        ...current,
-        ...product,
-        id,
-        title: product.title || current.title,
-        main_image_url: product.main_image_url || current.main_image_url,
-      });
-    }
-    return [...productsById.values()].sort((left, right) => String(left.title || left.id).localeCompare(String(right.title || right.id)));
-  }, [orderCatalogProducts, orderCategories]);
-  const orderProductCategoryMap = useMemo(() => new Map(orderCategories.flatMap((category) => (
-    (category.products || []).map((product) => [String(product.product_id), String(category.id)])
-  ))), [orderCategories]);
-  const orderCategoryNameMap = useMemo(() => new Map(orderCategories.map((category) => (
-    [String(category.id), category.name]
-  ))), [orderCategories]);
-  const filteredOrderProducts = useMemo(() => {
-    const keyword = productSearch.trim().toLocaleLowerCase();
-    return orderProducts.filter((product) => {
-      const categoryId = orderProductCategoryMap.get(String(product.id)) || '';
-      const matchesCategory = categoryFilter === 'all'
-        || (categoryFilter === 'uncategorized' ? !categoryId : categoryId === categoryFilter);
-      const matchesSearch = !keyword || [product.title, product.id]
-        .some((value) => String(value || '').toLocaleLowerCase().includes(keyword));
-      return matchesCategory && matchesSearch;
-    });
-  }, [categoryFilter, orderProductCategoryMap, orderProducts, productSearch]);
   const creatorSummaries = useMemo(() => {
     const grouped = new Map();
     for (const application of data.sample_applications || []) {
@@ -613,35 +417,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   }, [creatorBreakdownMetric, creatorSummaries, t]);
   const creatorBreakdownTotal = creatorBreakdown.reduce((total, item) => total + item.value, 0);
   const creatorBreakdownCurrency = creatorSummaries.find((creator) => creator.currency)?.currency || 'USD';
-  const groupedOrderStatistics = useMemo(() => {
-    const groups = new Map();
-    for (const product of orderStatistics.rows || []) {
-      const key = String(product.category_id || product.category_name || 'uncategorized');
-      const name = product.category_name || t('sellerAffiliate.uncategorized');
-      const current = groups.get(key) || {
-        id: key,
-        name,
-        products: [],
-        quantity: 0,
-        orderCount: 0,
-        creatorCount: 0,
-      };
-      current.products.push(product);
-      current.quantity += Number(product.quantity || 0);
-      current.orderCount += Number(product.order_count || 0);
-      current.creatorCount += Number(product.creator_count || 0);
-      groups.set(key, current);
-    }
-    return [...groups.values()].sort((left, right) => right.quantity - left.quantity || left.name.localeCompare(right.name));
-  }, [orderStatistics.rows, t]);
-  const toggleStatisticCategory = (categoryId) => {
-    setExpandedStatisticCategories((current) => {
-      const next = new Set(current);
-      if (next.has(categoryId)) next.delete(categoryId);
-      else next.add(categoryId);
-      return next;
-    });
-  };
   const performanceBreakdown = section === 'performance'
     ? rows.slice(0, 10).filter((creator) => Number(creator.affiliate_gmv) > 0)
       .map((creator) => ({ name: creator.nickname || creator.username, value: Number(creator.affiliate_gmv) }))
@@ -1085,105 +860,11 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     }
   };
   const closeCreatorDetail = () => { setSelectedCreatorApplication(null); setCreatorContent(null); };
-  const submitOrderCategory = async (event) => {
-    event.preventDefault();
-    const name = categoryName.trim();
-    if (!name || !shopId) return;
-    setCategoryLoading(true);
-    setCategoryError('');
-    try {
-      const category = await createOrderProductCategory(shopId, name);
-      setOrderCategories((current) => [...current, category].sort((left, right) => left.name.localeCompare(right.name)));
-      setCategoryName('');
-    } catch (err) {
-      setCategoryError(err.message);
-    } finally {
-      setCategoryLoading(false);
-    }
-  };
-  const removeOrderCategory = async (category) => {
-    if (!window.confirm(t('sellerAffiliate.deleteCategoryConfirm', { name: category.name }))) return;
-    setCategoryLoading(true);
-    setCategoryError('');
-    try {
-      await deleteOrderProductCategory(shopId, category.id);
-      setOrderCategories((current) => current.filter((item) => String(item.id) !== String(category.id)));
-    } catch (err) {
-      setCategoryError(err.message);
-    } finally {
-      setCategoryLoading(false);
-    }
-  };
-  const assignProductsToCategory = async (products, categoryId) => {
-    if (!products.length || !shopId) return;
-    setCategoryLoading(true);
-    setCategoryError('');
-    try {
-      await Promise.all(products.map((product) => categoryId
-        ? assignOrderProductCategory(shopId, product.id, {
-          category_id: Number(categoryId),
-          title: product.title || null,
-          image_url: product.main_image_url || null,
-        })
-        : unassignOrderProductCategory(shopId, product.id).catch((err) => {
-          if (err.status !== 404) throw err;
-        })));
-      await loadOrderCategories();
-      setSelectedProductIds([]);
-    } catch (err) {
-      setCategoryError(err.message);
-    } finally {
-      setCategoryLoading(false);
-    }
-  };
-  const assignSelectedProducts = async () => {
-    const selectedProducts = orderProducts.filter((product) => selectedProductIds.includes(String(product.id)));
-    await assignProductsToCategory(selectedProducts, bulkCategoryId);
-  };
-  const startProductDrag = (event, product) => {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/product-id', String(product.id));
-    setDraggedProductId(String(product.id));
-  };
-  const clearProductDragState = () => {
-    setDraggedProductId('');
-    setDragOverCategoryId(null);
-  };
-  const dropProductsOnCategory = async (event, categoryId) => {
-    event.preventDefault();
-    const draggedId = event.dataTransfer.getData('text/product-id');
-    const draggedProduct = orderProducts.find((product) => String(product.id) === draggedId);
-    if (!draggedProduct) {
-      clearProductDragState();
-      return;
-    }
-    await assignProductsToCategory([draggedProduct], categoryId);
-    clearProductDragState();
-  };
-  const toggleSelectedProduct = (productId) => {
-    const id = String(productId);
-    setSelectedProductIds((current) => current.includes(id)
-      ? current.filter((item) => item !== id)
-      : [...current, id]);
-  };
-  const visibleProductIds = filteredOrderProducts.map((product) => String(product.id));
-  const allVisibleProductsSelected = visibleProductIds.length > 0
-    && visibleProductIds.every((id) => selectedProductIds.includes(id));
 
   return {
-    allVisibleProductsSelected,
-    assignSelectedProducts,
     baseMetrics,
-    bulkCategoryId,
-    bulkCategoryOptions,
-    catalogLoading,
-    categoryError,
-    categoryFilter,
-    categoryLoading,
-    categoryName,
     changePage,
     changeSection,
-    clearProductDragState,
     closeCreatorDetail,
     contactNotice,
     creatorBreakdown,
@@ -1196,12 +877,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     creatorStatusOptions,
     currentPage,
     data,
-    dragOverCategoryId,
-    draggedProductId,
-    dropProductsOnCategory,
     error,
-    expandedStatisticCategories,
-    filteredOrderProducts,
     formatCreatorCount,
     formatCreatorGmv,
     formatEngagementRate,
@@ -1211,7 +887,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     formatRate,
     formatTime,
     formatUnitsSold,
-    groupedOrderStatistics,
     hasMarketplaceScope,
     hasProductScope,
     hasScope,
@@ -1224,26 +899,17 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     keyword,
     loading,
     locale,
-    managementCategoryOptions,
     ongoingInvitations,
     openCollaborationSettings,
     openCreatorDetail,
     openInvite,
-    orderCategories,
-    orderCategoryNameMap,
-    orderCategoryFilter,
-    orderCategoryFilterOptions,
-    orderMode,
     orderOverview,
     orderOverviewError,
     orderOverviewLoading,
     orderPeriod,
     orderPeriodOptions,
-    orderProductCategoryMap,
-    orderProducts,
     orderRange,
     orderSourceFilter,
-    orderStatistics,
     orderStatusFilter,
     performanceBreakdown,
     performanceBreakdownTotal,
@@ -1251,70 +917,41 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     performanceCreatorCell,
     performanceWindow,
     performanceWindowOptions,
-    productSearch,
-    removeOrderCategory,
     resetMarketplaceSearch,
     rows,
     section,
     selectedCreatorApplication,
     selectedInvitationId,
     selectedPerformanceExport,
-    selectedProductIds,
     selectedShop,
-    setBulkCategoryId,
-    setCategoryFilter,
-    setCategoryName,
     setContactNotice,
     setCreatorBreakdownMetric,
     setData,
-    setDragOverCategoryId,
     setInvitationSearch,
     setInviteCreator,
     setInviteForm,
     setInviteTab,
     setKeyword,
-    setOrderMode,
-    setOrderCategoryFilter,
     setOrderPeriod,
     setOrderRange,
     setOrderSourceFilter,
     setOrderStatusFilter,
     setPageTokens,
     setPerformanceWindow,
-    setProductSearch,
     setSelectedInvitationId,
-    setSelectedProductIds,
     setShopId,
-    setStatisticsCategory,
-    setStatisticsCreator,
-    setStatisticsPeriod,
-    setStatisticsRange,
     setStatus,
     shopId,
     shops,
-    startProductDrag,
-    statisticsCategory,
-    statisticsCategoryOptions,
-    statisticsCreator,
-    statisticsCreatorOptions,
-    statisticsError,
-    statisticsLoading,
-    statisticsPeriod,
-    statisticsPeriodOptions,
-    statisticsRange,
     status,
     submitExistingInvite,
     submitInvite,
-    submitOrderCategory,
     submitSearch,
     submittedKeyword,
     t,
     tableColumnCount,
     targetStatusOptions,
     toggleInviteProduct,
-    toggleSelectedProduct,
-    toggleStatisticCategory,
     totalPages,
-    visibleProductIds,
   };
 };

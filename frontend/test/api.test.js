@@ -144,13 +144,12 @@ test('affiliate order helper preserves date range and cursor pagination filters'
       pageToken: 'next-page',
       keyword: 'serum',
       creatorUsername: 'creator_one',
-      categoryId: '7',
       contentType: 'VIDEO',
       settlementStatus: 'SETTLED',
       source: 'db',
     });
 
-    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&creator_username=creator_one&category_id=7&content_type=VIDEO&settlement_status=SETTLED&source=db');
+    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&creator_username=creator_one&content_type=VIDEO&settlement_status=SETTLED&source=db');
   });
 });
 

@@ -297,7 +297,6 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
   if (filters.orderId) params.set('order_id', filters.orderId);
   if (filters.productId) params.set('product_id', filters.productId);
   if (filters.creatorUsername) params.set('creator_username', filters.creatorUsername);
-  if (filters.categoryId) params.set('category_id', filters.categoryId);
   if (filters.contentType) params.set('content_type', filters.contentType);
   if (filters.settlementStatus) params.set('settlement_status', filters.settlementStatus);
   if (filters.source) params.set('source', filters.source);
@@ -308,28 +307,7 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
 export const fetchTikTokSellerOpenCollaborations = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'open-collaborations', filters);
 export const fetchTikTokSellerTargetCollaborations = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'target-collaborations', filters);
 export const fetchTikTokSellerAffiliateOrders = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'orders', filters);
-export const fetchTikTokSellerAffiliateOrderStatistics = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'order-statistics', filters);
-export function fetchOrderProductCategories(shopId, signal) {
-  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/order-management/categories`, { signal });
-}
-export function createOrderProductCategory(shopId, name) {
-  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/order-management/categories`, {
-    method: 'POST',
-    body: { name },
-  });
-}
-export function deleteOrderProductCategory(shopId, categoryId) {
-  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/order-management/categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' });
-}
-export function assignOrderProductCategory(shopId, productId, payload) {
-  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/order-management/products/${encodeURIComponent(productId)}/category`, {
-    method: 'PUT',
-    body: payload,
-  });
-}
-export function unassignOrderProductCategory(shopId, productId) {
-  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/order-management/products/${encodeURIComponent(productId)}/category`, { method: 'DELETE' });
-}
+export const fetchTikTokSellerAffiliateOrderOverview = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'order-overview', filters);
 export const fetchTikTokSellerAffiliateCreators = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'creators', filters);
 export function fetchTikTokSellerSampleApplicationFulfillments(shopId, applicationId, signal) {
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/creators/${encodeURIComponent(applicationId)}/fulfillments`, { signal });

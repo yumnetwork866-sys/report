@@ -31,11 +31,11 @@ test('TikTok demo fixtures provide Seller Affiliate and Creator data', () => {
 
 test('TikTok demo order KPIs honor the requested date range', () => {
   const now = Math.floor(Date.now() / 1000);
-  const recent = sellerAffiliateFixture('order-statistics', { name: 'Demo Shop' }, {
+  const recent = sellerAffiliateFixture('order-overview', { name: 'Demo Shop' }, {
     create_time_ge: now - 3600,
     create_time_lt: now + 3600,
   });
-  const future = sellerAffiliateFixture('order-statistics', { name: 'Demo Shop' }, {
+  const future = sellerAffiliateFixture('order-overview', { name: 'Demo Shop' }, {
     create_time_ge: now + 86400,
     create_time_lt: now + 172800,
   });

@@ -266,25 +266,8 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
     (!Number.isFinite(startTime) || order.create_time >= startTime)
     && (!Number.isFinite(endTime) || order.create_time < endTime)
   ));
-  if (namespace === 'order-statistics') {
-    const creatorUsername = String(query.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
-    const categoryId = String(query.category_id || 'all');
-    const matchingOrders = periodOrders.filter((order) => !creatorUsername
-      || order.skus.some((sku) => sku.creator_username.toLowerCase() === creatorUsername));
-    const rows = categoryId !== 'all' && categoryId !== 'uncategorized' ? [] : products.map((product) => {
-      const matchingSkus = matchingOrders.flatMap((order) => order.skus.map((sku) => ({ order, sku })))
-        .filter(({ sku }) => sku.product_id === product.id);
-      return {
-        product_id: product.id,
-        product_name: product.title,
-        image_url: product.main_image_url,
-        category_id: null,
-        category_name: null,
-        quantity: matchingSkus.reduce((sum, { sku }) => sum + sku.quantity, 0),
-        order_count: matchingSkus.length,
-        creator_count: new Set(matchingSkus.map(({ sku }) => sku.creator_username)).size,
-      };
-    }).filter((row) => row.quantity > 0).sort((left, right) => right.quantity - left.quantity);
+  if (namespace === 'order-overview') {
+    const matchingOrders = periodOrders;
     const kpiGmv = new Map();
     const kpiCommission = new Map();
     let kpiItemsSold = 0;
@@ -302,14 +285,6 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
     }
     return {
       data: {
-        rows,
-        creators: [...new Set(periodOrders.flatMap((order) => order.skus.map((sku) => sku.creator_username)))].map((username) => ({ username })),
-        categories: [],
-        totals: {
-          quantity: rows.reduce((sum, row) => sum + row.quantity, 0),
-          products: rows.length,
-          orders: new Set(matchingOrders.map((order) => order.order_id)).size,
-        },
         kpis: {
           orders: matchingOrders.length,
           affiliate_gmv: [...kpiGmv].map(([currency, amount]) => ({ currency, amount })),

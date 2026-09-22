@@ -15,10 +15,6 @@ test('database affiliate orders combine versatile search and quick filters', asy
       cipher: 'cipher',
       authorization: { id: 11, open_id: 'real-shop', updated_at: new Date(0) },
     }),
-    findCategoryItems: async (options) => {
-      captured.categoryItems = options;
-      return [{ product_id: 'product-1' }];
-    },
     findCreatorProfiles: async (options) => {
       captured.profiles = options;
       return [{ username: 'creator_one' }];
@@ -50,7 +46,6 @@ test('database affiliate orders combine versatile search and quick filters', asy
     query: {
       source: 'db',
       keyword: 'Mina',
-      category_id: '7',
       content_type: 'LIVE',
       settlement_status: 'SETTLED',
       page_size: '20',
@@ -59,7 +54,6 @@ test('database affiliate orders combine versatile search and quick filters', asy
 
   assert.equal(result.status, 200);
   assert.equal(result.body.total_count, 0);
-  assert.deepEqual(captured.categoryItems.where, { shop_id: 9, category_id: '7' });
   assert.equal(captured.profiles.where[Op.or][0].username[Op.iLike], '%Mina%');
   assert.equal(captured.searchOrders.where.order_id[Op.iLike], '%Mina%');
   assert.deepEqual(captured.searchSkus.where[Op.or].at(-1).creator_username[Op.in], ['creator_one']);
@@ -68,10 +62,9 @@ test('database affiliate orders combine versatile search and quick filters', asy
   assert.equal(captured.final.skuRequired, true);
 
   const conditions = captured.final.skuWhere[Op.and];
-  assert.deepEqual(conditions[0].product_id[Op.in], ['product-1']);
-  assert.deepEqual(conditions[1].content_type[Op.in], ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM']);
-  assert.equal(conditions[2].fully_return, false);
-  assert.equal(conditions[2].refunded_quantity, 0);
-  assert.equal(conditions[2][Op.or][0].settlement_status[Op.iLike], 'SETTLED');
-  assert.equal(conditions[2][Op.or][1].settlement_status[Op.iLike], 'COMPLETED');
+  assert.deepEqual(conditions[0].content_type[Op.in], ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM']);
+  assert.equal(conditions[1].fully_return, false);
+  assert.equal(conditions[1].refunded_quantity, 0);
+  assert.equal(conditions[1][Op.or][0].settlement_status[Op.iLike], 'SETTLED');
+  assert.equal(conditions[1][Op.or][1].settlement_status[Op.iLike], 'COMPLETED');
 });

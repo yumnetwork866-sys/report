@@ -1,6 +1,5 @@
 const express = require('express');
 const controller = require('../controllers/tiktokShopController');
-const orderProductCategoryController = require('../controllers/orderProductCategoryController');
 const { validateBody, validateParams, validateQuery } = require('../middleware/validateRequest');
 const {
   applicationParamsSchema,
@@ -30,12 +29,7 @@ adminRouter.get('/shops/:shopId/video-thumbnails/:videoId', validateParams(shopV
 adminRouter.get('/shops/:shopId/affiliate/open-collaborations', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listOpenCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/target-collaborations', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listTargetCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/orders', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrders);
-adminRouter.get('/shops/:shopId/affiliate/order-statistics', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrderStatistics);
-adminRouter.get('/shops/:shopId/order-management/categories', validateParams(shopParamsSchema), orderProductCategoryController.listCategories);
-adminRouter.post('/shops/:shopId/order-management/categories', validateParams(shopParamsSchema), orderProductCategoryController.createCategory);
-adminRouter.delete('/shops/:shopId/order-management/categories/:categoryId', validateParams(shopParamsSchema), orderProductCategoryController.deleteCategory);
-adminRouter.put('/shops/:shopId/order-management/products/:productId/category', validateParams(shopParamsSchema), orderProductCategoryController.assignProduct);
-adminRouter.delete('/shops/:shopId/order-management/products/:productId/category', validateParams(shopParamsSchema), orderProductCategoryController.unassignProduct);
+adminRouter.get('/shops/:shopId/affiliate/order-overview', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrderOverview);
 adminRouter.get('/shops/:shopId/affiliate/creators', validateParams(shopParamsSchema), controller.listAffiliateCreators);
 adminRouter.get('/shops/:shopId/affiliate/creators/:applicationId/fulfillments', validateParams(applicationParamsSchema), controller.showAffiliateCreatorFulfillments);
 adminRouter.get('/shops/:shopId/affiliate/marketplace-creators', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listMarketplaceCreators);
