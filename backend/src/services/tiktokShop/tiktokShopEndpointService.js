@@ -989,32 +989,126 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
     error.statusCode = 400;
     throw error;
   }
-  const orders = [];
-  let pageToken;
-  let truncated = false;
-  for (let page = 0; page < 100; page += 1) {
-    const payload = await searchAffiliateOrders({
-      authorization: shop.authorization,
-      shopCipher: shop.cipher,
-      pageToken,
-      pageSize: 100,
-      startTime,
-      endTime,
-    });
-    orders.push(...(Array.isArray(payload.data?.orders) ? payload.data.orders : []));
-    const nextPageToken = payload.data?.next_page_token;
-    if (!nextPageToken || nextPageToken === pageToken) {
-      pageToken = null;
-      break;
-    }
-    pageToken = nextPageToken;
-    truncated = page === 99;
+  const where = {
+    shop_id: shop.id,
+    create_time: {
+      [Op.gte]: new Date(startTime * 1000),
+      [Op.lt]: new Date(endTime * 1000),
+    },
+  };
+  const skuConditions = [];
+  const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
+  const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
+  const searchKeyword = String(req.query.keyword || '').trim();
+
+  if (filterContentType === 'LIVE') {
+    skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
+  } else if (filterContentType === 'SHOP') {
+    skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
+  } else if (filterContentType) {
+    skuConditions.push({ content_type: filterContentType });
   }
+
+  if (filterSettlement === 'REFUNDED') {
+    skuConditions.push({
+      [Op.or]: [
+        { fully_return: true },
+        { refunded_quantity: { [Op.gt]: 0 } },
+        { settlement_status: { [Op.iLike]: '%REFUND%' } },
+        { settlement_status: { [Op.iLike]: '%RETURN%' } },
+        { settlement_status: { [Op.iLike]: '%CANCEL%' } },
+      ],
+    });
+  } else if (filterSettlement === 'UNSETTLED') {
+    skuConditions.push({
+      [Op.or]: [
+        { settlement_status: { [Op.iLike]: '%UNSETTLED%' } },
+        { settlement_status: { [Op.iLike]: '%PENDING%' } },
+        { settlement_status: { [Op.iLike]: '%PROCESSING%' } },
+      ],
+    });
+  } else if (filterSettlement === 'SETTLED') {
+    skuConditions.push({
+      fully_return: false,
+      refunded_quantity: 0,
+      [Op.or]: [
+        { settlement_status: { [Op.iLike]: 'SETTLED' } },
+        { settlement_status: { [Op.iLike]: 'COMPLETED' } },
+      ],
+    });
+  }
+
+  if (searchKeyword) {
+    const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
+    const profiles = await tiktokShopRepository.findCreatorProfiles({
+      where: {
+        shop_id: shop.id,
+        [Op.or]: [
+          { username: { [Op.iLike]: pattern } },
+          { nickname: { [Op.iLike]: pattern } },
+        ],
+      },
+      attributes: ['username'],
+    });
+    const profileUsernames = profiles.map((profile) => profile.username).filter(Boolean);
+    const [matchingOrders, matchingSkus] = await Promise.all([
+      tiktokShopRepository.findAffiliateOrders({
+        where: { shop_id: shop.id, order_id: { [Op.iLike]: pattern } },
+        attributes: ['order_id'],
+      }),
+      tiktokShopRepository.findAffiliateOrderSkus({
+        where: {
+          shop_id: shop.id,
+          [Op.or]: [
+            { product_id: { [Op.iLike]: pattern } },
+            { product_name: { [Op.iLike]: pattern } },
+            { creator_username: { [Op.iLike]: pattern } },
+            ...(profileUsernames.length ? [{ creator_username: { [Op.in]: profileUsernames } }] : []),
+          ],
+        },
+        attributes: ['order_id'],
+      }),
+    ]);
+    where.order_id = { [Op.in]: [...new Set([
+      ...matchingOrders.map((order) => String(order.order_id)),
+      ...matchingSkus.map((sku) => String(sku.order_id)),
+    ])] };
+  }
+
+  const skuWhere = skuConditions.length ? { [Op.and]: skuConditions } : undefined;
+  const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders({
+    where,
+    distinct: true,
+    order: [['create_time', 'DESC']],
+    limit: 10000,
+  }, skuWhere, skuConditions.length > 0);
+  const orders = rows.map((order) => ({
+    ...(order.raw_data || {}),
+    id: order.order_id,
+    order_id: order.order_id,
+    skus: (order.skus || []).map((sku) => ({
+      ...(sku.raw_data || {}),
+      sku_id: sku.sku_id,
+      product_id: sku.product_id,
+      product_name: sku.product_name,
+      quantity: sku.quantity,
+      refunded_quantity: sku.refunded_quantity,
+      content_type: sku.content_type,
+      content_id: sku.content_id,
+      creator_username: sku.creator_username,
+      price: sku.price === null || sku.price === undefined
+        ? sku.raw_data?.price
+        : { amount: String(sku.price), currency: sku.currency || 'MYR' },
+      settlement_status: sku.settlement_status,
+      fully_return: sku.fully_return,
+    })),
+  }));
   return {
     data: {
       kpis: summarizeAffiliateOrderKpis(orders),
       range: { start_time: startTime, end_time: endTime },
-      truncated,
+      total_count: count,
+      truncated: count > rows.length,
     },
     request_id: null,
   };

@@ -121,5 +121,5 @@ test('affiliate order sync refreshes recent days and backfills missing days', as
     initialBackfillDays: 5,
     backfillDays: 3,
   });
-  assert.deepEqual(dates, ['2026-08-13', '2026-08-12', '2026-08-11', '2026-08-10', '2026-08-09']);
+  assert.deepEqual(dates, ['2026-08-14', '2026-08-13', '2026-08-11', '2026-08-10']);
 });

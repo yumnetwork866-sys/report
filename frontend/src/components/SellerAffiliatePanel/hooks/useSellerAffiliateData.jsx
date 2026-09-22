@@ -202,6 +202,9 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       signal: controller.signal,
       startTime: localDateUnix(orderRange.start),
       endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+      keyword: submittedKeyword,
+      settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
+      contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
     }).then((result) => {
       if (orderOverviewRequestId.current === requestId) setOrderOverview(result || {});
     })
@@ -215,7 +218,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         if (!controller.signal.aborted && orderOverviewRequestId.current === requestId) setOrderOverviewLoading(false);
       });
     return () => controller.abort();
-  }, [hasScope, orderRange, ordersOnly, shopId]);
+  }, [hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, shopId, submittedKeyword]);
   
   const load = useCallback(async (signal) => {
     // searchVersion intentionally participates in this request so submitting the

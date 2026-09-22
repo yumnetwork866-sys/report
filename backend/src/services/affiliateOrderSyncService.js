@@ -200,7 +200,7 @@ const persistOrderDay = async (shop, metricDate, { orders, startTime, endTime },
 
 const selectSyncDates = ({ endDate, existingDates, ...overrides }) => {
   const settings = { ...config(), ...overrides };
-  const allDates = Array.from({ length: settings.historyDays }, (_, index) => shiftDate(endDate, -index - 1));
+  const allDates = Array.from({ length: settings.historyDays }, (_, index) => shiftDate(endDate, -index));
   const existing = new Set(existingDates.map(String));
   const refresh = allDates.slice(0, settings.refreshDays);
   const missingBudget = existing.size ? settings.backfillDays : settings.initialBackfillDays;
@@ -211,9 +211,9 @@ const selectSyncDates = ({ endDate, existingDates, ...overrides }) => {
 const syncAffiliateOrders = async (shop, { signal, now = new Date() } = {}) => {
   const settings = config();
   const { endDate } = scheduledAnalyticsRange(shop, now);
-  const historyStart = shiftDate(endDate, -settings.historyDays);
+  const historyStart = shiftDate(endDate, -(settings.historyDays - 1));
   const coverage = await TikTokAffiliateOrderSyncDay.findAll({
-    where: { shop_id: shop.id, metric_date: { [Op.gte]: historyStart, [Op.lt]: endDate } },
+    where: { shop_id: shop.id, metric_date: { [Op.gte]: historyStart, [Op.lte]: endDate } },
     attributes: ['metric_date'], raw: true,
   });
   const dates = selectSyncDates({ endDate, existingDates: coverage.map((row) => row.metric_date), ...settings });

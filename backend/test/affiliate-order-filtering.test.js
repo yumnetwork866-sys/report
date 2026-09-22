@@ -67,4 +67,20 @@ test('database affiliate orders combine versatile search and quick filters', asy
   assert.equal(conditions[1].refunded_quantity, 0);
   assert.equal(conditions[1][Op.or][0].settlement_status[Op.iLike], 'SETTLED');
   assert.equal(conditions[1][Op.or][1].settlement_status[Op.iLike], 'COMPLETED');
+
+  const overview = await service.execute('listAffiliateOrderOverview', {
+    params: { shopId: '9' },
+    query: {
+      create_time_ge: '1788195600',
+      create_time_lt: '1790874000',
+      keyword: 'Mina',
+      content_type: 'LIVE',
+      settlement_status: 'SETTLED',
+    },
+  });
+  assert.equal(overview.status, 200);
+  assert.equal(overview.body.kpis.orders, 0);
+  assert.equal(overview.body.total_count, 0);
+  assert.equal(captured.final.options.limit, 10000);
+  assert.deepEqual(captured.final.options.where.order_id[Op.in], ['order-100', 'order-101']);
 });
