@@ -2,7 +2,14 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { fetchTikTokShopVideoThumbnail } from '../../../lib/api';
-import { getAffiliateOrderProductIds, getAffiliateOrderSources } from '../../../lib/sellerAffiliate';
+import {
+  getAffiliateOrderCommission,
+  getAffiliateOrderCreators,
+  getAffiliateOrderItems,
+  getAffiliateOrderSettlementStatus,
+  getAffiliateOrderSources,
+  getAffiliateOrderValue,
+} from '../../../lib/sellerAffiliate';
 import AppAvatar from '../../AppAvatar';
 import DatePickerInput from '../../DatePickerInput';
 import { internationalPhone } from '../utils/sellerAffiliateUtils';
@@ -133,14 +140,62 @@ export const MarketplaceCreatorCell = ({ creator, followerCount, t }) => {
   const audience = [followerCount, demographics.gender, demographics.age].filter((value) => value && value !== '—');
   return <td className="marketplace-creator-cell"><div className="creator-identity marketplace-creator"><CreatorAvatar src={creator.avatar?.url || creator.avatar_url} name={creator.nickname || creator.username} /><span className="marketplace-creator__details"><span className="marketplace-creator__username">{creator.username || '—'}{level ? <span className="marketplace-creator__level">{level}</span> : null}</span><strong>{creator.nickname || creator.username || '—'}</strong>{creator.previously_invited ? <span className="marketplace-creator__previously-invited" title={t('sellerAffiliate.previouslyInvitedDescription')}>{t('sellerAffiliate.previouslyInvited')}</span> : null}{categories.length ? <span className="marketplace-creator__category">{categories[0]}{categories.length > 1 ? `, +${categories.length - 1}` : ''}</span> : null}{audience.length ? <span className="marketplace-creator__audience">{audience.join(' · ')}</span> : null}</span></div></td>;
 };
-const AffiliateOrderProducts = ({ row }) => {
-  const products = Array.isArray(row.products) && row.products.length
-    ? row.products
-    : getAffiliateOrderProductIds(row).map((id) => ({ id }));
-  if (!products.length) return '—';
-  return <div className="seller-affiliate__order-products">{products.map((product) => <div className="seller-affiliate__product" key={product.id} title={product.title || product.id}>{product.main_image_url ? <img src={product.main_image_url} alt={product.title || product.id} loading="lazy" /> : null}</div>)}</div>;
+export const AffiliateOrderProducts = ({ row, t }) => {
+  const items = getAffiliateOrderItems(row);
+  if (!items.length) return '—';
+  return <div className="seller-affiliate__order-products">{items.map((item) => (
+    <div className="seller-affiliate__order-product" key={item.id}>
+      <span className="seller-affiliate__order-product-thumb">
+        {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
+        <span
+          className="booking-video-expansion__product-badge"
+          aria-label={`${t('sellerAffiliate.quantity')}: ${item.quantity}`}
+        >
+          x{item.quantity}
+        </span>
+      </span>
+      <span className="seller-affiliate__order-product-info">
+        <strong title={item.productName}>{item.productName}</strong>
+        <span className="row-subtitle">{item.skuName.replace(/^phân loại\s*:?\s*/i, '') || t('sellerAffiliate.defaultSku')}</span>
+      </span>
+    </div>
+  ))}</div>;
 };
-export const AffiliateOrderSummary = ({ row }) => <div className="seller-affiliate__order-summary"><AffiliateOrderProducts row={row} /><strong className="seller-affiliate__order-id">{row.order_id || row.id}</strong></div>;
+
+export const AffiliateOrderSummary = ({ row, t }) => <div className="seller-affiliate__order-summary">
+  <AffiliateOrderProducts row={row} t={t} />
+  <span className="seller-affiliate__order-id">{row.order_id || row.id}</span>
+</div>;
+
+export const AffiliateOrderCreators = ({ row, t }) => {
+  const creators = getAffiliateOrderCreators(row);
+  if (!creators.length) return '—';
+  return <div className="seller-affiliate__order-creators">{creators.map((creator) => (
+    <div className="creator-identity" key={creator.username || creator.name}>
+      <CreatorAvatar src={creator.avatarUrl} name={creator.name || creator.username} />
+      <span><strong>{creator.name || creator.username || t('common.unknown')}</strong>{creator.username ? <span className="row-subtitle">@{creator.username}</span> : null}</span>
+    </div>
+  ))}</div>;
+};
+
+export const AffiliateOrderMoney = ({ row, formatMoneyValues }) => {
+  const values = getAffiliateOrderValue(row);
+  return values.length ? <div className="seller-affiliate__order-money"><strong>{formatMoneyValues(values)}</strong></div> : '—';
+};
+
+export const AffiliateOrderCommission = ({ row, locale, formatMoneyValues }) => {
+  const { amounts, rates } = getAffiliateOrderCommission(row);
+  if (!amounts.length && !rates.length) return '—';
+  return <div className="seller-affiliate__order-commission">
+    {amounts.length ? <strong>{formatMoneyValues(amounts)}</strong> : null}
+    {rates.length ? <span className="row-subtitle">{rates.map((rate) => `${rate.toLocaleString(locale, { maximumFractionDigits: 2 })}%`).join(' / ')}</span> : null}
+  </div>;
+};
+
+export const AffiliateOrderSettlement = ({ row, t }) => {
+  const status = getAffiliateOrderSettlementStatus(row);
+  return <span className={`seller-affiliate__settlement seller-affiliate__settlement--${status.toLowerCase()}`}>{t(`sellerAffiliate.settlement_${status}`)}</span>;
+};
 const AffiliateOrderSource = ({ shopId, source, href, t }) => {
   const [thumbnail, setThumbnail] = useState(source.thumbnail || null);
   const [title, setTitle] = useState(source.title || '');
@@ -167,9 +222,13 @@ const AffiliateOrderSource = ({ shopId, source, href, t }) => {
     ? <img src={thumbnail} alt={title} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
     : <span className="seller-affiliate__order-video-placeholder" aria-hidden="true">{isVideo ? '▶' : source.type === 'LIVE' || source.type === 'PRE_LIVE' ? '●' : source.type === 'SHOP' ? '▣' : '↗'}</span>;
   const thumbnailElement = href ? <a className="seller-affiliate__order-video-thumbnail" href={href} target="_blank" rel="noreferrer" tabIndex={-1}>{content}</a> : <span className="seller-affiliate__order-video-thumbnail">{content}</span>;
-  const label = title || t(`sellerAffiliate.orderSource_${source.type}`, { defaultValue: source.type });
-  const meta = [username ? `@${username}` : '', source.id].filter(Boolean).join(' · ');
-  return <div className="seller-affiliate__order-video">{thumbnailElement}<span>{href ? <a href={href} target="_blank" rel="noreferrer">{label}</a> : <strong>{label}</strong>}{meta ? <span className="row-subtitle">{meta}</span> : null}</span></div>;
+  const sourceLabel = t(`sellerAffiliate.orderSource_${source.type}`, { defaultValue: source.type });
+  const hasDistinctTitle = title.trim().toLocaleLowerCase() !== sourceLabel.trim().toLocaleLowerCase();
+  const badgeClassName = `seller-affiliate__source-badge seller-affiliate__source-badge--${source.type.toLowerCase()}`;
+  const badge = href && !hasDistinctTitle
+    ? <a className={badgeClassName} href={href} target="_blank" rel="noreferrer">{sourceLabel}</a>
+    : <span className={badgeClassName}>{sourceLabel}</span>;
+  return <div className="seller-affiliate__order-video">{thumbnailElement}<span>{badge}{hasDistinctTitle ? (href ? <a href={href} target="_blank" rel="noreferrer">{title}</a> : <strong>{title}</strong>) : null}{source.id ? <span className="row-subtitle">{source.id}</span> : null}</span></div>;
 };
 export const AffiliateOrderVideos = ({ row, shopId, t }) => {
   const sources = getAffiliateOrderSources(row);
@@ -177,7 +236,11 @@ export const AffiliateOrderVideos = ({ row, shopId, t }) => {
   return <div className="seller-affiliate__order-videos">{sources.map((source) => {
     const username = String(source.username || '').trim().replace(/^@+/, '');
     const suppliedUrl = /^https?:\/\//i.test(String(source.url || '')) ? source.url : null;
-    const href = suppliedUrl || (source.type === 'VIDEO' && username && source.id ? `https://www.tiktok.com/@${encodeURIComponent(username)}/video/${encodeURIComponent(source.id)}` : null);
+    const profileUrl = username ? `https://www.tiktok.com/@${encodeURIComponent(username)}` : null;
+    const href = suppliedUrl
+      || (source.type === 'VIDEO' && profileUrl && source.id ? `${profileUrl}/video/${encodeURIComponent(source.id)}` : null)
+      || (['LIVE', 'PRE_LIVE'].includes(source.type) && profileUrl ? `${profileUrl}/live` : null)
+      || (source.type === 'SHOP' ? profileUrl : null);
     return <AffiliateOrderSource shopId={shopId} source={source} href={href} t={t} key={`${source.type}:${source.id}`} />;
   })}</div>;
 };

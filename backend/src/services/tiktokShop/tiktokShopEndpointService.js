@@ -87,6 +87,42 @@ const addMarketplaceCategoryNames = async (creators, shop) => {
     return categories.length ? { ...creator, categories } : creator;
   });
 };
+const attachAffiliateOrderCreatorProfiles = async (shopId, orders = []) => {
+  const usernames = [...new Set(orders
+    .flatMap((order) => Array.isArray(order?.skus) ? order.skus : [])
+    .map((sku) => String(sku?.creator_username || '').trim().replace(/^@+/, ''))
+    .filter(Boolean))];
+  if (!usernames.length) return orders;
+  let profiles;
+  try {
+    profiles = await hydrateCreatorRows(shopId, usernames.map((username) => ({ username })));
+  } catch {
+    return orders;
+  }
+  const profileByUsername = new Map(profiles.map((profile) => [
+    String(profile.username || '').toLocaleLowerCase(),
+    profile,
+  ]));
+  return orders.map((order) => ({
+    ...order,
+    skus: (Array.isArray(order?.skus) ? order.skus : []).map((sku) => {
+      const username = String(sku?.creator_username || '').trim().replace(/^@+/, '');
+      const profile = profileByUsername.get(username.toLocaleLowerCase());
+      if (!profile) return sku;
+      return {
+        ...sku,
+        creator_nickname: sku.creator_nickname || profile.nickname || null,
+        creator_avatar_url: sku.creator_avatar_url || profile.avatar_url || null,
+        creator: {
+          ...(sku.creator || {}),
+          username,
+          nickname: sku.creator?.nickname || profile.nickname || null,
+          avatar_url: sku.creator?.avatar_url || profile.avatar_url || null,
+        },
+      };
+    }),
+  }));
+};
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:3005';
 const redirectUrl = (status, message, returnPath = '/shop/analytics') => {
   const safeReturnPath = [
@@ -799,7 +835,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       code: 0,
       message: 'Success',
       data: {
-        orders,
+        orders: await attachAffiliateOrderCreatorProfiles(shop.id, orders),
         next_page_token: nextPageToken,
         total_count: count,
       },
@@ -856,11 +892,12 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     ? openResult.value.data.open_collaborations
     : [];
   const targetCollaborations = targetResult.status === 'fulfilled' ? targetResult.value : [];
+  const enrichedOrders = attachAffiliateOrderMetadata(orders, { openCollaborations, targetCollaborations });
   return {
     ...payload,
     data: {
       ...payload.data,
-      orders: attachAffiliateOrderMetadata(orders, { openCollaborations, targetCollaborations }),
+      orders: await attachAffiliateOrderCreatorProfiles(shop.id, enrichedOrders),
     },
   };
 });

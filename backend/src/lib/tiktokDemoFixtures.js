@@ -227,23 +227,39 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
       request_id: requestId,
     };
   }
-  const orders = Array.from({ length: 12 }, (_, index) => ({
+  const orders = Array.from({ length: 12 }, (_, index) => {
+    const currency = ['MYR', 'USD', 'VND'][index % 3];
+    const unitPrice = currency === 'VND' ? 189000 + index * 10000 : 18.9 + index * 1.25;
+    const settlementStatus = ['SETTLED', 'UNSETTLED', 'REFUNDED'][index % 3];
+    const contentType = ['VIDEO', 'LIVE', 'SHOP'][index % 3];
+    const creatorNumber = index % 4 + 1;
+    return ({
     order_id: `${DEMO_PREFIX}order_${String(index + 1).padStart(3, '0')}`,
     product_id: products[index % products.length].id,
     program_id: `${DEMO_PREFIX}program_${index % 3 + 1}`,
     products: [products[index % products.length]],
     programs: [{ id: `${DEMO_PREFIX}program_${index % 3 + 1}`, name: `Demo Program ${index % 3 + 1}`, type: 'TARGET' }],
     skus: [{
+      sku_id: `${DEMO_PREFIX}sku_${index + 1}`,
       product_id: products[index % products.length].id,
       product_name: products[index % products.length].title,
+      sku_name: ['30 ml', 'Combo 2 chai', 'Phiên bản tiêu chuẩn'][index % 3],
       quantity: index % 3 + 1,
+      refunded_quantity: settlementStatus === 'REFUNDED' ? index % 3 + 1 : 0,
+      fully_return: settlementStatus === 'REFUNDED',
+      price: { amount: String(unitPrice), currency },
+      creator_commission_rate: 1000 + index * 50,
+      settlement_status: settlementStatus,
       target_collaboration_id: `${DEMO_PREFIX}program_${index % 3 + 1}`,
-      content_type: 'VIDEO',
+      content_type: contentType,
       content_id: `76000000000000000${String(index + 1).padStart(2, '0')}`,
-      creator_username: `demo.creator${index % 4 + 1}`,
+      creator_username: `demo.creator${creatorNumber}`,
+      creator_nickname: `Demo Creator ${creatorNumber}`,
+      creator_avatar_url: `https://api.dicebear.com/10.x/lorelei-neutral/svg?seed=demo-creator-${creatorNumber}`,
     }],
     create_time: Math.floor(Date.now() / 1000) - index * 21600,
-  }));
+  });
+  });
   if (namespace === 'order-statistics') {
     const creatorUsername = String(query.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
     const categoryId = String(query.category_id || 'all');

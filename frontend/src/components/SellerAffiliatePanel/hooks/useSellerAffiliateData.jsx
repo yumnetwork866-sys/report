@@ -54,7 +54,11 @@ import {
 export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
-  const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
+  const {
+    currency: preferredCurrency,
+    convertAmount,
+    formatMoney: formatPreferredMoney,
+  } = useMoneyFormatter(locale);
   const [shops, setShops] = useState([]);
   const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [section, setSection] = useState(ordersOnly ? 'orders' : initialSection);
@@ -704,6 +708,19 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     if (money?.amount === undefined || money?.amount === null || money.amount === '') return '—';
     return formatPreferredMoney(money.amount, money.currency || 'USD');
   };
+  const formatMoneyValues = (values) => {
+    const moneyValues = (Array.isArray(values) ? values : [])
+      .filter((money) => money?.amount !== undefined && money?.amount !== null && money.amount !== '');
+    if (!moneyValues.length) return '—';
+    const converted = moneyValues.map((money) => convertAmount(money.amount, money.currency || 'USD'));
+    if (converted.every(Number.isFinite)) {
+      return formatPreferredMoney(
+        converted.reduce((sum, amount) => sum + amount, 0),
+        preferredCurrency,
+      );
+    }
+    return moneyValues.map((money) => formatPreferredMoney(money.amount, money.currency || 'USD')).join(' + ');
+  };
   const formatCreatorGmv = (creator) => {
     const money = creator.gmv || creator.local_gmv;
     if (money?.amount !== undefined && money?.amount !== null && money.amount !== '') {
@@ -1134,6 +1151,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     formatCreatorGmv,
     formatEngagementRate,
     formatMoney,
+    formatMoneyValues,
     formatNumber,
     formatRate,
     formatTime,

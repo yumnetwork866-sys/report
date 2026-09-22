@@ -1,13 +1,62 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  getAffiliateOrderCommission,
+  getAffiliateOrderCreators,
+  getAffiliateOrderItems,
   getAffiliateOrderProductIds,
   getAffiliateOrderProgramIds,
+  getAffiliateOrderSettlementStatus,
   getAffiliateOrderSources,
+  getAffiliateOrderValue,
   getAffiliateOrderVideos,
   getCreatorVideoEngagementRate,
   normalizeEngagementPercentage,
 } from '../src/lib/sellerAffiliate.js';
+
+test('affiliate order details derive products, GMV, KOC, settlement and commission from SKUs', () => {
+  const order = {
+    products: [{ id: 'product-1', title: 'Unisex T-shirt', main_image_url: 'shirt.jpg' }],
+    skus: [{
+      sku_id: 'sku-1', product_id: 'product-1', sku_name: 'Size L', quantity: 2,
+      refunded_quantity: 0, price: { amount: '125000', currency: 'VND' },
+      creator_username: '@linh.review', creator_nickname: 'Linh Review',
+      creator_avatar_url: 'linh.jpg', creator_commission_rate: 1200,
+      settlement_status: 'SETTLED',
+    }],
+  };
+
+  assert.deepEqual(getAffiliateOrderItems(order).map((item) => {
+    const normalized = { ...item };
+    delete normalized.raw;
+    return normalized;
+  }), [{
+    id: 'sku-1', productId: 'product-1', productName: 'Unisex T-shirt', skuName: 'Size L',
+    quantity: 2, refundedQuantity: 0, imageUrl: 'shirt.jpg',
+    price: { amount: 125000, currency: 'VND' },
+  }]);
+  assert.deepEqual(getAffiliateOrderValue(order), [{ amount: 250000, currency: 'VND' }]);
+  assert.deepEqual(getAffiliateOrderCreators(order), [{
+    username: 'linh.review', name: 'Linh Review', avatarUrl: 'linh.jpg',
+  }]);
+  assert.deepEqual(getAffiliateOrderCommission(order), {
+    amounts: [{ amount: 30000, currency: 'VND' }], rates: [12],
+  });
+  assert.equal(getAffiliateOrderSettlementStatus(order), 'SETTLED');
+});
+
+test('affiliate order settlement gives refunds priority and supports explicit commission amounts', () => {
+  const order = { skus: [{
+    quantity: 1, refunded_quantity: 1, fully_return: true,
+    price: { amount: 20, currency: 'MYR' },
+    commission_amount: { amount: 2.5, currency: 'MYR' },
+    settlement_status: 'SETTLED',
+  }] };
+  assert.equal(getAffiliateOrderSettlementStatus(order), 'REFUNDED');
+  assert.deepEqual(getAffiliateOrderCommission(order), {
+    amounts: [{ amount: 2.5, currency: 'MYR' }], rates: [],
+  });
+});
 
 test('affiliate order fields are collected from every SKU and deduplicated', () => {
   const order = {
