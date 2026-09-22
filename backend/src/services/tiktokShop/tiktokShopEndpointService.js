@@ -205,7 +205,10 @@ const oauthErrorMessage = (error) => {
 };
 
 const startShopOauth = async (req, res) => {
-  try { res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path) }); }
+  try {
+    const appType = req.query.app_type === 'custom' ? 'custom' : 'partner';
+    res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType }) });
+  }
   catch (error) { res.status(error.message.includes('not configured') ? 503 : 500).json({ message: error.message }); }
 };
 
@@ -214,52 +217,127 @@ const handleShopOauthCallback = async (req, res) => {
   try {
     const oauthState = parseShopAuthorizationState(req.query.state);
     returnPath = oauthState.returnPath;
+    const isCustom = oauthState.oauthType === 'shop_custom' || oauthState.appType === 'custom';
+    const appType = isCustom ? 'custom' : 'partner';
     const code = req.query.code || req.query.auth_code;
     if (!code) throw new Error(req.query.error || 'TikTok Shop authorization was denied.');
-    const tokenData = await exchangeShopAuthorizationCode(code);
+    const tokenData = await exchangeShopAuthorizationCode(code, { appType });
     if (Number(tokenData.user_type) !== 0) throw new Error('TikTok authorization must return a Seller token (user_type=0).');
     const scopes = tokenData.granted_scopes || tokenData.granted_permissions || [];
     const normalizedScopes = Array.isArray(scopes) ? scopes : String(scopes).split(',').map((item) => item.trim()).filter(Boolean);
-    const existing = tokenData.open_id ? await tiktokShopRepository.findShopAuthorization({ where: { open_id: tokenData.open_id } }) : null;
+    const existing = tokenData.open_id
+      ? await tiktokShopRepository.findShopAuthorization({ where: { open_id: tokenData.open_id, app_type: appType } })
+      : null;
     const values = {
       ...shopTokenFields({ ...tokenData, granted_scopes: normalizedScopes }, existing || {}),
-      connected_at: new Date(), last_sync_status: 'success', last_sync_error: null,
+      app_type: appType,
+      connected_at: new Date(),
+      last_sync_status: 'success',
+      last_sync_error: null,
     };
-    const shops = await getAuthorizedShops(tokenData.access_token);
+    const shops = await getAuthorizedShops(tokenData.access_token, undefined, { appType });
     const validShops = shops.filter((item) => item?.id && item?.cipher);
     await tiktokShopRepository.transaction(async (transaction) => {
       const authorization = existing
         ? await existing.update(values, { transaction })
         : await tiktokShopRepository.createShopAuthorization(values, { transaction });
-      for (const shop of validShops) {
-        await tiktokShopRepository.upsertShop({
-          authorization_id: authorization.id,
-          platform_shop_id: String(shop.id),
-          name: shop.name || shop.code || String(shop.id),
-          region: shop.region || null,
-          seller_type: shop.seller_type || null,
-          cipher: shop.cipher,
-          code: shop.code || null,
-          last_sync_status: 'success',
-          last_sync_error: null,
-        }, { transaction });
+      if (isCustom) {
+        for (const shop of validShops) {
+          const existingShop = await tiktokShopRepository.findShop({
+            where: { platform_shop_id: String(shop.id) },
+            transaction,
+          });
+          if (existingShop) {
+            await existingShop.update({
+              order_authorization_id: authorization.id,
+              name: shop.name || shop.code || existingShop.name,
+              region: shop.region || existingShop.region,
+              seller_type: shop.seller_type || existingShop.seller_type,
+              cipher: shop.cipher || existingShop.cipher,
+              code: shop.code || existingShop.code,
+              last_sync_status: 'success',
+              last_sync_error: null,
+            }, { transaction });
+          } else {
+            await tiktokShopRepository.upsertShop({
+              authorization_id: authorization.id,
+              order_authorization_id: authorization.id,
+              platform_shop_id: String(shop.id),
+              name: shop.name || shop.code || String(shop.id),
+              region: shop.region || null,
+              seller_type: shop.seller_type || null,
+              cipher: shop.cipher,
+              code: shop.code || null,
+              last_sync_status: 'success',
+              last_sync_error: null,
+            }, { transaction });
+          }
+        }
+        await tiktokShopRepository.updateShops(
+          { order_authorization_id: null },
+          {
+            where: {
+              order_authorization_id: authorization.id,
+              ...(validShops.length ? { platform_shop_id: { [Op.notIn]: validShops.map((shop) => String(shop.id)) } } : {}),
+            },
+            transaction,
+          },
+        );
+      } else {
+        for (const shop of validShops) {
+          const existingShop = await tiktokShopRepository.findShop({
+            where: { platform_shop_id: String(shop.id) },
+            transaction,
+          });
+          if (existingShop) {
+            await existingShop.update({
+              authorization_id: authorization.id,
+              name: shop.name || shop.code || existingShop.name,
+              region: shop.region || existingShop.region,
+              seller_type: shop.seller_type || existingShop.seller_type,
+              cipher: shop.cipher || existingShop.cipher,
+              code: shop.code || existingShop.code,
+              last_sync_status: 'success',
+              last_sync_error: null,
+            }, { transaction });
+          } else {
+            await tiktokShopRepository.upsertShop({
+              authorization_id: authorization.id,
+              platform_shop_id: String(shop.id),
+              name: shop.name || shop.code || String(shop.id),
+              region: shop.region || null,
+              seller_type: shop.seller_type || null,
+              cipher: shop.cipher,
+              code: shop.code || null,
+              last_sync_status: 'success',
+              last_sync_error: null,
+            }, { transaction });
+          }
+        }
+        await tiktokShopRepository.destroyShops({
+          where: {
+            authorization_id: authorization.id,
+            ...(validShops.length ? { platform_shop_id: { [Op.notIn]: validShops.map((shop) => String(shop.id)) } } : {}),
+          },
+          transaction,
+        });
       }
-      await tiktokShopRepository.destroyShops({
-        where: {
-          authorization_id: authorization.id,
-          ...(validShops.length ? { platform_shop_id: { [Op.notIn]: validShops.map((shop) => String(shop.id)) } } : {}),
-        },
-        transaction,
-      });
     });
     sellerAffiliateCache.clear();
-    const requestedAffiliate = ['/manage/koc-performance', '/shop/affiliate', '/manage/affiliate'].includes(oauthState.returnPath);
-    const requiredScope = requestedAffiliate ? 'seller.affiliate_collaboration.read' : 'data.shop_analytics.public.read';
+    const requiredScope = isCustom
+      ? 'seller.order.info'
+      : (oauthState.returnPath === '/shop/orders'
+        ? 'seller.order.info'
+        : ['/manage/koc-performance', '/shop/affiliate', '/manage/affiliate'].includes(oauthState.returnPath)
+          ? 'seller.affiliate_collaboration.read'
+          : 'data.shop_analytics.public.read');
     const hasRequiredScope = normalizedScopes.includes(requiredScope);
     return res.redirect(redirectUrl(
       hasRequiredScope ? 'success' : 'warning',
       hasRequiredScope
-        ? `${validShops.length} TikTok Shop connected.`
+        ? (isCustom
+          ? `${validShops.length} TikTok Shop connected for Orders (Custom App).`
+          : `${validShops.length} TikTok Shop connected.`)
         : `${validShops.length} TikTok Shop connected, but ${requiredScope} permission is missing.`,
       oauthState.returnPath,
     ));
@@ -280,9 +358,12 @@ const listShopConnections = async (_req, res) => {
     ]);
     res.json(authorizations.map((authorization) => {
       const value = authorization.toJSON();
+      const rawShops = (value.app_type === 'custom' && (!value.shops || !value.shops.length))
+        ? (value.order_shops || [])
+        : (value.shops && value.shops.length ? value.shops : (value.order_shops || []));
       return {
         ...value,
-        shops: (value.shops || []).map((shop) => addMatchingChannelAvatar(shop, avatarIndex)),
+        shops: rawShops.map((shop) => addMatchingChannelAvatar(shop, avatarIndex)),
       };
     }));
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -747,6 +828,14 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
     } else if (filterContentType === 'SHOP') {
       skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
+    } else if (filterContentType === 'DIRECT') {
+      skuConditions.push({
+        content_type: { [Op.in]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+      });
+    } else if (filterContentType === 'AFFILIATE') {
+      skuConditions.push({
+        content_type: { [Op.notIn]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+      });
     } else if (filterContentType) {
       skuConditions.push({ content_type: filterContentType });
     }
@@ -1005,6 +1094,14 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
     skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
   } else if (filterContentType === 'SHOP') {
     skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
+  } else if (filterContentType === 'DIRECT') {
+    skuConditions.push({
+      content_type: { [Op.in]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+    });
+  } else if (filterContentType === 'AFFILIATE') {
+    skuConditions.push({
+      content_type: { [Op.notIn]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+    });
   } else if (filterContentType) {
     skuConditions.push({ content_type: filterContentType });
   }

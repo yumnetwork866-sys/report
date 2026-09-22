@@ -93,6 +93,7 @@ export function fetchBookings(signal, {
   month,
   creatorUsername,
   creatorOpenId,
+  staffId,
   includeProductPerformance,
 } = {}) {
   const params = new URLSearchParams();
@@ -104,6 +105,7 @@ export function fetchBookings(signal, {
   if (month && month !== 'all') params.set('month', month);
   if (creatorUsername) params.set('creator_username', creatorUsername);
   if (creatorOpenId) params.set('creator_open_id', creatorOpenId);
+  if (staffId) params.set('staff_id', String(staffId));
   if (includeProductPerformance !== undefined) {
     params.set('include_product_performance', String(Boolean(includeProductPerformance)));
   }
@@ -162,9 +164,10 @@ export function startTikTokPartnerOauth(returnPath = '/shop/bookings', { creator
   return apiRequest(`/bookings/tiktok-partner/oauth/start?${params.toString()}`);
 }
 
-export function startTikTokShopOauth(returnPath) {
+export function startTikTokShopOauth(returnPath, appType = 'partner') {
   const params = new URLSearchParams();
   if (returnPath) params.set('return_path', returnPath);
+  if (appType && appType !== 'partner') params.set('app_type', appType);
   const query = params.toString();
   return apiRequest(`/tiktok-shop/oauth/start${query ? `?${query}` : ''}`);
 }

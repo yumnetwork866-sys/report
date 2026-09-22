@@ -78,7 +78,7 @@ const ShopAnalytics = ({
     videoRows, videoSearch, videoSortField, videoTotals,
   } = video;
   const {
-    connecting, disconnectingId, disconnectShop, setToast, startConnect, toast,
+    connecting, disconnectingId, disconnectShop, setToast, startConnect, startConnectCustom, toast,
   } = useShopOAuth({
     loadInventory, managementOnly, onError: setError, selectedShop, setSnapshot,
     t, videoExportOnly, videoOnly,
@@ -509,6 +509,7 @@ const ShopAnalytics = ({
           formatDateTime={formatDateTime}
           loading={loading}
           onConnect={startConnect}
+          onConnectCustom={startConnectCustom}
           onDisconnect={disconnectShop}
           t={t}
         />

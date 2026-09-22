@@ -7,27 +7,42 @@ module.exports = {
   findShopAuthorizations: (options) => models().TikTokShopAuthorization.findAll(options),
   findShopAuthorizationsWithShops: (options = {}) => models().TikTokShopAuthorization.findAll({
     ...options,
-    include: [{ model: models().TikTokShop, as: 'shops', attributes: { exclude: ['cipher'] } }],
+    include: [
+      { model: models().TikTokShop, as: 'shops', attributes: { exclude: ['cipher'] } },
+      { model: models().TikTokShop, as: 'order_shops', attributes: { exclude: ['cipher'] } },
+    ],
   }),
   findShopAuthorization: (options) => models().TikTokShopAuthorization.findOne(options),
   createShopAuthorization: (values, options) => models().TikTokShopAuthorization.create(values, options),
   destroyShopAuthorizations: (options) => models().TikTokShopAuthorization.destroy(options),
+  findShop: (options) => models().TikTokShop.findOne(options),
   findShops: (options) => models().TikTokShop.findAll(options),
   findShopsWithAuthorization: (options = {}) => models().TikTokShop.findAll({
     ...options,
-    include: [{
-      model: models().TikTokShopAuthorization,
-      as: 'authorization',
-      attributes: ['id', 'granted_scopes', 'refresh_token_expires_at'],
-    }],
+    include: [
+      {
+        model: models().TikTokShopAuthorization,
+        as: 'authorization',
+        attributes: ['id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at'],
+      },
+      {
+        model: models().TikTokShopAuthorization,
+        as: 'orderAuthorization',
+        attributes: ['id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at'],
+      },
+    ],
   }),
   findShopWithAuthorization: (id, options = {}) => models().TikTokShop.findByPk(id, {
     ...options,
-    include: [{ model: models().TikTokShopAuthorization, as: 'authorization' }],
+    include: [
+      { model: models().TikTokShopAuthorization, as: 'authorization' },
+      { model: models().TikTokShopAuthorization, as: 'orderAuthorization' },
+    ],
   }),
   findShopById: (id, options) => models().TikTokShop.findByPk(id, options),
   countShops: (options) => models().TikTokShop.count(options),
   upsertShop: (values, options) => models().TikTokShop.upsert(values, options),
+  updateShops: (values, options) => models().TikTokShop.update(values, options),
   destroyShops: (options) => models().TikTokShop.destroy(options),
   findShopAnalytics: (options) => models().TikTokShopAnalyticsSnapshot.findAll(options),
   findShopAnalyticsSnapshot: (options) => models().TikTokShopAnalyticsSnapshot.findOne(options),

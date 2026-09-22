@@ -13,6 +13,7 @@ import {
   fetchTikTokSellerTargetCollaborations,
   fetchTikTokCreatorPerformance,
   fetchTikTokShops,
+  startTikTokShopOauth,
 } from '../../../lib/api';
 import { useI18n } from '../../../lib/language';
 import { useMoneyFormatter } from '../../../lib/currency';
@@ -109,11 +110,22 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   
   const selectedShop = useMemo(() => shops.find((shop) => String(shop.id) === String(shopId)), [shopId, shops]);
   const scopes = Array.isArray(selectedShop?.authorization?.granted_scopes) ? selectedShop.authorization.granted_scopes : [];
+  const orderScopes = Array.isArray(selectedShop?.orderAuthorization?.granted_scopes) ? selectedShop.orderAuthorization.granted_scopes : [];
   const hasScope = scopes.includes(REQUIRED_SCOPE);
+  const hasShopOrderScope = orderScopes.includes('seller.order.info') || scopes.includes('seller.order.info');
   const hasMarketplaceScope = scopes.includes(MARKETPLACE_SCOPE);
   const hasProductScope = scopes.includes(PRODUCT_SCOPE);
   const hasAffiliateWriteScope = scopes.includes(AFFILIATE_WRITE_SCOPE);
   const currentPageToken = pageTokens.at(-1) || '';
+
+  const connectCustomApp = useCallback(async () => {
+    try {
+      const { authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom');
+      if (authorizeUrl) window.location.assign(authorizeUrl);
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
   
   const orderPeriodOptions = useMemo(() => [
     { value: '7d', label: t('shopAnalytics.period7d') },
@@ -893,6 +905,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     hasMarketplaceScope,
     hasProductScope,
     hasScope,
+    hasShopOrderScope,
+    connectCustomApp,
     invitationSearch,
     inviteCreator,
     inviteForm,

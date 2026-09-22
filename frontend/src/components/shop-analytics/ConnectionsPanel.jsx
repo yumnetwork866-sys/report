@@ -8,14 +8,35 @@ const ConnectionsPanel = ({
   formatDateTime,
   loading,
   onConnect,
-  onDisconnect,
+  onConnectCustom,
   t,
+  onDisconnect,
 }) => (
   <div id="shop-connections-panel" className="shop-analytics__tab-panel">
     <section className="section-card shop-analytics__connections-card" aria-labelledby="shop-connections-title">
       <div className="section-card__header">
         <div>
           <h2 className="section-card__title" id="shop-connections-title">{t('shopAnalytics.connections')}</h2>
+        </div>
+        <div className="section-card__actions">
+          <button
+            className="button button--small button--secondary"
+            type="button"
+            disabled={connecting || disconnectingId !== null}
+            onClick={onConnectCustom}
+          >
+            <AnalyticsIcon name="shop" />
+            {t('shopAnalytics.connectCustomApp')}
+          </button>
+          <button
+            className="button button--small button--primary"
+            type="button"
+            disabled={connecting || disconnectingId !== null}
+            onClick={onConnect}
+          >
+            <AnalyticsIcon name="shop" />
+            {t('shopAnalytics.connectPartnerApp')}
+          </button>
         </div>
       </div>
       {loading ? (
@@ -27,11 +48,13 @@ const ConnectionsPanel = ({
         <div className="shop-analytics__connections">
           {connections.map((authorization) => {
             const scopes = scopesOf(authorization);
+            const isCustom = authorization.app_type === 'custom';
+            const requiredScope = isCustom ? 'seller.order.info' : REQUIRED_SCOPE;
             const expired = Boolean(
               authorization.refresh_token_expires_at
                 && new Date(authorization.refresh_token_expires_at).getTime() <= Date.now(),
             );
-            const missingScope = !scopes.includes(REQUIRED_SCOPE);
+            const missingScope = !scopes.includes(requiredScope);
             const authorizationShops = Array.isArray(authorization.shops) ? authorization.shops : [];
             return (
               <article className="shop-analytics__connection" key={authorization.id}>
@@ -45,19 +68,24 @@ const ConnectionsPanel = ({
                       <span>{t('shopAnalytics.connectedAt')}: {formatDateTime(authorization.connected_at)}</span>
                     </div>
                   </div>
-                  <span className={`chip ${expired || missingScope ? 'chip--amber' : 'chip--positive'}`}>
-                    {expired
-                      ? t('shopAnalytics.tokenExpired')
-                      : missingScope
-                        ? t('shopAnalytics.missingScope')
-                        : t('shopAnalytics.connected')}
-                  </span>
+                  <div className="shop-analytics__connection-badges">
+                    <span className={`chip ${isCustom ? 'chip--blue' : 'chip--purple'}`}>
+                      {isCustom ? t('shopAnalytics.customOrderApp') : t('shopAnalytics.partnerApp')}
+                    </span>
+                    <span className={`chip ${expired || missingScope ? 'chip--amber' : 'chip--positive'}`}>
+                      {expired
+                        ? t('shopAnalytics.tokenExpired')
+                        : missingScope
+                          ? t('shopAnalytics.missingScope')
+                          : t('shopAnalytics.connected')}
+                    </span>
+                  </div>
                 </div>
                 <div className="shop-management__permissions-block">
                   <span className="shop-management__permissions-label">{t('shopAnalytics.permissions')}</span>
                   <div className="shop-management__permissions">
                     {scopes.length ? scopes.map((scope) => (
-                      <span className={`chip ${scope === REQUIRED_SCOPE ? 'chip--positive' : ''}`} key={scope}>
+                      <span className={`chip ${scope === requiredScope ? 'chip--positive' : ''}`} key={scope}>
                         {scope}
                       </span>
                     )) : <span className="shop-management__permissions-empty">{t('shopAnalytics.noPermissions')}</span>}
@@ -90,7 +118,7 @@ const ConnectionsPanel = ({
                 ) : null}
                 {missingScope ? (
                   <div className="shop-analytics__scope-list">
-                    <span className="chip chip--amber">{t('shopAnalytics.missing')}: {REQUIRED_SCOPE}</span>
+                    <span className="chip chip--amber">{t('shopAnalytics.missing')}: {requiredScope}</span>
                   </div>
                 ) : null}
                 {authorization.last_sync_error ? (
@@ -102,7 +130,7 @@ const ConnectionsPanel = ({
                       className="button button--small button--ghost"
                       type="button"
                       disabled={connecting || disconnectingId !== null}
-                      onClick={onConnect}
+                      onClick={isCustom ? onConnectCustom : onConnect}
                     >
                       {t('shopAnalytics.reconnect')}
                     </button>

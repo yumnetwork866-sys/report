@@ -52,6 +52,20 @@ const useShopOAuth = ({
     }
   }, [disconnectingId, managementOnly, onError, t, videoExportOnly, videoOnly]);
 
+  const startConnectCustom = useCallback(async () => {
+    if (disconnectingId !== null) return;
+    try {
+      setConnecting(true);
+      onError('');
+      const { authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom');
+      if (!authorizeUrl) throw new Error(t('shopAnalytics.oauthError'));
+      window.location.assign(authorizeUrl);
+    } catch (error) {
+      setToast({ type: 'error', message: error.message || t('shopAnalytics.oauthError') });
+      setConnecting(false);
+    }
+  }, [disconnectingId, onError, t]);
+
   const disconnectShop = useCallback(async (shop) => {
     if (!window.confirm(t('shopAnalytics.disconnectShopConfirm', { name: shop.name || t('common.unknown') }))) return;
     try {
@@ -67,7 +81,7 @@ const useShopOAuth = ({
     }
   }, [loadInventory, selectedShop, setSnapshot, t]);
 
-  return { connecting, disconnectingId, disconnectShop, setToast, startConnect, toast };
+  return { connecting, disconnectingId, disconnectShop, setToast, startConnect, startConnectCustom, toast };
 };
 
 export default useShopOAuth;

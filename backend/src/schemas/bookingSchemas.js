@@ -16,6 +16,7 @@ const bookingListQuerySchema = withDateRange(z.object({
   month: z.string().trim().optional(),
   start_date: optionalIsoDate('start_date'),
   end_date: optionalIsoDate('end_date'),
+  staff_id: positiveId('staff ID').optional(),
   include_product_performance: booleanQuery.optional(),
 }).passthrough());
 

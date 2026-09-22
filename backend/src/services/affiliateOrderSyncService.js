@@ -6,7 +6,11 @@ const {
   ShopVideo,
   sequelize,
 } = require('../models');
-const { searchAffiliateOrders } = require('./tiktokShopService');
+const {
+  searchAffiliateOrders,
+  searchShopOrders,
+  SELLER_ORDER_SCOPE,
+} = require('./tiktokShopService');
 const { scheduledAnalyticsRange } = require('./tiktokShopAnalyticsSyncService');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../lib/tiktokDemoFixtures');
 
@@ -93,6 +97,73 @@ const fetchOrderPage = (shop, options) => {
   });
 };
 
+const resolveShopOrderAuthorization = (shop) => {
+  if (shop?.orderAuthorization) {
+    const scopes = Array.isArray(shop.orderAuthorization.granted_scopes) ? shop.orderAuthorization.granted_scopes : [];
+    if (!scopes.length || scopes.includes(SELLER_ORDER_SCOPE)) return shop.orderAuthorization;
+  }
+  const scopes = Array.isArray(shop?.authorization?.granted_scopes) ? shop.authorization.granted_scopes : [];
+  if (scopes.includes(SELLER_ORDER_SCOPE)) return shop.authorization;
+  return null;
+};
+
+const hasShopOrderScope = (shop) => Boolean(resolveShopOrderAuthorization(shop));
+
+const normalizeShopOrderToAffiliateOrder = (order) => {
+  const rawItems = Array.isArray(order?.line_items)
+    ? order.line_items
+    : (Array.isArray(order?.item_list) ? order.item_list : (Array.isArray(order?.skus) ? order.skus : []));
+  const id = orderId(order);
+  const orderCurrency = order?.payment?.currency || order?.currency || 'MYR';
+  const directSettlementStatus = /CANCEL/i.test(String(order?.order_status || order?.status || ''))
+    ? 'CANCELLED'
+    : /COMPLETED/i.test(String(order?.order_status || order?.status || '')) ? 'COMPLETED' : 'PENDING';
+  const skusById = new Map();
+  rawItems.forEach((item, index) => {
+    const rawPrice = item?.sale_price ?? item?.sku_sale_price ?? item?.original_price ?? item?.price;
+    const amount = typeof rawPrice === 'object' && rawPrice !== null ? rawPrice.amount : rawPrice;
+    const currency = (typeof rawPrice === 'object' && rawPrice !== null ? rawPrice.currency : null)
+      || item?.currency || orderCurrency;
+    const normalizedSkuId = String(item?.sku_id || item?.id || `${id}-sku-${index}`);
+    const quantity = Math.max(0, Number(item?.quantity) || 1);
+    const refundedQuantity = Math.max(0, Number(item?.refunded_quantity || item?.cancel_quantity || 0) || 0);
+    const current = skusById.get(normalizedSkuId);
+    if (current) {
+      current.quantity += quantity;
+      current.refunded_quantity += refundedQuantity;
+      return;
+    }
+    const productImage = item?.sku_image?.url || item?.product_image?.url
+      || item?.sku_image || item?.product_image || item?.image_url || null;
+    skusById.set(normalizedSkuId, {
+      sku_id: normalizedSkuId,
+      product_id: item?.product_id ? String(item.product_id) : null,
+      product_name: item?.product_name || item?.sku_name || null,
+      sku_name: item?.sku_name || item?.seller_sku || null,
+      sku_image: typeof productImage === 'string' ? productImage : null,
+      quantity,
+      refunded_quantity: refundedQuantity,
+      price: { amount: String(amount ?? 0), currency },
+      currency,
+      creator_username: null,
+      content_type: 'DIRECT',
+      settlement_status: directSettlementStatus,
+      raw_data: item,
+    });
+  });
+  const skus = [...skusById.values()];
+  return {
+    ...order,
+    id,
+    order_id: id,
+    create_time: order.create_time,
+    delivery_time: order.delivery_time || null,
+    currency: orderCurrency,
+    skus,
+    is_direct: true,
+  };
+};
+
 const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) => {
   const timezone = SHOP_TIMEZONES[String(shop.region || '').toUpperCase()] || 'UTC';
   const startTime = localMidnightUnix(metricDate, timezone);
@@ -100,6 +171,7 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
   const orders = new Map();
   const seenTokens = new Set();
   let pageToken;
+  let affiliateExceeded = false;
   for (let page = 0; page < maxPages; page += 1) {
     throwIfAborted(signal);
     const payload = await fetchOrderPage(shop, { pageToken, pageSize: 100, startTime, endTime });
@@ -116,12 +188,53 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
       if (id) orders.set(id, order);
     });
     const nextToken = String(payload.data.next_page_token || '').trim();
-    if (!nextToken) return { orders: [...orders.values()], startTime, endTime };
+    if (!nextToken) break;
     if (seenTokens.has(nextToken)) throw new Error('TikTok returned a repeated Affiliate Orders page token.');
     seenTokens.add(nextToken);
     pageToken = nextToken;
+    if (page === maxPages - 1) affiliateExceeded = true;
   }
-  throw new Error(`TikTok Affiliate Orders pagination exceeded ${maxPages} pages.`);
+  if (affiliateExceeded) throw new Error(`TikTok Affiliate Orders pagination exceeded ${maxPages} pages.`);
+
+  const orderAuth = resolveShopOrderAuthorization(shop);
+  if (orderAuth) {
+    const seenShopTokens = new Set();
+    let shopPageToken;
+    let shopExceeded = false;
+    for (let page = 0; page < maxPages; page += 1) {
+      throwIfAborted(signal);
+      const payload = await searchShopOrders({
+        authorization: orderAuth,
+        shopCipher: shop.cipher,
+        pageToken: shopPageToken,
+        pageSize: 100,
+        startTime,
+        endTime,
+      });
+      if (!payload || typeof payload !== 'object' || !payload.data || typeof payload.data !== 'object') {
+        throw new Error('TikTok returned an invalid Shop Orders response.');
+      }
+      const rawShopOrders = payload.data.orders ?? payload.data.order_list;
+      if (rawShopOrders !== undefined && rawShopOrders !== null && !Array.isArray(rawShopOrders)) {
+        throw new Error('TikTok returned an invalid Shop Orders response.');
+      }
+      (Array.isArray(rawShopOrders) ? rawShopOrders : []).forEach((shopOrder) => {
+        const id = orderId(shopOrder);
+        if (id && !orders.has(id)) {
+          orders.set(id, normalizeShopOrderToAffiliateOrder(shopOrder));
+        }
+      });
+      const nextToken = String(payload?.data?.next_page_token || '').trim();
+      if (!nextToken) break;
+      if (seenShopTokens.has(nextToken)) throw new Error('TikTok returned a repeated Shop Orders page token.');
+      seenShopTokens.add(nextToken);
+      shopPageToken = nextToken;
+      if (page === maxPages - 1) shopExceeded = true;
+    }
+    if (shopExceeded) throw new Error(`TikTok Shop Orders pagination exceeded ${maxPages} pages.`);
+  }
+
+  return { orders: [...orders.values()], startTime, endTime };
 };
 
 const persistOrderDay = async (shop, metricDate, { orders, startTime, endTime }, { productNames = new Map() } = {}) => {
@@ -177,7 +290,7 @@ const persistOrderDay = async (shop, metricDate, { orders, startTime, endTime },
           content_id: sku?.content_id ? String(sku.content_id) : null,
           creator_username: sku?.creator_username || null,
           price: Number.isFinite(price) ? price : null,
-          currency: sku?.price?.currency || null,
+          currency: sku?.price?.currency || sku?.currency || null,
           settlement_status: sku?.settlement_status || null,
           fully_return: sku?.fully_return === true || String(sku?.fully_return).toLowerCase() === 'true',
           raw_data: sku,

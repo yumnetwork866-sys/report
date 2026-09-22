@@ -324,8 +324,11 @@ const BookingManagement = ({
       return undefined;
     }
     const localMatches = bookings.filter((b) => (
-      (selectedBooking.creator_open_id && b.creator_open_id === selectedBooking.creator_open_id)
-      || (selectedBooking.creator_username && String(b.creator_username || '').toLowerCase() === String(selectedBooking.creator_username || '').toLowerCase())
+      String(b.staff_id || '') === String(selectedBooking.staff_id || '')
+      && (
+        (selectedBooking.creator_open_id && b.creator_open_id === selectedBooking.creator_open_id)
+        || (selectedBooking.creator_username && String(b.creator_username || '').toLowerCase() === String(selectedBooking.creator_username || '').toLowerCase())
+      )
     ));
     if (!localMatches.some((b) => b.id === selectedBooking.id)) {
       localMatches.push(selectedBooking);
@@ -338,6 +341,7 @@ const BookingManagement = ({
     fetchBookings(controller.signal, {
       creatorUsername: selectedBooking.creator_username,
       creatorOpenId: selectedBooking.creator_open_id,
+      staffId: selectedBooking.staff_id,
       month: 'all',
       windowType: performanceWindow,
       includeProductPerformance: false,

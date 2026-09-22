@@ -669,6 +669,7 @@ const getBookings = async (req, res) => {
     const requestedMonth = String(req.query?.month || '').trim();
     const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
     const requestedOpenId = String(req.query?.creator_open_id || '').trim();
+    const requestedStaffId = req.query?.staff_id ? Number(req.query.staff_id) : null;
     const includeProductPerformance = !['false', '0'].includes(
       String(req.query?.include_product_performance || '').trim().toLowerCase(),
     );
@@ -700,6 +701,9 @@ const getBookings = async (req, res) => {
     } else if (requestedUsername) {
       creatorWhere = { creator_username: { [Op.iLike]: requestedUsername } };
     }
+    const staffWhere = Number.isInteger(requestedStaffId) && requestedStaffId > 0
+      ? { staff_id: requestedStaffId }
+      : {};
 
     let monthWhere = {};
     if (requestedMonth === 'custom' && startDate && endDate && parseDateOnly(startDate) && parseDateOnly(endDate)) {
@@ -752,13 +756,14 @@ const getBookings = async (req, res) => {
       };
     }
 
-    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
+    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await bookingRepository.findBookings({
         where: {
           evaluation_snapshot: { [Op.not]: null },
           ...monthWhere,
           ...creatorWhere,
+          ...staffWhere,
         },
         order: [['created_at', 'DESC'], ['id', 'DESC']],
       });

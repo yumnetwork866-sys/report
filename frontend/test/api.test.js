@@ -230,6 +230,26 @@ test('Booking list helper can skip product performance for the video view', asyn
   });
 });
 
+test('Booking list helper scopes creator history to one staff member', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchBookings(undefined, {
+      creatorUsername: 'zahra.shop89',
+      staffId: 22,
+    });
+
+    assert.equal(requestUrl, '/api/bookings?creator_username=zahra.shop89&staff_id=22');
+  });
+});
+
 test('Booking list helper sends an inclusive custom date range', async () => {
   await withBrowser(async () => {
     let requestUrl;

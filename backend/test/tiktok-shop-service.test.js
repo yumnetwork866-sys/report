@@ -14,6 +14,7 @@ const {
   AFFILIATE_CONVERSATIONS_PATH,
   AFFILIATE_MESSAGES_PATH,
   AFFILIATE_ORDERS_PATH,
+  SHOP_ORDERS_PATH,
   SAMPLE_APPLICATIONS_PATH,
   SAMPLE_APPLICATION_FULFILLMENTS_PATH,
   CREATOR_CONTENT_DETAILS_PATH,
@@ -40,6 +41,7 @@ const {
   getAffiliateConversationMessages,
   sendAffiliateMessage,
   searchAffiliateOrders,
+  searchShopOrders,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrderKpis,
   searchSellerSampleApplications,
@@ -64,6 +66,11 @@ const ENV_KEYS = [
   'TIKTOK_PARTNER_API_BASE_URL',
   'TIKTOK_SHOP_SERVICE_ID',
   'TIKTOK_SHOP_AUTHORIZE_URL',
+  'TIKTOK_SHOP_CUSTOM_APP_KEY',
+  'TIKTOK_SHOP_CUSTOM_APP_SECRET',
+  'TIKTOK_SHOP_CUSTOM_SERVICE_ID',
+  'TIKTOK_SHOP_CUSTOM_REDIRECT_URI',
+  'TIKTOK_SHOP_CUSTOM_AUTHORIZE_URL',
 ];
 
 const configure = (t) => {
@@ -83,6 +90,9 @@ const configure = (t) => {
     TIKTOK_PARTNER_TOKEN_BASE_URL: 'https://auth.example.test/api/v2/token',
     TIKTOK_PARTNER_API_BASE_URL: 'https://api.example.test',
     TIKTOK_SHOP_AUTHORIZE_URL: 'https://services.example.test/open/authorize',
+    TIKTOK_SHOP_CUSTOM_APP_KEY: 'custom-app-key',
+    TIKTOK_SHOP_CUSTOM_APP_SECRET: 'custom-app-secret',
+    TIKTOK_SHOP_CUSTOM_SERVICE_ID: 'custom-service-id',
   });
 };
 
@@ -103,6 +113,13 @@ test('seller OAuth preserves the affiliate return page', (t) => {
   const url = new URL(buildShopAuthorizationUrl('/shop/affiliate'));
   const state = parseShopAuthorizationState(url.searchParams.get('state'));
   assert.equal(state.returnPath, '/shop/affiliate');
+});
+
+test('seller OAuth preserves the orders return page', (t) => {
+  configure(t);
+  const url = new URL(buildShopAuthorizationUrl('/shop/orders'));
+  const state = parseShopAuthorizationState(url.searchParams.get('state'));
+  assert.equal(state.returnPath, '/shop/orders');
 });
 
 test('seller OAuth preserves the video analytics return page', (t) => {
@@ -128,6 +145,37 @@ test('seller authorization code is exchanged through the TikTok Shop token endpo
     };
   });
   assert.equal(token.user_type, 0);
+});
+
+test('custom app OAuth URL contains custom service id and verifiable custom state', (t) => {
+  configure(t);
+  const url = new URL(buildShopAuthorizationUrl('/shop/orders', { appType: 'custom' }));
+  assert.equal(url.origin, 'https://services.example.test');
+  assert.equal(url.searchParams.get('service_id'), 'custom-service-id');
+  const state = parseShopAuthorizationState(url.searchParams.get('state'));
+  assert.equal(state.oauthType, 'shop_custom');
+  assert.equal(state.appType, 'custom');
+  assert.equal(state.returnPath, '/shop/orders');
+  assert.ok(state.expiresAt > Date.now());
+});
+
+test('custom app authorization code is exchanged using custom app credentials', async (t) => {
+  configure(t);
+  const token = await exchangeShopAuthorizationCode('custom-auth-code', async (url, options) => {
+    assert.equal(url.origin, 'https://auth.example.test');
+    assert.equal(url.pathname, '/api/v2/token/get');
+    assert.equal(url.searchParams.get('app_key'), 'custom-app-key');
+    assert.equal(url.searchParams.get('auth_code'), 'custom-auth-code');
+    assert.equal(url.searchParams.get('grant_type'), 'authorized_code');
+    assert.equal(options.headers.accept, 'application/json');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { access_token: 'custom-seller-token', user_type: 0 } }),
+    };
+  }, { appType: 'custom' });
+  assert.equal(token.user_type, 0);
+  assert.equal(token.access_token, 'custom-seller-token');
 });
 
 test('signature follows TikTok Shop HMAC-SHA256 signing rules', (t) => {
@@ -540,6 +588,27 @@ test('search affiliate orders sends the time window and program id', async (t) =
   }, async (url, options) => {
     assert.equal(url.pathname, AFFILIATE_ORDERS_PATH);
     assert.deepEqual(JSON.parse(options.body), { create_time_ge: 1700000000, create_time_lt: 1700100000, program_id: 'program-1' });
+    return successResponse({ orders: [] });
+  });
+});
+
+test('search shop orders sends time filters in the query and status in the body', async (t) => {
+  configure(t);
+  const authorization = sellerAuthorization();
+  authorization.granted_scopes.push('seller.order.info');
+  await searchShopOrders({
+    authorization,
+    shopCipher: 'cipher-1',
+    startTime: 1700000000,
+    endTime: 1700100000,
+    orderStatus: 'COMPLETED',
+  }, async (url, options) => {
+    assert.equal(url.pathname, SHOP_ORDERS_PATH);
+    assert.equal(url.searchParams.get('create_time_ge'), '1700000000');
+    assert.equal(url.searchParams.get('create_time_lt'), '1700100000');
+    assert.equal(url.searchParams.get('sort_field'), 'create_time');
+    assert.equal(url.searchParams.get('sort_order'), 'ASC');
+    assert.deepEqual(JSON.parse(options.body), { order_status: 'COMPLETED' });
     return successResponse({ orders: [] });
   });
 });

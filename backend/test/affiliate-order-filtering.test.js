@@ -83,4 +83,18 @@ test('database affiliate orders combine versatile search and quick filters', asy
   assert.equal(overview.body.total_count, 0);
   assert.equal(captured.final.options.limit, 10000);
   assert.deepEqual(captured.final.options.where.order_id[Op.in], ['order-100', 'order-101']);
+
+  await service.execute('listAffiliateOrders', {
+    params: { shopId: '9' },
+    query: { source: 'db', content_type: 'DIRECT' },
+  });
+  const directConditions = captured.final.skuWhere[Op.and];
+  assert.deepEqual(directConditions[0].content_type[Op.in], ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER']);
+
+  await service.execute('listAffiliateOrders', {
+    params: { shopId: '9' },
+    query: { source: 'db', content_type: 'AFFILIATE' },
+  });
+  const affiliateConditions = captured.final.skuWhere[Op.and];
+  assert.deepEqual(affiliateConditions[0].content_type[Op.notIn], ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER']);
 });

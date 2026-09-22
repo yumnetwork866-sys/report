@@ -3,7 +3,7 @@ const test = require('node:test');
 
 const { mockModule } = require('./helpers/mockModule');
 
-const loadService = (t, searchAffiliateOrders, modelOverrides = {}) => {
+const loadService = (t, searchAffiliateOrders, modelOverrides = {}, shopServiceOverrides = {}) => {
   const modelsPath = require.resolve('../src/models');
   const shopServicePath = require.resolve('../src/services/tiktokShopService');
   const analyticsServicePath = require.resolve('../src/services/tiktokShopAnalyticsSyncService');
@@ -17,7 +17,12 @@ const loadService = (t, searchAffiliateOrders, modelOverrides = {}) => {
       sequelize: { transaction: async (callback) => callback({}) },
       ...modelOverrides,
     }),
-    mockModule(shopServicePath, { searchAffiliateOrders }),
+    mockModule(shopServicePath, {
+      searchAffiliateOrders,
+      searchShopOrders: async () => ({ data: { orders: [] } }),
+      SELLER_ORDER_SCOPE: 'seller.order.info',
+      ...shopServiceOverrides,
+    }),
     mockModule(analyticsServicePath, {
       scheduledAnalyticsRange: () => ({ startDate: '2026-07-15', endDate: '2026-08-14' }),
     }),
@@ -123,3 +128,103 @@ test('affiliate order sync refreshes recent days and backfills missing days', as
   });
   assert.deepEqual(dates, ['2026-08-14', '2026-08-13', '2026-08-11', '2026-08-10']);
 });
+
+test('shop order sync merges direct orders with affiliate orders when scope is granted', async (t) => {
+  const service = loadService(t, async () => ({
+    data: {
+      orders: [
+        {
+          id: 'order-affiliate-1',
+          create_time: 1786554000,
+          skus: [{
+            sku_id: 'sku-1', product_id: 'prod-1', creator_username: 'super.creator',
+            price: { amount: '50.00', currency: 'MYR' }, quantity: 1, content_type: 'VIDEO',
+          }],
+        },
+      ],
+      next_page_token: null,
+    },
+  }), {}, {
+    searchShopOrders: async () => ({
+      data: {
+        orders: [
+          {
+            id: 'order-affiliate-1',
+            create_time: 1786554000,
+            line_items: [{ sku_id: 'sku-1', product_id: 'prod-1', sale_price: '50.00', quantity: 1 }],
+          },
+          {
+            id: 'order-direct-2',
+            create_time: 1786556000,
+            order_status: 'COMPLETED',
+            payment: { currency: 'MYR' },
+            line_items: [
+              { sku_id: 'sku-2', product_id: 'prod-2', product_name: 'Direct Item', sale_price: '75.00' },
+              { sku_id: 'sku-2', product_id: 'prod-2', product_name: 'Direct Item', sale_price: '75.00' },
+            ],
+          },
+        ],
+        next_page_token: null,
+      },
+    }),
+  });
+
+  const result = await service.__test.loadOrderDay({
+    region: 'MY',
+    cipher: 'cipher',
+    authorization: { granted_scopes: ['seller.affiliate_collaboration.read', 'seller.order.info'] },
+  }, '2026-08-13');
+
+  assert.equal(result.orders.length, 2);
+  const affiliate = result.orders.find((order) => order.id === 'order-affiliate-1');
+  const direct = result.orders.find((order) => order.id === 'order-direct-2');
+  assert.equal(affiliate.skus[0].creator_username, 'super.creator');
+  assert.equal(affiliate.skus[0].content_type, 'VIDEO');
+  assert.equal(direct.skus[0].creator_username, null);
+  assert.equal(direct.skus[0].content_type, 'DIRECT');
+  assert.equal(direct.skus[0].product_name, 'Direct Item');
+  assert.equal(direct.skus[0].price.amount, '75.00');
+  assert.equal(direct.skus[0].price.currency, 'MYR');
+  assert.equal(direct.skus[0].quantity, 2);
+  assert.equal(direct.skus[0].settlement_status, 'COMPLETED');
+});
+
+test('shop order sync uses orderAuthorization (Custom App) when separate from partner authorization', async (t) => {
+  let searchOrdersAuth = null;
+  const service = loadService(t, async () => ({
+    data: { orders: [], next_page_token: null },
+  }), {}, {
+    searchShopOrders: async ({ authorization }) => {
+      searchOrdersAuth = authorization;
+      return {
+        data: {
+          orders: [
+            {
+              id: 'order-custom-1',
+              create_time: 1786556000,
+              order_status: 'COMPLETED',
+              payment: { currency: 'MYR' },
+              line_items: [{ sku_id: 'sku-custom-1', sale_price: '100.00', quantity: 1 }],
+            },
+          ],
+          next_page_token: null,
+        },
+      };
+    },
+  });
+
+  const partnerAuth = { id: 1, app_type: 'partner', granted_scopes: ['seller.affiliate_collaboration.read'] };
+  const customAuth = { id: 2, app_type: 'custom', granted_scopes: ['seller.order.info'] };
+
+  const result = await service.__test.loadOrderDay({
+    region: 'MY',
+    cipher: 'cipher',
+    authorization: partnerAuth,
+    orderAuthorization: customAuth,
+  }, '2026-08-13');
+
+  assert.equal(result.orders.length, 1);
+  assert.equal(result.orders[0].id, 'order-custom-1');
+  assert.equal(searchOrdersAuth, customAuth);
+});
+

@@ -164,7 +164,10 @@ const findCreatorVideoMetrics = async ({ shopId, username, periodDays }) => {
 };
 
 const findShopWithAuthorization = (shopId) => TikTokShop.findByPk(shopId, {
-  include: [{ association: 'authorization' }],
+  include: [
+    { association: 'authorization' },
+    { association: 'orderAuthorization' },
+  ],
 });
 
 const findCachedShopVideos = ({ shopId, username }) => {

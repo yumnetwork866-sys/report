@@ -183,7 +183,10 @@ const resolveCreatorPerformanceEndDayOffset = ({
 
 const connectedShops = (targetShopId = null) => TikTokShop.findAll({
   where: targetShopId ? { id: Number(targetShopId) } : undefined,
-  include: [{ model: TikTokShopAuthorization, as: 'authorization' }],
+  include: [
+    { model: TikTokShopAuthorization, as: 'authorization' },
+    { model: TikTokShopAuthorization, as: 'orderAuthorization' },
+  ],
   order: [['id', 'ASC']],
 });
 

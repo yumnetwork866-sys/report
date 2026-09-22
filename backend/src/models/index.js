@@ -403,7 +403,7 @@ const TikTokPartnerAuthorization = sequelize.define('TikTokPartnerAuthorization'
 
 const TikTokShopAuthorization = sequelize.define('TikTokShopAuthorization', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  open_id: { type: DataTypes.STRING, allowNull: true, unique: true },
+  open_id: { type: DataTypes.STRING, allowNull: true },
   user_type: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   granted_scopes: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   access_token_encrypted: { type: DataTypes.TEXT, allowNull: false },
@@ -412,13 +412,19 @@ const TikTokShopAuthorization = sequelize.define('TikTokShopAuthorization', {
   refresh_token_expires_at: { type: DataTypes.DATE, allowNull: true },
   connected_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  app_type: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'partner' },
   last_sync_status: { type: DataTypes.STRING, allowNull: true },
   last_sync_error: { type: DataTypes.TEXT, allowNull: true },
-}, { tableName: 'tiktok_shop_authorizations', timestamps: false });
+}, {
+  tableName: 'tiktok_shop_authorizations',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['open_id', 'app_type'] }],
+});
 
 const TikTokShop = sequelize.define('TikTokShop', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   authorization_id: { type: DataTypes.INTEGER, allowNull: false },
+  order_authorization_id: { type: DataTypes.INTEGER, allowNull: true },
   platform_shop_id: { type: DataTypes.STRING, allowNull: false, unique: true },
   name: { type: DataTypes.STRING, allowNull: false },
   region: { type: DataTypes.STRING, allowNull: true },
@@ -1212,6 +1218,8 @@ User.hasOne(TikTokPartnerAuthorization, { foreignKey: 'creator_id', as: 'tiktok_
 TikTokPartnerAuthorization.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
 TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'authorization_id', as: 'shops' });
 TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'authorization_id', as: 'authorization' });
+TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'order_authorization_id', as: 'order_shops' });
+TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'order_authorization_id', as: 'orderAuthorization' });
 TikTokShop.hasMany(TikTokShopAnalyticsSnapshot, { foreignKey: 'shop_id', as: 'analytics_snapshots' });
 TikTokShopAnalyticsSnapshot.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(OrderProductCategory, { foreignKey: 'shop_id', as: 'order_product_categories' });

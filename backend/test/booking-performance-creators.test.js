@@ -146,6 +146,31 @@ test('booking list can skip product performance enrichment for the video view', 
   assert.equal(productPerformanceCalls, 0);
 });
 
+test('booking list scopes creator history to the requested staff member', async (t) => {
+  let findOptions;
+  const { getBookings } = loadController(
+    t,
+    { Booking: { findAll: async (options) => { findOptions = options; return []; } } },
+  );
+
+  await getBookings(
+    {
+      query: {
+        creator_username: 'zahra.shop89',
+        staff_id: 22,
+        include_product_performance: 'false',
+      },
+    },
+    {
+      json: () => {},
+      status: () => ({ json: () => {} }),
+      setHeader: () => {},
+    },
+  );
+
+  assert.equal(findOptions.where.staff_id, 22);
+});
+
 test('booking list uses the requested Creator Performance period as its table reference', async (t) => {
   let performanceQuery;
   const { getBookings } = loadController(t, {

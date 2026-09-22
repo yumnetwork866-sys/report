@@ -90,6 +90,8 @@ const defaultMigrationNames = [
   '081_remove_booking_committed_videos',
   '082_add_booking_video_refund_commission',
   '083_optimize_dashboard_video_analytics',
+  '084_add_custom_app_support_to_tiktok_shops',
+  '085_scope_shop_authorization_open_id_unique',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));
