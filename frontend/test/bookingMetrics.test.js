@@ -19,6 +19,8 @@ import {
   optionalNumber,
   editableCurrencyAmount,
   currentBookingMonth,
+  groupBookingRowsByCreator,
+  mergeBookingProductBreakdowns,
 } from '../src/lib/bookingMetrics.js';
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
@@ -33,6 +35,35 @@ test('countPaidBookingKocs only counts unique KOCs with positive cost in the sel
   const count = countPaidBookingKocs(bookings, (booking) => booking.id !== 5);
 
   assert.equal(count, 2);
+});
+
+test('groupBookingRowsByCreator renders one row per shop and KOC', () => {
+  const bookings = [
+    { id: 160, staff_id: 21, target_shop_id: 4, creator_username: 'sitimadihah91' },
+    { id: 219, staff_id: 21, target_shop_id: 4, creator_username: 'SitiMadihah91' },
+    { id: 220, staff_id: 21, target_shop_id: 5, creator_username: 'sitimadihah91' },
+    { id: 221, staff_id: 21, target_shop_id: 4, creator_username: 'another.creator' },
+  ];
+
+  const rows = groupBookingRowsByCreator(bookings);
+
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows[0]._creator_bookings.map((booking) => booking.id), [160, 219]);
+  assert.deepEqual(rows[1]._creator_bookings.map((booking) => booking.id), [220]);
+  assert.deepEqual(rows[2]._creator_bookings.map((booking) => booking.id), [221]);
+});
+
+test('mergeBookingProductBreakdowns keeps product counts without doubling repeated bookings', () => {
+  const breakdown = mergeBookingProductBreakdowns([
+    { breakdown: [{ id: 'product-a', name: 'A', orderCount: 4, quantity: 5 }] },
+    { breakdown: [{ id: 'product-a', name: 'A', orderCount: 4, quantity: 5 }] },
+    { breakdown: [{ id: 'product-b', name: 'B', orderCount: 3, quantity: 3 }] },
+  ]);
+
+  assert.deepEqual(breakdown, [
+    { id: 'product-a', name: 'A', orderCount: 4, quantity: 5 },
+    { id: 'product-b', name: 'B', orderCount: 3, quantity: 3 },
+  ]);
 });
 
 test('cleanDisplayProductName removes brackets and cleans name', () => {

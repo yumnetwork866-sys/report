@@ -136,7 +136,7 @@ export const bookingProductsOf = (booking) => {
   return [...byId.values()].filter((product) => String(product.id || product.product_id || '').trim());
 };
 
-const bookingCreatorKey = (booking) => {
+export const bookingCreatorKey = (booking) => {
   const openId = String(booking?.creator_open_id || '').trim();
   if (openId) return `open:${openId}`;
   const username = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase('en');
@@ -144,6 +144,51 @@ const bookingCreatorKey = (booking) => {
   const creatorId = String(booking?.creator_id || '').trim();
   if (creatorId) return `creator:${creatorId}`;
   return `booking:${booking?.id || ''}`;
+};
+
+export const groupBookingRowsByCreator = (bookings = []) => {
+  const groups = new Map();
+  for (const booking of Array.isArray(bookings) ? bookings : []) {
+    const shopId = String(booking?.target_shop_id || booking?.target_shop?.id || 'no-shop');
+    const key = `${shopId}:${bookingCreatorKey(booking)}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing._creator_bookings.push(booking);
+      continue;
+    }
+    groups.set(key, {
+      ...booking,
+      _creator_bookings: [booking],
+    });
+  }
+  return [...groups.values()];
+};
+
+export const mergeBookingProductBreakdowns = (performances = []) => {
+  const products = new Map();
+  for (const performance of Array.isArray(performances) ? performances : []) {
+    for (const product of Array.isArray(performance?.breakdown) ? performance.breakdown : []) {
+      const id = String(product?.id || product?.product_id || '').trim();
+      if (!id) continue;
+      const existing = products.get(id);
+      if (!existing) {
+        products.set(id, { ...product, id });
+        continue;
+      }
+      products.set(id, {
+        ...existing,
+        name: existing.name || product.name || id,
+        ...((existing.thumbnailUrl || product.thumbnailUrl || product.image_url)
+          ? { thumbnailUrl: existing.thumbnailUrl || product.thumbnailUrl || product.image_url }
+          : {}),
+        // Repeated bookings for the same KOC/product are backed by the same orders.
+        // Keep the largest scoped value instead of summing the same orders twice.
+        orderCount: Math.max(finiteNumber(existing.orderCount), finiteNumber(product.orderCount)),
+        quantity: Math.max(finiteNumber(existing.quantity), finiteNumber(product.quantity)),
+      });
+    }
+  }
+  return [...products.values()];
 };
 
 export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => new Set(

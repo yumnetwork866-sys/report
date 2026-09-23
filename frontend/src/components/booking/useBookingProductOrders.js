@@ -54,7 +54,7 @@ export default function useBookingProductOrders({
         const payload = await fetchTikTokSellerAffiliateOrders(shopId, {
           signal: controller.signal,
           source: 'db',
-          pageSize: 200,
+          pageSize: 100,
           pageToken,
           ...(range.startTime ? { startTime: range.startTime } : {}),
           ...(range.endTime ? { endTime: range.endTime } : {}),

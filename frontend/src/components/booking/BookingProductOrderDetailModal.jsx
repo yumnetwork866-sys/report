@@ -8,6 +8,70 @@ import {
   formatOrderTimestamp,
 } from '../../lib/bookingMetrics';
 
+const OrderVideoThumbnail = ({ row, shopId, username }) => {
+  const [thumbnail, setThumbnail] = useState(null);
+  const [title, setTitle] = useState(row.videoTitle || '');
+  const [failed, setFailed] = useState(false);
+  const videoId = String(row.contentId || '').trim();
+
+  useEffect(() => {
+    setThumbnail(null);
+    setTitle(row.videoTitle || '');
+    setFailed(false);
+    if (!shopId || !videoId || !username) return undefined;
+
+    let active = true;
+    const normalizedUsername = String(username).trim().replace(/^@+/, '');
+    const cacheKey = `${shopId}:${videoId}:${normalizedUsername.toLowerCase()}`;
+    cachedThumbnail(cacheKey, () => (
+      fetchTikTokShopVideoThumbnail(shopId, videoId, normalizedUsername)
+    ))
+      .then((payload) => {
+        if (!active) return;
+        setThumbnail(payload?.thumbnail_url || null);
+        setTitle(payload?.title || row.videoTitle || 'Video TikTok');
+      })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [row.videoTitle, shopId, username, videoId]);
+
+  const tooltip = title || `Video TikTok ${videoId}`;
+  const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
+  const videoUrl = normalizedUsername && videoId
+    ? `https://www.tiktok.com/@${encodeURIComponent(normalizedUsername)}/video/${encodeURIComponent(videoId)}`
+    : null;
+  const content = (
+    <>
+      {thumbnail && !failed ? (
+        <img
+          src={thumbnail}
+          alt={title || 'Video TikTok'}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <span className="booking-product-order-modal__source-video-placeholder" aria-hidden="true">▶</span>
+      )}
+    </>
+  );
+  return videoUrl ? (
+    <a
+      className="booking-product-order-modal__source-video"
+      href={videoUrl}
+      target="_blank"
+      rel="noreferrer"
+      title={tooltip}
+      aria-label={`Mở video ${tooltip}`}
+    >
+      {content}
+    </a>
+  ) : (
+    <span className="booking-product-order-modal__source-video" title={tooltip}>{content}</span>
+  );
+};
+
 const BookingProductOrderDetailModal = ({
   product,
   booking,
@@ -67,10 +131,12 @@ const BookingProductOrderDetailModal = ({
 
   const [modalOrders, setModalOrders] = useState(() => (Array.isArray(orders) && orders.length ? orders : []));
   const [modalLoading, setModalLoading] = useState(false);
+  const [modalError, setModalError] = useState('');
 
   useEffect(() => {
     if (Array.isArray(orders) && orders.length > 0) {
       setModalOrders(orders);
+      setModalError('');
       return undefined;
     }
     const shopId = booking?.target_shop_id;
@@ -78,38 +144,49 @@ const BookingProductOrderDetailModal = ({
 
     const controller = new AbortController();
     setModalLoading(true);
-    fetchTikTokSellerAffiliateOrders(shopId, {
-      signal: controller.signal,
-      source: 'db',
-      pageSize: 200,
-      ...(product?.id ? { productId: product.id } : {}),
-      ...(booking?.creator_username ? { creatorUsername: booking.creator_username } : {}),
-      ...(dateRange?.startTime ? { startTime: dateRange.startTime } : {}),
-      ...(dateRange?.endTime ? { endTime: dateRange.endTime } : {}),
-    })
-      .then((payload) => {
-        if (!controller.signal.aborted) {
-          setModalOrders(payload?.orders || payload?.affiliate_orders || []);
+    setModalError('');
+    const loadOrders = async () => {
+      const loaded = [];
+      let pageToken = '';
+      for (let page = 0; page < 100; page += 1) {
+        const payload = await fetchTikTokSellerAffiliateOrders(shopId, {
+          signal: controller.signal,
+          source: 'db',
+          pageSize: 100,
+          pageToken,
+          ...(product?.id ? { productId: product.id } : {}),
+          ...(booking?.creator_username ? { creatorUsername: booking.creator_username } : {}),
+          ...(dateRange?.startTime ? { startTime: dateRange.startTime } : {}),
+          ...(dateRange?.endTime ? { endTime: dateRange.endTime } : {}),
+        });
+        loaded.push(...(payload?.orders || payload?.affiliate_orders || []));
+        const nextPageToken = String(payload?.next_page_token || '');
+        if (!nextPageToken || nextPageToken === pageToken) break;
+        pageToken = nextPageToken;
+      }
+      return loaded;
+    };
+    loadOrders()
+      .then((loaded) => {
+        if (!controller.signal.aborted) setModalOrders(loaded);
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted && requestError.name !== 'AbortError') {
+          setModalError(requestError.message || t('booking.productOrdersError'));
         }
       })
-      .catch(() => {})
       .finally(() => {
         if (!controller.signal.aborted) setModalLoading(false);
       });
 
     return () => controller.abort();
-  }, [booking?.target_shop_id, booking?.creator_username, product?.id, orders, dateRange?.startTime, dateRange?.endTime]);
+  }, [booking?.target_shop_id, booking?.creator_username, product?.id, orders, dateRange?.startTime, dateRange?.endTime, t]);
 
   const effectiveOrders = modalOrders.length ? modalOrders : orders;
   const isEffectiveLoading = loading || modalLoading;
 
   const [filterMode, setFilterMode] = useState(() => (video?.platform_video_id ? 'video' : 'all'));
   const [searchQuery, setSearchQuery] = useState('');
-
-  const isTarget = useMemo(() => {
-    const targetProducts = bookingProductsOf(booking);
-    return targetProducts.some((p) => String(p.id || p.product_id) === String(product?.id));
-  }, [booking, product]);
 
   const { rows, currency: orderCurrency } = useMemo(
     () => extractProductOrderRows(effectiveOrders, product?.id, booking?.creator_username, video?.platform_video_id),
@@ -247,11 +324,6 @@ const BookingProductOrderDetailModal = ({
               )}
             </div>
             <div className="booking-product-order-modal__title-box">
-              {product && isTarget ? (
-                <div className="booking-product-order-modal__meta">
-                  <span className="chip chip--positive">Sản phẩm Booking</span>
-                </div>
-              ) : null}
               <h2 id="product-order-detail-title" className="booking-product-order-modal__title" title={product?.name || product?.id || video?.title || 'Đơn hàng của Video'}>
                 {product ? (product.name || product.id) : (video?.title || 'Tất cả đơn hàng của Video')}
               </h2>
@@ -338,6 +410,10 @@ const BookingProductOrderDetailModal = ({
                 </div>
               ))}
               <span className="sr-only">Đang tải danh sách đơn hàng...</span>
+            </div>
+          ) : modalError ? (
+            <div className="empty-state" role="alert" style={{ padding: '36px 0' }}>
+              <p>{modalError}</p>
             </div>
           ) : filteredRows.length > 0 ? (
             <div className="booking-product-order-modal__table-wrap">
@@ -428,20 +504,26 @@ const BookingProductOrderDetailModal = ({
                           {formatMoney(row.commission, row.currency)}
                         </td>
                         <td>
-                          {row.isVideoMatch ? (
+                          {video && row.isVideoMatch ? (
                             <span
                               className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--match"
                               title={`Video: ${row.contentId}`}
                             >
                               Video này
                             </span>
-                          ) : row.contentType === 'VIDEO' ? (
+                          ) : video && row.contentType === 'VIDEO' ? (
                             <span
                               className="booking-product-order-modal__tag-video booking-product-order-modal__tag-video--other"
                               title={`Video ID: ${row.contentId}`}
                             >
                               Video khác
                             </span>
+                          ) : row.contentType === 'VIDEO' ? (
+                            <OrderVideoThumbnail
+                              row={row}
+                              shopId={booking?.target_shop_id}
+                              username={booking?.creator_username}
+                            />
                           ) : (
                             <span className="booking-product-order-modal__tag-other">
                               {row.contentType || 'Khác'}

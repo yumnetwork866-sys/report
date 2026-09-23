@@ -928,6 +928,8 @@ const BookingManagement = ({
               videoPerformanceByBooking,
               bookingInPeriodById,
               productOrdersByShop,
+              selectedCurrency,
+              convertAmount,
               onSelectProduct: setProductOrderDetailModal,
               formatMoney,
               formatNumber,
