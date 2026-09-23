@@ -11,12 +11,14 @@ import {
 const OrderVideoThumbnail = ({ row, shopId, username }) => {
   const [thumbnail, setThumbnail] = useState(null);
   const [title, setTitle] = useState(row.videoTitle || '');
+  const [postedAt, setPostedAt] = useState(row.videoPostedAt || null);
   const [failed, setFailed] = useState(false);
   const videoId = String(row.contentId || '').trim();
 
   useEffect(() => {
     setThumbnail(null);
     setTitle(row.videoTitle || '');
+    setPostedAt(row.videoPostedAt || null);
     setFailed(false);
     if (!shopId || !videoId || !username) return undefined;
 
@@ -30,10 +32,11 @@ const OrderVideoThumbnail = ({ row, shopId, username }) => {
         if (!active) return;
         setThumbnail(payload?.thumbnail_url || null);
         setTitle(payload?.title || row.videoTitle || 'Video TikTok');
+        setPostedAt(payload?.posted_at || row.videoPostedAt || null);
       })
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [row.videoTitle, shopId, username, videoId]);
+  }, [row.videoPostedAt, row.videoTitle, shopId, username, videoId]);
 
   const tooltip = title || `Video TikTok ${videoId}`;
   const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
@@ -56,19 +59,18 @@ const OrderVideoThumbnail = ({ row, shopId, username }) => {
       )}
     </>
   );
-  return videoUrl ? (
-    <a
-      className="booking-product-order-modal__source-video"
-      href={videoUrl}
-      target="_blank"
-      rel="noreferrer"
-      title={tooltip}
-      aria-label={`Mở video ${tooltip}`}
-    >
+  const thumbnailElement = videoUrl ? (
+    <a className="booking-product-order-modal__source-video" href={videoUrl} target="_blank" rel="noreferrer" title={tooltip} aria-label={`Mở video ${tooltip}`}>
       {content}
     </a>
-  ) : (
-    <span className="booking-product-order-modal__source-video" title={tooltip}>{content}</span>
+  ) : <span className="booking-product-order-modal__source-video" title={tooltip}>{content}</span>;
+  return (
+    <span className="booking-product-order-modal__source-video-meta">
+      {thumbnailElement}
+      <small title={postedAt ? `Ngày đăng: ${formatOrderTimestamp(postedAt).date}` : 'Chưa có ngày đăng'}>
+        {postedAt ? formatOrderTimestamp(postedAt).date : '—'}
+      </small>
+    </span>
   );
 };
 
@@ -423,7 +425,6 @@ const BookingProductOrderDetailModal = ({
                     <th>Đơn hàng</th>
                     <th>Thời gian đặt</th>
                     <th style={{ minWidth: '220px' }}>Phân loại</th>
-                    <th style={{ textAlign: 'right' }}>Số lượng</th>
                     <th style={{ textAlign: 'right' }}>Đơn giá</th>
                     <th style={{ textAlign: 'right' }}>Thành tiền</th>
                     <th style={{ textAlign: 'right' }}>Hoa hồng</th>
@@ -444,6 +445,15 @@ const BookingProductOrderDetailModal = ({
                               ) : (
                                 <span>{(row.displayProductName || row.productName || 'P').trim().charAt(0).toUpperCase()}</span>
                               )}
+                              <span
+                                className="booking-product-order-modal__quantity-badge"
+                                aria-label={`Số lượng: ${formatNumber(row.quantity)}`}
+                                title={row.refundedQuantity > 0
+                                  ? `Số lượng: ${formatNumber(row.quantity)} · Hoàn: ${formatNumber(row.refundedQuantity)}`
+                                  : `Số lượng: ${formatNumber(row.quantity)}`}
+                              >
+                                x{formatNumber(row.quantity)}
+                              </span>
                             </div>
                             <div className="booking-product-order-modal__order-cell-info">
                               <strong
@@ -458,6 +468,11 @@ const BookingProductOrderDetailModal = ({
                               >
                                 {row.orderId}
                               </span>
+                              {row.refundedQuantity > 0 ? (
+                                <small className="booking-product-order-modal__refunded-quantity">
+                                  Hoàn x{formatNumber(row.refundedQuantity)}
+                                </small>
+                              ) : null}
                             </div>
                           </div>
                         </td>
@@ -485,14 +500,6 @@ const BookingProductOrderDetailModal = ({
                               </small>
                             ) : null}
                           </div>
-                        </td>
-                        <td style={{ textAlign: 'right', fontWeight: 650 }}>
-                          {formatNumber(row.quantity)}
-                          {row.refundedQuantity > 0 ? (
-                            <small style={{ color: 'var(--color-danger, #ef4444)', marginLeft: '4px' }}>
-                              (-{row.refundedQuantity})
-                            </small>
-                          ) : null}
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                           {formatMoney(row.price, row.currency)}

@@ -799,6 +799,7 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
         contentType,
         contentId: sku?.content_id || null,
         videoTitle: sku?.video_title || null,
+        videoPostedAt: sku?.video_post_time || sku?.post_date || sku?.posted_at || null,
         isVideoMatch,
       });
     }

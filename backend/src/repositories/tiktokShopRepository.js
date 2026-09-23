@@ -70,4 +70,5 @@ module.exports = {
   findAffiliateOrderSkus: (options) => models().TikTokAffiliateOrderSku.findAll(options),
   findCreatorProfiles: (options) => models().TikTokCreatorProfile.findAll(options),
   findShopProducts: (options) => models().TikTokShopProduct.findAll(options),
+  findShopVideo: (options) => models().ShopVideo.findOne(options),
 };
