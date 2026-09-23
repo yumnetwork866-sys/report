@@ -132,6 +132,80 @@ export const totalsFor = (rows) => {
   };
 };
 
+const ANALYTICS_NUMBER_FIELDS = [
+  'orders',
+  'units_sold',
+  'buyers',
+  'product_impressions',
+  'product_page_views',
+];
+
+const mergeAnalyticsIntervals = (intervalGroups = [], currency = 'USD') => {
+  const byDate = new Map();
+  for (const interval of intervalGroups.flat()) {
+    const key = `${interval?.start_date || ''}:${interval?.end_date || ''}`;
+    if (!interval?.start_date) continue;
+    const current = byDate.get(key) || {
+      start_date: interval.start_date,
+      end_date: interval.end_date,
+      gmv: { amount: 0, currency },
+      refunds: { amount: 0, currency },
+      cancellations_and_returns: null,
+      gmv_breakdowns: [],
+    };
+    current.gmv.amount += moneyValue(interval.gmv);
+    current.refunds.amount += moneyValue(interval.refunds);
+    ANALYTICS_NUMBER_FIELDS.forEach((field) => {
+      current[field] = numericValue(current[field]) + numericValue(interval?.[field]);
+    });
+    if (interval?.cancellations_and_returns !== null && interval?.cancellations_and_returns !== undefined) {
+      current.cancellations_and_returns = numericValue(current.cancellations_and_returns)
+        + numericValue(interval.cancellations_and_returns);
+    }
+    const breakdowns = new Map(current.gmv_breakdowns.map((item) => [item.type, item]));
+    for (const item of Array.isArray(interval?.gmv_breakdowns) ? interval.gmv_breakdowns : []) {
+      const type = item?.type || 'UNKNOWN';
+      const existing = breakdowns.get(type) || { type, amount: 0, currency };
+      existing.amount = numericValue(existing.amount) + moneyValue(item?.amount ?? item?.gmv);
+      breakdowns.set(type, existing);
+    }
+    current.gmv_breakdowns = [...breakdowns.values()];
+    byDate.set(key, current);
+  }
+  return [...byDate.values()].sort((left, right) => (
+    String(left.start_date).localeCompare(String(right.start_date))
+  ));
+};
+
+export const combineShopAnalyticsSnapshots = (snapshots = [], currency = 'USD') => {
+  const valid = snapshots.filter((snapshot) => snapshot?.metrics);
+  if (!valid.length) return null;
+  const latestAvailableDate = valid
+    .map((snapshot) => snapshot.latest_available_date)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  const syncedAt = valid
+    .map((snapshot) => snapshot.synced_at)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null;
+  return {
+    id: 'all-shops',
+    currency,
+    latest_available_date: latestAvailableDate,
+    synced_at: syncedAt,
+    shop_count: valid.length,
+    metrics: {
+      intervals: mergeAnalyticsIntervals(valid.map((snapshot) => snapshot.metrics.intervals || []), currency),
+      comparison_intervals: mergeAnalyticsIntervals(
+        valid.map((snapshot) => snapshot.metrics.comparison_intervals || []),
+        currency,
+      ),
+    },
+  };
+};
+
 export const percentage = (value, total) => (total > 0 ? value / total * 100 : 0);
 export const boundedPercentage = (value) => Math.min(100, Math.max(0, value));
 export const percentageChange = (current, previous, hasComparison = true) => (

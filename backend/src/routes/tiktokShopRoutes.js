@@ -5,6 +5,7 @@ const {
   applicationParamsSchema,
   authorizationParamsSchema,
   creatorParamsSchema,
+  shopAvatarChannelBodySchema,
   shopAnalyticsBodySchema,
   shopAnalyticsQuerySchema,
   shopListQuerySchema,
@@ -17,6 +18,7 @@ adminRouter.get('/exchange-rates', controller.getExchangeRates);
 adminRouter.get('/oauth/start', controller.startShopOauth);
 adminRouter.get('/connections', controller.listShopConnections);
 adminRouter.get('/shops', controller.listShops);
+adminRouter.patch('/shops/:shopId/avatar-channel', validateParams(shopParamsSchema), validateBody(shopAvatarChannelBodySchema), controller.updateShopAvatarChannel);
 adminRouter.delete('/shops/:shopId', validateParams(shopParamsSchema), controller.disconnectShop);
 adminRouter.get('/shops/:shopId/analytics', validateParams(shopParamsSchema), validateQuery(shopAnalyticsQuerySchema), controller.getShopAnalytics);
 adminRouter.post('/shops/:shopId/analytics/sync', validateParams(shopParamsSchema), validateBody(shopAnalyticsBodySchema), controller.syncShopAnalytics);

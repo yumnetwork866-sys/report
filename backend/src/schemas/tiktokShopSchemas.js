@@ -30,6 +30,10 @@ const shopAnalyticsBodySchema = withDateRange(z.object({
   currency: currency.optional(),
 }).passthrough(), { exclusiveEnd: true });
 
+const shopAvatarChannelBodySchema = z.object({
+  channel_id: positiveId('channel ID').nullable(),
+});
+
 const shopListQuerySchema = z.object({
   ...paginationFields,
   username: tiktokUsername.optional(),
@@ -40,6 +44,7 @@ module.exports = {
   applicationParamsSchema,
   authorizationParamsSchema,
   creatorParamsSchema,
+  shopAvatarChannelBodySchema,
   shopAnalyticsBodySchema,
   shopAnalyticsQuerySchema,
   shopListQuerySchema,

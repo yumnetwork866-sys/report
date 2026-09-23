@@ -180,6 +180,13 @@ export function fetchTikTokShops(signal) {
   return apiRequest('/tiktok-shop/shops', { signal });
 }
 
+export function updateTikTokShopAvatarChannel(shopId, channelId) {
+  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/avatar-channel`, {
+    method: 'PATCH',
+    body: { channel_id: channelId },
+  });
+}
+
 export function fetchExchangeRates(signal) {
   return apiRequest('/exchange-rates', { signal }).catch(() => apiRequest('/tiktok-shop/exchange-rates', { signal }));
 }

@@ -188,6 +188,13 @@ const getChannelAvatarIndex = async () => {
 };
 const addMatchingChannelAvatar = (shop, avatarIndex) => {
   const value = shop?.toJSON ? shop.toJSON() : { ...shop };
+  if (value.avatar_channel_id) {
+    return {
+      ...value,
+      avatar_url: value.avatar_channel?.avatar_url || value.avatar_channel?.avatar_large_url || null,
+      avatar_large_url: value.avatar_channel?.avatar_large_url || value.avatar_channel?.avatar_url || null,
+    };
+  }
   const exactKey = comparableShopName(value.name);
   const baseKey = simplifiedShopName(value.name);
   const baseAlphaKey = alphanumericShopName(baseKey);
@@ -379,6 +386,33 @@ const listShops = async (_req, res) => {
       getChannelAvatarIndex(),
     ]);
     res.json(shops.map((shop) => addMatchingChannelAvatar(shop, avatarIndex)));
+  } catch (error) { res.status(500).json({ message: error.message }); }
+};
+
+const updateShopAvatarChannel = async (req, res) => {
+  try {
+    const shopId = idValue(req.params.shopId);
+    const channelId = req.body.channel_id;
+    const shop = await tiktokShopRepository.findShopById(shopId, {
+      attributes: { exclude: ['cipher'] },
+    });
+    if (!shop) return res.status(404).json({ message: 'TikTok Shop not found.' });
+
+    const channel = channelId === null ? null : await tiktokShopRepository.findChannelById(channelId, {
+      attributes: ['id', 'platform', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
+    });
+    if (channelId !== null && (!channel || channel.platform !== 'tiktok')) {
+      return res.status(404).json({ message: 'TikTok channel not found.' });
+    }
+
+    await shop.update({ avatar_channel_id: channelId });
+    const value = shop.toJSON();
+    res.json({
+      ...value,
+      avatar_channel: channel?.toJSON?.() || channel,
+      avatar_url: channel?.avatar_url || channel?.avatar_large_url || null,
+      avatar_large_url: channel?.avatar_large_url || channel?.avatar_url || null,
+    });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
@@ -2260,7 +2294,7 @@ const getExchangeRates = async (_req, res) => {
 };
 
 const service = {
-  startShopOauth, handleShopOauthCallback, listShopConnections, listShops,
+  startShopOauth, handleShopOauthCallback, listShopConnections, listShops, updateShopAvatarChannel,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, getShopVideoThumbnail,
   listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,

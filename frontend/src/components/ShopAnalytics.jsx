@@ -38,7 +38,6 @@ const ShopAnalytics = ({
   const [startDate, setStartDate] = useState(initialRange.startDate);
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [periodPreset, setPeriodPreset] = useState('7d');
-  const currency = 'LOCAL';
   const [chartMetric, setChartMetric] = useState('gmv');
   const [error, setError] = useState('');
   const [combinedVideoView, setCombinedVideoView] = useState(() => (
@@ -51,14 +50,21 @@ const ShopAnalytics = ({
     : videoExportOnlyProp;
   const invalidRange = !startDate || !endDate || startDate >= endDate;
 
-  const inventory = useShopInventory({ onError: setError, t });
+  const inventory = useShopInventory({
+    allowAll: !managementOnly && !videoOnly,
+    onError: setError,
+    t,
+  });
   const {
-    attentionCount, changeSelectedShop, connections, loadInventory, loading,
+    attentionCount, changeSelectedShop, changeShopAvatarChannel, channels, connections, loadInventory, loading,
     missingAnalyticsScope, selectedShop, selectedShopId, shops, tokenExpired,
+    updatingAvatarShopId,
   } = inventory;
+  const allShopsSelected = selectedShopId === 'all';
+  const currency = allShopsSelected ? 'USD' : 'LOCAL';
   const analytics = useShopAnalyticsData({
     currency, endDate, invalidRange, managementOnly, missingAnalyticsScope,
-    onError: setError, selectedShopId, startDate, t, tokenExpired, videoOnly,
+    onError: setError, selectedShopId, shops, startDate, t, tokenExpired, videoOnly,
   });
   const {
     analyticsLoading, chartData, comparisonTotals, hasComparison, hasData,
@@ -226,18 +232,12 @@ const ShopAnalytics = ({
 
   return (
     <div className={`page shop-analytics${managementOnly ? ' shop-analytics--management' : ''}`}>
-      {managementOnly || videoOnly ? (
-        <section className={`page__hero shop-analytics__hero${managementOnly ? ' admin-page__hero' : ''}`}>
+      {managementOnly ? (
+        <section className="page__hero shop-analytics__hero admin-page__hero">
           <div className="shop-analytics__hero-row">
             <div className="shop-analytics__hero-copy">
               <h1 className="page__title">
-                {t(managementOnly
-                  ? 'shopAnalytics.manageHeroTitle'
-                  : combinedVideoTabs
-                    ? 'shopAnalytics.videoExportHeroTitle'
-                    : videoExportOnly
-                      ? 'navigation.videos'
-                      : 'navigation.videoAnalytics')}
+                {t('shopAnalytics.manageHeroTitle')}
               </h1>
             </div>
           </div>
@@ -365,7 +365,7 @@ const ShopAnalytics = ({
             </section>
           ) : null}
 
-          {selectedShop ? (
+          {selectedShop || allShopsSelected ? (
             <>
               <ShopAnalyticsKpis
                 analyticsLoading={analyticsLoading}
@@ -503,6 +503,7 @@ const ShopAnalytics = ({
         </>
       ) : (
 <ConnectionsPanel
+          channels={channels}
           connecting={connecting}
           connections={connections}
           disconnectingId={disconnectingId}
@@ -510,8 +511,10 @@ const ShopAnalytics = ({
           loading={loading}
           onConnect={startConnect}
           onConnectCustom={startConnectCustom}
+          onAvatarChannelChange={changeShopAvatarChannel}
           onDisconnect={disconnectShop}
           t={t}
+          updatingAvatarShopId={updatingAvatarShopId}
         />
       )}
     </div>

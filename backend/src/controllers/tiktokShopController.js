@@ -2,7 +2,7 @@ const tiktokShopService = require('../services/tiktokShop/tiktokShopEndpointServ
 const { endpoint } = require('./controllerAdapter');
 
 const actions = [
-  'startShopOauth', 'handleShopOauthCallback', 'listShopConnections', 'listShops',
+  'startShopOauth', 'handleShopOauthCallback', 'listShopConnections', 'listShops', 'updateShopAvatarChannel',
   'getShopAnalytics', 'syncShopAnalytics', 'disconnectShopAuthorization', 'disconnectShop',
   'listShopVideoPerformance', 'getShopVideoThumbnail', 'listOpenCollaborations',
   'listTargetCollaborations', 'listAffiliateOrders', 'listAffiliateOrderOverview',

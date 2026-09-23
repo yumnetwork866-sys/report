@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  combineShopAnalyticsSnapshots,
   creatorForVideo,
   formatVideoPostDate,
   percentageChange,
@@ -51,6 +52,55 @@ test('totalsFor preserves financial and cancellation semantics', () => {
     refunds: 5.5,
     cancellations: 1,
     avgOrderValue: 50,
+  });
+});
+
+test('combineShopAnalyticsSnapshots aggregates shops by day in one currency', () => {
+  const snapshot = combineShopAnalyticsSnapshots([
+    {
+      synced_at: '2026-09-22T01:00:00Z',
+      latest_available_date: '2026-09-21',
+      metrics: {
+        intervals: [{
+          start_date: '2026-09-21', end_date: '2026-09-22',
+          gmv: { amount: '100', currency: 'USD' }, refunds: { amount: '5', currency: 'USD' },
+          orders: 2, units_sold: 3, buyers: 2, product_impressions: 50, product_page_views: 20,
+          cancellations_and_returns: 1,
+          gmv_breakdowns: [{ type: 'VIDEO', amount: '70', currency: 'USD' }],
+        }],
+        comparison_intervals: [],
+      },
+    },
+    {
+      synced_at: '2026-09-22T02:00:00Z',
+      latest_available_date: '2026-09-21',
+      metrics: {
+        intervals: [{
+          start_date: '2026-09-21', end_date: '2026-09-22',
+          gmv: { amount: '60', currency: 'USD' }, refunds: 0,
+          orders: 1, units_sold: 1, buyers: 1, product_impressions: 25, product_page_views: 10,
+          cancellations_and_returns: null,
+          gmv_breakdowns: [{ type: 'VIDEO', amount: '30', currency: 'USD' }],
+        }],
+        comparison_intervals: [],
+      },
+    },
+  ], 'USD');
+
+  assert.equal(snapshot.shop_count, 2);
+  assert.equal(snapshot.synced_at, '2026-09-22T02:00:00Z');
+  assert.deepEqual(snapshot.metrics.intervals[0], {
+    start_date: '2026-09-21',
+    end_date: '2026-09-22',
+    gmv: { amount: 160, currency: 'USD' },
+    refunds: { amount: 5, currency: 'USD' },
+    cancellations_and_returns: 1,
+    gmv_breakdowns: [{ type: 'VIDEO', amount: 100, currency: 'USD' }],
+    orders: 3,
+    units_sold: 4,
+    buyers: 3,
+    product_impressions: 75,
+    product_page_views: 30,
   });
 });
 

@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchTikTokShopAnalytics, syncTikTokShopAnalytics } from '../../../lib/api.js';
-import { moneyValue, numericValue, totalsFor } from '../shopAnalyticsUtils.js';
+import {
+  combineShopAnalyticsSnapshots,
+  moneyValue,
+  numericValue,
+  REQUIRED_SCOPE,
+  scopesOf,
+  totalsFor,
+} from '../shopAnalyticsUtils.js';
 
 export const canLoadShopAnalytics = ({
   invalidRange, managementOnly, missingAnalyticsScope, selectedShopId, tokenExpired, videoOnly,
@@ -17,6 +24,7 @@ const useShopAnalyticsData = ({
   missingAnalyticsScope,
   onError,
   selectedShopId,
+  shops = [],
   startDate,
   t,
   tokenExpired,
@@ -26,6 +34,11 @@ const useShopAnalyticsData = ({
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
 
   useEffect(() => {
+    if (selectedShopId === 'all' && !shops.length) {
+      setSnapshot(null);
+      setAnalyticsLoading(false);
+      return undefined;
+    }
     if (!canLoadShopAnalytics({
       invalidRange, managementOnly, missingAnalyticsScope, selectedShopId, tokenExpired, videoOnly,
     })) {
@@ -36,19 +49,43 @@ const useShopAnalyticsData = ({
     const controller = new AbortController();
     setAnalyticsLoading(true);
     onError('');
+    const loadShopRange = async (shopId) => {
+      const payload = await fetchTikTokShopAnalytics(shopId, {
+        signal: controller.signal, startDate, endDate, currency,
+      });
+      let nextSnapshot = payload?.snapshots?.[0] || null;
+      const syncedAt = Date.parse(nextSnapshot?.synced_at || '');
+      const stale = !Number.isFinite(syncedAt) || Date.now() - syncedAt > 12 * 60 * 60 * 1000;
+      if (!nextSnapshot || !Array.isArray(nextSnapshot?.metrics?.comparison_intervals) || stale) {
+        const syncPayload = await syncTikTokShopAnalytics(shopId, {
+          start_date: startDate, end_date: endDate, currency,
+        }, controller.signal);
+        nextSnapshot = syncPayload?.snapshot || null;
+      }
+      return nextSnapshot;
+    };
     const loadRange = async () => {
       try {
-        const payload = await fetchTikTokShopAnalytics(selectedShopId, {
-          signal: controller.signal, startDate, endDate, currency,
-        });
-        let nextSnapshot = payload?.snapshots?.[0] || null;
-        const syncedAt = Date.parse(nextSnapshot?.synced_at || '');
-        const stale = !Number.isFinite(syncedAt) || Date.now() - syncedAt > 12 * 60 * 60 * 1000;
-        if (!nextSnapshot || !Array.isArray(nextSnapshot?.metrics?.comparison_intervals) || stale) {
-          const syncPayload = await syncTikTokShopAnalytics(selectedShopId, {
-            start_date: startDate, end_date: endDate, currency,
-          }, controller.signal);
-          nextSnapshot = syncPayload?.snapshot || null;
+        let nextSnapshot;
+        if (selectedShopId === 'all') {
+          const eligibleShops = shops.filter((shop) => {
+            const authorization = shop?.authorization;
+            const expired = authorization?.refresh_token_expires_at
+              && new Date(authorization.refresh_token_expires_at).getTime() <= Date.now();
+            return !expired && scopesOf(authorization).includes(REQUIRED_SCOPE);
+          });
+          const results = await Promise.allSettled(eligibleShops.map((shop) => loadShopRange(shop.id)));
+          if (controller.signal.aborted) return;
+          const snapshots = results
+            .filter((result) => result.status === 'fulfilled' && result.value)
+            .map((result) => result.value);
+          nextSnapshot = combineShopAnalyticsSnapshots(snapshots, currency);
+          if (!nextSnapshot) {
+            const firstError = results.find((result) => result.status === 'rejected');
+            throw firstError?.reason || new Error(t('shopAnalytics.noData'));
+          }
+        } else {
+          nextSnapshot = await loadShopRange(selectedShopId);
         }
         if (!controller.signal.aborted) setSnapshot(nextSnapshot);
       } catch (error) {
@@ -63,7 +100,7 @@ const useShopAnalyticsData = ({
     loadRange();
     return () => controller.abort();
   }, [currency, endDate, invalidRange, managementOnly, missingAnalyticsScope, onError,
-    selectedShopId, startDate, t, tokenExpired, videoOnly]);
+    selectedShopId, shops, startDate, t, tokenExpired, videoOnly]);
 
   const intervals = useMemo(
     () => Array.isArray(snapshot?.metrics?.intervals) ? snapshot.metrics.intervals : [],

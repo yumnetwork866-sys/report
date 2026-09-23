@@ -25,7 +25,6 @@ import {
 import {
   getStoredSelectedShopId,
   resolveSelectedShopId,
-  setStoredSelectedShopId,
   subscribeSelectedShop,
 } from '../../../lib/shopSelection';
 import AppAvatar from '../../AppAvatar';
@@ -176,9 +175,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         setShopId((current) => {
           const preferred = current || getStoredSelectedShopId();
           const resolved = resolveSelectedShopId(list, preferred);
-          if (resolved && resolved !== getStoredSelectedShopId()) {
-            setStoredSelectedShopId(resolved);
-          }
           return resolved;
         });
       })

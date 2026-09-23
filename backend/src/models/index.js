@@ -425,6 +425,7 @@ const TikTokShop = sequelize.define('TikTokShop', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   authorization_id: { type: DataTypes.INTEGER, allowNull: false },
   order_authorization_id: { type: DataTypes.INTEGER, allowNull: true },
+  avatar_channel_id: { type: DataTypes.INTEGER, allowNull: true },
   platform_shop_id: { type: DataTypes.STRING, allowNull: false, unique: true },
   name: { type: DataTypes.STRING, allowNull: false },
   region: { type: DataTypes.STRING, allowNull: true },
@@ -1220,6 +1221,8 @@ TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'authorization_id', as
 TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'authorization_id', as: 'authorization' });
 TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'order_authorization_id', as: 'order_shops' });
 TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'order_authorization_id', as: 'orderAuthorization' });
+TikTokChannel.hasMany(TikTokShop, { foreignKey: 'avatar_channel_id', as: 'avatar_shops' });
+TikTokShop.belongsTo(TikTokChannel, { foreignKey: 'avatar_channel_id', as: 'avatar_channel' });
 TikTokShop.hasMany(TikTokShopAnalyticsSnapshot, { foreignKey: 'shop_id', as: 'analytics_snapshots' });
 TikTokShopAnalyticsSnapshot.belongsTo(TikTokShop, { foreignKey: 'shop_id', as: 'shop' });
 TikTokShop.hasMany(OrderProductCategory, { foreignKey: 'shop_id', as: 'order_product_categories' });

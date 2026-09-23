@@ -2050,11 +2050,41 @@
   height: 17px;
 }
 
+.shop-management__shop-avatar img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
 
 .shop-management__shop-row > div {
   display: grid;
   min-width: 0;
   gap: 2px;
+}
+
+.shop-management__avatar-channel {
+  display: grid;
+  flex: 0 1 280px;
+  gap: 3px;
+}
+
+.shop-management__avatar-channel > span {
+  font-size: 0.68rem;
+}
+
+.shop-management__avatar-channel select {
+  min-width: 180px;
+  max-width: 280px;
+  height: 32px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #fff;
+  color: #334966;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 0.76rem;
 }
 
 
@@ -2191,5 +2221,15 @@
   .shop-management__disconnect {
     width: 100%;
     margin-left: 42px;
+  }
+
+  .shop-management__avatar-channel {
+    flex: 1 1 calc(100% - 42px);
+    margin-left: 42px;
+  }
+
+  .shop-management__avatar-channel select {
+    width: 100%;
+    max-width: none;
   }
 }

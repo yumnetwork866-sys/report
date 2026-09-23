@@ -28,13 +28,28 @@ const ShopAvatar = ({ shop }) => {
   );
 };
 
-const ShopDropdown = ({ id, shops, value, onChange, disabled = false, placeholder = 'Select a Shop', unknownLabel = 'Unknown' }) => {
+const ShopDropdown = ({
+  id,
+  shops,
+  value,
+  onChange,
+  disabled = false,
+  placeholder = 'Select a Shop',
+  unknownLabel = 'Unknown',
+  allLabel = '',
+  allDescription = '',
+}) => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
   const menuRef = useRef(null);
+  const options = useMemo(() => (
+    allLabel
+      ? [{ id: 'all', name: allLabel, region: allDescription, code: '', isAll: true }, ...shops]
+      : shops
+  ), [allDescription, allLabel, shops]);
   const selectedShop = useMemo(
-    () => shops.find((shop) => String(shop.id) === String(value)) || null,
-    [shops, value],
+    () => options.find((shop) => String(shop.id) === String(value)) || null,
+    [options, value],
   );
 
   useEffect(() => {
@@ -99,10 +114,16 @@ const ShopDropdown = ({ id, shops, value, onChange, disabled = false, placeholde
         onKeyDown={handleKeyDown}
       >
         <span className="shop-dropdown__current">
-          <ShopAvatar shop={selectedShop} />
+          {selectedShop?.isAll ? null : <ShopAvatar shop={selectedShop} />}
           <span className="shop-dropdown__copy">
             <strong>{selectedShop?.name || placeholder}</strong>
-            {selectedShop ? <small>{selectedShop.region || unknownLabel} · {selectedShop.code || selectedShop.platform_shop_id}</small> : null}
+            {selectedShop ? (
+              <small>
+                {selectedShop.isAll
+                  ? selectedShop.region
+                  : `${selectedShop.region || unknownLabel} · ${selectedShop.code || selectedShop.platform_shop_id}`}
+              </small>
+            ) : null}
           </span>
         </span>
         <span className={`sidebar__chevron${open ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
@@ -110,7 +131,7 @@ const ShopDropdown = ({ id, shops, value, onChange, disabled = false, placeholde
 
       {open ? (
         <div className="shop-dropdown__menu" role="listbox" ref={menuRef} onKeyDown={handleKeyDown}>
-          {shops.map((shop) => {
+          {options.map((shop) => {
             const selected = String(shop.id) === String(value);
             return (
               <button
@@ -121,10 +142,14 @@ const ShopDropdown = ({ id, shops, value, onChange, disabled = false, placeholde
                 key={shop.id}
                 onClick={() => selectShop(shop.id)}
               >
-                <ShopAvatar shop={shop} />
+                {shop.isAll ? null : <ShopAvatar shop={shop} />}
                 <span className="shop-dropdown__copy">
                   <strong>{shop.name}</strong>
-                  <small>{shop.region || unknownLabel} · {shop.code || shop.platform_shop_id}</small>
+                  <small>
+                    {shop.isAll
+                      ? shop.region
+                      : `${shop.region || unknownLabel} · ${shop.code || shop.platform_shop_id}`}
+                  </small>
                 </span>
               </button>
             );

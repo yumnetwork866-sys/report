@@ -29,3 +29,20 @@ test('does not attach an unrelated channel avatar', () => {
 
   assert.equal(shop.avatar_url, undefined);
 });
+
+test('uses the explicitly linked channel before name matching', () => {
+  const shop = __test.addMatchingChannelAvatar({
+    id: 8,
+    name: 'Actiscar Stretchmark Malaysia',
+    avatar_channel_id: 12,
+    avatar_channel: {
+      avatar_url: 'https://example.com/stretchmark.jpg',
+      avatar_large_url: 'https://example.com/stretchmark-large.jpg',
+    },
+  }, new Map([
+    [__test.alphanumericShopName('actiscarmalaysia'), { avatar_url: 'https://example.com/wrong.jpg' }],
+  ]));
+
+  assert.equal(shop.avatar_url, 'https://example.com/stretchmark.jpg');
+  assert.equal(shop.avatar_large_url, 'https://example.com/stretchmark-large.jpg');
+});

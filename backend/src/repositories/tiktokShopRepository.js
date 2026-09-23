@@ -4,12 +4,31 @@ module.exports = {
   query: (...args) => models().sequelize.query(...args),
   transaction: (...args) => models().sequelize.transaction(...args),
   findChannels: (options) => models().TikTokChannel.findAll(options),
+  findChannelById: (id, options) => models().TikTokChannel.findByPk(id, options),
   findShopAuthorizations: (options) => models().TikTokShopAuthorization.findAll(options),
   findShopAuthorizationsWithShops: (options = {}) => models().TikTokShopAuthorization.findAll({
     ...options,
     include: [
-      { model: models().TikTokShop, as: 'shops', attributes: { exclude: ['cipher'] } },
-      { model: models().TikTokShop, as: 'order_shops', attributes: { exclude: ['cipher'] } },
+      {
+        model: models().TikTokShop,
+        as: 'shops',
+        attributes: { exclude: ['cipher'] },
+        include: [{
+          model: models().TikTokChannel,
+          as: 'avatar_channel',
+          attributes: ['id', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
+        }],
+      },
+      {
+        model: models().TikTokShop,
+        as: 'order_shops',
+        attributes: { exclude: ['cipher'] },
+        include: [{
+          model: models().TikTokChannel,
+          as: 'avatar_channel',
+          attributes: ['id', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
+        }],
+      },
     ],
   }),
   findShopAuthorization: (options) => models().TikTokShopAuthorization.findOne(options),
@@ -24,6 +43,11 @@ module.exports = {
         model: models().TikTokShopAuthorization,
         as: 'authorization',
         attributes: ['id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at'],
+      },
+      {
+        model: models().TikTokChannel,
+        as: 'avatar_channel',
+        attributes: ['id', 'username', 'display_name', 'avatar_url', 'avatar_large_url'],
       },
       {
         model: models().TikTokShopAuthorization,

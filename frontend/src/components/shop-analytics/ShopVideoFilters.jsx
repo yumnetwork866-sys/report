@@ -14,16 +14,16 @@ const ShopVideoFilters = ({
   videoAnalyticsLoading, videoCreator, videoCreatorOptions, videoExportOnly,
   videoRows, videoSortField,
 }) => (
-  <section className="section-card shop-analytics__filters" aria-labelledby="shop-video-filters-title">
-    <div className="shop-analytics__filter-heading">
-      <div><h2 className="section-card__title" id="shop-video-filters-title">{t(videoExportOnly ? 'shopAnalytics.videoExportFiltersTitle' : 'shopAnalytics.videoFiltersTitle')}</h2></div>
-      {!videoExportOnly ? (
+  <section className="section-card shop-analytics__filters" aria-label={t('shopAnalytics.filtersTitle')}>
+    {!videoExportOnly ? (
+      <div className="shop-analytics__filter-heading">
+        <div><h2 className="section-card__title" id="shop-video-filters-title">{t('shopAnalytics.videoFiltersTitle')}</h2></div>
         <button className="button shop-analytics__sync-button" type="button" disabled={!selectedShopId || videoAnalyticsLoading || invalidRange || missingAnalyticsScope || tokenExpired} onClick={onRefresh}>
           <AnalyticsIcon name="sync" />
           {videoAnalyticsLoading ? t('common.loading') : t('shopAnalytics.refreshVideos')}
         </button>
-      ) : null}
-    </div>
+      </div>
+    ) : null}
     {!videoExportOnly ? (
       <div className="shop-video-analytics__account-tabs" role="tablist" aria-label={t('shopAnalytics.videoAccountType')}>
         {['LINKED_ACCOUNTS', 'AFFILIATE_ACCOUNTS'].map((type) => (

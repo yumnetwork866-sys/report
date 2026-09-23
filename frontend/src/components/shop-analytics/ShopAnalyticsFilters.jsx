@@ -20,6 +20,8 @@ const ShopAnalyticsFilters = ({
           onChange={onShopChange}
           placeholder={loading ? t('common.loading') : t('shopAnalytics.selectShop')}
           unknownLabel={t('common.unknown')}
+          allLabel={t('shopAnalytics.allShops')}
+          allDescription={t('shopAnalytics.allShopsCount', { count: shops.length })}
         />
       </div>
       <div className="field">

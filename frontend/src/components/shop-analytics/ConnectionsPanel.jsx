@@ -2,6 +2,7 @@ import AnalyticsIcon from './AnalyticsIcon';
 import { REQUIRED_SCOPE, scopesOf } from './shopAnalyticsUtils';
 
 const ConnectionsPanel = ({
+  channels = [],
   connecting,
   connections,
   disconnectingId,
@@ -9,8 +10,10 @@ const ConnectionsPanel = ({
   loading,
   onConnect,
   onConnectCustom,
+  onAvatarChannelChange,
   t,
   onDisconnect,
+  updatingAvatarShopId = null,
 }) => (
   <div id="shop-connections-panel" className="shop-analytics__tab-panel">
     <section className="section-card shop-analytics__connections-card" aria-labelledby="shop-connections-title">
@@ -96,16 +99,36 @@ const ConnectionsPanel = ({
                     {authorizationShops.map((shop) => (
                       <div className="shop-management__shop-row" key={shop.id || shop.platform_shop_id || shop.name}>
                         <span className="shop-management__shop-avatar" aria-hidden="true">
-                          <AnalyticsIcon name="shop" />
+                          {shop.avatar_url || shop.avatar_large_url ? (
+                            <img src={shop.avatar_url || shop.avatar_large_url} alt="" />
+                          ) : <AnalyticsIcon name="shop" />}
                         </span>
-                        <div>
+                        <div className="shop-management__shop-identity">
                           <strong>{shop.name || t('common.unknown')}</strong>
                           <span>{[shop.code, shop.region].filter(Boolean).join(' · ') || t('shopAnalytics.connected')}</span>
                         </div>
+                        <label className="shop-management__avatar-channel">
+                          <span>{t('shopAnalytics.avatarChannel')}</span>
+                          <select
+                            aria-label={`${t('shopAnalytics.avatarChannel')}: ${shop.name || t('common.unknown')}`}
+                            disabled={String(updatingAvatarShopId) === String(shop.id)}
+                            value={shop.avatar_channel_id || ''}
+                            onChange={(event) => onAvatarChannelChange(shop.id, event.target.value || null)}
+                          >
+                            <option value="">{t('shopAnalytics.avatarChannelAuto')}</option>
+                            {channels.filter((channel) => channel.platform === 'tiktok').map((channel) => (
+                              <option value={channel.id} key={channel.id}>
+                                {channel.display_name
+                                  ? `${channel.display_name} · @${channel.username}`
+                                  : `@${channel.username}`}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                         <button
                           className="button button--small button--danger shop-management__disconnect"
                           type="button"
-                          disabled={connecting || disconnectingId !== null}
+                          disabled={connecting || disconnectingId !== null || updatingAvatarShopId !== null}
                           onClick={() => onDisconnect(shop)}
                         >
                           {String(disconnectingId) === String(shop.id)

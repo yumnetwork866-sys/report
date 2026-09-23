@@ -82,6 +82,12 @@ test('reading and writing stored shop id synchronizes with storage and events', 
     assert.equal(detail, '7');
 
     eventFired = false;
+    setStoredSelectedShopId('all');
+    assert.equal(getStoredSelectedShopId(), 'all');
+    assert.equal(eventFired, true);
+    assert.equal(detail, 'all');
+
+    eventFired = false;
     setStoredSelectedShopId('');
     assert.equal(getStoredSelectedShopId(), '');
     assert.equal(eventFired, true);

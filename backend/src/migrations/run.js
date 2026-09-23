@@ -93,6 +93,7 @@ const migrations = [
   require('./083_optimize_dashboard_video_analytics'),
   require('./084_add_custom_app_support_to_tiktok_shops'),
   require('./085_scope_shop_authorization_open_id_unique'),
+  require('./086_link_shop_avatar_channels'),
 ];
 
 const createMigrationRunner = ({
