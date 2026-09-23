@@ -1024,12 +1024,25 @@ const buildPartnerReturnUrl = (status, message, creatorId, returnPath = '/shop/b
   return url.toString();
 };
 
+const isCustomShopOauthState = (state) => {
+  try {
+    const [payload] = String(state || '').split('.');
+    const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return decoded?.oauthType === 'shop_custom' || decoded?.appType === 'custom';
+  } catch {
+    return false;
+  }
+};
+
 const handleTikTokPartnerOauthCallback = async (req, res) => {
   let creatorId;
   let returnPath = '/shop/bookings';
   try {
+    if (isCustomShopOauthState(req.query.state)) return handleShopOauthCallback(req, res);
     const state = parseAuthorizationState(req.query.state);
-    if (state.oauthType === 'shop') return handleShopOauthCallback(req, res);
+    if (state.oauthType === 'shop' || state.oauthType === 'shop_custom') {
+      return handleShopOauthCallback(req, res);
+    }
     if (state.oauthType && state.oauthType !== 'creator') throw new Error('TikTok OAuth state has an unsupported authorization type.');
     returnPath = state.returnPath;
     const targetCreatorId = Number(state.creator_id ?? state.creatorId);

@@ -45,6 +45,51 @@ test('the shared TikTok Partner callback dispatches Seller state to the Shop han
   assert.equal(redirectedTo, '/manage/shop-analytics');
 });
 
+test('the shared TikTok Partner callback dispatches custom OMS state to the Shop handler', async (t) => {
+  const modelsPath = require.resolve('../src/models');
+  const partnerServicePath = require.resolve('../src/services/tiktokPartnerService');
+  const shopServicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
+  const bookingControllerPath = require.resolve('../src/controllers/bookingController');
+  const bookingEndpointServicePath = require.resolve('../src/services/booking/bookingEndpointService');
+  const bookingRepositoryPath = require.resolve('../src/repositories/bookingRepository');
+  let shopHandlerCalls = 0;
+
+  const restores = [
+    mockModule(modelsPath, {}),
+    mockModule(partnerServicePath, {
+      parseAuthorizationState: () => { throw new Error('Partner state parser must not handle custom OMS state.'); },
+    }),
+    mockModule(shopServicePath, {
+      handleShopOauthCallback: async (_req, res) => {
+        shopHandlerCalls += 1;
+        return res.redirect('/shop/orders');
+      },
+    }),
+  ];
+  delete require.cache[bookingControllerPath];
+  delete require.cache[bookingEndpointServicePath];
+  delete require.cache[bookingRepositoryPath];
+  t.after(() => {
+    delete require.cache[bookingControllerPath];
+    delete require.cache[bookingEndpointServicePath];
+    delete require.cache[bookingRepositoryPath];
+    restores.reverse().forEach((restore) => restore());
+  });
+
+  const { handleTikTokPartnerOauthCallback } = require(bookingControllerPath);
+  let redirectedTo = null;
+  const customPayload = Buffer.from(JSON.stringify({
+    oauthType: 'shop_custom', appType: 'custom', returnPath: '/shop/orders',
+  })).toString('base64url');
+  await handleTikTokPartnerOauthCallback(
+    { query: { code: 'oms-code', state: `${customPayload}.custom-signature` } },
+    { redirect: (url) => { redirectedTo = url; return url; } },
+  );
+
+  assert.equal(shopHandlerCalls, 1);
+  assert.equal(redirectedTo, '/shop/orders');
+});
+
 test('Creator callback updates the KOC selected in signed state without creating a duplicate', async (t) => {
   const modelsPath = require.resolve('../src/models');
   const partnerServicePath = require.resolve('../src/services/tiktokPartnerService');

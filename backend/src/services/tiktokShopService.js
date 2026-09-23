@@ -500,12 +500,12 @@ const searchShopOrders = ({
   query: {
     page_size: pageSize,
     ...(pageToken ? { page_token: pageToken } : {}),
-    ...(startTime ? { create_time_ge: startTime } : {}),
-    ...(endTime ? { create_time_lt: endTime } : {}),
     sort_field: 'create_time',
     sort_order: 'ASC',
   },
   body: {
+    ...(startTime ? { create_time_ge: Number(startTime) } : {}),
+    ...(endTime ? { create_time_lt: Number(endTime) } : {}),
     ...(orderStatus ? { order_status: orderStatus } : {}),
     ...(orderId ? { order_id: String(orderId) } : {}),
   },

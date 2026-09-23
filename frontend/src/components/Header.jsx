@@ -4,7 +4,6 @@ import { Link2 } from 'lucide-react';
 import AppLogo from './AppLogo';
 import {
   getTikTokOauthUrl,
-  startTikTokPartnerOauth,
   startTikTokShopOauth,
   updateUser,
 } from '../lib/api';
@@ -23,17 +22,13 @@ const TikTokGlyph = () => (
 );
 
 const ConnectionIcon = ({ type }) => {
-  const isSpecial = type === 'creator' || type === 'shop' || type === 'oms';
+  const isSpecial = type === 'shop' || type === 'oms';
   return (
     <span className={`topbar__connect-icon${isSpecial ? ' topbar__connect-icon--creator' : ''}`} aria-hidden="true">
       <TikTokGlyph />
       {isSpecial ? (
         <span className="topbar__connect-creator-mark">
-          {type === 'creator' ? (
-            <svg viewBox="0 0 16 16" focusable="false"><circle cx="8" cy="5.3" r="2.4" fill="currentColor" /><path fill="currentColor" d="M3.7 13c.3-2.5 1.8-3.8 4.3-3.8s4 1.3 4.3 3.8H3.7Z" /></svg>
-          ) : (
-            <span aria-hidden="true">▣</span>
-          )}
+          <span aria-hidden="true">▣</span>
         </span>
       ) : null}
     </span>
@@ -159,7 +154,6 @@ const Header = () => {
   const currentLanguage = language;
   const connectionOptions = [
     { id: 'tiktok', group: 'tiktok', label: t('header.connectTikTok'), meta: t('header.connectTikTokMeta') },
-    { id: 'creator', group: 'tiktok', label: t('header.connectTikTokCreator'), meta: t('header.connectTikTokCreatorMeta') },
     { id: 'shop', group: 'tiktok', label: t('header.connectTikTokShop'), meta: t('header.connectTikTokShopMeta') },
     { id: 'oms', group: 'tiktok', label: t('header.connectTikTokOms'), meta: t('header.connectTikTokOmsMeta') },
   ];
@@ -225,9 +219,6 @@ const Header = () => {
       setConnectionError('');
       let authorizeUrl;
       if (target === 'tiktok') authorizeUrl = await getTikTokOauthUrl();
-      if (target === 'creator') {
-        ({ authorizeUrl } = await startTikTokPartnerOauth('/manage/koc-performance', { createKoc: true }));
-      }
       if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth());
       if (target === 'oms') ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom'));
       if (!authorizeUrl) throw new Error(t('header.connectionError'));

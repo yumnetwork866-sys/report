@@ -592,7 +592,7 @@ test('search affiliate orders sends the time window and program id', async (t) =
   });
 });
 
-test('search shop orders sends time filters in the query and status in the body', async (t) => {
+test('search shop orders sends int64 time filters and status in the body', async (t) => {
   configure(t);
   const authorization = sellerAuthorization();
   authorization.granted_scopes.push('seller.order.info');
@@ -604,11 +604,15 @@ test('search shop orders sends time filters in the query and status in the body'
     orderStatus: 'COMPLETED',
   }, async (url, options) => {
     assert.equal(url.pathname, SHOP_ORDERS_PATH);
-    assert.equal(url.searchParams.get('create_time_ge'), '1700000000');
-    assert.equal(url.searchParams.get('create_time_lt'), '1700100000');
+    assert.equal(url.searchParams.has('create_time_ge'), false);
+    assert.equal(url.searchParams.has('create_time_lt'), false);
     assert.equal(url.searchParams.get('sort_field'), 'create_time');
     assert.equal(url.searchParams.get('sort_order'), 'ASC');
-    assert.deepEqual(JSON.parse(options.body), { order_status: 'COMPLETED' });
+    assert.deepEqual(JSON.parse(options.body), {
+      create_time_ge: 1700000000,
+      create_time_lt: 1700100000,
+      order_status: 'COMPLETED',
+    });
     return successResponse({ orders: [] });
   });
 });

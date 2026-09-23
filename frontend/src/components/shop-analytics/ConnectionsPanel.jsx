@@ -21,26 +21,6 @@ const ConnectionsPanel = ({
         <div>
           <h2 className="section-card__title" id="shop-connections-title">{t('shopAnalytics.connections')}</h2>
         </div>
-        <div className="section-card__actions">
-          <button
-            className="button button--small button--secondary"
-            type="button"
-            disabled={connecting || disconnectingId !== null}
-            onClick={onConnectCustom}
-          >
-            <AnalyticsIcon name="shop" />
-            {t('shopAnalytics.connectCustomApp')}
-          </button>
-          <button
-            className="button button--small button--primary"
-            type="button"
-            disabled={connecting || disconnectingId !== null}
-            onClick={onConnect}
-          >
-            <AnalyticsIcon name="shop" />
-            {t('shopAnalytics.connectPartnerApp')}
-          </button>
-        </div>
       </div>
       {loading ? (
         <div className="empty-state">
