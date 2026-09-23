@@ -38,12 +38,45 @@ export const shiftDateValue = (value, days) => {
   return date.toISOString().slice(0, 10);
 };
 
+const SHOP_TIMEZONES = {
+  MY: 'Asia/Kuala_Lumpur',
+  VN: 'Asia/Ho_Chi_Minh',
+  SG: 'Asia/Singapore',
+  TH: 'Asia/Bangkok',
+  PH: 'Asia/Manila',
+  ID: 'Asia/Jakarta',
+};
+
+export const shopTimezone = (region) => SHOP_TIMEZONES[String(region || '').toUpperCase()] || 'UTC';
+
+const zonedDateParts = (date, timeZone) => Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
+  timeZone,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+}).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+
+export const shopDateUnix = (value, region) => {
+  const desired = Date.parse(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(desired)) return NaN;
+  const timeZone = shopTimezone(region);
+  let candidate = desired;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const actual = zonedDateParts(new Date(candidate), timeZone);
+    const actualUtc = Date.parse(`${actual.year}-${actual.month}-${actual.day}T${actual.hour}:${actual.minute}:${actual.second}.000Z`);
+    candidate += desired - actualUtc;
+  }
+  return Math.floor(candidate / 1000);
+};
+
 export const defaultStatisticsRange = (days = 30) => {
   const end = new Date().toISOString().slice(0, 10);
   return { start: shiftDateValue(end, -(days - 1)), end };
 };
-
-export const localDateUnix = (value) => Math.floor(new Date(`${value}T00:00:00`).getTime() / 1000);
 
 export const internationalPhone = (dialCode, localNumber) => {
   const digits = String(localNumber || '').replace(/\D/g, '').replace(/^0+/, '');

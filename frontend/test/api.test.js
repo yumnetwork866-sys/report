@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -150,6 +150,29 @@ test('affiliate order helper preserves date range and cursor pagination filters'
     });
 
     assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&creator_username=creator_one&content_type=VIDEO&settlement_status=SETTLED&source=db');
+  });
+});
+
+test('affiliate order overview helper preserves the active order filters', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify({ kpis: {} }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchTikTokSellerAffiliateOrderOverview(7, {
+      startTime: 1788195600,
+      endTime: 1790874000,
+      keyword: 'serum',
+      contentType: 'VIDEO',
+      settlementStatus: 'SETTLED',
+    });
+
+    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/order-overview?keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&content_type=VIDEO&settlement_status=SETTLED');
   });
 });
 

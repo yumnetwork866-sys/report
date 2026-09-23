@@ -40,7 +40,8 @@ import {
   defaultStatisticsRange,
   formatStatus,
   internationalPhone,
-  localDateUnix,
+  shopDateUnix,
+  shopTimezone,
   normalizeCreatorSearchKeyword,
   shiftDateValue,
   waitForMarketplacePoll,
@@ -64,7 +65,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const [orderOverview, setOrderOverview] = useState({});
   const [orderOverviewLoading, setOrderOverviewLoading] = useState(false);
   const [orderOverviewError, setOrderOverviewError] = useState('');
-  const orderOverviewRequestId = useRef(0);
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [searchVersion, setSearchVersion] = useState(0);
@@ -198,36 +198,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     });
   }, [resetMarketplaceSearch, shops]);
   
-  useEffect(() => {
-    if (!ordersOnly || !shopId || !hasScope) return undefined;
-    const controller = new AbortController();
-    const requestId = orderOverviewRequestId.current + 1;
-    orderOverviewRequestId.current = requestId;
-    setOrderOverviewLoading(true);
-    setOrderOverviewError('');
-    setOrderOverview({});
-    fetchTikTokSellerAffiliateOrderOverview(shopId, {
-      signal: controller.signal,
-      startTime: localDateUnix(orderRange.start),
-      endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
-      keyword: submittedKeyword,
-      settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
-      contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
-    }).then((result) => {
-      if (orderOverviewRequestId.current === requestId) setOrderOverview(result || {});
-    })
-      .catch((err) => {
-        if (err.name !== 'AbortError' && orderOverviewRequestId.current === requestId) {
-          setOrderOverview({});
-          setOrderOverviewError(err.message);
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted && orderOverviewRequestId.current === requestId) setOrderOverviewLoading(false);
-      });
-    return () => controller.abort();
-  }, [hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, shopId, submittedKeyword]);
-  
   const load = useCallback(async (signal) => {
     // searchVersion intentionally participates in this request so submitting the
     // same keyword again refreshes Marketplace data and creator details.
@@ -240,18 +210,28 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     }
     setLoading(true);
     setError('');
+    const loadingOrders = ordersOnly && section === 'orders';
+    if (loadingOrders) {
+      setOrderOverviewLoading(true);
+      setOrderOverviewError('');
+      setOrderOverview({});
+    }
     try {
+      const orderFilters = loadingOrders ? {
+        startTime: shopDateUnix(orderRange.start, selectedShop?.region),
+        endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
+        keyword: submittedKeyword,
+        settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
+        contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
+      } : null;
       const filters = {
         signal,
         pageSize: PAGE_SIZE,
         pageToken: currentPageToken,
         keyword: submittedKeyword,
-        ...(ordersOnly && section === 'orders' ? {
-          startTime: localDateUnix(orderRange.start),
-          endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+        ...(orderFilters ? {
+          ...orderFilters,
           source: 'db',
-          settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
-          contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
         } : {}),
         ...(section === 'discover' && marketplaceSearchKey.current
           ? { searchKey: marketplaceSearchKey.current }
@@ -310,6 +290,18 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
           await waitForMarketplacePoll(Math.max(1000, Number(result.detail_refresh.poll_after_ms) || 2000), signal);
         }
         return;
+      } else if (loadingOrders) {
+        const [ordersResult, overviewResult] = await Promise.allSettled([
+          fetchTikTokSellerAffiliateOrders(shopId, { ...filters, orderId: '' }),
+          fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...orderFilters }),
+        ]);
+        if (ordersResult.status === 'rejected') throw ordersResult.reason;
+        result = ordersResult.value;
+        if (overviewResult.status === 'fulfilled') {
+          if (!signal?.aborted) setOrderOverview(overviewResult.value || {});
+        } else if (overviewResult.reason?.name !== 'AbortError' && !signal?.aborted) {
+          setOrderOverviewError(overviewResult.reason?.message || t('sellerAffiliate.loadError'));
+        }
       } else {
         result = await fetchTikTokSellerAffiliateOrders(shopId, {
           ...filters,
@@ -321,9 +313,12 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message || t('sellerAffiliate.loadError'));
     } finally {
-      if (!signal?.aborted) setLoading(false);
+      if (!signal?.aborted) {
+        setLoading(false);
+        if (loadingOrders) setOrderOverviewLoading(false);
+      }
     }
-  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
+  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, selectedShop?.region, shopId, status, submittedKeyword, t]);
   
   useEffect(() => {
     const controller = new AbortController();
@@ -510,8 +505,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
             ...filters,
             orderId: submittedKeyword,
             ...(ordersOnly ? {
-              startTime: localDateUnix(orderRange.start),
-              endTime: localDateUnix(shiftDateValue(orderRange.end, 1)),
+              startTime: shopDateUnix(orderRange.start, selectedShop?.region),
+              endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
             } : {}),
           });
         }
@@ -540,7 +535,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     const parts = new Intl.DateTimeFormat('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-      timeZone: 'Asia/Kuala_Lumpur',
+      timeZone: shopTimezone(selectedShop?.region),
     }).formatToParts(new Date(Number(value) * 1000));
     const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
     return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}:${values.second}`;
