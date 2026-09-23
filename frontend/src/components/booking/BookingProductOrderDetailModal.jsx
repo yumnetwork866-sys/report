@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchTikTokShopVideoThumbnail, fetchTikTokSellerAffiliateOrders } from '../../lib/api';
 import { cachedThumbnail, thumbnailFrom } from '../../lib/bookingVideoThumbnails';
+import { formatDateOnly } from '../../lib/date';
 import {
   bookingProductsOf,
   extractProductOrderRows,
@@ -32,7 +33,7 @@ const OrderVideoThumbnail = ({ row, shopId, username }) => {
         if (!active) return;
         setThumbnail(payload?.thumbnail_url || null);
         setTitle(payload?.title || row.videoTitle || 'Video TikTok');
-        setPostedAt(payload?.posted_at || row.videoPostedAt || null);
+        setPostedAt(payload?.post_date || payload?.posted_at || row.videoPostedAt || null);
       })
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
@@ -67,8 +68,8 @@ const OrderVideoThumbnail = ({ row, shopId, username }) => {
   return (
     <span className="booking-product-order-modal__source-video-meta">
       {thumbnailElement}
-      <small title={postedAt ? `Ngày đăng: ${formatOrderTimestamp(postedAt).date}` : 'Chưa có ngày đăng'}>
-        {postedAt ? formatOrderTimestamp(postedAt).date : '—'}
+      <small title={postedAt ? `Ngày đăng: ${formatDateOnly(postedAt, '—')}` : 'Chưa có ngày đăng'}>
+        {formatDateOnly(postedAt, '—')}
       </small>
     </span>
   );

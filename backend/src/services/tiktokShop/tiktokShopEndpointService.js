@@ -573,11 +573,18 @@ const getShopVideoThumbnail = async (req, res) => {
     const localVideo = typeof tiktokShopRepository.findShopVideo === 'function'
       ? await tiktokShopRepository.findShopVideo({
           where: { shop_id: shopId, platform_video_id: videoId },
-          attributes: ['posted_at'],
-        })
+          attributes: ['posted_at', 'raw_data'],
+        }).catch(() => null)
       : null;
+    const rawPostDate = localVideo?.raw_data?.video_post_time
+      || localVideo?.raw_data?.post_time
+      || localVideo?.posted_at
+      || null;
     res.set('X-TikTok-Thumbnail-Cache', hit ? 'HIT' : 'MISS');
-    res.json({ ...value, posted_at: localVideo?.posted_at || null });
+    res.json({
+      ...value,
+      post_date: rawPostDate ? String(rawPostDate).slice(0, 10) : null,
+    });
   } catch (error) {
     res.status(502).json({ message: error.message });
   }

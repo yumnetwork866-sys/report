@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatDateOnly } from '../../lib/date';
 
 const BookingVideoMatchDrawer = ({
   videoMatchDialog,
@@ -7,7 +8,6 @@ const BookingVideoMatchDrawer = ({
   findBookingVideo,
   manualVideoUrl,
   setManualVideoUrl,
-  formatDate,
   formatMoney,
   formatNumber,
   t,
@@ -45,7 +45,7 @@ const BookingVideoMatchDrawer = ({
                 >
                   <span>
                     <strong>{candidate.title || candidate.id}</strong>
-                    <small>@{candidate.username} · {formatDate(candidate.posted_at)}</small>
+                    <small>@{candidate.username} · {formatDateOnly(candidate.posted_at, '—')}</small>
                   </span>
                   <span>
                     <strong>{formatMoney(candidate.gmv?.amount, candidate.gmv?.currency)}</strong>

@@ -5,6 +5,7 @@ import BookingVideoThumbnail from '../BookingVideoThumbnail';
 import BookingVideoProducts from './BookingVideoProducts';
 import BookingProductOrderExpansion from './BookingProductOrderExpansion';
 import { computeBookingTimeline } from '../../lib/bookingTimeline';
+import { formatDateOnly } from '../../lib/date';
 import {
   bookingVideosOf,
   bookingVideosByRevenue,
@@ -27,7 +28,6 @@ const BookingRow = memo(({
   onSelectProduct,
   formatMoney,
   formatNumber,
-  formatDate,
   formatRate,
   renderPerformance,
   creatorMetric,
@@ -154,7 +154,7 @@ const BookingRow = memo(({
                                 ) : (
                                   <strong>{video.title || video.platform_video_id}</strong>
                                 )}
-                                <small>{formatDate(video.posted_at)}</small>
+                                <small>{formatDateOnly(video.posted_at, '—')}</small>
                                 <div className="video-engagement video-engagement--inline booking-video-expansion__stats-line">
                                   <span title={t('videoLibrary.views', 'Lượt xem')} aria-label={`${t('videoLibrary.views', 'Lượt xem')}: ${formatNumber(displayViews ?? 0)}`}>
                                     <Eye size={13} strokeWidth={1.8} aria-hidden="true" />

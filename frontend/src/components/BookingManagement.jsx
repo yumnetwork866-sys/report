@@ -957,7 +957,6 @@ const BookingManagement = ({
         findBookingVideo={findBookingVideo}
         manualVideoUrl={manualVideoUrl}
         setManualVideoUrl={setManualVideoUrl}
-        formatDate={formatDate}
         formatMoney={formatMoney}
         formatNumber={formatNumber}
         t={t}

@@ -5,6 +5,7 @@ import { diffInDays, formatDateOnly, parseDateOnly } from '../src/lib/date.js';
 test('formats date-only values without applying a timezone', () => {
   assert.equal(formatDateOnly('2026-08-10'), '10/08/2026');
   assert.equal(formatDateOnly('2026-08-10T23:30:00Z'), '10/08/2026');
+  assert.equal(formatDateOnly('2026-09-21T22:05:25.000Z'), '21/09/2026');
 });
 
 test('returns the requested fallback for missing or invalid dates', () => {

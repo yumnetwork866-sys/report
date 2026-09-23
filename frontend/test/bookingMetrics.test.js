@@ -291,6 +291,7 @@ test('extractProductOrderRows creates sorted rows with video match check', () =>
           quantity: 2,
           price: { amount: 45, currency: 'MYR' },
           creator_username: 'koc_a',
+          video_post_time: '2026-09-21 22:05:25',
         },
       ],
     },
@@ -303,6 +304,7 @@ test('extractProductOrderRows creates sorted rows with video match check', () =>
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].isVideoMatch, true);
   assert.equal(result.rows[0].displayProductName, 'Serum 30ml');
+  assert.equal(result.rows[0].videoPostedAt, '2026-09-21 22:05:25');
 });
 
 test('formatOrderTimestamp formats unix and ISO timestamps correctly', () => {
