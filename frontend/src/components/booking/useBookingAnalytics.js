@@ -108,9 +108,9 @@ export default function useBookingAnalytics({
       if (inBookingPeriod) {
         result.total += 1;
         result.totalCost += convertedCost;
+        result.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
+        result.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
       }
-      result.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
-      result.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
       return result;
     }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 });
   }, [bookingInPeriodById, bookingTab, bookings, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
@@ -118,9 +118,12 @@ export default function useBookingAnalytics({
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
     const groups = new Map();
-    const visibleBookings = canManageUsers
+    const accessibleBookings = canManageUsers
       ? bookings
       : bookings.filter((booking) => String(booking.staff_id || '') === sessionUserId);
+    const visibleBookings = accessibleBookings.filter((booking) => (
+      bookingInPeriodById.get(String(booking.id))
+    ));
 
     for (const booking of visibleBookings) {
       const staffId = booking.staff_id ? String(booking.staff_id) : '';
@@ -151,9 +154,7 @@ export default function useBookingAnalytics({
       );
       const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
       group.bookings.push(booking);
-      if (bookingInPeriodById.get(String(booking.id))) {
-        group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
-      }
+      group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
       group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
       group.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
     }

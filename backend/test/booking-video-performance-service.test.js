@@ -101,6 +101,14 @@ test('booking video must match booking start_date and end_date range', () => {
   assert.equal(matchesBookingDateRange(legacyBooking, { posted_at: '2026-09-11T00:00:00.000Z' }), false);
 });
 
+test('booking without an explicit end date tracks videos only within its booking month', () => {
+  const septemberBooking = { start_date: '2026-09-01' };
+  const afterSeptember = new Date('2026-10-02T00:00:00.000Z');
+
+  assert.equal(matchesBookingDateRange(septemberBooking, { posted_at: '2026-09-30T23:59:59.000Z' }, afterSeptember), true);
+  assert.equal(matchesBookingDateRange(septemberBooking, { posted_at: '2026-10-01T00:00:00.000Z' }, afterSeptember), false);
+});
+
 test('booking performance only counts the selected product breakdown', () => {
   const snapshot = {
     creator_attributed_gmv: '500',

@@ -18,6 +18,16 @@ const shiftDate = (value, days) => {
   date.setUTCDate(date.getUTCDate() + days);
   return dateOnly(date);
 };
+const endOfMonth = (value) => {
+  const normalized = dateOnly(value);
+  const [year, month] = normalized.split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+};
+const bookingAttributionEndDate = (booking) => {
+  if (booking?.end_date) return dateOnly(booking.end_date);
+  if (booking?.deadline) return dateOnly(booking.deadline);
+  return booking?.start_date ? endOfMonth(booking.start_date) : null;
+};
 const numberOrZero = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
 const numberOrNull = (value) => value === null || value === undefined || value === ''
   ? null
@@ -85,7 +95,7 @@ const matchesBookingDateRange = (booking, video, now = new Date()) => {
   const postDate = dateOnly(rawPostDate);
   const startDate = booking?.start_date ? dateOnly(booking.start_date) : null;
   if (startDate && postDate < startDate) return false;
-  const endDate = booking?.end_date ? dateOnly(booking.end_date) : (booking?.deadline ? dateOnly(booking.deadline) : null);
+  const endDate = bookingAttributionEndDate(booking);
   if (endDate && postDate > endDate) return false;
   const today = dateOnly(now);
   if (postDate > today) return false;

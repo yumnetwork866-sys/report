@@ -13,6 +13,13 @@ const {
 } = require('../../lib/tiktokDemoFixtures');
 
 const dateOnly = (value) => new Date(value).toISOString().slice(0, 10);
+const bookingQueryEndDate = (booking) => {
+  if (booking?.end_date) return dateOnly(booking.end_date);
+  if (booking?.deadline) return dateOnly(booking.deadline);
+  if (!booking?.start_date) return null;
+  const [year, month] = dateOnly(booking.start_date).split('-').map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+};
 const normalizedUsername = (value) => String(value || '').trim().replace(/^@+/, '').toLowerCase();
 const tiktokVideoIdFromUrl = (value) => {
   const text = String(value || '').trim();
@@ -102,14 +109,11 @@ const bookingVideoDateRange = (booking, now = new Date()) => {
   }
   let end = new Date(now);
   end.setUTCDate(end.getUTCDate() + 1);
-  if (booking?.end_date || booking?.deadline) {
-    const rawEnd = booking?.end_date || booking?.deadline;
-    const d = new Date(rawEnd);
-    if (!Number.isNaN(d.getTime())) {
-      const candidateEnd = new Date(d);
-      candidateEnd.setUTCDate(candidateEnd.getUTCDate() + 1);
-      if (candidateEnd > end) end = candidateEnd;
-    }
+  const attributionEnd = bookingQueryEndDate(booking);
+  if (attributionEnd) {
+    const candidateEnd = new Date(`${attributionEnd}T00:00:00.000Z`);
+    candidateEnd.setUTCDate(candidateEnd.getUTCDate() + 1);
+    end = candidateEnd;
   }
   return { startDate: dateOnly(start), endDate: dateOnly(end) };
 };
