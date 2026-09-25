@@ -18,6 +18,7 @@ import {
   getOrderPaymentValue,
   getOrderShipping,
   getOrderSla,
+  getTrackingUrl,
   normalizeEngagementPercentage,
 } from '../src/lib/sellerAffiliate.js';
 
@@ -319,3 +320,15 @@ test('Product Basic metadata overrides stale raw order labels and supplies SKU d
   assert.equal(item.productStatus, 'ACTIVATE');
   assert.equal(item.productUrl, 'https://shop.tiktok.com/view/product/product-1');
 });
+
+test('getTrackingUrl resolves carrier tracking links accurately', () => {
+  assert.equal(getTrackingUrl('J&T Express', '841001234567'), 'https://jtexpress.vn/vi/tracking?billcode=841001234567');
+  assert.equal(getTrackingUrl('SPX Express', 'SPXVN0123456'), 'https://spx.vn/track?tracking_number=SPXVN0123456');
+  assert.equal(getTrackingUrl('Giao Hàng Nhanh', 'GHN123456'), 'https://donhang.ghn.vn/?order_code=GHN123456');
+  assert.equal(getTrackingUrl('Viettel Post', 'VT123456'), 'https://viettelpost.com.vn/tra-cuu-hanh-trinh-don/?order_number=VT123456');
+  assert.equal(getTrackingUrl('Ninja Van', 'NINJA123456'), 'https://www.ninjavan.co/vi-vn/tracking?id=NINJA123456');
+  assert.equal(getTrackingUrl('Unknown Carrier', '123456'), null);
+  assert.equal(getTrackingUrl('J&T Express', ''), null);
+  assert.equal(getTrackingUrl(null, null), null);
+});
+

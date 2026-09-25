@@ -15,6 +15,7 @@ import {
   ScheduleManagement,
   QueueManagement,
   SellerAffiliatePanel,
+  OrderManagement,
   ShopAnalytics,
   TermsPage,
 } from './lazyRouteComponents';
@@ -26,6 +27,7 @@ const componentMap = {
   EmployeeTable,
   KOCPerformance,
   SellerAffiliatePanel,
+  OrderManagement,
   ShopAnalytics,
   ScheduleManagement,
   QueueManagement,

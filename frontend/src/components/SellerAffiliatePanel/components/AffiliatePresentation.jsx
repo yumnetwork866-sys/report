@@ -15,6 +15,7 @@ import {
   getOrderDeliveryHistory,
   getOrderShipping,
   getOrderSla,
+  getTrackingUrl,
 } from '../../../lib/sellerAffiliate';
 import AppAvatar from '../../AppAvatar';
 import DatePickerInput from '../../DatePickerInput';
@@ -196,10 +197,33 @@ export const OrderShippingStatus = ({ row, t }) => {
   return <span className={`seller-affiliate__order-state seller-affiliate__order-state--${shipping.status.toLowerCase()}`}>{orderStatusLabel(shipping.status, t)}</span>;
 };
 
+export { getTrackingUrl };
+
 export const OrderCarrier = ({ row }) => {
   const shipping = getOrderShipping(row);
   if (!shipping.provider && !shipping.trackingNumber) return '—';
-  return <div className="seller-affiliate__order-carrier"><strong>{shipping.provider || '—'}</strong>{shipping.trackingNumber ? <span className="row-subtitle">{shipping.trackingNumber}</span> : null}</div>;
+  const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
+  return (
+    <div className="seller-affiliate__order-carrier">
+      <strong>{shipping.provider || '—'}</strong>
+      {shipping.trackingNumber ? (
+        trackingUrl ? (
+          <a
+            className="row-subtitle seller-affiliate__tracking-link"
+            href={trackingUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={(event) => event.stopPropagation()}
+            title="Tra cứu vận đơn"
+          >
+            {shipping.trackingNumber} ↗
+          </a>
+        ) : (
+          <span className="row-subtitle">{shipping.trackingNumber}</span>
+        )
+      ) : null}
+    </div>
+  );
 };
 
 export const OrderFinanceValue = ({ row, field, formatMoneyValues, t }) => {
@@ -275,6 +299,10 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
     ['settlement', breakdown.settlement],
   ] : [];
 
+  const creators = getAffiliateOrderCreators(order);
+  const sources = getAffiliateOrderSources(order);
+  const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
+
   return createPortal(
     <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="koc-drawer seller-affiliate__order-drawer" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
@@ -292,6 +320,33 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
               <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryType}</dd></div>
             </dl>
           </section>
+
+          {(creators.length || sources.length) ? (
+            <section className="drawer-section seller-affiliate__order-detail-section">
+              <h3>{t('sellerAffiliate.orderAttribution')}</h3>
+              <dl className="seller-affiliate__order-detail-grid">
+                {creators.length ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.koc') || 'KOC'}</dt>
+                    <dd>
+                      <div className="creator-identity creator-identity--compact">
+                        <CreatorAvatar src={creators[0].avatarUrl} name={creators[0].name || creators[0].username} />
+                        <span><strong>{creators[0].name || creators[0].username}</strong>{creators[0].username ? <span className="row-subtitle">@{creators[0].username.replace(/^@+/, '')}</span> : null}</span>
+                      </div>
+                    </dd>
+                  </div>
+                ) : null}
+                {sources.length ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.video') || 'Nguồn'}</dt>
+                    <dd>
+                      <AffiliateOrderVideos row={order} shopId={order.shop_id} t={t} />
+                    </dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
 
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
@@ -322,7 +377,7 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
             <h3>{t('sellerAffiliate.orderDetailDelivery')}</h3>
             <dl className="seller-affiliate__order-detail-grid">
               <div><dt>{t('sellerAffiliate.packageId')}</dt><dd>{shipping.packageId || '—'}</dd></div>
-              <div><dt>{t('sellerAffiliate.tracking')}</dt><dd>{shipping.trackingNumber || '—'}</dd></div>
+              <div><dt>{t('sellerAffiliate.tracking')}</dt><dd>{shipping.trackingNumber ? (trackingUrl ? <a href={trackingUrl} target="_blank" rel="noreferrer" className="seller-affiliate__tracking-link">{shipping.trackingNumber} ↗</a> : shipping.trackingNumber) : '—'}</dd></div>
               <div><dt>{t('sellerAffiliate.shippingCarrier')}</dt><dd>{shipping.provider || '—'}</dd></div>
               <div><dt>{t('sellerAffiliate.deliveryStatus')}</dt><dd>{orderStatusLabel(shipping.status, t)}</dd></div>
             </dl>

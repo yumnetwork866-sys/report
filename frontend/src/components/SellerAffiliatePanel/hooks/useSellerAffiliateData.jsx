@@ -602,22 +602,23 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
     return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}:${values.second}`;
   };
+  const fallbackCurrency = selectedShop?.region === 'VN' ? 'VND' : 'MYR';
   const formatMoney = (money) => {
     if (money?.amount === undefined || money?.amount === null || money.amount === '') return '—';
-    return formatPreferredMoney(money.amount, money.currency || 'USD');
+    return formatPreferredMoney(money.amount, money.currency || fallbackCurrency);
   };
   const formatMoneyValues = (values) => {
     const moneyValues = (Array.isArray(values) ? values : [])
       .filter((money) => money?.amount !== undefined && money?.amount !== null && money.amount !== '');
     if (!moneyValues.length) return '—';
-    const converted = moneyValues.map((money) => convertAmount(money.amount, money.currency || 'USD'));
+    const converted = moneyValues.map((money) => convertAmount(money.amount, money.currency || fallbackCurrency));
     if (converted.every(Number.isFinite)) {
       return formatPreferredMoney(
         converted.reduce((sum, amount) => sum + amount, 0),
         preferredCurrency,
       );
     }
-    return moneyValues.map((money) => formatPreferredMoney(money.amount, money.currency || 'USD')).join(' + ');
+    return moneyValues.map((money) => formatPreferredMoney(money.amount, money.currency || fallbackCurrency)).join(' + ');
   };
   const formatCreatorGmv = (creator) => {
     const money = creator.gmv || creator.local_gmv;

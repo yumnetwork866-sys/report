@@ -134,9 +134,9 @@ export const protectedRouteCards = [
   },
   {
     path: '/shop/orders',
-    component: 'SellerAffiliatePanel',
+    component: 'OrderManagement',
     permission: 'tiktok',
-    props: { initialSection: 'orders', ordersOnly: true },
+    props: {},
   },
   {
     path: '/channels/manage',

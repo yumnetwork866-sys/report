@@ -474,3 +474,28 @@ export const getCreatorVideoEngagementRate = (creator, { scope = 'all' } = {}) =
 
   return null;
 };
+
+export const getTrackingUrl = (provider, trackingNumber) => {
+  if (!trackingNumber) return null;
+  const cleanTrack = String(trackingNumber).trim();
+  const lowerProvider = String(provider || '').toLowerCase();
+  if (lowerProvider.includes('j&t') || lowerProvider.includes('jt')) {
+    return `https://jtexpress.vn/vi/tracking?billcode=${encodeURIComponent(cleanTrack)}`;
+  }
+  if (lowerProvider.includes('spx') || lowerProvider.includes('shopee')) {
+    return `https://spx.vn/track?tracking_number=${encodeURIComponent(cleanTrack)}`;
+  }
+  if (lowerProvider.includes('ghn') || lowerProvider.includes('giao hàng nhanh')) {
+    return `https://donhang.ghn.vn/?order_code=${encodeURIComponent(cleanTrack)}`;
+  }
+  if (lowerProvider.includes('viettel')) {
+    return `https://viettelpost.com.vn/tra-cuu-hanh-trinh-don/?order_number=${encodeURIComponent(cleanTrack)}`;
+  }
+  if (lowerProvider.includes('ninja')) {
+    return `https://www.ninjavan.co/vi-vn/tracking?id=${encodeURIComponent(cleanTrack)}`;
+  }
+  if (lowerProvider.includes('best')) {
+    return `https://best-inc.vn/track?bills=${encodeURIComponent(cleanTrack)}`;
+  }
+  return null;
+};
