@@ -499,3 +499,71 @@ export const getTrackingUrl = (provider, trackingNumber) => {
   }
   return null;
 };
+
+export const deliveryTypeLabel = (value, t) => {
+  if (!value || value === '—') return '—';
+  const clean = String(value).trim();
+  const normalized = clean.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const key = `sellerAffiliate.deliveryType_${normalized}`;
+  const translated = t ? t(key, { defaultValue: '' }) : '';
+  if (translated && translated !== key) return translated;
+
+  const fallbackMap = {
+    HOME_DELIVERY: 'Giao hàng tận nơi',
+    COLLECTION_POINT: 'Điểm nhận hàng',
+    PICKUP: 'Lấy hàng tại shop',
+    IN_STORE_PICKUP: 'Nhận tại cửa hàng',
+    TIKTOK: 'TikTok vận chuyển (FBT)',
+    SHIPPED_BY_TIKTOK: 'TikTok vận chuyển (FBT)',
+    FULFILLMENT_BY_TIKTOK: 'TikTok vận chuyển (FBT)',
+    FBT: 'TikTok vận chuyển (FBT)',
+    SELLER: 'Shop tự vận chuyển (FBS)',
+    SHIPPED_BY_SELLER: 'Shop tự vận chuyển (FBS)',
+    FULFILLMENT_BY_SELLER: 'Shop tự vận chuyển (FBS)',
+    FBS: 'Shop tự vận chuyển (FBS)',
+    STANDARD: 'Giao hàng tiêu chuẩn',
+    STANDARD_DELIVERY: 'Giao hàng tiêu chuẩn',
+    EXPRESS: 'Giao hàng hỏa tốc',
+    EXPRESS_DELIVERY: 'Giao hàng hỏa tốc',
+    ECONOMY: 'Giao hàng tiết kiệm',
+    ECONOMY_DELIVERY: 'Giao hàng tiết kiệm',
+  };
+  return fallbackMap[normalized] || clean;
+};
+
+export const paymentMethodLabel = (value, t) => {
+  if (!value || value === '—') return '—';
+  const clean = String(value).trim();
+  const normalized = clean.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const key = `sellerAffiliate.paymentMethod_${normalized}`;
+  const translated = t ? t(key, { defaultValue: '' }) : '';
+  if (translated && translated !== key) return translated;
+
+  const fallbackMap = {
+    CASH_ON_DELIVERY: 'Thanh toán khi nhận hàng (COD)',
+    COD: 'Thanh toán khi nhận hàng (COD)',
+    CREDIT_CARD: 'Thẻ tín dụng',
+    DEBIT_CARD: 'Thẻ ghi nợ',
+    CREDIT_OR_DEBIT_CARD: 'Thẻ tín dụng / ghi nợ',
+    CREDIT_DEBIT_CARD: 'Thẻ tín dụng / ghi nợ',
+    E_WALLET: 'Ví điện tử',
+    DIGITAL_WALLET: 'Ví điện tử',
+    ONLINE_BANKING: 'Ngân hàng trực tuyến',
+    INTERNET_BANKING: 'Ngân hàng trực tuyến',
+    BANK_TRANSFER: 'Chuyển khoản ngân hàng',
+    TIKTOK_BALANCE: 'Số dư TikTok Shop',
+    TIKTOK_SHOP_BALANCE: 'Số dư TikTok Shop',
+    INSTALLMENT: 'Trả góp',
+    QR_CODE: 'Quét mã QR',
+    QR_PAYMENT: 'Quét mã QR',
+    SHOPEEPAY: 'Ví ShopeePay',
+    ZALOPAY: 'Ví ZaloPay',
+    MOMO: 'Ví MoMo',
+    VNPAY: 'Cổng VNPay',
+    TOUCH_N_GO: 'Ví Touch \'n Go',
+    TOUCH_N_GO_EWALLET: 'Ví Touch \'n Go',
+    GRABPAY: 'Ví GrabPay',
+    BOOST: 'Ví Boost',
+  };
+  return fallbackMap[normalized] || clean;
+};

@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Check, Copy } from 'lucide-react';
 
 import { fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
@@ -16,6 +17,8 @@ import {
   getOrderShipping,
   getOrderSla,
   getTrackingUrl,
+  deliveryTypeLabel,
+  paymentMethodLabel,
 } from '../../../lib/sellerAffiliate';
 import AppAvatar from '../../AppAvatar';
 import DatePickerInput from '../../DatePickerInput';
@@ -266,7 +269,10 @@ const historyStatusLabel = (status, t) => {
   return orderStatusLabel(status, t);
 };
 
+export { deliveryTypeLabel, paymentMethodLabel };
+
 export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValues, t }) => {
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!order) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -281,6 +287,16 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
 
   if (!order) return null;
   const orderId = String(order.order_id || order.id || '');
+  const copyOrderId = async () => {
+    if (!orderId || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(orderId);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
   const status = String(order.order_status || order.status || 'UNKNOWN').toUpperCase();
   const shipping = getOrderShipping(order);
   const products = getOrderProductDetails(order);
@@ -307,6 +323,8 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
   const payment = order.payment || {};
   const currency = payment.currency || order.currency || 'MYR';
   const hasPaymentDetails = Boolean(payment.total_amount || payment.original_total_product_price || payment.sub_total);
+  const paymentMethod = order.payment_method_name || order.payment_method
+    || payment.payment_method_name || payment.payment_method || '';
 
   // Cancellation Data
   const cancelTime = order.cancel_time;
@@ -338,7 +356,21 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
     <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="koc-drawer seller-affiliate__order-drawer" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
         <div className="koc-drawer__header">
-          <div><h2 id="order-detail-title">{t('sellerAffiliate.orderDetail')}</h2><p>{orderId}</p></div>
+          <div>
+            <h2 id="order-detail-title">{t('sellerAffiliate.orderDetail')}</h2>
+            <p style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span>{orderId}</span>
+              <button
+                type="button"
+                className="order-compact-cell__copy-btn"
+                onClick={copyOrderId}
+                title={copied ? t('sellerAffiliate.orderCopied') : t('sellerAffiliate.copyOrderId')}
+                aria-label={copied ? t('sellerAffiliate.orderCopied') : t('sellerAffiliate.copyOrderId')}
+              >
+                {copied ? <Check size={13} className="text-positive" /> : <Copy size={13} />}
+              </button>
+            </p>
+          </div>
           <button className="button button--ghost" type="button" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
         <div className="koc-drawer__body seller-affiliate__order-drawer-body">
@@ -346,11 +378,10 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
             <dl className="seller-affiliate__order-detail-grid">
-              <div><dt>{t('sellerAffiliate.orderId')}</dt><dd>{orderId}</dd></div>
               <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
               <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
-              <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryType}</dd></div>
-              {order.payment_method_name ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{order.payment_method_name}</dd></div> : null}
+              <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryTypeLabel(deliveryType, t)}</dd></div>
+              {paymentMethod ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{paymentMethodLabel(paymentMethod, t)}</dd></div> : null}
             </dl>
           </section>
 

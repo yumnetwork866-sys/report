@@ -8,6 +8,8 @@ import {
   getTrackingUrl,
   getAffiliateOrderCreators,
   getAffiliateOrderSources,
+  deliveryTypeLabel,
+  paymentMethodLabel,
 } from '../src/lib/sellerAffiliate.js';
 
 test('compact financial extraction derives settlement, payment, fees and refund correctly', () => {
@@ -90,3 +92,34 @@ test('compact identity and attribution cell extracts primary creator and video s
   assert.equal(sources[0].type, 'VIDEO');
   assert.equal(sources[0].url, 'https://tiktok.com/@super_koc/video/987654321');
 });
+
+test('deliveryTypeLabel and paymentMethodLabel map TikTok raw values to localized display', () => {
+  // Mock translation function mimicking vi.json
+  const translations = {
+    'sellerAffiliate.deliveryType_HOME_DELIVERY': 'Giao hàng tận nơi',
+    'sellerAffiliate.deliveryType_COLLECTION_POINT': 'Điểm nhận hàng',
+    'sellerAffiliate.paymentMethod_CASH_ON_DELIVERY': 'Thanh toán khi nhận hàng (COD)',
+    'sellerAffiliate.paymentMethod_CREDIT_CARD': 'Thẻ tín dụng',
+  };
+  const t = (key, opts) => translations[key] || opts?.defaultValue || key;
+
+  // With translation function
+  assert.equal(deliveryTypeLabel('HOME_DELIVERY', t), 'Giao hàng tận nơi');
+  assert.equal(deliveryTypeLabel('home_delivery', t), 'Giao hàng tận nơi');
+  assert.equal(deliveryTypeLabel('Home Delivery', t), 'Giao hàng tận nơi');
+  assert.equal(deliveryTypeLabel('COLLECTION_POINT', t), 'Điểm nhận hàng');
+  assert.equal(paymentMethodLabel('Cash on delivery', t), 'Thanh toán khi nhận hàng (COD)');
+  assert.equal(paymentMethodLabel('CASH_ON_DELIVERY', t), 'Thanh toán khi nhận hàng (COD)');
+  assert.equal(paymentMethodLabel('Credit Card', t), 'Thẻ tín dụng');
+
+  // Without translation function (built-in Vietnamese fallback map)
+  assert.equal(deliveryTypeLabel('HOME_DELIVERY'), 'Giao hàng tận nơi');
+  assert.equal(deliveryTypeLabel('PICKUP'), 'Lấy hàng tại shop');
+  assert.equal(deliveryTypeLabel('TIKTOK'), 'TikTok vận chuyển (FBT)');
+  assert.equal(paymentMethodLabel('Cash on delivery'), 'Thanh toán khi nhận hàng (COD)');
+  assert.equal(paymentMethodLabel('COD'), 'Thanh toán khi nhận hàng (COD)');
+  assert.equal(paymentMethodLabel('E-Wallet'), 'Ví điện tử');
+  assert.equal(paymentMethodLabel(''), '—');
+  assert.equal(deliveryTypeLabel(null), '—');
+});
+
