@@ -286,6 +286,112 @@ export const getOrderDeliveryHistory = (order = {}) => {
     .sort((left, right) => left.time - right.time);
 };
 
+export const getUnifiedOrderTimeline = (order = {}, trackingNodes = null, t = null) => {
+  const formatLabel = (key, fallback) => (typeof t === 'function' ? t(key, { defaultValue: fallback }) : fallback);
+  const statusLabel = (status) => (typeof t === 'function' ? t(`sellerAffiliate.orderState_${status}`, { defaultValue: status || '—' }) : (status || '—'));
+  const historyLabel = (status) => {
+    if (status === 'CREATED') return formatLabel('sellerAffiliate.orderHistory_CREATED', 'Đơn được tạo');
+    if (status === 'PAID') return formatLabel('sellerAffiliate.orderHistory_PAID', 'Đã thanh toán');
+    return statusLabel(status);
+  };
+
+  const createTime = finiteNumber(order.create_time || order.created_time);
+  const paidTime = finiteNumber(order.paid_time);
+  const deliveryTime = finiteNumber(order.delivery_time);
+
+  const normalizeText = (str) => String(str || '').toLowerCase();
+
+  const isCreatedNode = (node) => {
+    const text = normalizeText(node.description || node.event_description || node.status);
+    const time = finiteNumber(node.update_time_millis ? Math.floor(Number(node.update_time_millis) / 1000) : node.update_time);
+    if (/đơn (hàng )?đã (được )?tạo|tạo đơn|order (was )?created|order (was )?placed/i.test(text)) return true;
+    return Boolean(createTime && time && time === createTime && /tạo|order|create/i.test(text));
+  };
+
+  const isPaidNode = (node) => {
+    const text = normalizeText(node.description || node.event_description || node.status);
+    const time = finiteNumber(node.update_time_millis ? Math.floor(Number(node.update_time_millis) / 1000) : node.update_time);
+    if (/đã thanh toán|thanh toán|payment|paid/i.test(text)) return true;
+    return Boolean(paidTime && time && time === paidTime && /thanh toán|payment|paid/i.test(text));
+  };
+
+  const isDeliveredNode = (node) => {
+    const text = normalizeText(node.description || node.event_description || node.status);
+    const time = finiteNumber(node.update_time_millis ? Math.floor(Number(node.update_time_millis) / 1000) : node.update_time);
+    if (/giao (hàng )?thành công|đã giao|delivered/i.test(text)) return true;
+    return Boolean(deliveryTime && time && time === deliveryTime && /giao|deliver/i.test(text));
+  };
+
+  const items = [];
+
+  if (createTime && (!Array.isArray(trackingNodes) || !trackingNodes.some(isCreatedNode))) {
+    items.push({
+      time: createTime,
+      label: historyLabel('CREATED'),
+      source: 'order',
+      status: 'CREATED',
+    });
+  }
+
+  if (paidTime && (!Array.isArray(trackingNodes) || !trackingNodes.some(isPaidNode))) {
+    items.push({
+      time: paidTime,
+      label: historyLabel('PAID'),
+      source: 'order',
+      status: 'PAID',
+    });
+  }
+
+  if (Array.isArray(trackingNodes) && trackingNodes.length > 0) {
+    trackingNodes.forEach((node) => {
+      const time = finiteNumber(
+        node.update_time_millis
+          ? Math.floor(Number(node.update_time_millis) / 1000)
+          : node.update_time,
+      );
+      const label = node.description || node.event_description || node.status || '—';
+      items.push({
+        time,
+        label,
+        source: 'carrier',
+      });
+    });
+
+    if (deliveryTime && !trackingNodes.some(isDeliveredNode)) {
+      items.push({
+        time: deliveryTime,
+        label: historyLabel('DELIVERED'),
+        source: 'order',
+        status: 'DELIVERED',
+      });
+    }
+  } else {
+    const fallbackHistory = getOrderDeliveryHistory(order);
+    fallbackHistory.forEach((event) => {
+      if (!items.some((it) => it.time === event.time && it.status === event.status)) {
+        items.push({
+          time: event.time,
+          label: historyLabel(event.status),
+          source: 'order',
+          status: event.status,
+        });
+      }
+    });
+  }
+
+  const seen = new Set();
+  const deduped = items.filter((item) => {
+    const key = `${item.time || 0}:${item.label.trim().toLowerCase()}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  deduped.sort((a, b) => (a.time || 0) - (b.time || 0));
+
+  return deduped;
+};
+
 export const getOrderSla = (order = {}, nowSeconds = Date.now() / 1000) => {
   const status = String(order.order_status || order.status || '').toUpperCase();
   if (/DELIVERED|COMPLETED|CANCELLED/.test(status)) return { state: 'DONE', deadline: null };

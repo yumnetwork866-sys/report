@@ -17,6 +17,10 @@ const applicationParamsSchema = z.object({
   shopId: positiveId('shop ID'),
   applicationId: z.string().trim().min(1, 'Invalid application ID.').max(128, 'Invalid application ID.'),
 }).passthrough();
+const shopOrderParamsSchema = z.object({
+  shopId: positiveId('shop ID'),
+  orderId: z.string().trim().min(1, 'Invalid order ID.').max(128, 'Invalid order ID.'),
+}).passthrough();
 
 const shopAnalyticsQuerySchema = withDateRange(z.object({
   start_date: optionalIsoDate('start_date'),
@@ -48,6 +52,7 @@ module.exports = {
   shopAnalyticsBodySchema,
   shopAnalyticsQuerySchema,
   shopListQuerySchema,
+  shopOrderParamsSchema,
   shopParamsSchema,
   shopVideoParamsSchema,
 };

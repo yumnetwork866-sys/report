@@ -9,6 +9,7 @@ const {
   shopAnalyticsBodySchema,
   shopAnalyticsQuerySchema,
   shopListQuerySchema,
+  shopOrderParamsSchema,
   shopParamsSchema,
   shopVideoParamsSchema,
 } = require('../schemas/tiktokShopSchemas');
@@ -32,6 +33,7 @@ adminRouter.get('/shops/:shopId/affiliate/open-collaborations', validateParams(s
 adminRouter.get('/shops/:shopId/affiliate/target-collaborations', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listTargetCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/orders', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrders);
 adminRouter.get('/shops/:shopId/affiliate/order-overview', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrderOverview);
+adminRouter.get('/shops/:shopId/orders/:orderId/tracking', validateParams(shopOrderParamsSchema), controller.getOrderTracking);
 adminRouter.get('/shops/:shopId/affiliate/creators', validateParams(shopParamsSchema), controller.listAffiliateCreators);
 adminRouter.get('/shops/:shopId/affiliate/creators/:applicationId/fulfillments', validateParams(applicationParamsSchema), controller.showAffiliateCreatorFulfillments);
 adminRouter.get('/shops/:shopId/affiliate/marketplace-creators', validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listMarketplaceCreators);

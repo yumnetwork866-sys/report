@@ -16,6 +16,21 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
       request_id: requestId,
     };
   }
+  if (namespace === 'order-tracking') {
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      data: {
+        tracking_info_list: [
+          { description: 'Đơn hàng đã được tạo', update_time: now - 86400 * 2 },
+          { description: 'Người bán đã đóng gói và chuẩn bị hàng', update_time: now - 86400 * 1.5 },
+          { description: 'Đơn vị vận chuyển đã lấy hàng thành công', update_time: now - 86400 },
+          { description: 'Bưu kiện đã đến trung tâm phân loại', update_time: now - 43200 },
+          { description: 'Bưu tá đang đi giao hàng', update_time: now - 7200 },
+        ],
+      },
+      request_id: requestId,
+    };
+  }
   if (namespace === 'open-collaborations') {
     return {
       data: {

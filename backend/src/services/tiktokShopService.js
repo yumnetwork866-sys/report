@@ -739,6 +739,18 @@ const searchSellerSampleApplicationFulfillments = ({
   }, fetchImpl);
 };
 
+const getOrderTracking = async ({ authorization, shopCipher, orderId } = {}, fetchImpl) => {
+  const normalizedOrderId = String(orderId || '').trim();
+  if (!normalizedOrderId) throw new Error('Order ID is required.');
+  return sellerAffiliateRequest({
+    authorization,
+    shopCipher,
+    path: `/fulfillment/202309/orders/${encodeURIComponent(normalizedOrderId)}/tracking`,
+    method: 'GET',
+    requiredScope: 'seller.logistics',
+  }, fetchImpl);
+};
+
 const summarizeSampleFulfillments = (fulfillments) => {
   const contents = new Map();
   for (const fulfillment of Array.isArray(fulfillments) ? fulfillments : []) {
@@ -1085,4 +1097,5 @@ module.exports = {
   createCompassExportTask,
   listCompassExportTasks,
   downloadCompassExportFile,
+  getOrderTracking,
 };

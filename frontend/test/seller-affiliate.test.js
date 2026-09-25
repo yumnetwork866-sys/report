@@ -15,6 +15,7 @@ import {
   getOrderFinanceBreakdown,
   getOrderProductDetails,
   getOrderDeliveryHistory,
+  getUnifiedOrderTimeline,
   getOrderPaymentValue,
   getOrderShipping,
   getOrderSla,
@@ -330,5 +331,62 @@ test('getTrackingUrl resolves carrier tracking links accurately', () => {
   assert.equal(getTrackingUrl('Unknown Carrier', '123456'), null);
   assert.equal(getTrackingUrl('J&T Express', ''), null);
   assert.equal(getTrackingUrl(null, null), null);
+});
+
+test('getUnifiedOrderTimeline merges order created, paid, and carrier nodes chronologically', () => {
+  const order = {
+    create_time: 1000,
+    paid_time: 1060,
+    delivery_time: 1800,
+  };
+  const trackingNodes = [
+    { description: 'Đơn vị vận chuyển đã lấy hàng', update_time: 1200 },
+    { description: 'Đang trung chuyển qua kho', update_time: 1500 },
+  ];
+
+  const timeline = getUnifiedOrderTimeline(order, trackingNodes);
+  assert.equal(timeline.length, 5);
+  assert.equal(timeline[0].label, 'Đơn được tạo');
+  assert.equal(timeline[0].time, 1000);
+  assert.equal(timeline[1].label, 'Đã thanh toán');
+  assert.equal(timeline[1].time, 1060);
+  assert.equal(timeline[2].label, 'Đơn vị vận chuyển đã lấy hàng');
+  assert.equal(timeline[2].time, 1200);
+  assert.equal(timeline[3].label, 'Đang trung chuyển qua kho');
+  assert.equal(timeline[3].time, 1500);
+  assert.equal(timeline[4].label, 'DELIVERED');
+  assert.equal(timeline[4].time, 1800);
+});
+
+test('getUnifiedOrderTimeline deduplicates when carrier node already contains order creation', () => {
+  const order = {
+    create_time: 1000,
+    paid_time: 1060,
+  };
+  const trackingNodes = [
+    { description: 'Đơn hàng đã được tạo', update_time: 1000 },
+    { description: 'Đã lấy hàng', update_time: 1200 },
+  ];
+
+  const timeline = getUnifiedOrderTimeline(order, trackingNodes);
+  assert.equal(timeline.length, 3);
+  assert.equal(timeline[0].label, 'Đơn hàng đã được tạo');
+  assert.equal(timeline[1].label, 'Đã thanh toán');
+  assert.equal(timeline[2].label, 'Đã lấy hàng');
+});
+
+test('getUnifiedOrderTimeline falls back to order delivery history when tracking nodes are empty or null', () => {
+  const order = {
+    create_time: 1000,
+    paid_time: 1060,
+    update_time: 1200,
+    order_status: 'IN_TRANSIT',
+  };
+
+  const timeline = getUnifiedOrderTimeline(order, null);
+  assert.equal(timeline.length, 3);
+  assert.equal(timeline[0].label, 'Đơn được tạo');
+  assert.equal(timeline[1].label, 'Đã thanh toán');
+  assert.equal(timeline[2].label, 'IN_TRANSIT');
 });
 

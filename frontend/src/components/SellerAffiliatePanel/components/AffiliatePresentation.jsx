@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, Copy } from 'lucide-react';
 
-import { fetchTikTokShopVideoThumbnail } from '../../../lib/api';
+import { fetchShopOrderTracking, fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
   getAffiliateOrderCommission,
   getAffiliateOrderCreators,
@@ -14,6 +14,7 @@ import {
   getOrderPaymentValue,
   getOrderProductDetails,
   getOrderDeliveryHistory,
+  getUnifiedOrderTimeline,
   getOrderShipping,
   getOrderSla,
   getTrackingUrl,
@@ -200,8 +201,6 @@ export const OrderShippingStatus = ({ row, t }) => {
   return <span className={`seller-affiliate__order-state seller-affiliate__order-state--${shipping.status.toLowerCase()}`}>{orderStatusLabel(shipping.status, t)}</span>;
 };
 
-export { getTrackingUrl };
-
 export const OrderCarrier = ({ row }) => {
   const shipping = getOrderShipping(row);
   if (!shipping.provider && !shipping.trackingNumber) return '—';
@@ -264,15 +263,15 @@ const DrawerMoney = ({ value, formatMoneyValues }) => value
   ? formatMoneyValues([value])
   : '—';
 
-const historyStatusLabel = (status, t) => {
-  if (status === 'CREATED' || status === 'PAID') return t(`sellerAffiliate.orderHistory_${status}`);
-  return orderStatusLabel(status, t);
-};
-
-export { deliveryTypeLabel, paymentMethodLabel };
-
-export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValues, t }) => {
+export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMoneyValues, t }) => {
   const [copied, setCopied] = useState(false);
+  const [trackingNodes, setTrackingNodes] = useState(null);
+  const [loadingTracking, setLoadingTracking] = useState(false);
+  const [trackingError, setTrackingError] = useState(null);
+
+  const orderId = String(order?.order_id || order?.id || '');
+  const currentShopId = shopId || order?.shop_id;
+
   useEffect(() => {
     if (!order) return undefined;
     const previousOverflow = document.body.style.overflow;
@@ -285,8 +284,48 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
     };
   }, [onClose, order]);
 
+  useEffect(() => {
+    if (!orderId || !currentShopId) {
+      setTrackingNodes(null);
+      setLoadingTracking(false);
+      setTrackingError(null);
+      return undefined;
+    }
+    let active = true;
+    setLoadingTracking(true);
+    setTrackingError(null);
+    setTrackingNodes(null);
+
+    fetchShopOrderTracking(currentShopId, orderId)
+      .then((res) => {
+        if (!active) return;
+        const list = res?.tracking || res?.tracking_info_list || res?.tracking_info || res?.tracking_events || res?.records || [];
+        let nodes = [];
+        if (Array.isArray(list)) {
+          if (list.length > 0 && Array.isArray(list[0]?.tracking_nodes)) {
+            nodes = list.flatMap((item) => item.tracking_nodes || []);
+          } else {
+            nodes = list;
+          }
+        }
+        setTrackingNodes(nodes);
+      })
+      .catch((err) => {
+        if (!active) return;
+        const isPermission = /seller\.logistics/i.test(err?.message) || err?.status === 403;
+        setTrackingError(isPermission ? t('sellerAffiliate.trackingScopeRequired') : (err?.message || t('common.error')));
+      })
+      .finally(() => {
+        if (active) setLoadingTracking(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentShopId, orderId, t]);
+
   if (!order) return null;
-  const orderId = String(order.order_id || order.id || '');
+
   const copyOrderId = async () => {
     if (!orderId || !navigator.clipboard) return;
     try {
@@ -303,6 +342,7 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
   const finance = getOrderFinanceSummary(order);
   const breakdown = getOrderFinanceBreakdown(order);
   const history = getOrderDeliveryHistory(order);
+  const timeline = getUnifiedOrderTimeline(order, trackingNodes, t);
   const deliveryType = order.delivery_type || order.shipping_type || order.fulfillment_type
     || order.delivery_option_name || '—';
   const breakdownRows = breakdown ? [
@@ -557,8 +597,50 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
                 </>
               ) : null}
             </dl>
-            <div className="seller-affiliate__order-timeline">{history.map((event) => <div key={`${event.status}-${event.time}`}><i aria-hidden="true" /><span><strong>{historyStatusLabel(event.status, t)}</strong><small>{formatTime(event.time)}</small></span></div>)}</div>
-            <p className="seller-affiliate__tracking-note">{t('sellerAffiliate.orderTrackingHistoryLimited')}</p>
+            <div style={{ marginTop: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-soft)' }}>
+                {t('sellerAffiliate.orderDetailTrackingNodes')}
+              </span>
+            </div>
+
+            <div className="seller-affiliate__detailed-tracking">
+              {loadingTracking ? (
+                <div className="empty-state empty-state--compact">
+                  <span className="loading-dot" /> {t('sellerAffiliate.loadingTracking')}
+                </div>
+              ) : (
+                <>
+                  {trackingError ? (
+                    <div className="alert alert--warning" style={{ fontSize: '0.8rem', padding: '8px 12px', margin: '8px 0', borderRadius: 'var(--radius-sm)' }}>
+                      {trackingError}
+                    </div>
+                  ) : null}
+
+                  {trackingNodes !== null && Array.isArray(trackingNodes) && trackingNodes.length === 0 ? (
+                    <p className="seller-affiliate__tracking-note" style={{ marginBottom: '6px' }}>
+                      {t('sellerAffiliate.noTrackingNodes')}
+                    </p>
+                  ) : null}
+
+                  {timeline && timeline.length ? (
+                    <div className="seller-affiliate__order-timeline" style={{ marginTop: '6px' }}>
+                      {timeline.map((event, idx) => {
+                        const isLatest = idx === timeline.length - 1;
+                        return (
+                          <div key={`${event.time || idx}-${event.label}`}>
+                            <i aria-hidden="true" style={{ background: isLatest ? 'var(--color-primary)' : undefined }} />
+                            <span>
+                              <strong>{event.label}</strong>
+                              {event.time ? <small>{formatTime(event.time)}</small> : null}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
           </section>
         </div>
       </aside>

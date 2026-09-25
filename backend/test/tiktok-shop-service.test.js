@@ -45,6 +45,7 @@ const {
   searchAffiliateOrders,
   searchShopOrders,
   getOrderStatementTransactions,
+  getOrderTracking,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrderKpis,
   searchSellerSampleApplications,
@@ -635,6 +636,36 @@ test('gets Finance statement transactions for one order', async (t) => {
     return successResponse({ order_id: '5793990727963214852', settlement_amount: '130' });
   });
 });
+
+test('gets order tracking information using seller logistics scope', async (t) => {
+  configure(t);
+  const authorization = sellerAuthorization();
+  authorization.granted_scopes.push('seller.logistics');
+  await getOrderTracking({
+    authorization,
+    shopCipher: 'cipher-1',
+    orderId: '5793990727963214852',
+  }, async (url, options) => {
+    assert.equal(url.pathname, '/fulfillment/202309/orders/5793990727963214852/tracking');
+    assert.equal(url.searchParams.get('shop_cipher'), 'cipher-1');
+    assert.equal(options.method, 'GET');
+    return successResponse({ tracking_info: [{ tracking_nodes: [{ description: 'Delivered' }] }] });
+  });
+});
+
+test('getOrderTracking validates orderId and requires seller logistics scope', async (t) => {
+  configure(t);
+  const authorization = sellerAuthorization();
+  await assert.rejects(
+    () => getOrderTracking({ authorization, shopCipher: 'cipher-1', orderId: '' }),
+    /Order ID is required/i,
+  );
+  await assert.rejects(
+    () => getOrderTracking({ authorization, shopCipher: 'cipher-1', orderId: '5793990727963214852' }),
+    /grant seller\.logistics/i,
+  );
+});
+
 
 test('affiliate orders are enriched with product and collaboration metadata', () => {
   const orders = [{

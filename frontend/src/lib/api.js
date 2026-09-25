@@ -334,6 +334,9 @@ export const fetchTikTokSellerAffiliateCreators = (shopId, filters) => fetchTikT
 export function fetchTikTokSellerSampleApplicationFulfillments(shopId, applicationId, signal) {
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/creators/${encodeURIComponent(applicationId)}/fulfillments`, { signal });
 }
+export function fetchShopOrderTracking(shopId, orderId, signal) {
+  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/orders/${encodeURIComponent(orderId)}/tracking`, { signal });
+}
 export const fetchTikTokSellerMarketplaceCreators = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'marketplace-creators', filters);
 export function fetchTikTokSellerMarketplaceCreator(shopId, creatorId, signal) {
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/marketplace-creators/${encodeURIComponent(creatorId)}`, { signal });

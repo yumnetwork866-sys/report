@@ -7,7 +7,7 @@ const actions = [
   'listShopVideoPerformance', 'getShopVideoThumbnail', 'listOpenCollaborations',
   'listTargetCollaborations', 'listAffiliateOrders', 'listAffiliateOrderOverview',
   'showOpenCollaborationSettings', 'listAffiliateCreators', 'showAffiliateCreatorFulfillments',
-  'listMarketplaceCreators', 'showMarketplaceCreator', 'createMarketplaceCreatorInvitation',
+  'getOrderTracking', 'listMarketplaceCreators', 'showMarketplaceCreator', 'createMarketplaceCreatorInvitation',
   'addMarketplaceCreatorToInvitation', 'getMarketplaceCreatorConversation',
   'sendMarketplaceCreatorMessage', 'listCreatorContentDetails', 'listCreatorPerformance',
   'syncCreatorPerformance', 'syncVideoPerformanceApi', 'listVideoPerformanceApi',

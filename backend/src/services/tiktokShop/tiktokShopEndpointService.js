@@ -29,6 +29,7 @@ const {
   getSellerCreatorContentDetails,
   normalizeShopPerformance,
   getShopVideoPerformance,
+  getOrderTracking: getOrderTrackingApi,
 } = require('../tiktokShopService');
 const { loadShopAnalyticsPerformance } = require('../tiktokShopAnalyticsSyncService');
 const { addMarketplaceLocalCurrency, getMyrExchangeRates, FALLBACK_EXCHANGE_RATES } = require('../exchangeRateService');
@@ -924,7 +925,7 @@ const affiliateResponse = (namespace, operation) => async (req, res) => {
     res.set('X-Seller-Affiliate-Cache', hit ? 'HIT' : 'MISS');
     res.json({ ...payload.data, request_id: payload.request_id || null });
   } catch (error) {
-    const permissionError = /grant seller\.(affiliate_collaboration|creator_marketplace)\.read/i.test(error.message);
+    const permissionError = /grant seller\.(affiliate_collaboration|creator_marketplace|logistics)/i.test(error.message);
     const rateLimited = Number(error.tiktokCode) === 36009002;
     res.status(error.statusCode || (permissionError ? 403 : rateLimited ? 429 : 502)).json({
       message: error.message,
@@ -1589,6 +1590,18 @@ const showAffiliateCreatorFulfillments = affiliateResponse('creator-fulfillments
       fulfillments,
     },
   };
+});
+
+const getOrderTracking = affiliateResponse('order-tracking', async (shop, req) => {
+  const authorization = authorizationForScope(shop, 'seller.logistics')
+    || shop.orderAuthorization
+    || shop.authorization;
+  const payload = await getOrderTrackingApi({
+    authorization,
+    shopCipher: shop.cipher,
+    orderId: req.params.orderId,
+  });
+  return payload;
 });
 
 const listMarketplaceCreators = async (req, res) => {
@@ -2570,7 +2583,7 @@ const service = {
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, getShopVideoThumbnail,
   listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
-  listAffiliateCreators, showAffiliateCreatorFulfillments, listMarketplaceCreators, showMarketplaceCreator,
+  listAffiliateCreators, showAffiliateCreatorFulfillments, getOrderTracking, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
   getMarketplaceCreatorConversation, sendMarketplaceCreatorMessage,
   listCreatorContentDetails,

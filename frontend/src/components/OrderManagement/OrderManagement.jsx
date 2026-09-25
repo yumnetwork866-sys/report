@@ -540,6 +540,7 @@ export const OrderManagement = () => {
 
       <OrderDetailDrawer
         order={selectedOrder}
+        shopId={shopId}
         onClose={() => setSelectedOrder(null)}
         formatTime={formatTime}
         formatMoneyValues={formatMoneyValues}
