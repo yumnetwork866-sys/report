@@ -9,8 +9,11 @@ const {
 const {
   searchAffiliateOrders,
   searchShopOrders,
+  searchSellerProducts,
+  SELLER_PRODUCT_BASIC_SCOPE,
   SELLER_ORDER_SCOPE,
 } = require('./tiktokShopService');
+const { upsertShopProducts } = require('./shopProductCatalogService');
 const { scheduledAnalyticsRange } = require('./tiktokShopAnalyticsSyncService');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../lib/tiktokDemoFixtures');
 
@@ -164,6 +167,26 @@ const normalizeShopOrderToAffiliateOrder = (order) => {
   };
 };
 
+const mergeShopAndAffiliateOrder = (shopOrder, affiliateOrder) => {
+  const normalizedShopOrder = normalizeShopOrderToAffiliateOrder(shopOrder);
+  if (!affiliateOrder) return normalizedShopOrder;
+  return {
+    ...normalizedShopOrder,
+    ...affiliateOrder,
+    id: normalizedShopOrder.id,
+    order_id: normalizedShopOrder.order_id,
+    order_status: normalizedShopOrder.order_status || normalizedShopOrder.status || affiliateOrder.order_status,
+    status: normalizedShopOrder.status || normalizedShopOrder.order_status || affiliateOrder.status,
+    create_time: normalizedShopOrder.create_time || affiliateOrder.create_time,
+    delivery_time: normalizedShopOrder.delivery_time || affiliateOrder.delivery_time || null,
+    currency: normalizedShopOrder.currency || affiliateOrder.currency,
+    skus: Array.isArray(affiliateOrder.skus) && affiliateOrder.skus.length
+      ? affiliateOrder.skus
+      : normalizedShopOrder.skus,
+    is_direct: false,
+  };
+};
+
 const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) => {
   const timezone = SHOP_TIMEZONES[String(shop.region || '').toUpperCase()] || 'UTC';
   const startTime = localMidnightUnix(metricDate, timezone);
@@ -195,8 +218,11 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
     if (page === maxPages - 1) affiliateExceeded = true;
   }
   if (affiliateExceeded) throw new Error(`TikTok Affiliate Orders pagination exceeded ${maxPages} pages.`);
+  const affiliateOrderCount = orders.size;
 
   const orderAuth = resolveShopOrderAuthorization(shop);
+  const shopOrderIds = new Set();
+  const shopOrders = new Map();
   if (orderAuth) {
     const seenShopTokens = new Set();
     let shopPageToken;
@@ -220,9 +246,8 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
       }
       (Array.isArray(rawShopOrders) ? rawShopOrders : []).forEach((shopOrder) => {
         const id = orderId(shopOrder);
-        if (id && !orders.has(id)) {
-          orders.set(id, normalizeShopOrderToAffiliateOrder(shopOrder));
-        }
+        if (id) shopOrderIds.add(id);
+        if (id) shopOrders.set(id, mergeShopAndAffiliateOrder(shopOrder, orders.get(id)));
       });
       const nextToken = String(payload?.data?.next_page_token || '').trim();
       if (!nextToken) break;
@@ -234,21 +259,42 @@ const loadOrderDay = async (shop, metricDate, { signal, maxPages = 100 } = {}) =
     if (shopExceeded) throw new Error(`TikTok Shop Orders pagination exceeded ${maxPages} pages.`);
   }
 
-  return { orders: [...orders.values()], startTime, endTime };
+  return {
+    orders: [...(orderAuth ? shopOrders : orders).values()],
+    startTime,
+    endTime,
+    sources: { affiliate: true, shop_order: Boolean(orderAuth) },
+    sourceCounts: { affiliate: affiliateOrderCount, shop_order: shopOrderIds.size },
+  };
 };
 
-const persistOrderDay = async (shop, metricDate, { orders, startTime, endTime }, { productNames = new Map() } = {}) => {
+const persistOrderDay = async (shop, metricDate, {
+  orders, startTime, endTime, sources, sourceCounts,
+}, { productNames = new Map() } = {}) => {
   const syncedAt = new Date();
+  const completedSources = sources || { affiliate: true, shop_order: false };
+  const completedSourceCounts = sourceCounts || {};
+  const existingOrders = typeof TikTokAffiliateOrder.findAll === 'function' ? await TikTokAffiliateOrder.findAll({
+    where: {
+      shop_id: shop.id,
+      create_time: { [Op.gte]: new Date(startTime * 1000), [Op.lt]: new Date(endTime * 1000) },
+    },
+    attributes: ['order_id', 'raw_data'],
+  }) : [];
+  const financeByOrderId = new Map(existingOrders
+    .filter((order) => order.raw_data?.finance)
+    .map((order) => [String(order.order_id), order.raw_data.finance]));
   const normalizedOrders = orders.flatMap((order) => {
     const id = orderId(order);
     const created = Number(order.create_time);
     if (!id || !Number.isFinite(created)) return [];
+    const finance = financeByOrderId.get(id);
     return [{
       shop_id: shop.id,
       order_id: id,
       create_time: new Date(created * 1000),
       delivery_time: Number(order.delivery_time) ? new Date(Number(order.delivery_time) * 1000) : null,
-      raw_data: order,
+      raw_data: finance ? { ...order, finance } : order,
       synced_at: syncedAt,
       source: order,
     }];
@@ -300,25 +346,85 @@ const persistOrderDay = async (shop, metricDate, { orders, startTime, endTime },
     });
     if (skuRows.length) await TikTokAffiliateOrderSku.bulkCreate(skuRows, { transaction });
     skuCount = skuRows.length;
-    await TikTokAffiliateOrderSyncDay.upsert({
+    const coverage = {
       shop_id: shop.id,
       metric_date: metricDate,
       order_count: normalizedOrders.length,
       sku_count: skuCount,
       synced_at: syncedAt,
-    }, { transaction });
+    };
+    if (completedSources.affiliate) {
+      coverage.affiliate_synced_at = syncedAt;
+      coverage.affiliate_order_count = Number(completedSourceCounts.affiliate) || 0;
+    }
+    if (completedSources.shop_order) {
+      coverage.shop_order_synced_at = syncedAt;
+      coverage.shop_order_count = Number(completedSourceCounts.shop_order) || 0;
+    }
+    await TikTokAffiliateOrderSyncDay.upsert(coverage, { transaction });
   });
   return { order_count: normalizedOrders.length, sku_count: skuCount };
 };
 
-const selectSyncDates = ({ endDate, existingDates, ...overrides }) => {
+const selectSyncDates = ({
+  endDate,
+  existingDates = [],
+  coverage = [],
+  includeShopOrders = false,
+  ...overrides
+}) => {
   const settings = { ...config(), ...overrides };
   const allDates = Array.from({ length: settings.historyDays }, (_, index) => shiftDate(endDate, -index));
-  const existing = new Set(existingDates.map(String));
+  const rows = coverage.length
+    ? coverage
+    : existingDates.map((metricDate) => ({ metric_date: metricDate, affiliate_synced_at: true }));
+  const affiliateCoverage = new Set(rows
+    .filter((row) => row.affiliate_synced_at || (!('affiliate_synced_at' in row) && row.synced_at))
+    .map((row) => String(row.metric_date)));
+  const shopOrderCoverage = new Set(rows
+    .filter((row) => row.shop_order_synced_at)
+    .map((row) => String(row.metric_date)));
   const refresh = allDates.slice(0, settings.refreshDays);
-  const missingBudget = existing.size ? settings.backfillDays : settings.initialBackfillDays;
-  const missing = allDates.filter((date) => !existing.has(date)).slice(0, missingBudget);
-  return [...new Set([...refresh, ...missing])];
+  const affiliateBudget = affiliateCoverage.size ? settings.backfillDays : settings.initialBackfillDays;
+  const affiliateMissing = allDates
+    .filter((date) => !affiliateCoverage.has(date))
+    .slice(0, affiliateBudget);
+  const shopOrderBudget = shopOrderCoverage.size ? settings.backfillDays : settings.initialBackfillDays;
+  const shopOrderMissing = includeShopOrders
+    ? allDates.filter((date) => !shopOrderCoverage.has(date)).slice(0, shopOrderBudget)
+    : [];
+  const protectedRefresh = includeShopOrders
+    ? refresh
+    : refresh.filter((date) => !shopOrderCoverage.has(date));
+  return [...new Set([...protectedRefresh, ...affiliateMissing, ...shopOrderMissing])];
+};
+
+const syncProductCatalog = async (shop, { signal, maxPages = 100 } = {}) => {
+  const authorization = [shop?.authorization, shop?.orderAuthorization].find((candidate) => (
+    Array.isArray(candidate?.granted_scopes)
+    && candidate.granted_scopes.includes(SELLER_PRODUCT_BASIC_SCOPE)
+  ));
+  if (!authorization || typeof searchSellerProducts !== 'function') return 0;
+  const seenTokens = new Set();
+  let pageToken;
+  let synced = 0;
+  for (let page = 0; page < maxPages; page += 1) {
+    throwIfAborted(signal);
+    const payload = await searchSellerProducts({
+      authorization,
+      shopCipher: shop.cipher,
+      pageToken,
+      pageSize: 100,
+    });
+    const products = Array.isArray(payload?.data?.products) ? payload.data.products : [];
+    synced += await upsertShopProducts(shop.id, products);
+    const nextToken = String(payload?.data?.next_page_token || '').trim();
+    if (!nextToken) return synced;
+    if (seenTokens.has(nextToken)) throw new Error('TikTok Product Basic pagination repeated a page token.');
+    seenTokens.add(nextToken);
+    pageToken = nextToken;
+  }
+  throw new Error(`TikTok Product Basic pagination exceeded ${maxPages} pages.`);
 };
 
 const syncAffiliateOrders = async (shop, { signal, now = new Date() } = {}) => {
@@ -327,9 +433,11 @@ const syncAffiliateOrders = async (shop, { signal, now = new Date() } = {}) => {
   const historyStart = shiftDate(endDate, -(settings.historyDays - 1));
   const coverage = await TikTokAffiliateOrderSyncDay.findAll({
     where: { shop_id: shop.id, metric_date: { [Op.gte]: historyStart, [Op.lte]: endDate } },
-    attributes: ['metric_date'], raw: true,
+    attributes: ['metric_date', 'synced_at', 'affiliate_synced_at', 'shop_order_synced_at'], raw: true,
   });
-  const dates = selectSyncDates({ endDate, existingDates: coverage.map((row) => row.metric_date), ...settings });
+  const includeShopOrders = hasShopOrderScope(shop);
+  const dates = selectSyncDates({ endDate, coverage, includeShopOrders, ...settings });
+  const productsSynced = await syncProductCatalog(shop, { signal, maxPages: settings.maxPages });
   const productNames = await loadProductNames(shop.id);
   const results = [];
   for (const metricDate of dates) {
@@ -339,6 +447,7 @@ const syncAffiliateOrders = async (shop, { signal, now = new Date() } = {}) => {
   }
   return {
     days_synced: results.length,
+    products_synced: productsSynced,
     orders_synced: results.reduce((sum, row) => sum + row.order_count, 0),
     skus_synced: results.reduce((sum, row) => sum + row.sku_count, 0),
     results,
@@ -347,5 +456,5 @@ const syncAffiliateOrders = async (shop, { signal, now = new Date() } = {}) => {
 
 module.exports = {
   syncAffiliateOrders,
-  __test: { loadOrderDay, loadProductNames, persistOrderDay, selectSyncDates, localMidnightUnix, orderId, skuId, shiftDate },
+  __test: { loadOrderDay, loadProductNames, persistOrderDay, selectSyncDates, localMidnightUnix, orderId, skuId, shiftDate, syncProductCatalog },
 };

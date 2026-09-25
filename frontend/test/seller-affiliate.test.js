@@ -11,6 +11,13 @@ import {
   getAffiliateOrderValue,
   getAffiliateOrderVideos,
   getCreatorVideoEngagementRate,
+  getOrderFinanceSummary,
+  getOrderFinanceBreakdown,
+  getOrderProductDetails,
+  getOrderDeliveryHistory,
+  getOrderPaymentValue,
+  getOrderShipping,
+  getOrderSla,
   normalizeEngagementPercentage,
 } from '../src/lib/sellerAffiliate.js';
 
@@ -115,6 +122,114 @@ test('affiliate order fields retain support for legacy top-level values', () => 
   assert.deepEqual(getAffiliateOrderProgramIds(), []);
 });
 
+test('shop order payment, finance and shipping fields use Order and Finance API values', () => {
+  const order = {
+    order_status: 'COMPLETED',
+    payment: { total_amount: '169.99', currency: 'MYR' },
+    packages: [{ id: 'package-1' }],
+    skus: [{
+      package_id: 'package-1', display_status: 'DELIVERED',
+      shipping_provider_name: 'J&T Express', tracking_number: 'TRACK-123',
+    }],
+    finance: {
+      currency: 'MYR',
+      revenue_amount: '200',
+      fee_and_tax_amount: '-16',
+      shipping_cost_amount: '-8',
+      settlement_amount: '146',
+      sku_transactions: [{
+        revenue_breakdown: {
+          subtotal_before_discount_amount: '200',
+          seller_discount_amount: '-10',
+          refund_subtotal_before_discount_amount: '-20',
+        },
+        fee_tax_breakdown: { platform_commission_amount: '-12', sales_tax_amount: '-4' },
+      }],
+    },
+  };
+
+  assert.deepEqual(getOrderPaymentValue(order), { amount: 169.99, currency: 'MYR' });
+  assert.deepEqual(getOrderFinanceSummary(order), {
+    currency: 'MYR',
+    revenue: { amount: 200, currency: 'MYR' },
+    refund: { amount: 20, currency: 'MYR' },
+    fees: { amount: -16, currency: 'MYR' },
+    settlement: { amount: 146, currency: 'MYR' },
+    shippingCost: { amount: -8, currency: 'MYR' },
+  });
+  assert.deepEqual(getOrderFinanceBreakdown(order), {
+    currency: 'MYR',
+    productRevenue: { amount: 200, currency: 'MYR' },
+    sellerDiscount: { amount: -10, currency: 'MYR' },
+    fees: { amount: -12, currency: 'MYR' },
+    taxes: { amount: -4, currency: 'MYR' },
+    shippingCost: { amount: -8, currency: 'MYR' },
+    refund: { amount: -20, currency: 'MYR' },
+    settlement: { amount: 146, currency: 'MYR' },
+  });
+  assert.deepEqual(getOrderShipping(order), {
+    packageId: 'package-1',
+    status: 'DELIVERED',
+    provider: 'J&T Express',
+    trackingNumber: 'TRACK-123',
+  });
+});
+
+test('order drawer helpers expose product discounts and truthful delivery milestones', () => {
+  const order = {
+    currency: 'MYR',
+    status: 'IN_TRANSIT',
+    create_time: 100,
+    paid_time: 120,
+    update_time: 180,
+    skus: [{
+      sku_id: 'sku-1', product_id: 'product-1', product_name: 'Serum', sku_name: '15ml',
+      quantity: 2, currency: 'MYR', sale_price: '80', original_price: '100',
+      seller_discount: '15', platform_discount: '5', seller_sku: 'SERUM-15',
+    }],
+  };
+
+  assert.deepEqual(getOrderProductDetails(order)[0], {
+    id: 'sku-1',
+    productId: 'product-1',
+    productName: 'Serum',
+    skuName: '15ml',
+    quantity: 2,
+    refundedQuantity: 0,
+    imageUrl: null,
+    price: { amount: 100, currency: 'MYR' },
+    raw: order.skus[0],
+    sellerSku: 'SERUM-15',
+    productStatus: null,
+    productUrl: null,
+    originalPrice: { amount: 100, currency: 'MYR' },
+    salePrice: { amount: 80, currency: 'MYR' },
+    sellerDiscount: { amount: 15, currency: 'MYR' },
+    platformDiscount: { amount: 5, currency: 'MYR' },
+    totalDiscount: { amount: 20, currency: 'MYR' },
+  });
+  assert.deepEqual(getOrderDeliveryHistory(order), [
+    { status: 'CREATED', time: 100 },
+    { status: 'PAID', time: 120 },
+    { status: 'IN_TRANSIT', time: 180 },
+  ]);
+});
+
+test('shop order SLA selects the earliest deadline and reports its urgency', () => {
+  assert.deepEqual(getOrderSla({
+    order_status: 'AWAITING_SHIPMENT',
+    shipping_due_time: 2000,
+    collection_due_time: 1000,
+  }, 2100), { state: 'OVERDUE', deadline: 2000 });
+  assert.deepEqual(getOrderSla({
+    order_status: 'IN_TRANSIT',
+    shipping_due_time: 5000,
+  }, 4900), { state: 'DUE_SOON', deadline: 5000 });
+  assert.deepEqual(getOrderSla({ order_status: 'DELIVERED', shipping_due_time: 1 }, 2), {
+    state: 'DONE', deadline: null,
+  });
+});
+
 test('engagement percentage normalization handles TikTok basis-point rates and explicit units', () => {
   assert.equal(normalizeEngagementPercentage(581), 5.81);
   assert.equal(normalizeEngagementPercentage(0.4), 0.004);
@@ -170,4 +285,37 @@ test('creator video engagement supports nested interaction counts and direct per
     { scope: 'shoppable' },
   ), 0.72);
   assert.equal(getCreatorVideoEngagementRate({}), null);
+});
+
+test('Product Basic metadata overrides stale raw order labels and supplies SKU details', () => {
+  const order = {
+    products: [{
+      id: 'product-1',
+      title: 'Current catalog name',
+      main_image_url: 'current.jpg',
+      status: 'ACTIVATE',
+      product_url: 'https://shop.tiktok.com/view/product/product-1',
+      skus: [{
+        id: 'sku-1',
+        seller_sku: 'CURRENT-SKU',
+        sales_attributes: [{ value_name: 'Red' }, { value_name: 'L' }],
+      }],
+    }],
+    skus: [{
+      sku_id: 'sku-1',
+      product_id: 'product-1',
+      product_name: 'Old order name',
+      sku_name: 'Old variant',
+      product_image: 'old.jpg',
+      quantity: 1,
+    }],
+  };
+
+  const item = getOrderProductDetails(order)[0];
+  assert.equal(item.productName, 'Current catalog name');
+  assert.equal(item.imageUrl, 'current.jpg');
+  assert.equal(item.skuName, 'Red / L');
+  assert.equal(item.sellerSku, 'CURRENT-SKU');
+  assert.equal(item.productStatus, 'ACTIVATE');
+  assert.equal(item.productUrl, 'https://shop.tiktok.com/view/product/product-1');
 });

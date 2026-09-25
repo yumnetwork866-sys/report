@@ -15,11 +15,13 @@ const {
   AFFILIATE_MESSAGES_PATH,
   AFFILIATE_ORDERS_PATH,
   SHOP_ORDERS_PATH,
+  ORDER_STATEMENT_TRANSACTIONS_PATH,
   SAMPLE_APPLICATIONS_PATH,
   SAMPLE_APPLICATION_FULFILLMENTS_PATH,
   CREATOR_CONTENT_DETAILS_PATH,
   MARKETPLACE_CREATORS_PATH,
   MARKETPLACE_CREATOR_DETAIL_PATH,
+  PRODUCTS_SEARCH_PATH,
   PRODUCT_CATEGORIES_PATH,
   buildShopAuthorizationUrl,
   parseShopAuthorizationState,
@@ -42,6 +44,7 @@ const {
   sendAffiliateMessage,
   searchAffiliateOrders,
   searchShopOrders,
+  getOrderStatementTransactions,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrderKpis,
   searchSellerSampleApplications,
@@ -49,6 +52,7 @@ const {
   summarizeSampleFulfillments,
   searchMarketplaceCreators,
   getMarketplaceCreatorPerformance,
+  searchSellerProducts,
   getProductCategories,
   getSellerCreatorContentDetails,
   createCompassExportTask,
@@ -617,6 +621,21 @@ test('search shop orders sends int64 time filters and status in the body', async
   });
 });
 
+test('gets Finance statement transactions for one order', async (t) => {
+  configure(t);
+  const authorization = sellerAuthorization();
+  authorization.granted_scopes.push('seller.finance.info');
+  await getOrderStatementTransactions({
+    authorization,
+    shopCipher: 'cipher-1',
+    orderId: '5793990727963214852',
+  }, async (url, options) => {
+    assert.equal(url.pathname, `${ORDER_STATEMENT_TRANSACTIONS_PATH}/5793990727963214852/statement_transactions`);
+    assert.equal(options.method, 'GET');
+    return successResponse({ order_id: '5793990727963214852', settlement_amount: '130' });
+  });
+});
+
 test('affiliate orders are enriched with product and collaboration metadata', () => {
   const orders = [{
     id: 'order-1',
@@ -661,12 +680,43 @@ test('affiliate order KPIs aggregate the full period with commission and return 
 
   assert.deepEqual(result, {
     orders: 2,
+    sales_orders: 2,
     affiliate_gmv: [{ amount: 60, currency: 'MYR' }],
+    gross_revenue: [{ amount: 60, currency: 'MYR' }],
+    net_revenue: [{ amount: 50, currency: 'MYR' }],
+    refunded_revenue: [{ amount: 10, currency: 'MYR' }],
+    average_order_value: [{ amount: 30, currency: 'MYR' }],
     items_sold: 3,
+    items_refunded: 1,
     estimated_commission: [{ amount: 7.5, currency: 'MYR' }],
     refunded_returned_orders: 1,
     refund_return_rate: 50,
   });
+});
+
+test('affiliate order KPIs only subtract the returned SKU from a partially returned order', () => {
+  const result = summarizeAffiliateOrderKpis([{
+    id: 'order-partial-return',
+    skus: [
+      { quantity: 1, price: { amount: '20', currency: 'MYR' }, settlement_status: 'REFUNDED' },
+      { quantity: 2, price: { amount: '15', currency: 'MYR' }, settlement_status: 'SETTLED' },
+    ],
+  }]);
+
+  assert.deepEqual(result.refunded_revenue, [{ amount: 20, currency: 'MYR' }]);
+  assert.deepEqual(result.net_revenue, [{ amount: 30, currency: 'MYR' }]);
+  assert.equal(result.items_refunded, 1);
+});
+
+test('affiliate order KPIs exclude cancelled and unpaid lifecycle statuses from sales orders', () => {
+  const result = summarizeAffiliateOrderKpis([
+    { id: 'paid', order_status: 'COMPLETED', skus: [] },
+    { id: 'cancelled', order_status: 'CANCELLED', skus: [] },
+    { id: 'unpaid', order_status: 'UNPAID', skus: [] },
+  ]);
+
+  assert.equal(result.orders, 3);
+  assert.equal(result.sales_orders, 1);
 });
 
 test('search Seller sample applications uses the existing Seller Affiliate read scope', async (t) => {
@@ -819,6 +869,27 @@ test('get Marketplace creator performance uses creator id and marketplace scope'
     assert.equal(options.method, 'GET');
     return successResponse({ creator: { units_sold: 234, ec_video_count: 12 } });
   });
+});
+
+test('search seller products uses Product Basic scope and pagination', async (t) => {
+  configure(t);
+  const authorization = sellerAuthorization();
+  authorization.granted_scopes.push('seller.product.basic');
+  const payload = await searchSellerProducts({
+    authorization,
+    shopCipher: 'cipher-1',
+    pageToken: 'next-products',
+    pageSize: 100,
+  }, async (url, options) => {
+    assert.equal(url.pathname, PRODUCTS_SEARCH_PATH);
+    assert.equal(url.searchParams.get('shop_cipher'), 'cipher-1');
+    assert.equal(url.searchParams.get('page_token'), 'next-products');
+    assert.equal(url.searchParams.get('page_size'), '100');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.body, undefined);
+    return successResponse({ products: [{ id: 'product-1' }] });
+  });
+  assert.equal(payload.data.products[0].id, 'product-1');
 });
 
 test('get product categories uses seller product scope and the SEA v2 category tree', async (t) => {

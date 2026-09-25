@@ -269,27 +269,52 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
   if (namespace === 'order-overview') {
     const matchingOrders = periodOrders;
     const kpiGmv = new Map();
+    const kpiRefundedGmv = new Map();
+    const kpiOrdersByCurrency = new Map();
     const kpiCommission = new Map();
     let kpiItemsSold = 0;
+    let kpiItemsRefunded = 0;
     let returnedOrders = 0;
     for (const order of matchingOrders) {
       if (order.skus.some((sku) => sku.fully_return || /REFUND|RETURN|CANCEL/.test(String(sku.settlement_status)))) returnedOrders += 1;
+      const orderCurrencies = new Set();
       for (const sku of order.skus) {
         const currency = sku.price.currency;
         const amount = Number(sku.price.amount) * Number(sku.quantity);
+        const refundedQuantity = Number(sku.refunded_quantity) || (sku.fully_return ? Number(sku.quantity) : 0);
+        const refundedAmount = Number(sku.price.amount) * refundedQuantity;
         const rate = Number(sku.creator_commission_rate) / 100;
         kpiItemsSold += Number(sku.quantity);
+        kpiItemsRefunded += refundedQuantity;
         kpiGmv.set(currency, (kpiGmv.get(currency) || 0) + amount);
+        kpiRefundedGmv.set(currency, (kpiRefundedGmv.get(currency) || 0) + refundedAmount);
         kpiCommission.set(currency, (kpiCommission.get(currency) || 0) + amount * rate / 100);
+        orderCurrencies.add(currency);
       }
+      orderCurrencies.forEach((currency) => kpiOrdersByCurrency.set(currency, (kpiOrdersByCurrency.get(currency) || 0) + 1));
     }
+    const moneyValues = (values) => [...values].map(([currency, amount]) => ({ currency, amount }));
     return {
       data: {
         kpis: {
           orders: matchingOrders.length,
-          affiliate_gmv: [...kpiGmv].map(([currency, amount]) => ({ currency, amount })),
+          sales_orders: matchingOrders.filter((order) => !/CANCEL|UNPAID/.test(
+            String(order.order_status || order.status || '').toUpperCase(),
+          )).length,
+          affiliate_gmv: moneyValues(kpiGmv),
+          gross_revenue: moneyValues(kpiGmv),
+          net_revenue: [...kpiGmv].map(([currency, amount]) => ({
+            currency,
+            amount: amount - (kpiRefundedGmv.get(currency) || 0),
+          })),
+          refunded_revenue: moneyValues(kpiRefundedGmv),
+          average_order_value: [...kpiGmv].map(([currency, amount]) => ({
+            currency,
+            amount: amount / (kpiOrdersByCurrency.get(currency) || 1),
+          })),
           items_sold: kpiItemsSold,
-          estimated_commission: [...kpiCommission].map(([currency, amount]) => ({ currency, amount })),
+          items_refunded: kpiItemsRefunded,
+          estimated_commission: moneyValues(kpiCommission),
           refunded_returned_orders: returnedOrders,
           refund_return_rate: matchingOrders.length ? returnedOrders / matchingOrders.length * 100 : 0,
         },

@@ -11,12 +11,57 @@ const normalizedProduct = (product = {}) => {
     || product.thumbnailUrl
     || product.image_url
     || product.imageUrl
+    || product.main_images?.[0]?.urls?.[0]
+    || product.main_images?.[0]?.url
     || product.image?.url
     || product.images?.[0]?.url
     || '',
   ).trim() || null;
   return { id, title, image_url: imageUrl, raw_data: product };
 };
+const productView = (row = {}) => {
+  const raw = row.raw_data || row;
+  const normalized = normalizedProduct({
+    ...raw,
+    id: row.product_id || raw.id,
+    title: row.title || raw.title,
+    image_url: row.image_url || raw.image_url,
+  });
+  if (!normalized) return null;
+  const { id, title, image_url: imageUrl } = normalized;
+  return {
+    ...raw,
+    id,
+    product_id: id,
+    title,
+    name: title,
+    image_url: imageUrl,
+    main_image_url: imageUrl,
+    status: raw.status || raw.product_status || raw.audit?.status || null,
+    product_url: raw.product_url || raw.url || raw.share_url
+      || `https://shop.tiktok.com/view/product/${encodeURIComponent(id)}`,
+  };
+};
+
+const skuView = (product = {}, skuId) => {
+  const id = String(skuId || '').trim();
+  const sku = id && (Array.isArray(product.skus) ? product.skus : [])
+    .find((candidate) => String(candidate?.id || candidate?.sku_id || '') === id);
+  if (!sku) return null;
+  const variant = (Array.isArray(sku.sales_attributes) ? sku.sales_attributes : [])
+    .map((attribute) => attribute?.value_name || attribute?.name || attribute?.value)
+    .filter(Boolean)
+    .join(' / ');
+  return {
+    ...sku,
+    id,
+    sku_id: id,
+    seller_sku: sku.seller_sku || sku.external_sku_id || null,
+    sku_name: sku.sku_name || sku.variant_name || variant || null,
+    image_url: normalizedProduct({ id, ...sku })?.image_url || null,
+  };
+};
+
 
 const upsertShopProducts = async (shopId, products = [], { transaction } = {}) => {
   if (!sequelize?.query || !shopId) return 0;
@@ -62,4 +107,10 @@ const loadShopProducts = async (shopIds, productIds) => {
   });
 };
 
-module.exports = { loadShopProducts, upsertShopProducts, __test: { normalizedProduct } };
+module.exports = {
+  loadShopProducts,
+  productView,
+  skuView,
+  upsertShopProducts,
+  __test: { normalizedProduct },
+};

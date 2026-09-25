@@ -368,6 +368,10 @@ const TikTokAffiliateOrderSyncDay = sequelize.define('TikTokAffiliateOrderSyncDa
   metric_date: { type: DataTypes.DATEONLY, allowNull: false },
   order_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   sku_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  affiliate_synced_at: DataTypes.DATE,
+  shop_order_synced_at: DataTypes.DATE,
+  affiliate_order_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  shop_order_count: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   synced_at: DataTypes.DATE,
 }, {
   tableName: 'tiktok_affiliate_order_sync_days',

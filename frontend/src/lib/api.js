@@ -303,6 +303,18 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
   if (filters.status) params.set('status', filters.status);
   if (filters.startTime) params.set('create_time_ge', filters.startTime);
   if (filters.endTime) params.set('create_time_lt', filters.endTime);
+  if (filters.dateField) params.set('date_field', filters.dateField);
+  if (filters.orderStatus) params.set('order_status', filters.orderStatus);
+  if (filters.shippingType) params.set('shipping_type', filters.shippingType);
+  if (filters.warehouse) params.set('warehouse', filters.warehouse);
+  if (filters.buyerCancellation) params.set('buyer_cancellation', filters.buyerCancellation);
+  if (filters.refundStatus) params.set('refund_status', filters.refundStatus);
+  if (filters.carrier) params.set('carrier', filters.carrier);
+  if (filters.productSku) params.set('product_sku', filters.productSku);
+  if (filters.settlementAmountMin !== '' && filters.settlementAmountMin != null) params.set('settlement_amount_min', filters.settlementAmountMin);
+  if (filters.settlementAmountMax !== '' && filters.settlementAmountMax != null) params.set('settlement_amount_max', filters.settlementAmountMax);
+  if (filters.deliveryIssue) params.set('delivery_issue', filters.deliveryIssue);
+  if (filters.attentionOnly) params.set('attention_only', filters.attentionOnly);
   if (filters.programId) params.set('program_id', filters.programId);
   if (filters.orderId) params.set('order_id', filters.orderId);
   if (filters.productId) params.set('product_id', filters.productId);

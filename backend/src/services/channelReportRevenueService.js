@@ -254,6 +254,7 @@ const loadVideoDailyRevenue = async ({ platformVideoId, startDate, endDate }) =>
       FROM tiktok_affiliate_order_sync_days
       WHERE metric_date >= CAST(:startDate AS DATE)
         AND metric_date < CAST(:endDate AS DATE)
+        AND affiliate_synced_at IS NOT NULL
       GROUP BY metric_date
     )
     SELECT

@@ -74,14 +74,20 @@ const moneyValue = (value, fallbackCurrency) => {
 const productForSku = (order, sku) => (Array.isArray(order?.products) ? order.products : [])
   .find((product) => String(product?.id || product?.product_id || '') === String(sku?.product_id || ''));
 
+const catalogSkuFor = (product, sku) => (Array.isArray(product?.skus) ? product.skus : [])
+  .find((candidate) => String(candidate?.id || candidate?.sku_id || '') === String(sku?.sku_id || ''));
+
 export const getAffiliateOrderItems = (order = {}) => {
   const skus = Array.isArray(order.skus) ? order.skus : [];
   return skus.map((sku, index) => {
     const product = productForSku(order, sku);
-    const productName = sku?.product_name || sku?.product_title || sku?.title
-      || product?.title || product?.name || sku?.product_id || '—';
-    const skuName = sku?.sku_name || sku?.variation_name || sku?.variation
-      || sku?.seller_sku || sku?.sku?.name || '';
+    const catalogSku = catalogSkuFor(product, sku);
+    const productName = product?.title || product?.name
+      || sku?.product_name || sku?.product_title || sku?.title || sku?.product_id || '—';
+    const skuName = catalogSku?.sku_name || catalogSku?.variant_name
+      || (Array.isArray(catalogSku?.sales_attributes) ? catalogSku.sales_attributes.map((attribute) => attribute?.value_name || attribute?.name || attribute?.value).filter(Boolean).join(' / ') : '')
+      || sku?.sku_name || sku?.variation_name || sku?.variation
+      || catalogSku?.seller_sku || sku?.seller_sku || sku?.sku?.name || '';
     const quantity = Math.max(0, finiteNumber(
       sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count ?? 1,
     ) ?? 0);
@@ -96,8 +102,9 @@ export const getAffiliateOrderItems = (order = {}) => {
       skuName: skuName && skuName !== productName ? String(skuName) : '',
       quantity,
       refundedQuantity: Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity) ?? 0),
-      imageUrl: sku?.sku_image || sku?.thumbnail_url || sku?.image_url || sku?.product_image
-        || product?.main_image_url || product?.image_url || product?.thumbnail_url || null,
+      imageUrl: catalogSku?.image_url || catalogSku?.main_image_url || sku?.sku_image
+        || product?.main_image_url || product?.image_url || product?.thumbnail_url
+        || sku?.thumbnail_url || sku?.image_url || sku?.product_image || null,
       price,
       raw: sku,
     };
@@ -142,6 +149,170 @@ export const getAffiliateOrderValue = (order = {}) => {
     ));
   }
   return moneyMapValues(totals);
+};
+
+export const getOrderPaymentValue = (order = {}) => moneyValue(
+  order?.payment?.total_amount ?? order?.payment?.total ?? order?.total_amount ?? order?.order_amount,
+  order?.payment?.currency || order?.currency,
+);
+
+export const getOrderFinanceSummary = (order = {}) => {
+  const finance = order?.finance;
+  if (!finance) return null;
+  const currency = finance.currency || order?.payment?.currency || order?.currency;
+  const refundSignedAmount = (Array.isArray(finance.sku_transactions) ? finance.sku_transactions : [])
+    .flatMap((transaction) => Object.entries(transaction?.revenue_breakdown || {}))
+    .filter(([key]) => /refund/i.test(key))
+    .reduce((sum, [, value]) => sum + (finiteNumber(value) || 0), 0);
+  return {
+    currency: String(currency || 'USD').toUpperCase(),
+    revenue: moneyValue(finance.revenue_amount, currency),
+    refund: moneyValue(Math.abs(refundSignedAmount), currency),
+    fees: moneyValue(finance.fee_and_tax_amount ?? finance.fee_tax_amount, currency),
+    settlement: moneyValue(finance.settlement_amount, currency),
+    shippingCost: moneyValue(finance.shipping_cost_amount, currency),
+  };
+};
+
+const numericLeaves = (value, path = '') => {
+  if (!value || typeof value !== 'object') return [];
+  return Object.entries(value).flatMap(([key, child]) => {
+    const childPath = path ? `${path}.${key}` : key;
+    if (child && typeof child === 'object') return numericLeaves(child, childPath);
+    const amount = finiteNumber(child);
+    return amount === null ? [] : [{ path: childPath, amount }];
+  });
+};
+
+const sumFinanceFields = (transactions, section, matcher) => transactions
+  .flatMap((transaction) => numericLeaves(transaction?.[section] || {}))
+  .filter(({ path }) => matcher(path))
+  .reduce((sum, { amount }) => sum + amount, 0);
+
+export const getOrderFinanceBreakdown = (order = {}) => {
+  const finance = order?.finance;
+  if (!finance) return null;
+  const currency = finance.currency || order?.payment?.currency || order?.currency;
+  const transactions = Array.isArray(finance.sku_transactions) ? finance.sku_transactions : [];
+  const sellerDiscountAmount = sumFinanceFields(
+    transactions,
+    'revenue_breakdown',
+    (path) => /(^|\.)seller_discount_amount$/i.test(path) && !/refund/i.test(path),
+  );
+  const refundSignedAmount = sumFinanceFields(
+    transactions,
+    'revenue_breakdown',
+    (path) => /refund/i.test(path),
+  );
+  const subtotalAmount = sumFinanceFields(
+    transactions,
+    'revenue_breakdown',
+    (path) => /(^|\.)subtotal_before_discount_amount$/i.test(path) && !/refund/i.test(path),
+  );
+  const taxAmount = sumFinanceFields(
+    transactions,
+    'fee_tax_breakdown',
+    (path) => /tax/i.test(path),
+  );
+  const combinedFeeTaxAmount = finiteNumber(finance.fee_and_tax_amount ?? finance.fee_tax_amount);
+  const feeAmount = combinedFeeTaxAmount === null ? null : combinedFeeTaxAmount - taxAmount;
+  return {
+    currency: String(currency || 'USD').toUpperCase(),
+    productRevenue: moneyValue(subtotalAmount || finance.revenue_amount, currency),
+    sellerDiscount: moneyValue(sellerDiscountAmount, currency),
+    fees: moneyValue(feeAmount, currency),
+    taxes: moneyValue(taxAmount, currency),
+    shippingCost: moneyValue(finance.shipping_cost_amount, currency),
+    refund: moneyValue(refundSignedAmount ? -Math.abs(refundSignedAmount) : 0, currency),
+    settlement: moneyValue(finance.settlement_amount, currency),
+  };
+};
+
+export const getOrderProductDetails = (order = {}) => getAffiliateOrderItems(order).map((item) => {
+  const raw = item.raw || {};
+  const product = productForSku(order, raw) || {};
+  const catalogSku = catalogSkuFor(product, raw) || {};
+  const currency = raw.currency || item.price?.currency || order?.payment?.currency || order?.currency;
+  const sellerDiscountAmount = finiteNumber(raw.seller_discount) || 0;
+  const platformDiscountAmount = finiteNumber(raw.platform_discount) || 0;
+  return {
+    ...item,
+    sellerSku: String(catalogSku.seller_sku || catalogSku.external_sku_id || raw.seller_sku || ''),
+    productStatus: product.status || product.product_status || raw.product_status || null,
+    productUrl: product.product_url || product.url || product.share_url || raw.product_url || null,
+    originalPrice: moneyValue(raw.original_price ?? item.price, currency),
+    salePrice: moneyValue(raw.sale_price ?? item.price, currency),
+    sellerDiscount: moneyValue(raw.seller_discount, currency),
+    platformDiscount: moneyValue(raw.platform_discount, currency),
+    totalDiscount: moneyValue(sellerDiscountAmount + platformDiscountAmount, currency),
+  };
+});
+
+export const getOrderShipping = (order = {}) => {
+  const packages = Array.isArray(order.packages)
+    ? order.packages
+    : (Array.isArray(order.package_list) ? order.package_list : []);
+  const firstPackage = packages[0] || {};
+  const firstLineItem = (Array.isArray(order.line_items) ? order.line_items[0] : null)
+    || (Array.isArray(order.skus) ? order.skus[0] : null)
+    || {};
+  return {
+    packageId: String(firstPackage.id || firstPackage.package_id || firstLineItem.package_id || order.package_id || ''),
+    status: String(
+      firstPackage.status || firstPackage.delivery_status || firstLineItem.display_status
+      || firstLineItem.delivery_status || firstLineItem.package_status || order.delivery_status
+      || order.order_status || order.status || 'UNKNOWN',
+    ).toUpperCase(),
+    provider: order.shipping_provider || firstPackage.shipping_provider
+      || firstPackage.provider_name || firstLineItem.shipping_provider_name
+      || firstLineItem.shipping_provider || order.delivery_option_name || '',
+    trackingNumber: order.tracking_number || firstPackage.tracking_number || firstPackage.tracking_no
+      || firstLineItem.tracking_number || firstLineItem.tracking_no || '',
+  };
+};
+
+export const getOrderDeliveryHistory = (order = {}) => {
+  const status = String(order.order_status || order.status || 'UNKNOWN').toUpperCase();
+  const candidates = [
+    { status: 'CREATED', time: order.create_time || order.created_time },
+    { status: 'PAID', time: order.paid_time },
+    { status, time: order.update_time },
+    { status: 'DELIVERED', time: order.delivery_time },
+  ];
+  const seen = new Set();
+  return candidates
+    .map((event) => ({ ...event, time: finiteNumber(event.time) }))
+    .filter((event) => event.time && !seen.has(`${event.status}:${event.time}`) && seen.add(`${event.status}:${event.time}`))
+    .sort((left, right) => left.time - right.time);
+};
+
+export const getOrderSla = (order = {}, nowSeconds = Date.now() / 1000) => {
+  const status = String(order.order_status || order.status || '').toUpperCase();
+  if (/DELIVERED|COMPLETED|CANCELLED/.test(status)) return { state: 'DONE', deadline: null };
+  const deadlineFields = {
+    UNPAID: ['cancel_order_sla_time'],
+    ON_HOLD: ['cancel_order_sla_time'],
+    AWAITING_SHIPMENT: ['rts_sla_time', 'tts_sla_time', 'recommended_shipping_time', 'shipping_due_time'],
+    PARTIALLY_SHIPPING: ['collection_due_time', 'shipping_due_time'],
+    AWAITING_COLLECTION: ['collection_due_time', 'shipping_due_time'],
+    IN_TRANSIT: ['shipping_due_time'],
+  };
+  const fields = deadlineFields[status] || [
+    'shipping_due_time',
+    'collection_due_time',
+    'cancel_order_sla_time',
+    'rts_sla_time',
+    'tts_sla_time',
+    'recommended_shipping_time',
+  ];
+  const candidates = fields.map((field) => finiteNumber(order[field]))
+    .filter((value) => value && value > 0);
+  const deadline = candidates.length ? Math.min(...candidates) : null;
+  if (!deadline) return { state: 'UNKNOWN', deadline: null };
+  const remaining = deadline - nowSeconds;
+  if (remaining < 0) return { state: 'OVERDUE', deadline };
+  if (remaining <= 24 * 60 * 60) return { state: 'DUE_SOON', deadline };
+  return { state: 'ON_TRACK', deadline };
 };
 
 const percentageRate = (value) => {

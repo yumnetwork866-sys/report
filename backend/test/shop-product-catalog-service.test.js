@@ -17,7 +17,7 @@ test('shop product catalog normalizes and persists thumbnail metadata', async (t
     restore();
   });
 
-  const { upsertShopProducts, __test: { normalizedProduct } } = require(servicePath);
+  const { productView, skuView, upsertShopProducts, __test: { normalizedProduct } } = require(servicePath);
   assert.deepEqual(normalizedProduct({
     id: 'product-1', name: 'Product One', main_image_url: 'https://example.test/product-1.webp',
   }), {
@@ -26,6 +26,26 @@ test('shop product catalog normalizes and persists thumbnail metadata', async (t
     image_url: 'https://example.test/product-1.webp',
     raw_data: { id: 'product-1', name: 'Product One', main_image_url: 'https://example.test/product-1.webp' },
   });
+
+  const catalogProduct = productView({
+    product_id: 'product-1',
+    title: 'Catalog title',
+    image_url: 'catalog.jpg',
+    raw_data: {
+      status: 'ACTIVATE',
+      skus: [{
+        id: 'sku-1',
+        seller_sku: 'SELLER-RED-L',
+        sales_attributes: [{ value_name: 'Red' }, { value_name: 'L' }],
+      }],
+    },
+  });
+  assert.equal(catalogProduct.title, 'Catalog title');
+  assert.equal(catalogProduct.image_url, 'catalog.jpg');
+  assert.equal(catalogProduct.status, 'ACTIVATE');
+  assert.equal(catalogProduct.product_url, 'https://shop.tiktok.com/view/product/product-1');
+  assert.equal(skuView(catalogProduct, 'sku-1').sku_name, 'Red / L');
+  assert.equal(skuView(catalogProduct, 'sku-1').seller_sku, 'SELLER-RED-L');
 
   const count = await upsertShopProducts(7, [
     { id: 'product-1', name: 'Product One', main_image_url: 'https://example.test/product-1.webp' },

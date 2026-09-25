@@ -143,13 +143,25 @@ test('affiliate order helper preserves date range and cursor pagination filters'
       pageSize: 20,
       pageToken: 'next-page',
       keyword: 'serum',
+      dateField: 'update_time',
+      orderStatus: 'IN_TRANSIT',
+      shippingType: 'TIKTOK',
+      warehouse: 'WH-01',
+      buyerCancellation: 'no',
+      refundStatus: 'yes',
+      carrier: 'J&T',
+      productSku: 'SKU-9',
+      settlementAmountMin: '10',
+      settlementAmountMax: '50',
+      deliveryIssue: 'yes',
+      attentionOnly: 'yes',
       creatorUsername: 'creator_one',
       contentType: 'VIDEO',
       settlementStatus: 'SETTLED',
       source: 'db',
     });
 
-    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&creator_username=creator_one&content_type=VIDEO&settlement_status=SETTLED&source=db');
+    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/orders?page_token=next-page&page_size=20&keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&date_field=update_time&order_status=IN_TRANSIT&shipping_type=TIKTOK&warehouse=WH-01&buyer_cancellation=no&refund_status=yes&carrier=J%26T&product_sku=SKU-9&settlement_amount_min=10&settlement_amount_max=50&delivery_issue=yes&attention_only=yes&creator_username=creator_one&content_type=VIDEO&settlement_status=SETTLED&source=db');
   });
 });
 
@@ -168,11 +180,14 @@ test('affiliate order overview helper preserves the active order filters', async
       startTime: 1788195600,
       endTime: 1790874000,
       keyword: 'serum',
+      dateField: 'update_time',
+      orderStatus: 'COMPLETED',
+      refundStatus: 'no',
       contentType: 'VIDEO',
       settlementStatus: 'SETTLED',
     });
 
-    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/order-overview?keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&content_type=VIDEO&settlement_status=SETTLED');
+    assert.equal(requestUrl, '/api/tiktok-shop/shops/7/affiliate/order-overview?keyword=serum&create_time_ge=1788195600&create_time_lt=1790874000&date_field=update_time&order_status=COMPLETED&refund_status=no&content_type=VIDEO&settlement_status=SETTLED');
   });
 });
 

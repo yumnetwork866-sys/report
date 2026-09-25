@@ -47,6 +47,23 @@ import {
   waitForMarketplacePoll,
 } from '../utils/sellerAffiliateUtils';
 
+const DEFAULT_ORDER_FILTERS = {
+  dateField: 'create_time',
+  orderStatus: 'all',
+  shippingType: 'all',
+  warehouse: '',
+  buyerCancellation: 'all',
+  refundStatus: 'all',
+  settlementStatus: 'all',
+  carrier: '',
+  productSku: '',
+  settlementMin: '',
+  settlementMax: '',
+  deliveryIssue: 'all',
+  attentionOnly: false,
+  source: 'all',
+};
+
 export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
@@ -60,8 +77,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const [section, setSection] = useState(ordersOnly ? 'orders' : initialSection);
   const [orderPeriod, setOrderPeriod] = useState('30d');
   const [orderRange, setOrderRange] = useState(() => defaultStatisticsRange(30));
-  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
-  const [orderSourceFilter, setOrderSourceFilter] = useState('all');
+  const [orderFilterDraft, setOrderFilterDraft] = useState(DEFAULT_ORDER_FILTERS);
+  const [orderFilters, setOrderFilters] = useState(DEFAULT_ORDER_FILTERS);
   const [orderOverview, setOrderOverview] = useState({});
   const [orderOverviewLoading, setOrderOverviewLoading] = useState(false);
   const [orderOverviewError, setOrderOverviewError] = useState('');
@@ -113,9 +130,60 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const hasScope = scopes.includes(REQUIRED_SCOPE);
   const hasShopOrderScope = orderScopes.includes('seller.order.info') || scopes.includes('seller.order.info');
   const hasMarketplaceScope = scopes.includes(MARKETPLACE_SCOPE);
-  const hasProductScope = scopes.includes(PRODUCT_SCOPE);
+  const hasProductScope = scopes.includes(PRODUCT_SCOPE) || orderScopes.includes(PRODUCT_SCOPE);
   const hasAffiliateWriteScope = scopes.includes(AFFILIATE_WRITE_SCOPE);
   const currentPageToken = pageTokens.at(-1) || '';
+  const orderRequestFilters = useMemo(() => ({
+    startTime: shopDateUnix(orderRange.start, selectedShop?.region),
+    endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
+    keyword: submittedKeyword,
+    dateField: orderFilters.dateField,
+    orderStatus: orderFilters.orderStatus === 'all' ? '' : orderFilters.orderStatus,
+    shippingType: orderFilters.shippingType === 'all' ? '' : orderFilters.shippingType,
+    warehouse: orderFilters.warehouse,
+    buyerCancellation: orderFilters.buyerCancellation === 'all' ? '' : orderFilters.buyerCancellation,
+    refundStatus: orderFilters.refundStatus === 'all' ? '' : orderFilters.refundStatus,
+    settlementStatus: orderFilters.settlementStatus === 'all' ? '' : orderFilters.settlementStatus,
+    carrier: orderFilters.carrier,
+    productSku: orderFilters.productSku,
+    settlementAmountMin: orderFilters.settlementMin,
+    settlementAmountMax: orderFilters.settlementMax,
+    deliveryIssue: orderFilters.deliveryIssue === 'all' ? '' : orderFilters.deliveryIssue,
+    attentionOnly: orderFilters.attentionOnly ? 'yes' : '',
+    contentType: orderFilters.source === 'all' ? '' : orderFilters.source,
+  }), [orderFilters, orderRange.end, orderRange.start, selectedShop?.region, submittedKeyword]);
+
+  const orderFiltersDirty = useMemo(
+    () => JSON.stringify(orderFilterDraft) !== JSON.stringify(orderFilters),
+    [orderFilterDraft, orderFilters],
+  );
+  const orderFilterError = useMemo(() => {
+    const minimum = Number(orderFilterDraft.settlementMin);
+    const maximum = Number(orderFilterDraft.settlementMax);
+    if (orderFilterDraft.settlementMin !== '' && (!Number.isFinite(minimum) || minimum < 0)) return 'minimum';
+    if (orderFilterDraft.settlementMax !== '' && (!Number.isFinite(maximum) || maximum < 0)) return 'maximum';
+    if (orderFilterDraft.settlementMin !== '' && orderFilterDraft.settlementMax !== '' && minimum > maximum) return 'range';
+    return '';
+  }, [orderFilterDraft.settlementMax, orderFilterDraft.settlementMin]);
+
+  const applyOrderFilters = useCallback((event) => {
+    event?.preventDefault();
+    if (orderFilterError) return;
+    setOrderFilters({ ...orderFilterDraft });
+    setPageTokens([]);
+  }, [orderFilterDraft, orderFilterError]);
+
+  const applyOrderFilterPatch = useCallback((patch) => {
+    setOrderFilterDraft((current) => ({ ...current, ...patch }));
+    setOrderFilters((current) => ({ ...current, ...patch }));
+    setPageTokens([]);
+  }, []);
+
+  const resetOrderFilters = useCallback(() => {
+    setOrderFilterDraft(DEFAULT_ORDER_FILTERS);
+    setOrderFilters(DEFAULT_ORDER_FILTERS);
+    setPageTokens([]);
+  }, []);
 
   const connectCustomApp = useCallback(async () => {
     try {
@@ -217,20 +285,14 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       setOrderOverview({});
     }
     try {
-      const orderFilters = loadingOrders ? {
-        startTime: shopDateUnix(orderRange.start, selectedShop?.region),
-        endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
-        keyword: submittedKeyword,
-        settlementStatus: orderStatusFilter === 'all' ? '' : orderStatusFilter,
-        contentType: orderSourceFilter === 'all' ? '' : orderSourceFilter,
-      } : null;
+      const activeOrderFilters = loadingOrders ? orderRequestFilters : null;
       const filters = {
         signal,
         pageSize: PAGE_SIZE,
         pageToken: currentPageToken,
         keyword: submittedKeyword,
-        ...(orderFilters ? {
-          ...orderFilters,
+        ...(activeOrderFilters ? {
+          ...activeOrderFilters,
           source: 'db',
         } : {}),
         ...(section === 'discover' && marketplaceSearchKey.current
@@ -293,7 +355,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
       } else if (loadingOrders) {
         const [ordersResult, overviewResult] = await Promise.allSettled([
           fetchTikTokSellerAffiliateOrders(shopId, { ...filters, orderId: '' }),
-          fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...orderFilters }),
+          fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...activeOrderFilters }),
         ]);
         if (ordersResult.status === 'rejected') throw ordersResult.reason;
         result = ordersResult.value;
@@ -318,7 +380,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         if (loadingOrders) setOrderOverviewLoading(false);
       }
     }
-  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRange, orderSourceFilter, orderStatusFilter, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, selectedShop?.region, shopId, status, submittedKeyword, t]);
+  }, [currentPageToken, hasMarketplaceScope, hasScope, orderRequestFilters, ordersOnly, pageTokens.length, performanceWindow, searchVersion, section, shopId, status, submittedKeyword, t]);
   
   useEffect(() => {
     const controller = new AbortController();
@@ -505,8 +567,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
             ...filters,
             orderId: submittedKeyword,
             ...(ordersOnly ? {
-              startTime: shopDateUnix(orderRange.start, selectedShop?.region),
-              endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
+              ...orderRequestFilters,
+              source: 'db',
             } : {}),
           });
         }
@@ -917,8 +979,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     orderPeriod,
     orderPeriodOptions,
     orderRange,
-    orderSourceFilter,
-    orderStatusFilter,
+    orderFilterDraft,
+    orderFilterError,
+    orderFiltersDirty,
+    orderFilters,
     performanceBreakdown,
     performanceBreakdownTotal,
     performanceColumns,
@@ -942,8 +1006,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     setKeyword,
     setOrderPeriod,
     setOrderRange,
-    setOrderSourceFilter,
-    setOrderStatusFilter,
+    setOrderFilterDraft,
     setPageTokens,
     setPerformanceWindow,
     setSelectedInvitationId,
@@ -961,5 +1024,8 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     targetStatusOptions,
     toggleInviteProduct,
     totalPages,
+    applyOrderFilters,
+    applyOrderFilterPatch,
+    resetOrderFilters,
   };
 };

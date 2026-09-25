@@ -12,6 +12,7 @@ const SHOP_VIDEO_PERFORMANCE_DETAIL_PATH = '/analytics/202509/shop_videos';
 const SELLER_AFFILIATE_SCOPE = 'seller.affiliate_collaboration.read';
 const SELLER_CREATOR_MARKETPLACE_SCOPE = 'seller.creator_marketplace.read';
 const SELLER_PRODUCT_BASIC_SCOPE = 'seller.product.basic';
+const PRODUCTS_SEARCH_PATH = '/product/202502/products/search';
 const SELLER_AFFILIATE_WRITE_SCOPE = 'seller.affiliate_collaboration.write';
 const SELLER_AFFILIATE_MESSAGES_SCOPE = 'seller.affiliate_messages.write';
 const PRODUCT_CATEGORIES_PATH = '/product/202309/categories';
@@ -23,7 +24,9 @@ const AFFILIATE_CONVERSATIONS_PATH = '/affiliate_seller/202508/conversations';
 const AFFILIATE_MESSAGES_PATH = '/affiliate_seller/202412';
 const AFFILIATE_ORDERS_PATH = '/affiliate_seller/202410/orders/search';
 const SELLER_ORDER_SCOPE = 'seller.order.info';
+const SELLER_FINANCE_SCOPE = 'seller.finance.info';
 const SHOP_ORDERS_PATH = '/order/202309/orders/search';
+const ORDER_STATEMENT_TRANSACTIONS_PATH = '/finance/202501/orders';
 const OPEN_COLLABORATION_SETTINGS_PATH = '/affiliate_seller/202409/open_collaboration_settings';
 const SAMPLE_APPLICATIONS_PATH = '/affiliate_seller/202508/sample_applications/search';
 const SAMPLE_APPLICATION_FULFILLMENTS_PATH = '/affiliate_seller/202409/sample_applications';
@@ -511,6 +514,22 @@ const searchShopOrders = ({
   },
 }, fetchImpl);
 
+const getOrderStatementTransactions = async ({
+  authorization,
+  shopCipher,
+  orderId,
+} = {}, fetchImpl) => {
+  const normalizedOrderId = String(orderId || '').trim();
+  if (!/^\d{10,30}$/.test(normalizedOrderId)) throw new Error('A valid TikTok Shop order id is required.');
+  return sellerAffiliateRequest({
+    authorization,
+    shopCipher,
+    path: `${ORDER_STATEMENT_TRANSACTIONS_PATH}/${encodeURIComponent(normalizedOrderId)}/statement_transactions`,
+    requiredScope: SELLER_FINANCE_SCOPE,
+    method: 'GET',
+  }, fetchImpl);
+};
+
 const attachAffiliateOrderMetadata = (orders = [], { openCollaborations = [], targetCollaborations = [] } = {}) => {
   const productsById = new Map(openCollaborations
     .filter((row) => row?.product?.id)
@@ -555,6 +574,14 @@ const addAffiliateOrderMoney = (totals, money, multiplier = 1) => {
 const affiliateOrderMoneyTotals = (totals) => [...totals.entries()]
   .map(([currency, amount]) => ({ currency, amount }));
 
+const subtractAffiliateOrderMoneyTotals = (totals, deductions) => {
+  const currencies = new Set([...totals.keys(), ...deductions.keys()]);
+  return [...currencies].map((currency) => ({
+    currency,
+    amount: (totals.get(currency) || 0) - (deductions.get(currency) || 0),
+  }));
+};
+
 const affiliateCommissionRate = (value) => {
   const raw = typeof value === 'object' ? value?.percentage ?? value?.rate ?? value?.value : value;
   if (raw === undefined || raw === null || raw === '') return null;
@@ -565,17 +592,24 @@ const affiliateCommissionRate = (value) => {
 
 const summarizeAffiliateOrderKpis = (orders = []) => {
   const orderIds = new Set();
+  const salesOrderIds = new Set();
   const returnedOrderIds = new Set();
   const gmv = new Map();
+  const refundedGmv = new Map();
+  const ordersByCurrency = new Map();
   const commission = new Map();
   let itemsSold = 0;
+  let itemsRefunded = 0;
 
   orders.forEach((order, orderIndex) => {
     const id = String(order?.id || order?.order_id || `order-${orderIndex}`);
     orderIds.add(id);
+    const lifecycleStatus = String(order?.order_status || order?.status || '').toUpperCase();
+    if (!/CANCEL|UNPAID/.test(lifecycleStatus)) salesOrderIds.add(id);
     const skus = Array.isArray(order?.skus) ? order.skus : [];
     const orderStatus = String(order?.settlement_status || order?.order_status || order?.status || '').toUpperCase();
-    const returned = /REFUND|RETURN|CANCEL/.test(orderStatus) || skus.some((sku) => {
+    const orderReturned = /REFUND|RETURN|CANCEL/.test(orderStatus);
+    const returned = orderReturned || skus.some((sku) => {
       const quantity = Math.max(0, Number(sku?.quantity) || 0);
       const refundedQuantity = Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0);
       return sku?.fully_return === true
@@ -594,16 +628,27 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
     }
 
     let hasSkuGmv = false;
+    const orderCurrencies = new Set();
     for (const sku of skus) {
       const quantity = Math.max(0, Number(sku?.quantity) || 0);
-      const refundedQuantity = Math.min(quantity, Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0));
+      const explicitRefundedQuantity = Math.min(
+        quantity,
+        Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0),
+      );
+      const skuReturned = sku?.fully_return === true
+        || String(sku?.fully_return).toLowerCase() === 'true'
+        || /REFUND|RETURN|CANCEL/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
+      const refundedQuantity = explicitRefundedQuantity || ((skuReturned || orderReturned) ? quantity : 0);
       const price = affiliateOrderMoney(
         sku?.price ?? sku?.price_amount ?? sku?.original_price,
         sku?.currency || order?.currency,
       );
       itemsSold += quantity;
+      itemsRefunded += refundedQuantity;
       if (price) {
         addAffiliateOrderMoney(gmv, price, quantity);
+        addAffiliateOrderMoney(refundedGmv, price, refundedQuantity);
+        orderCurrencies.add(price.currency);
         hasSkuGmv = true;
       }
       if (hasTopLevelCommission) continue;
@@ -617,17 +662,34 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
       if (price && rate !== null) addAffiliateOrderMoney(commission, price, (quantity - refundedQuantity) * rate / 100);
     }
     if (!hasSkuGmv) {
-      addAffiliateOrderMoney(gmv, affiliateOrderMoney(
+      const orderMoney = affiliateOrderMoney(
         order?.gmv ?? order?.order_amount ?? order?.total_amount,
         order?.currency,
-      ));
+      );
+      addAffiliateOrderMoney(gmv, orderMoney);
+      if (returned) addAffiliateOrderMoney(refundedGmv, orderMoney);
+      if (orderMoney) orderCurrencies.add(orderMoney.currency);
     }
+    orderCurrencies.forEach((currency) => {
+      ordersByCurrency.set(currency, (ordersByCurrency.get(currency) || 0) + 1);
+    });
   });
+
+  const averageOrderValue = [...gmv.entries()].map(([currency, amount]) => ({
+    currency,
+    amount: amount / (ordersByCurrency.get(currency) || orderIds.size || 1),
+  }));
 
   return {
     orders: orderIds.size,
+    sales_orders: salesOrderIds.size,
     affiliate_gmv: affiliateOrderMoneyTotals(gmv),
+    gross_revenue: affiliateOrderMoneyTotals(gmv),
+    net_revenue: subtractAffiliateOrderMoneyTotals(gmv, refundedGmv),
+    refunded_revenue: affiliateOrderMoneyTotals(refundedGmv),
+    average_order_value: averageOrderValue,
     items_sold: itemsSold,
+    items_refunded: itemsRefunded,
     estimated_commission: affiliateOrderMoneyTotals(commission),
     refunded_returned_orders: returnedOrderIds.size,
     refund_return_rate: orderIds.size ? returnedOrderIds.size / orderIds.size * 100 : 0,
@@ -749,6 +811,18 @@ const getMarketplaceCreatorPerformance = ({
     requiredScope: SELLER_CREATOR_MARKETPLACE_SCOPE,
   }, fetchImpl);
 };
+
+const searchSellerProducts = ({ authorization, shopCipher, pageToken, pageSize = 100 } = {}, fetchImpl) => sellerAffiliateRequest({
+  authorization,
+  shopCipher,
+  path: PRODUCTS_SEARCH_PATH,
+  requiredScope: SELLER_PRODUCT_BASIC_SCOPE,
+  query: {
+    page_size: Math.min(100, Math.max(1, Number(pageSize) || 100)),
+    ...(pageToken ? { page_token: pageToken } : {}),
+  },
+  body: {},
+}, fetchImpl);
 
 const getProductCategories = ({ authorization, shopCipher, locale = 'en-US' } = {}, fetchImpl) => sellerAffiliateRequest({
   authorization,
@@ -952,6 +1026,7 @@ module.exports = {
   SELLER_AFFILIATE_SCOPE,
   SELLER_CREATOR_MARKETPLACE_SCOPE,
   SELLER_PRODUCT_BASIC_SCOPE,
+  PRODUCTS_SEARCH_PATH,
   SELLER_AFFILIATE_WRITE_SCOPE,
   SELLER_AFFILIATE_MESSAGES_SCOPE,
   PRODUCT_CATEGORIES_PATH,
@@ -963,7 +1038,9 @@ module.exports = {
   AFFILIATE_MESSAGES_PATH,
   AFFILIATE_ORDERS_PATH,
   SELLER_ORDER_SCOPE,
+  SELLER_FINANCE_SCOPE,
   SHOP_ORDERS_PATH,
+  ORDER_STATEMENT_TRANSACTIONS_PATH,
   SAMPLE_APPLICATIONS_PATH,
   SAMPLE_APPLICATION_FULFILLMENTS_PATH,
   CREATOR_CONTENT_DETAILS_PATH,
@@ -992,6 +1069,7 @@ module.exports = {
   getAffiliateConversationMessages,
   sendAffiliateMessage,
   searchAffiliateOrders,
+  getOrderStatementTransactions,
   searchShopOrders,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrderKpis,
@@ -1001,6 +1079,7 @@ module.exports = {
   summarizeSampleFulfillments,
   searchMarketplaceCreators,
   getMarketplaceCreatorPerformance,
+  searchSellerProducts,
   getProductCategories,
   getSellerCreatorContentDetails,
   createCompassExportTask,

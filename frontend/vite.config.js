@@ -73,6 +73,22 @@ const preloadBuiltFonts = () => ({
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), cacheHeaders(), preloadBuiltFonts()],
+  resolve: {
+    // Hooks must use the exact React instance owned by the renderer. This is
+    // especially important with pnpm symlinks and a long-running dev server.
+    dedupe: ['react', 'react-dom'],
+  },
+  optimizeDeps: {
+    // Prebundle the renderer and every React runtime in one optimizer pass so
+    // Vite never serves mixed dependency hashes after a graph change.
+    include: [
+      'react',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-dom',
+      'react-dom/client',
+    ],
+  },
   build: {
     minify: 'oxc',
     sourcemap: false,

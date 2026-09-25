@@ -1,5 +1,5 @@
 const crypto = require('node:crypto');
-const { Op, QueryTypes } = require('sequelize');
+const { Op, QueryTypes, Sequelize } = require('sequelize');
 const tiktokShopRepository = require('../../repositories/tiktokShopRepository');
 const {
   buildShopAuthorizationUrl,
@@ -16,6 +16,7 @@ const {
   getAffiliateConversationMessages,
   sendAffiliateMessage,
   searchAffiliateOrders,
+  getOrderStatementTransactions,
   attachAffiliateOrderMetadata,
   summarizeAffiliateOrderKpis,
   getOpenCollaborationSettings,
@@ -24,6 +25,7 @@ const {
   summarizeSampleFulfillments,
   getProductCategories,
   SELLER_PRODUCT_BASIC_SCOPE,
+  SELLER_FINANCE_SCOPE,
   getSellerCreatorContentDetails,
   normalizeShopPerformance,
   getShopVideoPerformance,
@@ -55,7 +57,7 @@ const {
 } = require('../tiktokCreatorContactHistoryService');
 const { saveTargetCollaborationSnapshots } = require('../tiktokTargetCollaborationSnapshotService');
 const { targetCollaborationSyncService } = require('../tiktokTargetCollaborationSyncService');
-const { upsertShopProducts } = require('../shopProductCatalogService');
+const { productView, skuView, upsertShopProducts } = require('../shopProductCatalogService');
 const { getOrSetCache } = require('../../lib/redis');
 
 const affiliateCacheTtlValue = Number(process.env.TIKTOK_SELLER_AFFILIATE_CACHE_TTL_MS ?? 120000);
@@ -65,6 +67,215 @@ const affiliateCacheTtlMs = affiliateCacheTtlValue === 0
 const sellerAffiliateCache = createTtlPromiseCache({ ttlMs: affiliateCacheTtlMs, maxEntries: 1000 });
 const marketplaceCategoryCache = createTtlPromiseCache({ ttlMs: 6 * 60 * 60 * 1000, maxEntries: 100 });
 const videoThumbnailCache = createTtlPromiseCache({ ttlMs: 12 * 60 * 60 * 1000, maxEntries: 10000 });
+const orderFinanceCache = createTtlPromiseCache({ ttlMs: 30 * 60 * 1000, maxEntries: 5000 });
+const ORDER_ALIAS = '"TikTokAffiliateOrder"';
+const ORDER_RAW = `${ORDER_ALIAS}."raw_data"`;
+const sqlQuote = (value) => `'${String(value).replaceAll("'", "''")}'`;
+const orderText = (key) => `${ORDER_RAW}->>'${key}'`;
+const orderEpoch = (key) => `NULLIF(${orderText(key)}, '')::BIGINT`;
+const settlementAmountTextSql = `NULLIF(COALESCE(
+  ${ORDER_RAW}#>>'{finance,settlement_amount,amount}',
+  ${ORDER_RAW}#>>'{finance,settlement_amount}',
+  ${ORDER_RAW}#>>'{finance,actual_settlement_amount,amount}',
+  ${ORDER_RAW}#>>'{finance,actual_settlement_amount}'
+), '')`;
+const settlementAmountSql = `(CASE WHEN ${settlementAmountTextSql} ~ '^-?[0-9]+([.][0-9]+)?$' THEN ${settlementAmountTextSql}::NUMERIC END)`;
+const ACTIVE_DELIVERY_STATUSES = [
+  'AWAITING_SHIPMENT', 'PARTIALLY_SHIPPING', 'AWAITING_COLLECTION', 'IN_TRANSIT',
+];
+const orderAttentionReasons = (order = {}, now = Math.floor(Date.now() / 1000)) => {
+  const status = String(order.status || order.order_status || '').toUpperCase();
+  const deadline = [order.shipping_due_time, order.collection_due_time, order.rts_sla_time, order.tts_sla_time]
+    .map(Number)
+    .find(Number.isFinite);
+  return {
+    buyerCancellation: String(order.cancellation_initiator || '').toUpperCase() === 'BUYER'
+      && !['CANCELLED', 'COMPLETED'].includes(status),
+    deliveryIssue: /FAILED|EXCEPTION/.test(status),
+    overdue: ACTIVE_DELIVERY_STATUSES.includes(status) && Number.isFinite(deadline) && deadline < now,
+    onHold: status === 'ON_HOLD',
+  };
+};
+
+const numericMoney = (value) => {
+  const amount = Number(typeof value === 'object' ? value?.amount : value);
+  return Number.isFinite(amount) ? amount : null;
+};
+const moneyCurrency = (value, fallback) => String(
+  (typeof value === 'object' ? value?.currency : null) || fallback || 'USD',
+).toUpperCase();
+const productPerformance = (orders = [], products = []) => {
+  const catalog = new Map(products.map(productView).filter(Boolean).map((product) => [String(product.id), product]));
+  const totals = new Map();
+  const rowFor = (productId) => {
+    const id = String(productId || '').trim();
+    if (!id) return null;
+    if (!totals.has(id)) {
+      const product = catalog.get(id) || { id, product_id: id };
+      totals.set(id, { product, gross_revenue: new Map(), refunded_revenue: new Map(), settlement: new Map() });
+    }
+    return totals.get(id);
+  };
+  const add = (map, currency, amount) => {
+    if (Number.isFinite(amount) && amount !== 0) map.set(currency, (map.get(currency) || 0) + amount);
+  };
+  for (const order of orders) {
+    const financeTransactions = Array.isArray(order.finance?.sku_transactions)
+      ? order.finance.sku_transactions
+      : [];
+    const financeBySku = new Map(financeTransactions
+      .map((transaction) => [String(transaction?.sku_id || transaction?.seller_sku_id || ''), transaction])
+      .filter(([skuId]) => skuId));
+    const contributions = [];
+    for (const sku of Array.isArray(order.skus) ? order.skus : []) {
+      const productId = sku.product_id;
+      const row = rowFor(productId);
+      const price = numericMoney(sku.price ?? sku.sale_price ?? sku.original_price);
+      if (!row || price === null) continue;
+      const currency = moneyCurrency(sku.price, sku.currency || order.currency);
+      const quantity = Math.max(0, Number(sku.quantity) || 0);
+      const explicitRefunded = Math.max(0, Number(sku.refunded_quantity ?? sku.refund_quantity) || 0);
+      const returned = sku.fully_return === true || String(sku.fully_return).toLowerCase() === 'true'
+        || /REFUND|RETURN|CANCEL/.test(String(sku.settlement_status || sku.item_status || '').toUpperCase());
+      const refundedQuantity = explicitRefunded || (returned ? quantity : 0);
+      const gross = price * quantity;
+      const transaction = financeBySku.get(String(sku.sku_id || ''));
+      const skuSettlementValue = transaction?.settlement_amount ?? transaction?.actual_settlement_amount;
+      const skuSettlement = numericMoney(skuSettlementValue);
+      const settlementCurrency = moneyCurrency(skuSettlementValue, transaction?.currency || order.finance?.currency || currency);
+      add(row.gross_revenue, currency, gross);
+      add(row.refunded_revenue, currency, price * refundedQuantity);
+      if (skuSettlement !== null) add(row.settlement, settlementCurrency, skuSettlement);
+      contributions.push({ row, currency, gross, skuSettlement, settlementCurrency });
+    }
+    const settlementValue = order.finance?.settlement_amount ?? order.finance?.actual_settlement_amount;
+    const settlement = numericMoney(settlementValue);
+    if (settlement !== null && contributions.length) {
+      const currency = moneyCurrency(settlementValue, order.finance?.currency || order.currency);
+      const missing = contributions.filter((item) => item.currency === currency && item.skuSettlement === null);
+      const recorded = contributions
+        .filter((item) => item.settlementCurrency === currency && item.skuSettlement !== null)
+        .reduce((sum, item) => sum + item.skuSettlement, 0);
+      const remaining = settlement - recorded;
+      const grossTotal = missing.reduce((sum, item) => sum + item.gross, 0);
+      for (const item of missing) add(item.row.settlement, currency, grossTotal ? remaining * item.gross / grossTotal : 0);
+    }
+  }
+  const moneyValues = (map) => [...map.entries()].map(([currency, amount]) => ({ currency, amount }));
+  const score = (row, field) => [...row[field].values()].reduce((sum, amount) => sum + Math.abs(amount), 0);
+  const serialized = [...totals.values()].map((row) => ({
+    product_id: row.product.id,
+    title: row.product.title || row.product.name || row.product.id,
+    image_url: row.product.image_url || row.product.main_image_url || null,
+    status: row.product.status || null,
+    product_url: row.product.product_url || null,
+    gross_revenue: moneyValues(row.gross_revenue),
+    refunded_revenue: moneyValues(row.refunded_revenue),
+    settlement: moneyValues(row.settlement),
+    _source: row,
+  }));
+  const ranked = (field) => serialized
+    .filter((row) => row[field].length)
+    .sort((left, right) => score(right._source, field) - score(left._source, field))
+    .slice(0, 10)
+    .map(({ _source, ...row }) => row);
+  return { revenue: ranked('gross_revenue'), settlement: ranked('settlement'), refund: ranked('refunded_revenue') };
+};
+
+const addOrderDataFilters = (where, skuConditions, query, { requireDateRange = false } = {}) => {
+  const startTime = unixTimeValue(query.create_time_ge);
+  const endTime = unixTimeValue(query.create_time_lt);
+  const dateField = String(query.date_field || 'create_time').toLowerCase() === 'update_time'
+    ? 'update_time'
+    : 'create_time';
+  if (requireDateRange && (!startTime || !endTime || endTime <= startTime)) {
+    const error = new Error('A valid order overview date range is required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (dateField === 'update_time') {
+    const updateTimeSql = `COALESCE(${orderEpoch('update_time')}, EXTRACT(EPOCH FROM ${ORDER_ALIAS}."create_time")::BIGINT)`;
+    if (startTime) where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`${updateTimeSql} >= ${startTime}`)];
+    if (endTime) where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`${updateTimeSql} < ${endTime}`)];
+  } else if (startTime && endTime) {
+    where.create_time = { [Op.gte]: new Date(startTime * 1000), [Op.lt]: new Date(endTime * 1000) };
+  } else if (startTime) {
+    where.create_time = { [Op.gte]: new Date(startTime * 1000) };
+  } else if (endTime) {
+    where.create_time = { [Op.lt]: new Date(endTime * 1000) };
+  }
+
+  const status = String(query.order_status || '').trim().toUpperCase();
+  if (status) {
+    const safeStatus = sqlQuote(status);
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('status')}, ${orderText('order_status')}) = ${safeStatus}`)];
+  }
+  const shippingType = String(query.shipping_type || '').trim().toUpperCase();
+  if (shippingType === 'PICKUP') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('delivery_type')}, '') IN ('COLLECTION_POINT', 'PICKUP', 'IN_STORE_PICKUP')`)];
+  } else if (shippingType === 'TIKTOK' || shippingType === 'SELLER') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('shipping_type')}, '') = ${sqlQuote(shippingType)}`)];
+  }
+  const warehouse = String(query.warehouse || '').trim();
+  if (warehouse) where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('warehouse_id')}, '') ILIKE ${sqlQuote(`%${warehouse}%`)}`)];
+  const carrier = String(query.carrier || '').trim();
+  if (carrier) where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('shipping_provider')}, '') ILIKE ${sqlQuote(`%${carrier}%`)}`)];
+
+  const buyerCancellation = String(query.buyer_cancellation || '').toLowerCase();
+  if (buyerCancellation === 'yes') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('cancellation_initiator')}, '') = 'BUYER'`)];
+  } else if (buyerCancellation === 'no') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('cancellation_initiator')}, '') <> 'BUYER'`)];
+  }
+
+  const deliveryIssue = String(query.delivery_issue || '').toLowerCase();
+  const deliveryIssueSql = `(
+    COALESCE(${orderText('status')}, ${orderText('order_status')}, '') ~* '(FAILED|EXCEPTION)'
+    OR (COALESCE(${orderText('status')}, ${orderText('order_status')}, '') IN (${ACTIVE_DELIVERY_STATUSES.map(sqlQuote).join(', ')})
+      AND COALESCE(${orderEpoch('shipping_due_time')}, ${orderEpoch('collection_due_time')}, ${orderEpoch('rts_sla_time')}, ${orderEpoch('tts_sla_time')}) < EXTRACT(EPOCH FROM NOW())::BIGINT)
+  )`;
+  if (deliveryIssue === 'yes') where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(deliveryIssueSql)];
+  if (deliveryIssue === 'no') where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`NOT ${deliveryIssueSql}`)];
+  if (String(query.attention_only || '').toLowerCase() === 'yes') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`(
+      ${deliveryIssueSql}
+      OR COALESCE(${orderText('status')}, ${orderText('order_status')}, '') = 'ON_HOLD'
+      OR (COALESCE(${orderText('cancellation_initiator')}, '') = 'BUYER'
+        AND COALESCE(${orderText('status')}, ${orderText('order_status')}, '') NOT IN ('CANCELLED', 'COMPLETED'))
+    )`)];
+  }
+
+  const refundStatus = String(query.refund_status || '').toLowerCase();
+  const refundedOrderSql = `EXISTS (
+    SELECT 1 FROM tiktok_affiliate_order_skus AS refund_sku
+    WHERE refund_sku.affiliate_order_id = ${ORDER_ALIAS}."id"
+      AND (refund_sku.fully_return = TRUE OR refund_sku.refunded_quantity > 0
+        OR refund_sku.settlement_status ILIKE '%REFUND%' OR refund_sku.settlement_status ILIKE '%RETURN%')
+  )`;
+  if (refundStatus === 'yes') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(refundedOrderSql)];
+  } else if (refundStatus === 'no') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`NOT ${refundedOrderSql}`)];
+  }
+
+  const productSku = String(query.product_sku || '').trim();
+  if (productSku) {
+    const pattern = `%${productSku}%`;
+    skuConditions.push({ [Op.or]: [
+      { product_id: { [Op.iLike]: pattern } }, { product_name: { [Op.iLike]: pattern } }, { sku_id: { [Op.iLike]: pattern } },
+    ] });
+  }
+
+  const minimumSettlement = Number(query.settlement_amount_min);
+  const maximumSettlement = Number(query.settlement_amount_max);
+  if (query.settlement_amount_min !== undefined && query.settlement_amount_min !== '' && Number.isFinite(minimumSettlement)) {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`${settlementAmountSql} >= ${minimumSettlement}`)];
+  }
+  if (query.settlement_amount_max !== undefined && query.settlement_amount_max !== '' && Number.isFinite(maximumSettlement)) {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`${settlementAmountSql} <= ${maximumSettlement}`)];
+  }
+  return { startTime, endTime, dateField };
+};
 const flattenMarketplaceCategories = (categories = []) => categories.flatMap((category) => [
   category,
   ...flattenMarketplaceCategories(category?.children || category?.sub_categories || []),
@@ -122,6 +333,57 @@ const attachAffiliateOrderCreatorProfiles = async (shopId, orders = []) => {
       };
     }),
   }));
+};
+
+const authorizationForScope = (shop, scope) => [shop?.orderAuthorization, shop?.authorization]
+  .find((authorization) => {
+    const scopes = Array.isArray(authorization?.granted_scopes) ? authorization.granted_scopes : [];
+    return scopes.includes(scope);
+  }) || null;
+
+const attachOrderFinance = async (shop, orders = [], { concurrency = 4 } = {}) => {
+  const authorization = authorizationForScope(shop, SELLER_FINANCE_SCOPE);
+  if (!authorization) return orders.map((order) => ({ ...order, finance_status: 'UNAUTHORIZED' }));
+  const results = new Array(orders.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, orders.length) }, async () => {
+    while (nextIndex < orders.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const order = orders[index];
+      const id = String(order?.order_id || order?.id || '');
+      const status = String(order?.order_status || order?.status || '').toUpperCase();
+      if (!id || !/DELIVERED|COMPLETED|CANCELLED/.test(status)) {
+        results[index] = { ...order, finance_status: 'PENDING' };
+        continue;
+      }
+      try {
+        const { value } = await orderFinanceCache.getOrLoad(`${shop.id}:${id}`, () => getOrderStatementTransactions({
+          authorization,
+          shopCipher: shop.cipher,
+          orderId: id,
+        }));
+        if (value?.data && typeof tiktokShopRepository.query === 'function') {
+          await tiktokShopRepository.query(`
+            UPDATE tiktok_affiliate_orders
+            SET raw_data = jsonb_set(raw_data, '{finance}', CAST(:finance AS jsonb), true)
+            WHERE shop_id = :shopId AND order_id = :orderId
+          `, {
+            replacements: { finance: JSON.stringify(value.data), shopId: shop.id, orderId: id },
+          });
+        }
+        results[index] = {
+          ...order,
+          finance: value?.data || null,
+          finance_status: value?.data ? 'AVAILABLE' : 'PENDING',
+        };
+      } catch {
+        results[index] = { ...order, finance_status: 'PENDING' };
+      }
+    }
+  });
+  await Promise.all(workers);
+  return results;
 };
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:3005';
 const redirectUrl = (status, message, returnPath = '/shop/analytics') => {
@@ -846,21 +1108,12 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   if (orderSource === 'db' || orderSource === 'database') {
     const where = { shop_id: shop.id };
     if (orderId) where.order_id = orderId;
-    if (startTime && endTime) {
-      where.create_time = {
-        [Op.gte]: new Date(startTime * 1000),
-        [Op.lt]: new Date(endTime * 1000),
-      };
-    } else if (startTime) {
-      where.create_time = { [Op.gte]: new Date(startTime * 1000) };
-    } else if (endTime) {
-      where.create_time = { [Op.lt]: new Date(endTime * 1000) };
-    }
 
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
 
     const skuConditions = [];
+    const { dateField } = addOrderDataFilters(where, skuConditions, req.query);
     const filterProductId = String(req.query.product_id || '').trim();
     const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
     const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
@@ -960,7 +1213,9 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders({
       where,
       distinct: true,
-      order: [['create_time', 'DESC']],
+      order: dateField === 'update_time'
+        ? [[Sequelize.literal(`COALESCE(${orderEpoch('update_time')}, EXTRACT(EPOCH FROM ${ORDER_ALIAS}."create_time")::BIGINT)`), 'DESC']]
+        : [['create_time', 'DESC']],
       limit: pageSize,
       offset,
     }, skuWhere, hasSkuFilter);
@@ -997,10 +1252,10 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
         : [],
     ]);
 
-    const productsById = new Map(products.map((p) => [
-      String(p.product_id),
-      { id: p.product_id, name: p.title, image_url: p.image_url, main_image_url: p.image_url, ...(p.raw_data || {}) },
-    ]));
+    const productsById = new Map(products
+      .map(productView)
+      .filter(Boolean)
+      .map((product) => [String(product.id), product]));
     const targetProgramsById = new Map(targetSnapshots.map((t) => [
       String(t.collaboration_id),
       { id: String(t.collaboration_id), name: t.name, type: 'TARGET', ...(t.raw_data || {}) },
@@ -1011,13 +1266,18 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       const skus = Array.isArray(r.skus) && r.skus.length ? r.skus.map((s) => {
         const rawSku = s.raw_data || {};
         const prod = productsById.get(String(s.product_id || rawSku.product_id));
+        const catalogSku = skuView(prod, s.sku_id || rawSku.sku_id);
         return {
           ...rawSku,
           sku_id: s.sku_id || rawSku.sku_id,
           product_id: s.product_id || rawSku.product_id,
-          product_name: s.product_name || rawSku.product_name || prod?.name || '',
-          product_image: prod?.image_url || rawSku.product_image || '',
-          image_url: prod?.image_url || rawSku.image_url || '',
+          product_name: prod?.title || s.product_name || rawSku.product_name || '',
+          product_image: catalogSku?.image_url || prod?.image_url || rawSku.product_image || '',
+          image_url: catalogSku?.image_url || prod?.image_url || rawSku.image_url || '',
+          sku_name: catalogSku?.sku_name || rawSku.sku_name || rawSku.variation_name || '',
+          seller_sku: catalogSku?.seller_sku || rawSku.seller_sku || '',
+          product_status: prod?.status || null,
+          product_url: prod?.product_url || null,
           quantity: s.quantity ?? rawSku.quantity,
           refunded_quantity: s.refunded_quantity ?? rawSku.refunded_quantity,
           price: s.price !== null && s.price !== undefined
@@ -1046,11 +1306,12 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       };
     });
 
+    const profiledOrders = await attachAffiliateOrderCreatorProfiles(shop.id, orders);
     return {
       code: 0,
       message: 'Success',
       data: {
-        orders: await attachAffiliateOrderCreatorProfiles(shop.id, orders),
+        orders: await attachOrderFinance(shop, profiledOrders),
         next_page_token: nextPageToken,
         total_count: count,
       },
@@ -1118,21 +1379,9 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
 });
 
 const listAffiliateOrderOverview = affiliateResponse('order-overview', async (shop, req) => {
-  const startTime = unixTimeValue(req.query.create_time_ge);
-  const endTime = unixTimeValue(req.query.create_time_lt);
-  if (!startTime || !endTime || endTime <= startTime) {
-    const error = new Error('A valid order overview date range is required.');
-    error.statusCode = 400;
-    throw error;
-  }
-  const where = {
-    shop_id: shop.id,
-    create_time: {
-      [Op.gte]: new Date(startTime * 1000),
-      [Op.lt]: new Date(endTime * 1000),
-    },
-  };
+  const where = { shop_id: shop.id };
   const skuConditions = [];
+  const { startTime, endTime, dateField } = addOrderDataFilters(where, skuConditions, req.query, { requireDateRange: true });
   const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
   const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
   const searchKeyword = String(req.query.keyword || '').trim();
@@ -1223,7 +1472,9 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
   const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders({
     where,
     distinct: true,
-    order: [['create_time', 'DESC']],
+    order: dateField === 'update_time'
+      ? [[Sequelize.literal(`COALESCE(${orderEpoch('update_time')}, EXTRACT(EPOCH FROM ${ORDER_ALIAS}."create_time")::BIGINT)`), 'DESC']]
+      : [['create_time', 'DESC']],
     limit: 10000,
   }, skuWhere, skuConditions.length > 0);
   const orders = rows.map((order) => ({
@@ -1247,9 +1498,30 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
       fully_return: sku.fully_return,
     })),
   }));
+  const overviewProductIds = [...new Set(orders
+    .flatMap((order) => order.skus || [])
+    .map((sku) => sku.product_id)
+    .filter(Boolean)
+    .map(String))];
+  const overviewProducts = overviewProductIds.length && typeof tiktokShopRepository.findShopProducts === 'function'
+    ? await tiktokShopRepository.findShopProducts({
+        where: { shop_id: shop.id, product_id: { [Op.in]: overviewProductIds } },
+      })
+    : [];
+  const topProducts = productPerformance(orders, overviewProducts);
+  const attention = orders.map((order) => orderAttentionReasons(order));
+  const baseKpis = summarizeAffiliateOrderKpis(orders);
   return {
     data: {
-      kpis: summarizeAffiliateOrderKpis(orders),
+      kpis: {
+        ...baseKpis,
+        attention_orders: attention.filter((reason) => Object.values(reason).some(Boolean)).length,
+        overdue_orders: attention.filter((reason) => reason.overdue).length,
+        buyer_cancel_requests: attention.filter((reason) => reason.buyerCancellation).length,
+        delivery_issue_orders: attention.filter((reason) => reason.deliveryIssue).length,
+        on_hold_orders: attention.filter((reason) => reason.onHold).length,
+      },
+      top_products: topProducts,
       range: { start_time: startTime, end_time: endTime },
       total_count: count,
       truncated: count > rows.length,
@@ -2314,6 +2586,7 @@ const service = {
     simplifiedShopName,
     alphanumericShopName,
     addMatchingChannelAvatar,
+    productPerformance,
   },
 };
 

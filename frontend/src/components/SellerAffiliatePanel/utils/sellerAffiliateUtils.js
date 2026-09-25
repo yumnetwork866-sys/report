@@ -74,7 +74,7 @@ export const shopDateUnix = (value, region) => {
 };
 
 export const defaultStatisticsRange = (days = 30) => {
-  const end = new Date().toISOString().slice(0, 10);
+  const end = shiftDateValue(new Date().toISOString().slice(0, 10), -1);
   return { start: shiftDateValue(end, -(days - 1)), end };
 };
 

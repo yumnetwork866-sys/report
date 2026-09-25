@@ -5,10 +5,16 @@ import { fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
   getAffiliateOrderCommission,
   getAffiliateOrderCreators,
-  getAffiliateOrderItems,
   getAffiliateOrderSettlementStatus,
   getAffiliateOrderSources,
   getAffiliateOrderValue,
+  getOrderFinanceSummary,
+  getOrderFinanceBreakdown,
+  getOrderPaymentValue,
+  getOrderProductDetails,
+  getOrderDeliveryHistory,
+  getOrderShipping,
+  getOrderSla,
 } from '../../../lib/sellerAffiliate';
 import AppAvatar from '../../AppAvatar';
 import DatePickerInput from '../../DatePickerInput';
@@ -69,6 +75,7 @@ export const MetricTooltip = ({ text }) => {
     </span>
   );
 };
+
 const arrayValue = (value) => Array.isArray(value) ? value : value ? [value] : [];
 const percentageValue = (value) => {
   const raw = typeof value === 'object'
@@ -141,7 +148,7 @@ export const MarketplaceCreatorCell = ({ creator, followerCount, t }) => {
   return <td className="marketplace-creator-cell"><div className="creator-identity marketplace-creator"><CreatorAvatar src={creator.avatar?.url || creator.avatar_url} name={creator.nickname || creator.username} /><span className="marketplace-creator__details"><span className="marketplace-creator__username">{creator.username || '—'}{level ? <span className="marketplace-creator__level">{level}</span> : null}</span><strong>{creator.nickname || creator.username || '—'}</strong>{creator.previously_invited ? <span className="marketplace-creator__previously-invited" title={t('sellerAffiliate.previouslyInvitedDescription')}>{t('sellerAffiliate.previouslyInvited')}</span> : null}{categories.length ? <span className="marketplace-creator__category">{categories[0]}{categories.length > 1 ? `, +${categories.length - 1}` : ''}</span> : null}{audience.length ? <span className="marketplace-creator__audience">{audience.join(' · ')}</span> : null}</span></div></td>;
 };
 export const AffiliateOrderProducts = ({ row, t }) => {
-  const items = getAffiliateOrderItems(row);
+  const items = getOrderProductDetails(row);
   if (!items.length) return '—';
   return <div className="seller-affiliate__order-products">{items.map((item) => (
     <div className="seller-affiliate__order-product" key={item.id}>
@@ -155,8 +162,8 @@ export const AffiliateOrderProducts = ({ row, t }) => {
         </span>
       </span>
       <span className="seller-affiliate__order-product-info">
-        <strong title={item.productName}>{item.productName}</strong>
-        <span className="row-subtitle">{item.skuName.replace(/^phân loại\s*:?\s*/i, '') || t('sellerAffiliate.defaultSku')}</span>
+        {item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer" title={item.productName} onClick={(event) => event.stopPropagation()}>{item.productName}</a> : <strong title={item.productName}>{item.productName}</strong>}
+        <span className="row-subtitle">{item.skuName.replace(/^phân loại\s*:?\s*/i, '') || t('sellerAffiliate.defaultSku')}{item.sellerSku ? ` · ${item.sellerSku}` : ''}</span>
       </span>
     </div>
   ))}</div>;
@@ -166,6 +173,168 @@ export const AffiliateOrderSummary = ({ row, t }) => <div className="seller-affi
   <AffiliateOrderProducts row={row} t={t} />
   <span className="seller-affiliate__order-id">{row.order_id || row.id}</span>
 </div>;
+
+export const OrderIdentity = ({ row, formatTime }) => <div className="seller-affiliate__order-identity">
+  <strong>{row.order_id || row.id}</strong>
+  <span className="row-subtitle">{formatTime(row.create_time || row.created_time)}</span>
+</div>;
+
+export const OrderPayment = ({ row, formatMoneyValues }) => {
+  const payment = getOrderPaymentValue(row);
+  return payment ? <strong>{formatMoneyValues([payment])}</strong> : <AffiliateOrderMoney row={row} formatMoneyValues={formatMoneyValues} />;
+};
+
+const orderStatusLabel = (status, t) => t(`sellerAffiliate.orderState_${status}`, { defaultValue: status || '—' });
+
+export const OrderStatus = ({ row, t }) => {
+  const status = String(row.order_status || row.status || 'UNKNOWN').toUpperCase();
+  return <span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span>;
+};
+
+export const OrderShippingStatus = ({ row, t }) => {
+  const shipping = getOrderShipping(row);
+  return <span className={`seller-affiliate__order-state seller-affiliate__order-state--${shipping.status.toLowerCase()}`}>{orderStatusLabel(shipping.status, t)}</span>;
+};
+
+export const OrderCarrier = ({ row }) => {
+  const shipping = getOrderShipping(row);
+  if (!shipping.provider && !shipping.trackingNumber) return '—';
+  return <div className="seller-affiliate__order-carrier"><strong>{shipping.provider || '—'}</strong>{shipping.trackingNumber ? <span className="row-subtitle">{shipping.trackingNumber}</span> : null}</div>;
+};
+
+export const OrderFinanceValue = ({ row, field, formatMoneyValues, t }) => {
+  if (row.finance_status !== 'AVAILABLE') {
+    return <span className="row-subtitle">{t(`sellerAffiliate.financeStatus_${row.finance_status || 'PENDING'}`)}</span>;
+  }
+  const summary = getOrderFinanceSummary(row);
+  const value = summary?.[field];
+  return value ? <strong>{formatMoneyValues([value])}</strong> : '—';
+};
+
+export const OrderSla = ({ row, formatTime, t }) => {
+  const sla = getOrderSla(row);
+  return <div className="seller-affiliate__order-sla"><span className={`seller-affiliate__sla seller-affiliate__sla--${sla.state.toLowerCase()}`}>{t(`sellerAffiliate.orderSla_${sla.state}`)}</span>{sla.deadline ? <span className="row-subtitle">{formatTime(sla.deadline)}</span> : null}</div>;
+};
+
+export const OrderActions = ({ row, onView, t }) => {
+  const [copied, setCopied] = useState(false);
+  const orderId = String(row.order_id || row.id || '');
+  const copy = async (event) => {
+    event.stopPropagation();
+    if (!orderId || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(orderId);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return <div className="seller-affiliate__order-actions"><button className="button button--small" type="button" onClick={(event) => { event.stopPropagation(); onView?.(row); }}>{t('sellerAffiliate.viewOrder')}</button><button className="button button--small button--ghost" type="button" onClick={copy} disabled={!orderId}>{t(copied ? 'sellerAffiliate.orderCopied' : 'sellerAffiliate.copyOrderId')}</button></div>;
+};
+
+const DrawerMoney = ({ value, formatMoneyValues }) => value
+  ? formatMoneyValues([value])
+  : '—';
+
+const historyStatusLabel = (status, t) => {
+  if (status === 'CREATED' || status === 'PAID') return t(`sellerAffiliate.orderHistory_${status}`);
+  return orderStatusLabel(status, t);
+};
+
+export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValues, t }) => {
+  useEffect(() => {
+    if (!order) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const onKeyDown = (event) => { if (event.key === 'Escape') onClose(); };
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [onClose, order]);
+
+  if (!order) return null;
+  const orderId = String(order.order_id || order.id || '');
+  const status = String(order.order_status || order.status || 'UNKNOWN').toUpperCase();
+  const shipping = getOrderShipping(order);
+  const products = getOrderProductDetails(order);
+  const finance = getOrderFinanceSummary(order);
+  const breakdown = getOrderFinanceBreakdown(order);
+  const history = getOrderDeliveryHistory(order);
+  const deliveryType = order.delivery_type || order.shipping_type || order.fulfillment_type
+    || order.delivery_option_name || '—';
+  const breakdownRows = breakdown ? [
+    ['productRevenue', breakdown.productRevenue],
+    ['sellerDiscount', breakdown.sellerDiscount],
+    ['tiktokFees', breakdown.fees],
+    ['taxes', breakdown.taxes],
+    ['shippingCost', breakdown.shippingCost],
+    ['refund', breakdown.refund],
+    ['settlement', breakdown.settlement],
+  ] : [];
+
+  return createPortal(
+    <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <aside className="koc-drawer seller-affiliate__order-drawer" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
+        <div className="koc-drawer__header">
+          <div><h2 id="order-detail-title">{t('sellerAffiliate.orderDetail')}</h2><p>{orderId}</p></div>
+          <button className="button button--ghost" type="button" onClick={onClose} aria-label={t('common.close')}>×</button>
+        </div>
+        <div className="koc-drawer__body seller-affiliate__order-drawer-body">
+          <section className="drawer-section seller-affiliate__order-detail-section">
+            <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
+            <dl className="seller-affiliate__order-detail-grid">
+              <div><dt>{t('sellerAffiliate.orderId')}</dt><dd>{orderId}</dd></div>
+              <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
+              <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
+              <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryType}</dd></div>
+            </dl>
+          </section>
+
+          <section className="drawer-section seller-affiliate__order-detail-section">
+            <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
+            <div className="seller-affiliate__order-detail-products">{products.length ? products.map((item) => (
+              <article className="seller-affiliate__order-detail-product" key={item.id}>
+                {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
+                <div>{item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer">{item.productName}</a> : <strong>{item.productName}</strong>}<span>{item.skuName || t('sellerAffiliate.defaultSku')}</span>{item.sellerSku ? <span>{t('sellerAffiliate.sellerSku')}: {item.sellerSku}</span> : null}{item.productStatus ? <span>{t('sellerAffiliate.productStatus')}: {item.productStatus}</span> : null}<span>{t('sellerAffiliate.quantity')}: {item.quantity}</span></div>
+                <dl><div><dt>{t('sellerAffiliate.price')}</dt><dd><DrawerMoney value={item.salePrice || item.price} formatMoneyValues={formatMoneyValues} /></dd></div><div><dt>{t('sellerAffiliate.originalPrice')}</dt><dd><DrawerMoney value={item.originalPrice} formatMoneyValues={formatMoneyValues} /></dd></div><div><dt>{t('sellerAffiliate.discount')}</dt><dd><DrawerMoney value={item.totalDiscount} formatMoneyValues={formatMoneyValues} /></dd></div></dl>
+              </article>
+            )) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}</div>
+          </section>
+
+          <section className="drawer-section seller-affiliate__order-detail-section">
+            <h3>{t('sellerAffiliate.orderDetailFinance')}</h3>
+            {order.finance_status === 'AVAILABLE' && finance ? <>
+              <div className="seller-affiliate__order-finance-summary">
+                <div><span>{t('sellerAffiliate.financeRevenue')}</span><strong><DrawerMoney value={finance.revenue} formatMoneyValues={formatMoneyValues} /></strong></div>
+                <div><span>{t('sellerAffiliate.tiktokFees')}</span><strong><DrawerMoney value={finance.fees} formatMoneyValues={formatMoneyValues} /></strong></div>
+                <div><span>{t('sellerAffiliate.shippingCost')}</span><strong><DrawerMoney value={finance.shippingCost} formatMoneyValues={formatMoneyValues} /></strong></div>
+                <div><span>{t('sellerAffiliate.refund')}</span><strong><DrawerMoney value={finance.refund} formatMoneyValues={formatMoneyValues} /></strong></div>
+                <div className="is-settlement"><span>{t('sellerAffiliate.actualSettlement')}</span><strong><DrawerMoney value={finance.settlement} formatMoneyValues={formatMoneyValues} /></strong></div>
+              </div>
+              <div className="seller-affiliate__finance-breakdown" aria-label={t('sellerAffiliate.financeBreakdown')}>{breakdownRows.map(([key, value]) => <div className={key === 'settlement' ? 'is-total' : ''} key={key}><span>{t(`sellerAffiliate.financeBreakdown_${key}`)}</span><strong><DrawerMoney value={value} formatMoneyValues={formatMoneyValues} /></strong></div>)}</div>
+            </> : <div className="empty-state empty-state--compact">{t(`sellerAffiliate.financeStatus_${order.finance_status || 'PENDING'}`)}</div>}
+          </section>
+
+          <section className="drawer-section seller-affiliate__order-detail-section">
+            <h3>{t('sellerAffiliate.orderDetailDelivery')}</h3>
+            <dl className="seller-affiliate__order-detail-grid">
+              <div><dt>{t('sellerAffiliate.packageId')}</dt><dd>{shipping.packageId || '—'}</dd></div>
+              <div><dt>{t('sellerAffiliate.tracking')}</dt><dd>{shipping.trackingNumber || '—'}</dd></div>
+              <div><dt>{t('sellerAffiliate.shippingCarrier')}</dt><dd>{shipping.provider || '—'}</dd></div>
+              <div><dt>{t('sellerAffiliate.deliveryStatus')}</dt><dd>{orderStatusLabel(shipping.status, t)}</dd></div>
+            </dl>
+            <div className="seller-affiliate__order-timeline">{history.map((event) => <div key={`${event.status}-${event.time}`}><i aria-hidden="true" /><span><strong>{historyStatusLabel(event.status, t)}</strong><small>{formatTime(event.time)}</small></span></div>)}</div>
+            <p className="seller-affiliate__tracking-note">{t('sellerAffiliate.orderTrackingHistoryLimited')}</p>
+          </section>
+        </div>
+      </aside>
+    </div>,
+    document.body,
+  );
+};
 
 export const AffiliateOrderCreators = ({ row, t }) => {
   const creators = getAffiliateOrderCreators(row);
