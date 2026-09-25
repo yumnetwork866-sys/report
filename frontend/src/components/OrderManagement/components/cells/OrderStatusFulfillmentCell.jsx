@@ -1,8 +1,6 @@
 import React from 'react';
 import { AlertTriangle, ExternalLink } from 'lucide-react';
-import { getOrderShipping, getOrderSla, getTrackingUrl } from '../../../../lib/sellerAffiliate';
-
-const orderStatusLabel = (status, t) => t(`sellerAffiliate.orderState_${status}`, { defaultValue: status || '—' });
+import { getOrderShipping, getOrderSla, getTrackingUrl, orderStatusLabel } from '../../../../lib/sellerAffiliate';
 
 export const OrderStatusFulfillmentCell = ({ row, formatTime, t }) => {
   const status = String(row.order_status || row.status || 'UNKNOWN').toUpperCase();

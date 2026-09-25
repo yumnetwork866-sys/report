@@ -286,9 +286,148 @@ export const getOrderDeliveryHistory = (order = {}) => {
     .sort((left, right) => left.time - right.time);
 };
 
+export const trackingStatusLabel = (value, t) => {
+  if (!value || value === '—') return '—';
+  const raw = String(value).trim();
+  const normalizedKey = raw.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const translationKey = `sellerAffiliate.orderState_${normalizedKey}`;
+
+  if (t) {
+    const translated = t(translationKey, { defaultValue: '' });
+    if (translated && translated !== translationKey) return translated;
+  }
+
+  const cleanText = raw.replace(/\.+$/, '').trim();
+  const lower = cleanText.toLowerCase();
+
+  // Dynamic phrase translations with location capture
+  let match = cleanText.match(/(?:your |the )?package (?:has )?(?:left|departed from) (?:the )?sorting center in (.+)/i);
+  if (match) return `Bưu kiện đã rời trung tâm phân loại tại ${match[1].trim()}`;
+
+  match = cleanText.match(/(?:your |the )?package (?:has )?arrived at (?:the )?sorting center in (.+)/i);
+  if (match) return `Bưu kiện đã đến trung tâm phân loại tại ${match[1].trim()}`;
+
+  match = cleanText.match(/(?:your |the )?package (?:has )?(?:left|departed from) (?:the )?(?:delivery|local) (?:hub|station) in (.+)/i);
+  if (match) return `Bưu kiện đã rời bưu cục phát tại ${match[1].trim()}`;
+
+  match = cleanText.match(/(?:your |the )?package (?:has )?arrived at (?:the )?(?:delivery|local) (?:hub|station) in (.+)/i);
+  if (match) return `Bưu kiện đã đến bưu cục phát tại ${match[1].trim()}`;
+
+  match = cleanText.match(/(?:your |the )?package (?:has )?(?:left|departed from) (?:the )?(.+)/i);
+  if (match && !/sorting center|delivery|hub|station/i.test(match[1])) {
+    return `Bưu kiện đã rời ${match[1].trim()}`;
+  }
+
+  match = cleanText.match(/(?:your |the )?package (?:has )?arrived at (?:the )?(.+)/i);
+  if (match && !/sorting center|delivery|hub|station/i.test(match[1])) {
+    return `Bưu kiện đã đến ${match[1].trim()}`;
+  }
+
+  match = cleanText.match(/(?:your |the )?package is on (?:its|the) way to (.+)/i);
+  if (match) return `Bưu kiện đang trên đường đến ${match[1].trim()}`;
+
+  match = cleanText.match(/in transit to (.+)/i);
+  if (match) return `Đang vận chuyển đến ${match[1].trim()}`;
+
+  // Common tracking patterns without locations
+  if (/order (has been |was )?(created|placed)|order placed|created order/i.test(lower)) {
+    return t ? (t('sellerAffiliate.orderHistory_CREATED') || 'Đơn hàng đã được tạo') : 'Đơn hàng đã được tạo';
+  }
+  if (/order (was )?paid|payment (was )?(successful|confirmed|received)|paid successfully/i.test(lower)) {
+    return t ? (t('sellerAffiliate.orderHistory_PAID') || 'Đã thanh toán thành công') : 'Đã thanh toán thành công';
+  }
+  if (/(order|package|parcel) (is being |has been )?(packed|prepared)|seller (is preparing|has packed)/i.test(lower)) {
+    return 'Người bán đã đóng gói và chuẩn bị hàng';
+  }
+  if (/(ready|awaiting|waiting) (for )?(carrier |courier )?pick[ -]?up|ready to ship/i.test(lower)) {
+    return 'Chờ đơn vị vận chuyển lấy hàng';
+  }
+  if (/(carrier|courier|driver) (has )?picked up|(package|parcel) (has been )?(picked up|collected)|picked up by (carrier|courier)|handed over to (carrier|courier)|received by (carrier|courier)/i.test(lower)) {
+    return 'Đơn vị vận chuyển đã lấy hàng thành công';
+  }
+  if (/(arrived at|reached) (the )?(sorting center|logistics hub|transit hub|facility|sorting hub)/i.test(lower)) {
+    return 'Bưu kiện đã đến trung tâm phân loại';
+  }
+  if (/(departed from|left) (the )?(sorting center|logistics hub|transit hub|facility|sorting hub)/i.test(lower)) {
+    return 'Bưu kiện đã rời trung tâm phân loại';
+  }
+  if (/(arrived at|reached) (the )?(delivery (station|hub)|local hub|distribution center|destination hub)/i.test(lower)) {
+    return 'Bưu kiện đã đến bưu cục phát';
+  }
+  if (/(departed from|left) (the )?(delivery (station|hub)|local hub|distribution center|destination hub)/i.test(lower)) {
+    return 'Bưu kiện đã rời bưu cục phát';
+  }
+  if (/out for delivery|courier is delivering|driver is delivering|(package|parcel) is out for delivery/i.test(lower)) {
+    return 'Bưu tá đang đi giao hàng';
+  }
+  if (/delivered (successfully)?|(package|parcel) (has been )?delivered|delivery completed|successfully delivered/i.test(lower)) {
+    return 'Giao hàng thành công';
+  }
+  if (/delivery (attempt )?failed|failed delivery|undelivered|recipient unavailable|customer not at home/i.test(lower)) {
+    return 'Giao hàng không thành công';
+  }
+  if (/rescheduled (for )?delivery/i.test(lower)) {
+    return 'Hẹn giao lại vào ngày làm việc tiếp theo';
+  }
+  if (/customs clearance (completed|success)/i.test(lower)) {
+    return 'Thông quan hoàn tất';
+  }
+  if (/return(ing)? to sender|package is returning|return initiated/i.test(lower)) {
+    return 'Bưu kiện đang được chuyển hoàn';
+  }
+  if (/returned( to sender)?|package returned/i.test(lower)) {
+    return 'Đã chuyển hoàn cho người gửi';
+  }
+  if (/order (was )?cancelled|cancelled/i.test(lower)) {
+    return 'Đơn hàng đã bị hủy';
+  }
+  if (/in transit|(package|parcel) in transit|on the way|transporting/i.test(lower)) {
+    return 'Bưu kiện đang được vận chuyển';
+  }
+
+  const codeMap = {
+    CREATED: 'Đơn được tạo',
+    PAID: 'Đã thanh toán',
+    UNPAID: 'Chưa thanh toán',
+    ON_HOLD: 'Tạm giữ',
+    AWAITING_SHIPMENT: 'Chờ giao hàng',
+    AWAITING_COLLECTION: 'Chờ lấy hàng',
+    READY_TO_SHIP: 'Chờ lấy hàng',
+    PARTIALLY_SHIPPING: 'Đang giao một phần',
+    IN_TRANSIT: 'Đang vận chuyển',
+    TRANSIT: 'Đang vận chuyển',
+    SHIPPED: 'Đã gửi hàng',
+    COLLECTED: 'Đã lấy hàng',
+    PICKED_UP: 'Đã lấy hàng',
+    DISPATCHED: 'Đã xuất kho',
+    DELIVERING: 'Đang giao hàng',
+    OUT_FOR_DELIVERY: 'Đang giao hàng',
+    DELIVERED: 'Đã giao',
+    DELIVERY_SUCCESS: 'Giao hàng thành công',
+    COMPLETED: 'Hoàn tất',
+    CANCELLED: 'Đã huỷ',
+    DELIVERY_FAILED: 'Giao hàng thất bại',
+    FAILED_DELIVERY: 'Giao hàng thất bại',
+    UNDELIVERED: 'Không giao được',
+    RETURNED: 'Đã chuyển hoàn',
+    RETURNING: 'Đang chuyển hoàn',
+    RETURN_TO_SENDER: 'Chuyển hoàn người gửi',
+    LOST: 'Thất lạc',
+    DAMAGED: 'Hư hỏng',
+    UNKNOWN: 'Chưa xác định',
+  };
+
+  return codeMap[normalizedKey] || raw;
+};
+
+export const orderStatusLabel = (status, t) => {
+  if (!status || status === '—') return '—';
+  return trackingStatusLabel(status, t);
+};
+
 export const getUnifiedOrderTimeline = (order = {}, trackingNodes = null, t = null) => {
   const formatLabel = (key, fallback) => (typeof t === 'function' ? t(key, { defaultValue: fallback }) : fallback);
-  const statusLabel = (status) => (typeof t === 'function' ? t(`sellerAffiliate.orderState_${status}`, { defaultValue: status || '—' }) : (status || '—'));
+  const statusLabel = (status) => orderStatusLabel(status, t);
   const historyLabel = (status) => {
     if (status === 'CREATED') return formatLabel('sellerAffiliate.orderHistory_CREATED', 'Đơn được tạo');
     if (status === 'PAID') return formatLabel('sellerAffiliate.orderHistory_PAID', 'Đã thanh toán');
@@ -349,7 +488,8 @@ export const getUnifiedOrderTimeline = (order = {}, trackingNodes = null, t = nu
           ? Math.floor(Number(node.update_time_millis) / 1000)
           : node.update_time,
       );
-      const label = node.description || node.event_description || node.status || '—';
+      const rawText = node.description || node.event_description || node.status || '—';
+      const label = trackingStatusLabel(rawText, t);
       items.push({
         time,
         label,
@@ -360,7 +500,7 @@ export const getUnifiedOrderTimeline = (order = {}, trackingNodes = null, t = nu
     if (deliveryTime && !trackingNodes.some(isDeliveredNode)) {
       items.push({
         time: deliveryTime,
-        label: historyLabel('DELIVERED'),
+        label: trackingStatusLabel('DELIVERY_SUCCESS', t),
         source: 'order',
         status: 'DELIVERED',
       });

@@ -16,6 +16,8 @@ import {
   getOrderProductDetails,
   getOrderDeliveryHistory,
   getUnifiedOrderTimeline,
+  orderStatusLabel,
+  trackingStatusLabel,
   getOrderPaymentValue,
   getOrderShipping,
   getOrderSla,
@@ -354,7 +356,7 @@ test('getUnifiedOrderTimeline merges order created, paid, and carrier nodes chro
   assert.equal(timeline[2].time, 1200);
   assert.equal(timeline[3].label, 'Đang trung chuyển qua kho');
   assert.equal(timeline[3].time, 1500);
-  assert.equal(timeline[4].label, 'DELIVERED');
+  assert.equal(timeline[4].label, 'Giao hàng thành công');
   assert.equal(timeline[4].time, 1800);
 });
 
@@ -387,6 +389,21 @@ test('getUnifiedOrderTimeline falls back to order delivery history when tracking
   assert.equal(timeline.length, 3);
   assert.equal(timeline[0].label, 'Đơn được tạo');
   assert.equal(timeline[1].label, 'Đã thanh toán');
-  assert.equal(timeline[2].label, 'IN_TRANSIT');
+  assert.equal(timeline[2].label, 'Đang vận chuyển');
+});
+
+test('trackingStatusLabel translates English phrases and logistics codes to Vietnamese', () => {
+  assert.equal(trackingStatusLabel('The package has been picked up'), 'Đơn vị vận chuyển đã lấy hàng thành công');
+  assert.equal(trackingStatusLabel('Package arrived at sorting center'), 'Bưu kiện đã đến trung tâm phân loại');
+  assert.equal(trackingStatusLabel('Out for delivery'), 'Bưu tá đang đi giao hàng');
+  assert.equal(trackingStatusLabel('Delivered successfully'), 'Giao hàng thành công');
+  assert.equal(trackingStatusLabel('Delivery failed'), 'Giao hàng không thành công');
+  assert.equal(trackingStatusLabel('Returning to sender'), 'Bưu kiện đang được chuyển hoàn');
+  assert.equal(trackingStatusLabel('SHIPPED'), 'Đã gửi hàng');
+  assert.equal(trackingStatusLabel('COLLECTED'), 'Đã lấy hàng');
+  assert.equal(trackingStatusLabel('IN_TRANSIT'), 'Đang vận chuyển');
+  assert.equal(trackingStatusLabel('Your package has left the sorting center in Shah Alam.'), 'Bưu kiện đã rời trung tâm phân loại tại Shah Alam');
+  assert.equal(trackingStatusLabel('Your package has arrived at the sorting center in Shah Alam.'), 'Bưu kiện đã đến trung tâm phân loại tại Shah Alam');
+  assert.equal(trackingStatusLabel('Bưu tá đang đi giao hàng'), 'Bưu tá đang đi giao hàng');
 });
 

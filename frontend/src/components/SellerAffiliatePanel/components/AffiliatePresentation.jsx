@@ -19,6 +19,7 @@ import {
   getOrderSla,
   getTrackingUrl,
   deliveryTypeLabel,
+  orderStatusLabel,
   paymentMethodLabel,
 } from '../../../lib/sellerAffiliate';
 import AppAvatar from '../../AppAvatar';
@@ -188,8 +189,6 @@ export const OrderPayment = ({ row, formatMoneyValues }) => {
   const payment = getOrderPaymentValue(row);
   return payment ? <strong>{formatMoneyValues([payment])}</strong> : <AffiliateOrderMoney row={row} formatMoneyValues={formatMoneyValues} />;
 };
-
-const orderStatusLabel = (status, t) => t(`sellerAffiliate.orderState_${status}`, { defaultValue: status || '—' });
 
 export const OrderStatus = ({ row, t }) => {
   const status = String(row.order_status || row.status || 'UNKNOWN').toUpperCase();
