@@ -7111,6 +7111,16 @@
   font-weight: 650;
 }
 
+.seller-affiliate__order-detail-highlight {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface)) !important;
+  border-color: var(--color-primary) !important;
+}
+
+.seller-affiliate__order-detail-section--alert {
+  border-left: 3px solid var(--color-danger);
+  padding-left: 12px;
+}
+
 .seller-affiliate__order-detail-products {
   display: grid;
   gap: 10px;

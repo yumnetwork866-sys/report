@@ -303,6 +303,37 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
   const sources = getAffiliateOrderSources(order);
   const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
 
+  // Additional Payment & Subsidy Data
+  const payment = order.payment || {};
+  const currency = payment.currency || order.currency || 'MYR';
+  const hasPaymentDetails = Boolean(payment.total_amount || payment.original_total_product_price || payment.sub_total);
+
+  // Cancellation Data
+  const cancelTime = order.cancel_time;
+  const cancelBy = order.cancel_user || order.cancellation_initiator;
+  const cancelReason = order.cancel_reason;
+  const isCancelled = status === 'CANCELLED' || Boolean(cancelTime || cancelReason);
+
+  // Recipient & Address Data
+  const address = order.recipient_address || {};
+  const districtParts = Array.isArray(address.district_info)
+    ? address.district_info.map((d) => d.address_name || d.name).filter(Boolean)
+    : [address.state, address.city].filter(Boolean);
+  const formattedAddress = [
+    address.address_line1 || address.address_detail,
+    address.address_line2,
+    districtParts.join(', '),
+    address.postal_code,
+    address.region_code,
+  ].filter(Boolean).join(', ') || address.full_address || '';
+  const hasAddress = Boolean(address.name || address.phone_number || formattedAddress || order.buyer_message || order.seller_note);
+
+  // Operational SLA Timestamps
+  const rtsSla = order.rts_sla_time;
+  const ttsSla = order.tts_sla_time;
+  const autoCancelSla = order.cancel_order_sla_time;
+  const hasSlaInfo = Boolean(rtsSla || ttsSla || autoCancelSla);
+
   return createPortal(
     <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="koc-drawer seller-affiliate__order-drawer" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
@@ -311,6 +342,7 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
           <button className="button button--ghost" type="button" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
         <div className="koc-drawer__body seller-affiliate__order-drawer-body">
+          {/* Section 1: Overview */}
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
             <dl className="seller-affiliate__order-detail-grid">
@@ -318,9 +350,83 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
               <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
               <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
               <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryType}</dd></div>
+              {order.payment_method_name ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{order.payment_method_name}</dd></div> : null}
             </dl>
           </section>
 
+          {/* Section 2: Cancellation Info (Only if cancelled) */}
+          {isCancelled ? (
+            <section className="drawer-section seller-affiliate__order-detail-section seller-affiliate__order-detail-section--alert">
+              <h3>{t('sellerAffiliate.orderDetailCancellation')}</h3>
+              <dl className="seller-affiliate__order-detail-grid">
+                <div><dt>{t('sellerAffiliate.cancelledBy')}</dt><dd><strong>{cancelBy || '—'}</strong></dd></div>
+                {cancelTime ? <div><dt>{t('sellerAffiliate.cancelTime')}</dt><dd>{formatTime(cancelTime)}</dd></div> : null}
+                <div style={{ gridColumn: 'span 2' }}>
+                  <dt>{t('sellerAffiliate.cancelReason')}</dt>
+                  <dd className="text-danger"><strong>{cancelReason || '—'}</strong></dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
+
+          {/* Section 3: Payment & Multi-tier Discounts Breakdown */}
+          {hasPaymentDetails ? (
+            <section className="drawer-section seller-affiliate__order-detail-section">
+              <h3>{t('sellerAffiliate.orderDetailPayment')}</h3>
+              <dl className="seller-affiliate__order-detail-grid">
+                <div>
+                  <dt>{t('sellerAffiliate.originalProductPrice')}</dt>
+                  <dd>{formatMoneyValues([{ amount: Number(payment.original_total_product_price || payment.sub_total || 0), currency }])}</dd>
+                </div>
+                {Number(payment.seller_discount || 0) > 0 ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.sellerDiscount')}</dt>
+                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.seller_discount), currency }])}</dd>
+                  </div>
+                ) : null}
+                {Number(payment.platform_discount || 0) > 0 ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.platformDiscount')}</dt>
+                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.platform_discount), currency }])}</dd>
+                  </div>
+                ) : null}
+                {payment.original_shipping_fee ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.originalShippingFee')}</dt>
+                    <dd>{formatMoneyValues([{ amount: Number(payment.original_shipping_fee), currency }])}</dd>
+                  </div>
+                ) : null}
+                {Number(payment.shipping_fee_platform_discount || 0) > 0 ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.platformShippingDiscount')}</dt>
+                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_platform_discount), currency }])}</dd>
+                  </div>
+                ) : null}
+                {Number(payment.shipping_fee_seller_discount || 0) > 0 ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.sellerShippingDiscount')}</dt>
+                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_seller_discount), currency }])}</dd>
+                  </div>
+                ) : null}
+                <div>
+                  <dt>{t('sellerAffiliate.customerShippingFee')}</dt>
+                  <dd>{formatMoneyValues([{ amount: Number(payment.shipping_fee || 0), currency }])}</dd>
+                </div>
+                {Number(payment.tax || 0) > 0 ? (
+                  <div>
+                    <dt>{t('sellerAffiliate.taxes')}</dt>
+                    <dd>{formatMoneyValues([{ amount: Number(payment.tax), currency }])}</dd>
+                  </div>
+                ) : null}
+                <div className="seller-affiliate__order-detail-highlight" style={{ gridColumn: 'span 2' }}>
+                  <dt>{t('sellerAffiliate.totalPayment')}</dt>
+                  <dd><strong style={{ fontSize: '1.1rem' }}>{formatMoneyValues([{ amount: Number(payment.total_amount || 0), currency }])}</strong></dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
+
+          {/* Section 4: Attribution */}
           {(creators.length || sources.length) ? (
             <section className="drawer-section seller-affiliate__order-detail-section">
               <h3>{t('sellerAffiliate.orderAttribution')}</h3>
@@ -348,6 +454,7 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
             </section>
           ) : null}
 
+          {/* Section 5: Products */}
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
             <div className="seller-affiliate__order-detail-products">{products.length ? products.map((item) => (
@@ -359,6 +466,36 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
             )) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}</div>
           </section>
 
+          {/* Section 6: Recipient & Address */}
+          {hasAddress ? (
+            <section className="drawer-section seller-affiliate__order-detail-section">
+              <h3>{t('sellerAffiliate.orderDetailRecipient')}</h3>
+              <dl className="seller-affiliate__order-detail-grid">
+                {address.name ? <div><dt>{t('sellerAffiliate.recipientName')}</dt><dd>{address.name}</dd></div> : null}
+                {address.phone_number ? <div><dt>{t('sellerAffiliate.recipientPhone')}</dt><dd>{address.phone_number}</dd></div> : null}
+                {formattedAddress ? (
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <dt>{t('sellerAffiliate.recipientAddress')}</dt>
+                    <dd>{formattedAddress}</dd>
+                  </div>
+                ) : null}
+                {order.buyer_message ? (
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <dt>{t('sellerAffiliate.buyerMessage')}</dt>
+                    <dd>{order.buyer_message}</dd>
+                  </div>
+                ) : null}
+                {order.seller_note ? (
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <dt>{t('sellerAffiliate.sellerNote')}</dt>
+                    <dd>{order.seller_note}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
+
+          {/* Section 7: Settlement & Finance */}
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailFinance')}</h3>
             {order.finance_status === 'AVAILABLE' && finance ? <>
@@ -373,6 +510,7 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
             </> : <div className="empty-state empty-state--compact">{t(`sellerAffiliate.financeStatus_${order.finance_status || 'PENDING'}`)}</div>}
           </section>
 
+          {/* Section 8: Delivery & SLA */}
           <section className="drawer-section seller-affiliate__order-detail-section">
             <h3>{t('sellerAffiliate.orderDetailDelivery')}</h3>
             <dl className="seller-affiliate__order-detail-grid">
@@ -380,6 +518,13 @@ export const OrderDetailDrawer = ({ order, onClose, formatTime, formatMoneyValue
               <div><dt>{t('sellerAffiliate.tracking')}</dt><dd>{shipping.trackingNumber ? (trackingUrl ? <a href={trackingUrl} target="_blank" rel="noreferrer" className="seller-affiliate__tracking-link">{shipping.trackingNumber} ↗</a> : shipping.trackingNumber) : '—'}</dd></div>
               <div><dt>{t('sellerAffiliate.shippingCarrier')}</dt><dd>{shipping.provider || '—'}</dd></div>
               <div><dt>{t('sellerAffiliate.deliveryStatus')}</dt><dd>{orderStatusLabel(shipping.status, t)}</dd></div>
+              {hasSlaInfo ? (
+                <>
+                  {rtsSla ? <div><dt>{t('sellerAffiliate.rtsSla')}</dt><dd>{formatTime(rtsSla)}</dd></div> : null}
+                  {ttsSla ? <div><dt>{t('sellerAffiliate.ttsSla')}</dt><dd>{formatTime(ttsSla)}</dd></div> : null}
+                  {autoCancelSla ? <div><dt>{t('sellerAffiliate.autoCancelSla')}</dt><dd>{formatTime(autoCancelSla)}</dd></div> : null}
+                </>
+              ) : null}
             </dl>
             <div className="seller-affiliate__order-timeline">{history.map((event) => <div key={`${event.status}-${event.time}`}><i aria-hidden="true" /><span><strong>{historyStatusLabel(event.status, t)}</strong><small>{formatTime(event.time)}</small></span></div>)}</div>
             <p className="seller-affiliate__tracking-note">{t('sellerAffiliate.orderTrackingHistoryLimited')}</p>
