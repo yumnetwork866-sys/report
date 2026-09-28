@@ -1264,23 +1264,34 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
 
     const orders = rows.map((r) => {
       const base = r.raw_data || {};
+      const lineItems = Array.isArray(base.line_items) ? base.line_items : (Array.isArray(base.item_list) ? base.item_list : []);
+      const lineItemsBySkuId = new Map(lineItems.map((li) => [String(li.sku_id || ''), li]));
       const skus = Array.isArray(r.skus) && r.skus.length ? r.skus.map((s) => {
         const rawSku = s.raw_data || {};
+        const skuId = String(s.sku_id || rawSku.sku_id || '');
+        const matchingLineItem = (skuId ? lineItemsBySkuId.get(skuId) : null)
+          || lineItems.find((li) => String(li.product_id || '') === String(s.product_id || rawSku.product_id || ''))
+          || {};
         const prod = productsById.get(String(s.product_id || rawSku.product_id));
         const catalogSku = skuView(prod, s.sku_id || rawSku.sku_id);
         return {
+          ...matchingLineItem,
           ...rawSku,
           sku_id: s.sku_id || rawSku.sku_id,
           product_id: s.product_id || rawSku.product_id,
-          product_name: prod?.title || s.product_name || rawSku.product_name || '',
-          product_image: catalogSku?.image_url || prod?.image_url || rawSku.product_image || '',
-          image_url: catalogSku?.image_url || prod?.image_url || rawSku.image_url || '',
-          sku_name: catalogSku?.sku_name || rawSku.sku_name || rawSku.variation_name || '',
-          seller_sku: catalogSku?.seller_sku || rawSku.seller_sku || '',
+          product_name: prod?.title || matchingLineItem.product_name || s.product_name || rawSku.product_name || '',
+          product_image: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.product_image || '',
+          image_url: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.image_url || '',
+          sku_name: catalogSku?.sku_name || matchingLineItem.sku_name || rawSku.sku_name || rawSku.variation_name || '',
+          seller_sku: catalogSku?.seller_sku || matchingLineItem.seller_sku || rawSku.seller_sku || '',
           product_status: prod?.status || null,
           product_url: prod?.product_url || null,
-          quantity: s.quantity ?? rawSku.quantity,
-          refunded_quantity: s.refunded_quantity ?? rawSku.refunded_quantity,
+          quantity: s.quantity ?? matchingLineItem.quantity ?? rawSku.quantity,
+          refunded_quantity: s.refunded_quantity ?? matchingLineItem.refunded_quantity ?? rawSku.refunded_quantity,
+          original_price: matchingLineItem.original_price ?? rawSku.original_price,
+          sale_price: matchingLineItem.sale_price ?? rawSku.sale_price,
+          seller_discount: matchingLineItem.seller_discount ?? rawSku.seller_discount,
+          platform_discount: matchingLineItem.platform_discount ?? rawSku.platform_discount,
           price: s.price !== null && s.price !== undefined
             ? { amount: String(s.price), currency: s.currency || 'MYR' }
             : (rawSku.price || {}),

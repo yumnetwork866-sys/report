@@ -742,6 +742,7 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
             <div role="tabpanel" id="order-panel-buyer_address" aria-labelledby="order-tab-buyer_address" className="seller-affiliate__order-tab-panel">
               {hasAddress ? (
                 <section className="drawer-section seller-affiliate__order-detail-section">
+                  <h3>{t('sellerAffiliate.orderDetailRecipient')}</h3>
                   <dl className="seller-affiliate__order-detail-grid seller-affiliate__order-detail-grid--compact">
                     {address.name ? <div><dt>{t('sellerAffiliate.recipientName')}</dt><dd>{address.name}</dd></div> : null}
                     {address.phone_number ? <div><dt>{t('sellerAffiliate.recipientPhone')}</dt><dd>{address.phone_number}</dd></div> : null}

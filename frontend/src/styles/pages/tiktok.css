@@ -7217,26 +7217,35 @@
 .seller-affiliate__order-detail-grid--compact {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 6px;
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  overflow: hidden;
 }
 
 .seller-affiliate__order-detail-grid--compact > div {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
-  padding: 6px 12px;
+  gap: 14px;
+  padding: 12px 16px;
   min-height: unset;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-subtle);
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 0;
+  background: transparent;
+}
+
+.seller-affiliate__order-detail-grid--compact > div:last-child {
+  border-bottom: none;
 }
 
 .seller-affiliate__order-detail-grid--compact dt {
-  flex: 0 0 115px;
+  flex: 0 0 150px;
   margin: 0;
   color: var(--color-text-soft);
   font-size: 0.78rem;
-  line-height: 1.4;
+  line-height: 1.5;
   white-space: nowrap;
 }
 
@@ -7245,13 +7254,19 @@
   margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+#order-panel-buyer_address {
+  display: flex;
+  flex-direction: column;
 }
 
 #order-panel-buyer_address .seller-affiliate__order-detail-section {
   border-bottom: none;
   padding-bottom: 0;
+  width: 100%;
 }
 
 @media (max-width: 480px) {

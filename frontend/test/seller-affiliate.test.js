@@ -407,3 +407,61 @@ test('trackingStatusLabel translates English phrases and logistics codes to Viet
   assert.equal(trackingStatusLabel('Bưu tá đang đi giao hàng'), 'Bưu tá đang đi giao hàng');
 });
 
+test('getOrderProductDetails enriches missing SKU price fields from order.line_items', () => {
+  const order = {
+    currency: 'MYR',
+    skus: [{
+      sku_id: '1734398263939139080',
+      product_id: '1730960948742555144',
+      quantity: 1,
+      price: { amount: '107.49', currency: 'MYR' },
+    }],
+    line_items: [{
+      sku_id: '1734398263939139080',
+      product_id: '1730960948742555144',
+      sku_name: 'Serum',
+      product_name: 'ACTISCAR Serum',
+      original_price: '150',
+      sale_price: '107.49',
+      seller_discount: '25.01',
+      platform_discount: '17.5',
+    }],
+    payment: {
+      original_total_product_price: '150',
+      total_amount: '107.49',
+    },
+  };
+
+  const [product] = getOrderProductDetails(order);
+  assert.deepEqual(product.originalPrice, { amount: 150, currency: 'MYR' });
+  assert.deepEqual(product.salePrice, { amount: 107.49, currency: 'MYR' });
+  assert.deepEqual(product.sellerDiscount, { amount: 25.01, currency: 'MYR' });
+  assert.deepEqual(product.platformDiscount, { amount: 17.5, currency: 'MYR' });
+  assert.deepEqual(product.totalDiscount, { amount: 42.51, currency: 'MYR' });
+});
+
+test('getOrderProductDetails falls back to payment original_total_product_price when line_items is absent for single item', () => {
+  const order = {
+    currency: 'MYR',
+    skus: [{
+      sku_id: 'sku-single',
+      product_id: 'product-single',
+      quantity: 1,
+      price: { amount: '107.49', currency: 'MYR' },
+    }],
+    payment: {
+      original_total_product_price: '150',
+      seller_discount: '25.01',
+      platform_discount: '17.5',
+      total_amount: '107.49',
+    },
+  };
+
+  const [product] = getOrderProductDetails(order);
+  assert.deepEqual(product.originalPrice, { amount: 150, currency: 'MYR' });
+  assert.deepEqual(product.salePrice, { amount: 107.49, currency: 'MYR' });
+  assert.deepEqual(product.sellerDiscount, { amount: 25.01, currency: 'MYR' });
+  assert.deepEqual(product.platformDiscount, { amount: 17.5, currency: 'MYR' });
+  assert.deepEqual(product.totalDiscount, { amount: 42.51, currency: 'MYR' });
+});
+

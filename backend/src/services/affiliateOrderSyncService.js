@@ -181,7 +181,19 @@ const mergeShopAndAffiliateOrder = (shopOrder, affiliateOrder) => {
     delivery_time: normalizedShopOrder.delivery_time || affiliateOrder.delivery_time || null,
     currency: normalizedShopOrder.currency || affiliateOrder.currency,
     skus: Array.isArray(affiliateOrder.skus) && affiliateOrder.skus.length
-      ? affiliateOrder.skus
+      ? affiliateOrder.skus.map((sku) => {
+          const matchingShopSku = normalizedShopOrder.skus?.find((s) => String(s.sku_id) === String(sku.sku_id))
+            || normalizedShopOrder.skus?.find((s) => String(s.product_id) === String(sku.product_id));
+          if (!matchingShopSku) return sku;
+          return {
+            ...(matchingShopSku.raw_data || {}),
+            ...sku,
+            raw_data: {
+              ...(matchingShopSku.raw_data || {}),
+              ...(sku.raw_data || {}),
+            },
+          };
+        })
       : normalizedShopOrder.skus,
     is_direct: false,
   };

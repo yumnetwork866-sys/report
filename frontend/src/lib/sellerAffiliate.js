@@ -77,36 +77,53 @@ const productForSku = (order, sku) => (Array.isArray(order?.products) ? order.pr
 const catalogSkuFor = (product, sku) => (Array.isArray(product?.skus) ? product.skus : [])
   .find((candidate) => String(candidate?.id || candidate?.sku_id || '') === String(sku?.sku_id || ''));
 
+const lineItemForSku = (order, sku) => {
+  const lineItems = Array.isArray(order?.line_items)
+    ? order.line_items
+    : (Array.isArray(order?.item_list) ? order.item_list : []);
+  if (!lineItems.length) return null;
+  const skuId = String(sku?.sku_id || sku?.id || '');
+  const productId = String(sku?.product_id || '');
+  return (skuId ? lineItems.find((li) => String(li?.sku_id || li?.id || '') === skuId) : null)
+    || (productId ? lineItems.find((li) => String(li?.product_id || '') === productId) : null)
+    || null;
+};
+
 export const getAffiliateOrderItems = (order = {}) => {
-  const skus = Array.isArray(order.skus) ? order.skus : [];
+  const skus = Array.isArray(order.skus) && order.skus.length
+    ? order.skus
+    : (Array.isArray(order.line_items) && order.line_items.length
+      ? order.line_items
+      : (Array.isArray(order.item_list) ? order.item_list : []));
   return skus.map((sku, index) => {
+    const lineItem = lineItemForSku(order, sku);
     const product = productForSku(order, sku);
     const catalogSku = catalogSkuFor(product, sku);
     const productName = product?.title || product?.name
-      || sku?.product_name || sku?.product_title || sku?.title || sku?.product_id || '—';
+      || lineItem?.product_name || sku?.product_name || sku?.product_title || sku?.title || sku?.product_id || '—';
     const skuName = catalogSku?.sku_name || catalogSku?.variant_name
       || (Array.isArray(catalogSku?.sales_attributes) ? catalogSku.sales_attributes.map((attribute) => attribute?.value_name || attribute?.name || attribute?.value).filter(Boolean).join(' / ') : '')
-      || sku?.sku_name || sku?.variation_name || sku?.variation
-      || catalogSku?.seller_sku || sku?.seller_sku || sku?.sku?.name || '';
+      || lineItem?.sku_name || sku?.sku_name || sku?.variation_name || sku?.variation
+      || catalogSku?.seller_sku || lineItem?.seller_sku || sku?.seller_sku || sku?.sku?.name || '';
     const quantity = Math.max(0, finiteNumber(
-      sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count ?? 1,
+      sku?.quantity ?? sku?.sku_quantity ?? lineItem?.quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count ?? 1,
     ) ?? 0);
     const price = moneyValue(
-      sku?.price ?? sku?.price_amount ?? sku?.original_price,
-      sku?.currency || order?.currency,
+      sku?.price ?? sku?.price_amount ?? lineItem?.sale_price ?? lineItem?.original_price ?? sku?.original_price,
+      sku?.currency || lineItem?.currency || order?.currency,
     );
     return {
-      id: String(sku?.sku_id || `${sku?.product_id || 'product'}-${index}`),
-      productId: String(sku?.product_id || product?.id || ''),
+      id: String(sku?.sku_id || lineItem?.sku_id || `${sku?.product_id || lineItem?.product_id || 'product'}-${index}`),
+      productId: String(sku?.product_id || product?.id || lineItem?.product_id || ''),
       productName,
       skuName: skuName && skuName !== productName ? String(skuName) : '',
       quantity,
-      refundedQuantity: Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity) ?? 0),
-      imageUrl: catalogSku?.image_url || catalogSku?.main_image_url || sku?.sku_image
+      refundedQuantity: Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? lineItem?.refunded_quantity) ?? 0),
+      imageUrl: catalogSku?.image_url || catalogSku?.main_image_url || sku?.sku_image || lineItem?.sku_image
         || product?.main_image_url || product?.image_url || product?.thumbnail_url
         || sku?.thumbnail_url || sku?.image_url || sku?.product_image || null,
       price,
-      raw: sku,
+      raw: lineItem ? { ...lineItem, ...sku } : sku,
     };
   });
 };
@@ -228,25 +245,60 @@ export const getOrderFinanceBreakdown = (order = {}) => {
   };
 };
 
-export const getOrderProductDetails = (order = {}) => getAffiliateOrderItems(order).map((item) => {
-  const raw = item.raw || {};
-  const product = productForSku(order, raw) || {};
-  const catalogSku = catalogSkuFor(product, raw) || {};
-  const currency = raw.currency || item.price?.currency || order?.payment?.currency || order?.currency;
-  const sellerDiscountAmount = finiteNumber(raw.seller_discount) || 0;
-  const platformDiscountAmount = finiteNumber(raw.platform_discount) || 0;
-  return {
-    ...item,
-    sellerSku: String(catalogSku.seller_sku || catalogSku.external_sku_id || raw.seller_sku || ''),
-    productStatus: product.status || product.product_status || raw.product_status || null,
-    productUrl: product.product_url || product.url || product.share_url || raw.product_url || null,
-    originalPrice: moneyValue(raw.original_price ?? item.price, currency),
-    salePrice: moneyValue(raw.sale_price ?? item.price, currency),
-    sellerDiscount: moneyValue(raw.seller_discount, currency),
-    platformDiscount: moneyValue(raw.platform_discount, currency),
-    totalDiscount: moneyValue(sellerDiscountAmount + platformDiscountAmount, currency),
-  };
-});
+export const getOrderProductDetails = (order = {}) => {
+  const items = getAffiliateOrderItems(order);
+  const payment = order?.payment || {};
+  const isSingleItem = items.length === 1;
+  const singleItemQty = isSingleItem ? Math.max(1, items[0].quantity || 1) : 1;
+
+  return items.map((item) => {
+    const raw = item.raw || {};
+    const lineItem = lineItemForSku(order, raw);
+    const product = productForSku(order, raw) || {};
+    const catalogSku = catalogSkuFor(product, raw) || {};
+    const currency = raw.currency || lineItem?.currency || item.price?.currency || order?.payment?.currency || order?.currency;
+
+    const rawSellerDiscount = finiteNumber(raw.seller_discount ?? lineItem?.seller_discount);
+    const rawPlatformDiscount = finiteNumber(raw.platform_discount ?? lineItem?.platform_discount);
+
+    const sellerDiscountAmount = rawSellerDiscount !== null
+      ? rawSellerDiscount
+      : (isSingleItem && finiteNumber(payment.seller_discount) !== null
+        ? Number(payment.seller_discount) / singleItemQty
+        : 0);
+
+    const platformDiscountAmount = rawPlatformDiscount !== null
+      ? rawPlatformDiscount
+      : (isSingleItem && finiteNumber(payment.platform_discount) !== null
+        ? Number(payment.platform_discount) / singleItemQty
+        : 0);
+
+    const totalDiscountAmount = Math.round((sellerDiscountAmount + platformDiscountAmount + Number.EPSILON) * 100) / 100;
+
+    const resolvedOriginalPrice = raw.original_price
+      ?? lineItem?.original_price
+      ?? (isSingleItem && finiteNumber(payment.original_total_product_price) !== null
+        ? Number(payment.original_total_product_price) / singleItemQty
+        : null)
+      ?? item.price;
+
+    const resolvedSalePrice = raw.sale_price
+      ?? lineItem?.sale_price
+      ?? item.price;
+
+    return {
+      ...item,
+      sellerSku: String(catalogSku.seller_sku || catalogSku.external_sku_id || lineItem?.seller_sku || raw.seller_sku || ''),
+      productStatus: product.status || product.product_status || raw.product_status || null,
+      productUrl: product.product_url || product.url || product.share_url || raw.product_url || null,
+      originalPrice: moneyValue(resolvedOriginalPrice, currency),
+      salePrice: moneyValue(resolvedSalePrice, currency),
+      sellerDiscount: moneyValue(sellerDiscountAmount, currency),
+      platformDiscount: moneyValue(platformDiscountAmount, currency),
+      totalDiscount: moneyValue(totalDiscountAmount, currency),
+    };
+  });
+};
 
 export const getOrderShipping = (order = {}) => {
   const packages = Array.isArray(order.packages)
