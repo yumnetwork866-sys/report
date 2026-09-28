@@ -586,56 +586,139 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
               {hasPaymentDetails ? (
                 <section className="drawer-section seller-affiliate__order-detail-section">
                   <h3>{t('sellerAffiliate.orderDetailPayment')}</h3>
-                  <dl className="seller-affiliate__order-detail-grid">
-                    <div>
-                      <dt>{t('sellerAffiliate.originalProductPrice')}</dt>
-                      <dd>{formatMoneyValues([{ amount: Number(payment.original_total_product_price || payment.sub_total || 0), currency }])}</dd>
+                  <div className="seller-affiliate__payment-receipt">
+                    {/* Group: Tiền hàng */}
+                    <div className="seller-affiliate__payment-group">
+                      <div className="seller-affiliate__payment-group-title">
+                        {t('sellerAffiliate.paymentGroupProducts')}
+                      </div>
+                      <div className="seller-affiliate__payment-row">
+                        <span className="seller-affiliate__payment-label">
+                          {t('sellerAffiliate.originalProductPrice')}
+                        </span>
+                        <span className="seller-affiliate__payment-value">
+                          {formatMoneyValues([{ amount: Number(payment.original_total_product_price || payment.sub_total || 0), currency }])}
+                        </span>
+                      </div>
+                      {Number(payment.seller_discount || 0) > 0 ? (
+                        <div className="seller-affiliate__payment-row seller-affiliate__payment-row--discount">
+                          <span className="seller-affiliate__payment-label">
+                            {t('sellerAffiliate.sellerDiscount')}
+                            <span className="seller-affiliate__payment-source-tag is-shop">
+                              {t('sellerAffiliate.sourceShop')}
+                            </span>
+                          </span>
+                          <span className="seller-affiliate__payment-value">
+                            -{formatMoneyValues([{ amount: Number(payment.seller_discount), currency }])}
+                          </span>
+                        </div>
+                      ) : null}
+                      {Number(payment.platform_discount || 0) > 0 ? (
+                        <div className="seller-affiliate__payment-row seller-affiliate__payment-row--discount">
+                          <span className="seller-affiliate__payment-label">
+                            {t('sellerAffiliate.platformDiscount')}
+                            <span className="seller-affiliate__payment-source-tag is-platform">
+                              {t('sellerAffiliate.sourcePlatform')}
+                            </span>
+                          </span>
+                          <span className="seller-affiliate__payment-value">
+                            -{formatMoneyValues([{ amount: Number(payment.platform_discount), currency }])}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
-                    {Number(payment.seller_discount || 0) > 0 ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.sellerDiscount')}</dt>
-                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.seller_discount), currency }])}</dd>
+
+                    <div className="seller-affiliate__payment-receipt-divider" />
+
+                    {/* Group: Vận chuyển */}
+                    <div className="seller-affiliate__payment-group">
+                      <div className="seller-affiliate__payment-group-title">
+                        {t('sellerAffiliate.paymentGroupShipping')}
                       </div>
-                    ) : null}
-                    {Number(payment.platform_discount || 0) > 0 ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.platformDiscount')}</dt>
-                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.platform_discount), currency }])}</dd>
+                      {payment.original_shipping_fee ? (
+                        <div className="seller-affiliate__payment-row">
+                          <span className="seller-affiliate__payment-label">
+                            {t('sellerAffiliate.originalShippingFee')}
+                          </span>
+                          <span className="seller-affiliate__payment-value">
+                            {formatMoneyValues([{ amount: Number(payment.original_shipping_fee), currency }])}
+                          </span>
+                        </div>
+                      ) : null}
+                      {Number(payment.shipping_fee_platform_discount || 0) > 0 ? (
+                        <div className="seller-affiliate__payment-row seller-affiliate__payment-row--discount">
+                          <span className="seller-affiliate__payment-label">
+                            {t('sellerAffiliate.platformShippingDiscount')}
+                            <span className="seller-affiliate__payment-source-tag is-platform">
+                              {t('sellerAffiliate.sourcePlatform')}
+                            </span>
+                          </span>
+                          <span className="seller-affiliate__payment-value">
+                            -{formatMoneyValues([{ amount: Number(payment.shipping_fee_platform_discount), currency }])}
+                          </span>
+                        </div>
+                      ) : null}
+                      {Number(payment.shipping_fee_seller_discount || 0) > 0 ? (
+                        <div className="seller-affiliate__payment-row seller-affiliate__payment-row--discount">
+                          <span className="seller-affiliate__payment-label">
+                            {t('sellerAffiliate.sellerShippingDiscount')}
+                            <span className="seller-affiliate__payment-source-tag is-shop">
+                              {t('sellerAffiliate.sourceShop')}
+                            </span>
+                          </span>
+                          <span className="seller-affiliate__payment-value">
+                            -{formatMoneyValues([{ amount: Number(payment.shipping_fee_seller_discount), currency }])}
+                          </span>
+                        </div>
+                      ) : null}
+                      <div className="seller-affiliate__payment-row">
+                        <span className="seller-affiliate__payment-label">
+                          {t('sellerAffiliate.customerShippingFee')}
+                        </span>
+                        <span className="seller-affiliate__payment-value">
+                          {formatMoneyValues([{ amount: Number(payment.shipping_fee || 0), currency }])}
+                        </span>
                       </div>
-                    ) : null}
-                    {payment.original_shipping_fee ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.originalShippingFee')}</dt>
-                        <dd>{formatMoneyValues([{ amount: Number(payment.original_shipping_fee), currency }])}</dd>
-                      </div>
-                    ) : null}
-                    {Number(payment.shipping_fee_platform_discount || 0) > 0 ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.platformShippingDiscount')}</dt>
-                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_platform_discount), currency }])}</dd>
-                      </div>
-                    ) : null}
-                    {Number(payment.shipping_fee_seller_discount || 0) > 0 ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.sellerShippingDiscount')}</dt>
-                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_seller_discount), currency }])}</dd>
-                      </div>
-                    ) : null}
-                    <div>
-                      <dt>{t('sellerAffiliate.customerShippingFee')}</dt>
-                      <dd>{formatMoneyValues([{ amount: Number(payment.shipping_fee || 0), currency }])}</dd>
                     </div>
+
                     {Number(payment.tax || 0) > 0 ? (
-                      <div>
-                        <dt>{t('sellerAffiliate.taxes')}</dt>
-                        <dd>{formatMoneyValues([{ amount: Number(payment.tax), currency }])}</dd>
-                      </div>
+                      <>
+                        <div className="seller-affiliate__payment-receipt-divider" />
+                        <div className="seller-affiliate__payment-group">
+                          <div className="seller-affiliate__payment-group-title">
+                            {t('sellerAffiliate.paymentGroupTaxes')}
+                          </div>
+                          <div className="seller-affiliate__payment-row">
+                            <span className="seller-affiliate__payment-label">
+                              {t('sellerAffiliate.taxes')}
+                            </span>
+                            <span className="seller-affiliate__payment-value">
+                              {formatMoneyValues([{ amount: Number(payment.tax), currency }])}
+                            </span>
+                          </div>
+                        </div>
+                      </>
                     ) : null}
-                    <div className="seller-affiliate__order-detail-highlight" style={{ gridColumn: 'span 2' }}>
-                      <dt>{t('sellerAffiliate.totalPayment')}</dt>
-                      <dd><strong style={{ fontSize: '1.1rem' }}>{formatMoneyValues([{ amount: Number(payment.total_amount || 0), currency }])}</strong></dd>
+
+                    {/* Total Row */}
+                    <div className="seller-affiliate__payment-total">
+                      <div className="seller-affiliate__payment-row seller-affiliate__payment-row--total">
+                        <div>
+                          <div className="seller-affiliate__payment-total-label">
+                            {t('sellerAffiliate.totalPayment')}
+                          </div>
+                          {paymentMethod ? (
+                            <div className="seller-affiliate__payment-method-note">
+                              {paymentMethodLabel(paymentMethod, t)}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="seller-affiliate__payment-total-value">
+                          {formatMoneyValues([{ amount: Number(payment.total_amount || 0), currency }])}
+                        </div>
+                      </div>
                     </div>
-                  </dl>
+                  </div>
                 </section>
               ) : null}
 
