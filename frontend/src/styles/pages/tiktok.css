@@ -7172,6 +7172,74 @@
   gap: 16px;
 }
 
+/* Mini Metrics Strip (Overview Card - Hướng 2) */
+.seller-affiliate__order-overview-card {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  overflow: hidden;
+}
+
+.seller-affiliate__overview-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  min-width: 0;
+}
+
+.seller-affiliate__overview-col:last-child {
+  border-right: none;
+}
+
+.seller-affiliate__overview-col-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.seller-affiliate__overview-col-icon {
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.seller-affiliate__overview-col-value {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+
+@media (max-width: 600px) {
+  .seller-affiliate__order-overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .seller-affiliate__overview-col {
+    border-right: none;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+    padding: 8px 12px;
+  }
+
+  .seller-affiliate__overview-col:last-child {
+    border-bottom: none;
+  }
+}
+
 .seller-affiliate__order-detail-section {
   gap: 16px;
 }

@@ -287,11 +287,16 @@ export const useShopOrders = () => {
       ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
       : new Date(timestamp);
     if (Number.isNaN(date.getTime())) return '—';
-    return new Intl.DateTimeFormat(locale, {
+    const timeZone = shopTimezone(selectedShop?.region);
+    const datePart = new Intl.DateTimeFormat(locale, {
       dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: shopTimezone(selectedShop?.region),
+      timeZone,
     }).format(date);
+    const timePart = new Intl.DateTimeFormat(locale, {
+      timeStyle: 'short',
+      timeZone,
+    }).format(date);
+    return `${datePart} - ${timePart}`;
   }, [locale, selectedShop?.region]);
 
   const fallbackCurrency = selectedShop?.region === 'VN' ? 'VND' : 'MYR';

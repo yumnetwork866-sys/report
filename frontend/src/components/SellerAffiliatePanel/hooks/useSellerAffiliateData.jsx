@@ -593,13 +593,21 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const formatRate = (value) => value === undefined || value === null ? '—' : `${(Number(value) / 100).toLocaleString(locale, { maximumFractionDigits: 2 })}%`;
   const formatTime = (value) => {
     if (!value) return '—';
-    const parts = new Intl.DateTimeFormat('en-GB', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-      timeZone: shopTimezone(selectedShop?.region),
-    }).formatToParts(new Date(Number(value) * 1000));
-    const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
-    return `${values.day}/${values.month}/${values.year} ${values.hour}:${values.minute}:${values.second}`;
+    const numeric = Number(value);
+    const date = Number.isFinite(numeric)
+      ? new Date(numeric < 1e12 ? numeric * 1000 : numeric)
+      : new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    const timeZone = shopTimezone(selectedShop?.region);
+    const datePart = new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      timeZone,
+    }).format(date);
+    const timePart = new Intl.DateTimeFormat(locale, {
+      timeStyle: 'short',
+      timeZone,
+    }).format(date);
+    return `${datePart} - ${timePart}`;
   };
   const fallbackCurrency = selectedShop?.region === 'VN' ? 'VND' : 'MYR';
   const formatMoney = (money) => {

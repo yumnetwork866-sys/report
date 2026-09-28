@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy, Package, Receipt, Truck, User } from 'lucide-react';
+import { Calendar, Check, Copy, CreditCard, Package, Receipt, Truck, User } from 'lucide-react';
 
 import { fetchShopOrderTracking, fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
@@ -481,16 +481,38 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
         <div className="koc-drawer__body seller-affiliate__order-drawer-body">
           {activeTab === 'order_products' ? (
             <div role="tabpanel" id="order-panel-order_products" aria-labelledby="order-tab-order_products" className="seller-affiliate__order-tab-panel">
-              {/* Section 1: Overview */}
-              <section className="drawer-section seller-affiliate__order-detail-section">
-                <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
-                <dl className="seller-affiliate__order-detail-grid">
-                  <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
-                  <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
-                  <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryTypeLabel(deliveryType, t)}</dd></div>
-                  {paymentMethod ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{paymentMethodLabel(paymentMethod, t)}</dd></div> : null}
-                </dl>
-              </section>
+              {/* Section 1: Overview Mini Metrics Card (Hướng 2) */}
+              <div className="seller-affiliate__order-overview-card">
+                <div className="seller-affiliate__overview-col">
+                  <span className="seller-affiliate__overview-col-label">
+                    <Calendar size={13} className="seller-affiliate__overview-col-icon" aria-hidden="true" />
+                    {t('sellerAffiliate.createdAt')}
+                  </span>
+                  <strong className="seller-affiliate__overview-col-value" title={formatTime(order.create_time || order.created_time)}>
+                    {formatTime(order.create_time || order.created_time)}
+                  </strong>
+                </div>
+                <div className="seller-affiliate__overview-col">
+                  <span className="seller-affiliate__overview-col-label">
+                    <Truck size={13} className="seller-affiliate__overview-col-icon" aria-hidden="true" />
+                    {t('sellerAffiliate.deliveryType')}
+                  </span>
+                  <strong className="seller-affiliate__overview-col-value" title={deliveryTypeLabel(deliveryType, t)}>
+                    {deliveryTypeLabel(deliveryType, t)}
+                  </strong>
+                </div>
+                {paymentMethod ? (
+                  <div className="seller-affiliate__overview-col">
+                    <span className="seller-affiliate__overview-col-label">
+                      <CreditCard size={13} className="seller-affiliate__overview-col-icon" aria-hidden="true" />
+                      {t('sellerAffiliate.paymentMethod')}
+                    </span>
+                    <strong className="seller-affiliate__overview-col-value" title={paymentMethodLabel(paymentMethod, t)}>
+                      {paymentMethodLabel(paymentMethod, t)}
+                    </strong>
+                  </div>
+                ) : null}
+              </div>
 
               {/* Section 2: Cancellation Info (Only if cancelled) */}
               {isCancelled ? (
