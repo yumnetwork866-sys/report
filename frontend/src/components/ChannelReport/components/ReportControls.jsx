@@ -20,8 +20,8 @@ export const VideoProductThumb = ({ product }) => {
   useEffect(() => setFailed(false), [imageUrl]);
 
   const tooltip = product.name
-    ? `${product.name} (Đã bán: ${quantity})`
-    : `Đã bán: ${quantity}`;
+    ? `${product.name} (Đã bán: ${quantity} sản phẩm)`
+    : `Đã bán: ${quantity} sản phẩm`;
 
   return (
     <span
@@ -43,7 +43,7 @@ export const VideoProductThumb = ({ product }) => {
       )}
       <span
         className={`member-detail__video-order-thumb-badge${quantity > 0 ? ' member-detail__video-order-thumb-badge--active' : ''}`}
-        aria-label={`Số lượng bán: ${quantity}`}
+        aria-label={`Số lượng bán: ${quantity} sản phẩm`}
       >
         x{quantity}
       </span>

@@ -581,9 +581,15 @@ const getChannelReport = async (req, res) => {
               NULLIF(p.value ->> 'image_url', '')
             ) AS image_url,
             d.currency,
-            COALESCE(NULLIF(d.raw_metrics ->> 'sku_orders', '')::numeric, NULLIF(d.raw_metrics ->> 'orders', '')::numeric, 0)::bigint AS sku_orders,
-            COALESCE(NULLIF(d.raw_metrics ->> 'items_sold', '')::numeric, 0)::bigint AS items_sold,
-            d.revenue
+            (COALESCE(NULLIF(d.raw_metrics ->> 'sku_orders', '')::numeric, NULLIF(d.raw_metrics ->> 'orders', '')::numeric, 0) /
+              GREATEST(jsonb_array_length(CASE WHEN jsonb_typeof(d.raw_metrics -> 'products') = 'array' THEN d.raw_metrics -> 'products' ELSE '[]'::jsonb END), 1)
+            )::numeric AS sku_orders,
+            (COALESCE(NULLIF(d.raw_metrics ->> 'items_sold', '')::numeric, 0) /
+              GREATEST(jsonb_array_length(CASE WHEN jsonb_typeof(d.raw_metrics -> 'products') = 'array' THEN d.raw_metrics -> 'products' ELSE '[]'::jsonb END), 1)
+            )::numeric AS items_sold,
+            (d.revenue /
+              GREATEST(jsonb_array_length(CASE WHEN jsonb_typeof(d.raw_metrics -> 'products') = 'array' THEN d.raw_metrics -> 'products' ELSE '[]'::jsonb END), 1)
+            )::numeric AS revenue
           FROM attributed_video_teams avt
           JOIN channel_report_video_revenue_daily d ON d.platform_video_id = avt.platform_video_id
           CROSS JOIN LATERAL jsonb_array_elements(
@@ -603,15 +609,16 @@ const getChannelReport = async (req, res) => {
             COALESCE(NULLIF(sku.product_name, ''), tsp.title, sku.product_id) AS product_name,
             tsp.image_url,
             sku.currency,
-            1::bigint AS sku_orders,
-            sku.quantity::bigint AS items_sold,
-            (sku.price * sku.quantity) AS revenue
+            1::numeric AS sku_orders,
+            SUM(sku.quantity)::numeric AS items_sold,
+            SUM(sku.price * sku.quantity)::numeric AS revenue
           FROM attributed_video_teams avt
           JOIN tiktok_affiliate_order_skus sku ON sku.content_id = avt.platform_video_id AND UPPER(sku.content_type) = 'VIDEO'
           JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
           LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = sku.product_id
           WHERE o.create_time >= CAST(:startDate AS DATE)
             AND o.create_time < CAST(:endDateExclusive AS DATE)
+          GROUP BY avt.team_id, sku.product_id, sku.product_name, tsp.title, tsp.image_url, sku.currency, o.id
         )
         SELECT
           r.team_id,
@@ -620,8 +627,8 @@ const getChannelReport = async (req, res) => {
           MIN(r.product_name) AS product_name,
           MIN(r.image_url) AS image_url,
           MIN(r.currency) AS currency,
-          SUM(r.sku_orders)::bigint AS orders,
-          SUM(r.items_sold)::bigint AS quantity,
+          ROUND(SUM(r.sku_orders))::bigint AS orders,
+          ROUND(SUM(r.items_sold))::bigint AS quantity,
           SUM(r.revenue) AS revenue
         FROM raw_product_rows r
         JOIN content_teams t ON t.id = r.team_id
@@ -1013,7 +1020,7 @@ const getChannelReportMemberDetail = async (req, res) => {
           ), '[]'::jsonb) AS products,
           COUNT(*) OVER()::bigint AS total_count
         FROM filtered_videos video
-        ORDER BY video.revenue DESC NULLS LAST, video.published_at DESC, video.id DESC
+        ORDER BY video.orders DESC, video.revenue DESC NULLS LAST, video.published_at DESC, video.id DESC
         LIMIT :limit OFFSET :offset
       `, {
           replacements: {

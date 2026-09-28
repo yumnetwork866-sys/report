@@ -379,7 +379,7 @@ export const useChannelReportData = () => {
         channelId: selectedChannelId,
         metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
         page,
-        pageSize: 10,
+        pageSize: 50,
         signal: controller.signal,
       });
       setMemberDetails((current) => {

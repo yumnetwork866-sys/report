@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, Check, Copy, CreditCard, Package, Receipt, Truck, User } from 'lucide-react';
+import { Calendar, Check, Copy, CreditCard, Package, Truck, User, Wallet } from 'lucide-react';
 
 import { fetchShopOrderTracking, fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
@@ -419,7 +419,7 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
     {
       id: 'finance_settlement',
       label: t('sellerAffiliate.orderTabFinance'),
-      icon: Receipt,
+      icon: Wallet,
     },
     {
       id: 'buyer_address',

@@ -3,19 +3,76 @@ const { sequelize } = require('../models');
 
 const loadMonthlyShopVideoRevenue = async ({ startDate, endDate }) => {
   const rows = await sequelize.query(`
+    WITH daily_rev AS (
+      SELECT
+        platform_video_id,
+        SUM(revenue) AS revenue,
+        MIN(currency) AS currency,
+        SUM(COALESCE(
+          NULLIF(raw_metrics ->> 'sku_orders', '')::numeric,
+          NULLIF(raw_metrics ->> 'orders', '')::numeric,
+          0
+        ))::bigint AS orders
+      FROM channel_report_video_revenue_daily
+      WHERE metric_date >= CAST(:startDate AS DATE)
+        AND metric_date < CAST(:endDate AS DATE)
+      GROUP BY platform_video_id
+    ),
+    affiliate_rev AS (
+      SELECT
+        sku.content_id AS platform_video_id,
+        SUM(sku.price * sku.quantity) AS revenue,
+        MIN(sku.currency) AS currency,
+        COUNT(DISTINCT affiliate_order.id)::bigint AS orders
+      FROM tiktok_affiliate_order_skus sku
+      JOIN tiktok_affiliate_orders affiliate_order ON affiliate_order.id = sku.affiliate_order_id
+      JOIN tiktok_shops shop ON shop.id = sku.shop_id
+      WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+        AND (
+          affiliate_order.create_time AT TIME ZONE CASE UPPER(COALESCE(shop.region, ''))
+            WHEN 'MY' THEN 'Asia/Kuala_Lumpur'
+            WHEN 'VN' THEN 'Asia/Ho_Chi_Minh'
+            WHEN 'SG' THEN 'Asia/Singapore'
+            WHEN 'TH' THEN 'Asia/Bangkok'
+            WHEN 'PH' THEN 'Asia/Manila'
+            WHEN 'ID' THEN 'Asia/Jakarta'
+            ELSE 'UTC'
+          END
+        )::date >= CAST(:startDate AS DATE)
+        AND (
+          affiliate_order.create_time AT TIME ZONE CASE UPPER(COALESCE(shop.region, ''))
+            WHEN 'MY' THEN 'Asia/Kuala_Lumpur'
+            WHEN 'VN' THEN 'Asia/Ho_Chi_Minh'
+            WHEN 'SG' THEN 'Asia/Singapore'
+            WHEN 'TH' THEN 'Asia/Bangkok'
+            WHEN 'PH' THEN 'Asia/Manila'
+            WHEN 'ID' THEN 'Asia/Jakarta'
+            ELSE 'UTC'
+          END
+        )::date < CAST(:endDate AS DATE)
+      GROUP BY sku.content_id
+    ),
+    combined AS (
+      SELECT
+        COALESCE(d.platform_video_id, a.platform_video_id) AS platform_video_id,
+        CASE
+          WHEN COALESCE(d.revenue, 0) > 0 THEN d.revenue
+          ELSE COALESCE(a.revenue, 0)
+        END AS revenue,
+        COALESCE(d.currency, a.currency) AS currency,
+        CASE
+          WHEN COALESCE(d.orders, 0) > 0 THEN d.orders
+          ELSE COALESCE(a.orders, 0)
+        END AS orders
+      FROM daily_rev d
+      FULL OUTER JOIN affiliate_rev a ON a.platform_video_id = d.platform_video_id
+    )
     SELECT
       platform_video_id,
-      SUM(revenue) AS revenue,
-      MIN(currency) AS currency,
-      SUM(COALESCE(
-        NULLIF(raw_metrics ->> 'sku_orders', '')::numeric,
-        NULLIF(raw_metrics ->> 'orders', '')::numeric,
-        0
-      ))::bigint AS orders
-    FROM channel_report_video_revenue_daily
-    WHERE metric_date >= CAST(:startDate AS DATE)
-      AND metric_date < CAST(:endDate AS DATE)
-    GROUP BY platform_video_id
+      revenue,
+      currency,
+      orders
+    FROM combined
   `, {
     replacements: { startDate, endDate },
     type: QueryTypes.SELECT,

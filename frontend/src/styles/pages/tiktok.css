@@ -1643,6 +1643,63 @@
   font-size: 0.72rem;
 }
 
+/* Quick Filter Chips (Hướng 2) */
+.member-detail__video-filters {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  padding: 2px 0 4px;
+}
+
+.member-detail__filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 18px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.member-detail__filter-chip:hover {
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-border) 60%, var(--color-primary));
+}
+
+.member-detail__filter-chip.is-active {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.member-detail__filter-chip-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--color-surface-subtle);
+  color: var(--color-text-soft);
+}
+
+.member-detail__filter-chip.is-active .member-detail__filter-chip-count {
+  background: var(--color-primary);
+  color: #fff;
+}
+
 .member-detail__videos {
   display: grid;
   gap: 6px;
@@ -1953,7 +2010,7 @@
 
 .member-detail__video-metrics {
   display: grid;
-  grid-template-columns: minmax(78px, auto) minmax(72px, auto) minmax(88px, auto);
+  grid-template-columns: minmax(78px, auto) minmax(105px, auto) minmax(88px, auto);
   gap: 8px;
   justify-content: end;
 }
@@ -1972,7 +2029,12 @@
 }
 
 .member-detail__video-metric-orders {
-  min-width: 72px;
+  min-width: 105px;
+}
+
+.member-detail__video-metric-orders--has-orders {
+  border-color: color-mix(in srgb, #10b981 35%, var(--color-border)) !important;
+  background: color-mix(in srgb, #10b981 4%, var(--color-surface-subtle)) !important;
 }
 
 .member-detail__video-metrics span {
@@ -1988,6 +2050,54 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--color-text);
+}
+
+.member-detail__video-orders-headline {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.member-detail__video-orders-headline strong {
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.member-detail__video-orders-headline strong.text-positive {
+  color: #059669;
+}
+
+.member-detail__video-items-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text-soft);
+  line-height: 1.1;
+}
+
+.member-detail__video-order-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  border-radius: 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: color-mix(in srgb, #10b981 14%, transparent);
+  color: #059669;
+  border: 1px solid color-mix(in srgb, #10b981 30%, transparent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-detail__video--has-orders {
+  border-color: color-mix(in srgb, #10b981 35%, var(--color-border));
+  background: color-mix(in srgb, #10b981 2.5%, var(--color-surface));
+}
+
+.member-detail__video--has-orders:hover {
+  border-color: color-mix(in srgb, #10b981 60%, var(--color-border));
 }
 
 .member-detail__video-orders-count {

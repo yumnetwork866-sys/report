@@ -1,6 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { EyeOff } from 'lucide-react';
+import { CheckCircle2, EyeOff } from 'lucide-react';
 
 import { compactProductName, compactVideoTitle } from '../utils/reportUtils';
 import { ProductRowThumb, VideoProductThumb } from './ReportControls';
@@ -23,6 +23,7 @@ export const MemberTable = ({
   tableSort,
   toggleMember,
 }) => {
+  const [videoFilters, setVideoFilters] = useState({});
   const renderMemberDetail = (member) => {
     const memberId = String(member.key);
     const detail = memberDetails[memberId] || {};
@@ -42,125 +43,201 @@ export const MemberTable = ({
         </div>
       );
     }
+
+    const currentFilter = videoFilters[memberId] || 'all';
+    const countWithOrders = videos.filter((v) => Number(v.orders || 0) > 0).length;
+    const countWithProducts = videos.filter((v) => (v.products || []).length > 0).length;
+    const countWithoutProducts = videos.filter((v) => !(v.products || []).length).length;
+
+    const displayedVideos = videos.filter((v) => {
+      if (currentFilter === 'has_orders') return Number(v.orders || 0) > 0;
+      if (currentFilter === 'has_products') return Boolean(v.products?.length);
+      if (currentFilter === 'no_products') return !v.products?.length;
+      return true;
+    });
+
     return (
       <div className="member-detail">
         <div className="member-detail__tabs" role="tablist" aria-label={`Chi tiết ${member.name}`}>
           <button type="button" role="tab" aria-selected={activeTab === 'videos'} className={activeTab === 'videos' ? 'is-active' : ''} onClick={() => setMemberTabs((current) => ({ ...current, [memberId]: 'videos' }))}>
-            Video <span>{formatNumber(pagination?.total)}</span>
+            Video <span>{formatNumber(pagination?.total || videos.length)}</span>
           </button>
           <button type="button" role="tab" aria-selected={activeTab === 'products'} className={activeTab === 'products' ? 'is-active' : ''} onClick={() => setMemberTabs((current) => ({ ...current, [memberId]: 'products' }))}>
             Sản phẩm <span>{formatNumber(products.length)}</span>
           </button>
         </div>
+
         {activeTab === 'videos' ? (
-          <div className="member-detail__videos">
-            {videos.map((video) => {
-              const fullTitle = video.title || `Video ${video.platform_video_id}`;
-              const displayTitle = compactVideoTitle(fullTitle, 40);
-  
-              const canOpenDetail = ['revenue', 'orders'].includes(activeReportTab) || Boolean(Number(video.orders) > 0 || (video.revenue && video.revenue.amount > 0));
-  
-              return (
-                <article
-                  className={`member-detail__video${canOpenDetail ? ' member-detail__video--revenue-clickable' : ''}${video.status === 'unavailable' ? ' member-detail__video--unavailable' : ''}`}
-                  key={video.id}
-                  role={canOpenDetail ? 'button' : undefined}
-                  tabIndex={canOpenDetail ? 0 : undefined}
-                  title={canOpenDetail ? 'Xem chi tiết đơn hàng & doanh thu video' : undefined}
-                  onClick={(event) => {
-                    if (!canOpenDetail || event.target.closest('a, button')) return;
-                    openVideoRevenueDetail(video);
-                  }}
-                  onKeyDown={(event) => {
-                    if (!canOpenDetail || !['Enter', ' '].includes(event.key)) return;
-                    event.preventDefault();
-                    openVideoRevenueDetail(video);
-                  }}
-                >
-                  {video.status === 'unavailable' ? (
-                    <div
-                      className="member-detail__video-placeholder member-detail__video-placeholder--unavailable"
-                      title="Video đã bị ẩn hoặc xóa trên TikTok"
-                    >
-                      <EyeOff size={14} strokeWidth={2.2} aria-hidden="true" />
-                      <span>Đã ẩn</span>
-                    </div>
-                  ) : (
-                    <>
-                      {video.thumbnail_url ? (
-                        <img
-                          src={video.thumbnail_url}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const placeholder = e.currentTarget.nextElementSibling;
-                            if (placeholder) placeholder.style.display = 'grid';
-                          }}
-                        />
-                      ) : null}
+          <div>
+            {/* Quick Filter Chips (Hướng 2) */}
+            <div className="member-detail__video-filters">
+              <button
+                type="button"
+                className={`member-detail__filter-chip${currentFilter === 'all' ? ' is-active' : ''}`}
+                onClick={() => setVideoFilters((cur) => ({ ...cur, [memberId]: 'all' }))}
+              >
+                Tất cả <span className="member-detail__filter-chip-count">{formatNumber(pagination?.total || videos.length)}</span>
+              </button>
+              <button
+                type="button"
+                className={`member-detail__filter-chip${currentFilter === 'has_orders' ? ' is-active' : ''}`}
+                onClick={() => setVideoFilters((cur) => ({ ...cur, [memberId]: 'has_orders' }))}
+              >
+                Có đơn hàng <span className="member-detail__filter-chip-count">{formatNumber(countWithOrders)}</span>
+              </button>
+              <button
+                type="button"
+                className={`member-detail__filter-chip${currentFilter === 'has_products' ? ' is-active' : ''}`}
+                onClick={() => setVideoFilters((cur) => ({ ...cur, [memberId]: 'has_products' }))}
+              >
+                Có giỏ hàng <span className="member-detail__filter-chip-count">{formatNumber(countWithProducts)}</span>
+              </button>
+              <button
+                type="button"
+                className={`member-detail__filter-chip${currentFilter === 'no_products' ? ' is-active' : ''}`}
+                onClick={() => setVideoFilters((cur) => ({ ...cur, [memberId]: 'no_products' }))}
+              >
+                Chưa gắn giỏ <span className="member-detail__filter-chip-count">{formatNumber(countWithoutProducts)}</span>
+              </button>
+            </div>
+
+            <div className="member-detail__videos">
+              {displayedVideos.map((video) => {
+                const fullTitle = video.title || `Video ${video.platform_video_id}`;
+                const displayTitle = compactVideoTitle(fullTitle, 40);
+                const orderCount = Number(video.orders || 0);
+                const videoProducts = Array.isArray(video.products) ? video.products : [];
+                const videoItemsSold = videoProducts.reduce((sum, p) => sum + Number(p.quantity || 0), 0);
+                const hasOrders = orderCount > 0;
+
+                const canOpenDetail = ['revenue', 'orders'].includes(activeReportTab) || Boolean(hasOrders || (video.revenue && video.revenue.amount > 0));
+
+                return (
+                  <article
+                    className={`member-detail__video${canOpenDetail ? ' member-detail__video--revenue-clickable' : ''}${video.status === 'unavailable' ? ' member-detail__video--unavailable' : ''}${hasOrders ? ' member-detail__video--has-orders' : ''}`}
+                    key={video.id}
+                    role={canOpenDetail ? 'button' : undefined}
+                    tabIndex={canOpenDetail ? 0 : undefined}
+                    title={canOpenDetail ? 'Xem chi tiết đơn hàng & doanh thu video' : undefined}
+                    onClick={(event) => {
+                      if (!canOpenDetail || event.target.closest('a, button')) return;
+                      openVideoRevenueDetail(video);
+                    }}
+                    onKeyDown={(event) => {
+                      if (!canOpenDetail || !['Enter', ' '].includes(event.key)) return;
+                      event.preventDefault();
+                      openVideoRevenueDetail(video);
+                    }}
+                  >
+                    {video.status === 'unavailable' ? (
                       <div
-                        className="member-detail__video-placeholder"
-                        style={{ display: video.thumbnail_url ? 'none' : 'grid' }}
+                        className="member-detail__video-placeholder member-detail__video-placeholder--unavailable"
+                        title="Video đã bị ẩn hoặc xóa trên TikTok"
                       >
-                        Video
+                        <EyeOff size={14} strokeWidth={2.2} aria-hidden="true" />
+                        <span>Đã ẩn</span>
                       </div>
-                    </>
-                  )}
-                  <div className="member-detail__video-copy" title={fullTitle}>
-                    <div className="member-detail__video-title-row">
-                      {video.video_url
-                        ? <a href={video.video_url} target="_blank" rel="noreferrer" title={fullTitle}>{displayTitle}</a>
-                        : <strong title={fullTitle}>{displayTitle}</strong>}
+                    ) : (
+                      <>
+                        {video.thumbnail_url ? (
+                          <img
+                            src={video.thumbnail_url}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const placeholder = e.currentTarget.nextElementSibling;
+                              if (placeholder) placeholder.style.display = 'grid';
+                            }}
+                          />
+                        ) : null}
+                        <div
+                          className="member-detail__video-placeholder"
+                          style={{ display: video.thumbnail_url ? 'none' : 'grid' }}
+                        >
+                          Video
+                        </div>
+                      </>
+                    )}
+                    <div className="member-detail__video-copy" title={fullTitle}>
+                      <div className="member-detail__video-title-row">
+                        {video.video_url
+                          ? <a href={video.video_url} target="_blank" rel="noreferrer" title={fullTitle}>{displayTitle}</a>
+                          : <strong title={fullTitle}>{displayTitle}</strong>}
+                        {hasOrders ? (
+                          <span className="member-detail__video-order-badge" title={`Video có ${orderCount} đơn hàng (${videoItemsSold} sản phẩm)`}>
+                            <CheckCircle2 size={11} aria-hidden="true" />
+                            Có đơn
+                          </span>
+                        ) : null}
+                      </div>
+                      <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
+                      <small className="member-detail__video-posted-at" title="Thời gian đăng">
+                        {video.published_at ? `${formatPublishedDate(video.published_at)} ${formatPublishedTime(video.published_at)}` : '—'}
+                      </small>
                     </div>
-                    <small>{video.channel?.display_name || video.channel?.username || 'TikTok'}</small>
-                    <small className="member-detail__video-posted-at" title="Thời gian đăng">
-                      {video.published_at ? `${formatPublishedDate(video.published_at)} ${formatPublishedTime(video.published_at)}` : '—'}
-                    </small>
-                  </div>
-                  <div className="member-detail__video-metrics">
-                    <div>
-                      <span>Lượt xem</span>
-                      <strong>{formatNumber(video.views)}</strong>
-                    </div>
-                    <div className="member-detail__video-metric-orders">
-                      <span>Đơn hàng</span>
-                      <div className="member-detail__video-orders-content">
-                        {video.products?.length ? (
-                          <div className="member-detail__video-order-thumbs">
-                            {video.products.slice(0, 4).map((product) => (
-                              <VideoProductThumb key={product.id || product.name} product={product} />
-                            ))}
-                            {video.products.length > 4 ? (
-                              <span
-                                className="member-detail__video-order-more"
-                                title={video.products.slice(4).map((p) => `${p.name} (x${Number(p.quantity || 0)})`).join(', ')}
-                              >
-                                +{video.products.length - 4}
-                              </span>
+                    <div className="member-detail__video-metrics">
+                      <div>
+                        <span>Lượt xem</span>
+                        <strong>{formatNumber(video.views)}</strong>
+                      </div>
+                      <div className={`member-detail__video-metric-orders${hasOrders ? ' member-detail__video-metric-orders--has-orders' : ''}`}>
+                        <span>Đơn hàng</span>
+                        <div className="member-detail__video-orders-content">
+                          <div className="member-detail__video-orders-headline">
+                            <strong className={hasOrders ? 'text-positive' : ''}>
+                              {hasOrders ? `${formatNumber(orderCount)} đơn` : '—'}
+                            </strong>
+                            {hasOrders && videoItemsSold > 0 ? (
+                              <small className="member-detail__video-items-tag" title={`Đã bán ${videoItemsSold} sản phẩm trong ${orderCount} đơn hàng`}>
+                                ({formatNumber(videoItemsSold)} SP)
+                              </small>
                             ) : null}
                           </div>
-                        ) : (
-                          <strong>—</strong>
-                        )}
+                          {videoProducts.length ? (
+                            <div className="member-detail__video-order-thumbs">
+                              {videoProducts.slice(0, 3).map((product) => (
+                                <VideoProductThumb key={product.id || product.name} product={product} />
+                              ))}
+                              {videoProducts.length > 3 ? (
+                                <span
+                                  className="member-detail__video-order-more"
+                                  title={videoProducts.slice(3).map((p) => `${p.name} (SL: ${Number(p.quantity || 0)})`).join(', ')}
+                                >
+                                  +{videoProducts.length - 3}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div>
+                        <span>GMV</span>
+                        <strong>{video.revenue ? formatRevenue(video.revenue.amount, video.revenue.currency) : '—'}</strong>
                       </div>
                     </div>
-                    <div>
-                      <span>GMV</span>
-                      <strong>{video.revenue ? formatRevenue(video.revenue.amount, video.revenue.currency) : '—'}</strong>
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-            {!videos.length ? <div className="member-detail__state">Không có video trong kỳ đã chọn.</div> : null}
-            {pagination && pagination.page < pagination.total_pages ? (
-              <button className="button button--small button--ghost member-detail__more" type="button" disabled={detail.loading} onClick={() => loadMemberDetail(memberId, pagination.page + 1, true)}>
-                {detail.loading ? 'Đang tải...' : 'Xem thêm video'}
-              </button>
-            ) : null}
+                  </article>
+                );
+              })}
+              {!displayedVideos.length ? (
+                <div className="member-detail__state">
+                  {currentFilter === 'has_orders'
+                    ? 'Không có video nào phát sinh đơn hàng trong kỳ đã chọn.'
+                    : currentFilter === 'has_products'
+                      ? 'Không có video nào có gắn giỏ hàng trong kỳ đã chọn.'
+                      : currentFilter === 'no_products'
+                        ? 'Tất cả video đều đã được gắn giỏ hàng.'
+                        : 'Không có video trong kỳ đã chọn.'}
+                </div>
+              ) : null}
+              {pagination && pagination.page < pagination.total_pages ? (
+                <button className="button button--small button--ghost member-detail__more" type="button" disabled={detail.loading} onClick={() => loadMemberDetail(memberId, pagination.page + 1, true)}>
+                  {detail.loading ? 'Đang tải...' : 'Xem thêm video'}
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : (
           <div className="table-wrap member-detail__products">
