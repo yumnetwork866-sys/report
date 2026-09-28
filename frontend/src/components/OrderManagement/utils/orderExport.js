@@ -19,7 +19,7 @@ export const exportOrdersToCsv = (orders = [], filename = 'orders.csv', t = (key
   const headers = [
     t('sellerAffiliate.orderId') || 'Mã đơn',
     t('sellerAffiliate.createdAt') || 'Thời gian tạo',
-    t('sellerAffiliate.kocAndSource') || 'KOC & Nguồn',
+    t('sellerAffiliate.orderAttribution') || t('sellerAffiliate.kocAndSource') || 'Nguồn đơn',
     t('sellerAffiliate.video') || 'Loại nguồn',
     'Video URL',
     t('sellerAffiliate.products') || 'Sản phẩm',

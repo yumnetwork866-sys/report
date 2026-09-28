@@ -511,23 +511,74 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
               <section className="drawer-section seller-affiliate__order-detail-section">
                 <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
                 <div className="seller-affiliate__order-detail-products">
-                  {products.length ? products.map((item) => (
-                    <article className="seller-affiliate__order-detail-product" key={item.id}>
-                      {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
-                      <div>
-                        {item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer">{item.productName}</a> : <strong>{item.productName}</strong>}
-                        <span>{item.skuName || t('sellerAffiliate.defaultSku')}</span>
-                        {item.sellerSku ? <span>{t('sellerAffiliate.sellerSku')}: {item.sellerSku}</span> : null}
-                        {item.productStatus ? <span>{t('sellerAffiliate.productStatus')}: {item.productStatus}</span> : null}
-                        <span>{t('sellerAffiliate.quantity')}: {item.quantity}</span>
-                      </div>
-                      <dl>
-                        <div><dt>{t('sellerAffiliate.price')}</dt><dd><DrawerMoney value={item.salePrice || item.price} formatMoneyValues={formatMoneyValues} /></dd></div>
-                        <div><dt>{t('sellerAffiliate.originalPrice')}</dt><dd><DrawerMoney value={item.originalPrice} formatMoneyValues={formatMoneyValues} /></dd></div>
-                        <div><dt>{t('sellerAffiliate.discount')}</dt><dd><DrawerMoney value={item.totalDiscount} formatMoneyValues={formatMoneyValues} /></dd></div>
-                      </dl>
-                    </article>
-                  )) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}
+                  {products.length ? products.map((item) => {
+                    const hasDiscount = Boolean(item.totalDiscount?.amount > 0);
+                    const hasOriginalDiff = Boolean(
+                      item.originalPrice?.amount && item.salePrice?.amount
+                      && item.originalPrice.amount !== item.salePrice.amount
+                    );
+                    const showOriginal = hasOriginalDiff || hasDiscount;
+
+                    return (
+                      <article className="seller-affiliate__order-detail-product" key={item.id}>
+                        {item.imageUrl ? (
+                          <img src={item.imageUrl} alt="" loading="lazy" />
+                        ) : (
+                          <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>
+                        )}
+                        <div className="seller-affiliate__order-detail-product-info">
+                          {item.productUrl ? (
+                            <a
+                              className="seller-affiliate__order-product-name"
+                              href={item.productUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={item.productName}
+                            >
+                              {item.productName}
+                            </a>
+                          ) : (
+                            <strong className="seller-affiliate__order-product-name" title={item.productName}>
+                              {item.productName}
+                            </strong>
+                          )}
+                          <div className="seller-affiliate__order-product-meta">
+                            <span className="seller-affiliate__order-product-variant">
+                              {item.skuName || t('sellerAffiliate.defaultSku')}
+                            </span>
+                            {item.sellerSku ? (
+                              <span className="seller-affiliate__order-product-seller-sku">
+                                SKU: {item.sellerSku}
+                              </span>
+                            ) : null}
+                            {item.productStatus ? (
+                              <span className="seller-affiliate__order-product-status">
+                                {item.productStatus}
+                              </span>
+                            ) : null}
+                            <span className="seller-affiliate__order-product-qty">
+                              x{item.quantity}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="seller-affiliate__order-detail-product-price">
+                          <div className="seller-affiliate__product-price-current">
+                            <DrawerMoney value={item.salePrice || item.price} formatMoneyValues={formatMoneyValues} />
+                          </div>
+                          {showOriginal ? (
+                            <div className="seller-affiliate__product-price-original">
+                              <DrawerMoney value={item.originalPrice} formatMoneyValues={formatMoneyValues} />
+                            </div>
+                          ) : null}
+                          {hasDiscount ? (
+                            <div className="seller-affiliate__product-discount-tag">
+                              -<DrawerMoney value={item.totalDiscount} formatMoneyValues={formatMoneyValues} />
+                            </div>
+                          ) : null}
+                        </div>
+                      </article>
+                    );
+                  }) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}
                 </div>
               </section>
 

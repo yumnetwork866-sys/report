@@ -462,7 +462,7 @@ export const OrderManagement = () => {
                 <thead>
                   <tr>
                     <th>{t('sellerAffiliate.orderAndCreatedAt')}</th>
-                    <th>{t('sellerAffiliate.kocAndSource')}</th>
+                    <th>{t('sellerAffiliate.orderAttribution')}</th>
                     <th>{t('sellerAffiliate.products')}</th>
                     <th>{t('sellerAffiliate.statusAndFulfillment')}</th>
                     <th>{t('sellerAffiliate.financesAndSettlement')}</th>
