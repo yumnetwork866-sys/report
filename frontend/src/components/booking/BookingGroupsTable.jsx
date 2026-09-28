@@ -25,6 +25,7 @@ const BookingGroupsTable = ({
             ['staff', 'booking.bookingStaff', ''],
             ['koc', 'booking.kocColumn', 'cell-number'],
             ['videos', bookingTableProps.bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo', 'cell-number'],
+            ['views', 'booking.viewsColumn', 'cell-number'],
             ['cost', 'booking.totalCost', 'cell-number'],
             ['revenue', 'booking.totalRevenue', 'cell-number'],
             ['ratio', 'booking.costRevenueRatio', 'cell-number'],
@@ -69,13 +70,14 @@ const BookingGroupsTable = ({
                 </td>
                 <td className="cell-number">{formatNumber(group.kocCount)}</td>
                 <td className="cell-number">{formatNumber(group.videoCount)}</td>
+                <td className="cell-number">{formatNumber(group.totalViews)}</td>
                 <td className="cell-number">{formatMoney(group.totalCost, selectedCurrency)}</td>
                 <td className="cell-number">{formatMoney(group.totalRevenue, selectedCurrency)}</td>
                 <td className="cell-number">{formatRatio(group.totalRevenue > 0 ? group.totalCost / group.totalRevenue : null)}</td>
               </tr>
               {isExpanded ? (
                 <tr className="member-detail-row">
-                  <td colSpan={6}>
+                  <td colSpan={7}>
                     <BookingEvaluationTable
                       {...bookingTableProps}
                       bookings={sortedBookingsOfGroup(group.bookings)}

@@ -103,6 +103,12 @@ const BookingEvaluationTable = ({
                   <SortIcon active={bookingSort.key === 'revenue'} direction={bookingSort.direction} />
                 </button>
               </th>
+              <th className="cell-number booking-views-column sortable-th">
+                <button type="button" className="table-sort-btn" onClick={() => onSort('views')}>
+                  <span>{t('booking.viewsColumn')}</span>
+                  <SortIcon active={bookingSort.key === 'views'} direction={bookingSort.direction} />
+                </button>
+              </th>
               <th className="cell-number booking-total-cost-column sortable-th">
                 <button type="button" className="table-sort-btn" onClick={() => onSort('cost')}>
                   <span>{t('booking.totalCost')}</span>

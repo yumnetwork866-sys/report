@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Package, Receipt, Truck, User } from 'lucide-react';
 
 import { fetchShopOrderTracking, fetchTikTokShopVideoThumbnail } from '../../../lib/api';
 import {
@@ -263,7 +263,9 @@ const DrawerMoney = ({ value, formatMoneyValues }) => value
   : '—';
 
 export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMoneyValues, t }) => {
+  const [activeTab, setActiveTab] = useState('order_products');
   const [copied, setCopied] = useState(false);
+  const [copiedTracking, setCopiedTracking] = useState(false);
   const [trackingNodes, setTrackingNodes] = useState(null);
   const [loadingTracking, setLoadingTracking] = useState(false);
   const [trackingError, setTrackingError] = useState(null);
@@ -335,12 +337,12 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
       // ignore
     }
   };
+
   const status = String(order.order_status || order.status || 'UNKNOWN').toUpperCase();
   const shipping = getOrderShipping(order);
   const products = getOrderProductDetails(order);
   const finance = getOrderFinanceSummary(order);
   const breakdown = getOrderFinanceBreakdown(order);
-  const history = getOrderDeliveryHistory(order);
   const timeline = getUnifiedOrderTimeline(order, trackingNodes, t);
   const deliveryType = order.delivery_type || order.shipping_type || order.fulfillment_type
     || order.delivery_option_name || '—';
@@ -357,6 +359,17 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
   const creators = getAffiliateOrderCreators(order);
   const sources = getAffiliateOrderSources(order);
   const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
+
+  const copyTrackingNumber = async () => {
+    if (!shipping.trackingNumber || !navigator.clipboard) return;
+    try {
+      await navigator.clipboard.writeText(shipping.trackingNumber);
+      setCopiedTracking(true);
+      setTimeout(() => setCopiedTracking(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
 
   // Additional Payment & Subsidy Data
   const payment = order.payment || {};
@@ -391,14 +404,38 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
   const autoCancelSla = order.cancel_order_sla_time;
   const hasSlaInfo = Boolean(rtsSla || ttsSla || autoCancelSla);
 
+  const tabs = [
+    {
+      id: 'order_products',
+      label: t('sellerAffiliate.orderTabProducts'),
+      icon: Package,
+      count: products.length,
+    },
+    {
+      id: 'shipping_tracking',
+      label: t('sellerAffiliate.orderTabShipping'),
+      icon: Truck,
+    },
+    {
+      id: 'finance_settlement',
+      label: t('sellerAffiliate.orderTabFinance'),
+      icon: Receipt,
+    },
+    {
+      id: 'buyer_address',
+      label: t('sellerAffiliate.orderTabCustomer'),
+      icon: User,
+    },
+  ];
+
   return createPortal(
     <div className="koc-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <aside className="koc-drawer seller-affiliate__order-drawer" role="dialog" aria-modal="true" aria-labelledby="order-detail-title">
         <div className="koc-drawer__header">
           <div>
             <h2 id="order-detail-title">{t('sellerAffiliate.orderDetail')}</h2>
-            <p style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <span>{orderId}</span>
+            <div className="seller-affiliate__order-drawer-header-meta">
+              <span className="seller-affiliate__order-drawer-id">{orderId}</span>
               <button
                 type="button"
                 className="order-compact-cell__copy-btn"
@@ -408,239 +445,333 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
               >
                 {copied ? <Check size={13} className="text-positive" /> : <Copy size={13} />}
               </button>
-            </p>
+              <span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>
+                {orderStatusLabel(status, t)}
+              </span>
+            </div>
           </div>
           <button className="button button--ghost" type="button" onClick={onClose} aria-label={t('common.close')}>×</button>
         </div>
+
+        <nav className="seller-affiliate__order-drawer-tabs" role="tablist" aria-label={t('sellerAffiliate.orderDetail')}>
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                id={`order-tab-${tab.id}`}
+                aria-selected={isActive}
+                aria-controls={`order-panel-${tab.id}`}
+                className={`seller-affiliate__order-drawer-tab ${isActive ? 'is-active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <Icon size={14} className="seller-affiliate__order-drawer-tab-icon" />
+                <span>{tab.label}</span>
+                {typeof tab.count === 'number' && tab.count > 0 ? (
+                  <span className="seller-affiliate__order-drawer-tab-badge">{tab.count}</span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+
         <div className="koc-drawer__body seller-affiliate__order-drawer-body">
-          {/* Section 1: Overview */}
-          <section className="drawer-section seller-affiliate__order-detail-section">
-            <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
-            <dl className="seller-affiliate__order-detail-grid">
-              <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
-              <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
-              <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryTypeLabel(deliveryType, t)}</dd></div>
-              {paymentMethod ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{paymentMethodLabel(paymentMethod, t)}</dd></div> : null}
-            </dl>
-          </section>
+          {activeTab === 'order_products' ? (
+            <div role="tabpanel" id="order-panel-order_products" aria-labelledby="order-tab-order_products" className="seller-affiliate__order-tab-panel">
+              {/* Section 1: Overview */}
+              <section className="drawer-section seller-affiliate__order-detail-section">
+                <h3>{t('sellerAffiliate.orderDetailOverview')}</h3>
+                <dl className="seller-affiliate__order-detail-grid">
+                  <div><dt>{t('sellerAffiliate.createdAt')}</dt><dd>{formatTime(order.create_time || order.created_time)}</dd></div>
+                  <div><dt>{t('sellerAffiliate.orderStatus')}</dt><dd><span className={`seller-affiliate__order-state seller-affiliate__order-state--${status.toLowerCase()}`}>{orderStatusLabel(status, t)}</span></dd></div>
+                  <div><dt>{t('sellerAffiliate.deliveryType')}</dt><dd>{deliveryTypeLabel(deliveryType, t)}</dd></div>
+                  {paymentMethod ? <div><dt>{t('sellerAffiliate.paymentMethod')}</dt><dd>{paymentMethodLabel(paymentMethod, t)}</dd></div> : null}
+                </dl>
+              </section>
 
-          {/* Section 2: Cancellation Info (Only if cancelled) */}
-          {isCancelled ? (
-            <section className="drawer-section seller-affiliate__order-detail-section seller-affiliate__order-detail-section--alert">
-              <h3>{t('sellerAffiliate.orderDetailCancellation')}</h3>
-              <dl className="seller-affiliate__order-detail-grid">
-                <div><dt>{t('sellerAffiliate.cancelledBy')}</dt><dd><strong>{cancelBy || '—'}</strong></dd></div>
-                {cancelTime ? <div><dt>{t('sellerAffiliate.cancelTime')}</dt><dd>{formatTime(cancelTime)}</dd></div> : null}
-                <div style={{ gridColumn: 'span 2' }}>
-                  <dt>{t('sellerAffiliate.cancelReason')}</dt>
-                  <dd className="text-danger"><strong>{cancelReason || '—'}</strong></dd>
-                </div>
-              </dl>
-            </section>
-          ) : null}
-
-          {/* Section 3: Payment & Multi-tier Discounts Breakdown */}
-          {hasPaymentDetails ? (
-            <section className="drawer-section seller-affiliate__order-detail-section">
-              <h3>{t('sellerAffiliate.orderDetailPayment')}</h3>
-              <dl className="seller-affiliate__order-detail-grid">
-                <div>
-                  <dt>{t('sellerAffiliate.originalProductPrice')}</dt>
-                  <dd>{formatMoneyValues([{ amount: Number(payment.original_total_product_price || payment.sub_total || 0), currency }])}</dd>
-                </div>
-                {Number(payment.seller_discount || 0) > 0 ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.sellerDiscount')}</dt>
-                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.seller_discount), currency }])}</dd>
-                  </div>
-                ) : null}
-                {Number(payment.platform_discount || 0) > 0 ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.platformDiscount')}</dt>
-                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.platform_discount), currency }])}</dd>
-                  </div>
-                ) : null}
-                {payment.original_shipping_fee ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.originalShippingFee')}</dt>
-                    <dd>{formatMoneyValues([{ amount: Number(payment.original_shipping_fee), currency }])}</dd>
-                  </div>
-                ) : null}
-                {Number(payment.shipping_fee_platform_discount || 0) > 0 ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.platformShippingDiscount')}</dt>
-                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_platform_discount), currency }])}</dd>
-                  </div>
-                ) : null}
-                {Number(payment.shipping_fee_seller_discount || 0) > 0 ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.sellerShippingDiscount')}</dt>
-                    <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_seller_discount), currency }])}</dd>
-                  </div>
-                ) : null}
-                <div>
-                  <dt>{t('sellerAffiliate.customerShippingFee')}</dt>
-                  <dd>{formatMoneyValues([{ amount: Number(payment.shipping_fee || 0), currency }])}</dd>
-                </div>
-                {Number(payment.tax || 0) > 0 ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.taxes')}</dt>
-                    <dd>{formatMoneyValues([{ amount: Number(payment.tax), currency }])}</dd>
-                  </div>
-                ) : null}
-                <div className="seller-affiliate__order-detail-highlight" style={{ gridColumn: 'span 2' }}>
-                  <dt>{t('sellerAffiliate.totalPayment')}</dt>
-                  <dd><strong style={{ fontSize: '1.1rem' }}>{formatMoneyValues([{ amount: Number(payment.total_amount || 0), currency }])}</strong></dd>
-                </div>
-              </dl>
-            </section>
-          ) : null}
-
-          {/* Section 4: Attribution */}
-          {(creators.length || sources.length) ? (
-            <section className="drawer-section seller-affiliate__order-detail-section">
-              <h3>{t('sellerAffiliate.orderAttribution')}</h3>
-              <dl className="seller-affiliate__order-detail-grid">
-                {creators.length ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.koc') || 'KOC'}</dt>
-                    <dd>
-                      <div className="creator-identity creator-identity--compact">
-                        <CreatorAvatar src={creators[0].avatarUrl} name={creators[0].name || creators[0].username} />
-                        <span><strong>{creators[0].name || creators[0].username}</strong>{creators[0].username ? <span className="row-subtitle">@{creators[0].username.replace(/^@+/, '')}</span> : null}</span>
-                      </div>
-                    </dd>
-                  </div>
-                ) : null}
-                {sources.length ? (
-                  <div>
-                    <dt>{t('sellerAffiliate.video') || 'Nguồn'}</dt>
-                    <dd>
-                      <AffiliateOrderVideos row={order} shopId={order.shop_id} t={t} />
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
-          ) : null}
-
-          {/* Section 5: Products */}
-          <section className="drawer-section seller-affiliate__order-detail-section">
-            <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
-            <div className="seller-affiliate__order-detail-products">{products.length ? products.map((item) => (
-              <article className="seller-affiliate__order-detail-product" key={item.id}>
-                {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
-                <div>{item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer">{item.productName}</a> : <strong>{item.productName}</strong>}<span>{item.skuName || t('sellerAffiliate.defaultSku')}</span>{item.sellerSku ? <span>{t('sellerAffiliate.sellerSku')}: {item.sellerSku}</span> : null}{item.productStatus ? <span>{t('sellerAffiliate.productStatus')}: {item.productStatus}</span> : null}<span>{t('sellerAffiliate.quantity')}: {item.quantity}</span></div>
-                <dl><div><dt>{t('sellerAffiliate.price')}</dt><dd><DrawerMoney value={item.salePrice || item.price} formatMoneyValues={formatMoneyValues} /></dd></div><div><dt>{t('sellerAffiliate.originalPrice')}</dt><dd><DrawerMoney value={item.originalPrice} formatMoneyValues={formatMoneyValues} /></dd></div><div><dt>{t('sellerAffiliate.discount')}</dt><dd><DrawerMoney value={item.totalDiscount} formatMoneyValues={formatMoneyValues} /></dd></div></dl>
-              </article>
-            )) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}</div>
-          </section>
-
-          {/* Section 6: Recipient & Address */}
-          {hasAddress ? (
-            <section className="drawer-section seller-affiliate__order-detail-section">
-              <h3>{t('sellerAffiliate.orderDetailRecipient')}</h3>
-              <dl className="seller-affiliate__order-detail-grid">
-                {address.name ? <div><dt>{t('sellerAffiliate.recipientName')}</dt><dd>{address.name}</dd></div> : null}
-                {address.phone_number ? <div><dt>{t('sellerAffiliate.recipientPhone')}</dt><dd>{address.phone_number}</dd></div> : null}
-                {formattedAddress ? (
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <dt>{t('sellerAffiliate.recipientAddress')}</dt>
-                    <dd>{formattedAddress}</dd>
-                  </div>
-                ) : null}
-                {order.buyer_message ? (
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <dt>{t('sellerAffiliate.buyerMessage')}</dt>
-                    <dd>{order.buyer_message}</dd>
-                  </div>
-                ) : null}
-                {order.seller_note ? (
-                  <div style={{ gridColumn: 'span 2' }}>
-                    <dt>{t('sellerAffiliate.sellerNote')}</dt>
-                    <dd>{order.seller_note}</dd>
-                  </div>
-                ) : null}
-              </dl>
-            </section>
-          ) : null}
-
-          {/* Section 7: Settlement & Finance */}
-          <section className="drawer-section seller-affiliate__order-detail-section">
-            <h3>{t('sellerAffiliate.orderDetailFinance')}</h3>
-            {order.finance_status === 'AVAILABLE' && finance ? <>
-              <div className="seller-affiliate__order-finance-summary">
-                <div><span>{t('sellerAffiliate.financeRevenue')}</span><strong><DrawerMoney value={finance.revenue} formatMoneyValues={formatMoneyValues} /></strong></div>
-                <div><span>{t('sellerAffiliate.tiktokFees')}</span><strong><DrawerMoney value={finance.fees} formatMoneyValues={formatMoneyValues} /></strong></div>
-                <div><span>{t('sellerAffiliate.shippingCost')}</span><strong><DrawerMoney value={finance.shippingCost} formatMoneyValues={formatMoneyValues} /></strong></div>
-                <div><span>{t('sellerAffiliate.refund')}</span><strong><DrawerMoney value={finance.refund} formatMoneyValues={formatMoneyValues} /></strong></div>
-                <div className="is-settlement"><span>{t('sellerAffiliate.actualSettlement')}</span><strong><DrawerMoney value={finance.settlement} formatMoneyValues={formatMoneyValues} /></strong></div>
-              </div>
-              <div className="seller-affiliate__finance-breakdown" aria-label={t('sellerAffiliate.financeBreakdown')}>{breakdownRows.map(([key, value]) => <div className={key === 'settlement' ? 'is-total' : ''} key={key}><span>{t(`sellerAffiliate.financeBreakdown_${key}`)}</span><strong><DrawerMoney value={value} formatMoneyValues={formatMoneyValues} /></strong></div>)}</div>
-            </> : <div className="empty-state empty-state--compact">{t(`sellerAffiliate.financeStatus_${order.finance_status || 'PENDING'}`)}</div>}
-          </section>
-
-          {/* Section 8: Delivery & SLA */}
-          <section className="drawer-section seller-affiliate__order-detail-section">
-            <h3>{t('sellerAffiliate.orderDetailDelivery')}</h3>
-            <dl className="seller-affiliate__order-detail-grid">
-              <div><dt>{t('sellerAffiliate.packageId')}</dt><dd>{shipping.packageId || '—'}</dd></div>
-              <div><dt>{t('sellerAffiliate.tracking')}</dt><dd>{shipping.trackingNumber ? (trackingUrl ? <a href={trackingUrl} target="_blank" rel="noreferrer" className="seller-affiliate__tracking-link">{shipping.trackingNumber} ↗</a> : shipping.trackingNumber) : '—'}</dd></div>
-              <div><dt>{t('sellerAffiliate.shippingCarrier')}</dt><dd>{shipping.provider || '—'}</dd></div>
-              <div><dt>{t('sellerAffiliate.deliveryStatus')}</dt><dd>{orderStatusLabel(shipping.status, t)}</dd></div>
-              {hasSlaInfo ? (
-                <>
-                  {rtsSla ? <div><dt>{t('sellerAffiliate.rtsSla')}</dt><dd>{formatTime(rtsSla)}</dd></div> : null}
-                  {ttsSla ? <div><dt>{t('sellerAffiliate.ttsSla')}</dt><dd>{formatTime(ttsSla)}</dd></div> : null}
-                  {autoCancelSla ? <div><dt>{t('sellerAffiliate.autoCancelSla')}</dt><dd>{formatTime(autoCancelSla)}</dd></div> : null}
-                </>
+              {/* Section 2: Cancellation Info (Only if cancelled) */}
+              {isCancelled ? (
+                <section className="drawer-section seller-affiliate__order-detail-section seller-affiliate__order-detail-section--alert">
+                  <h3>{t('sellerAffiliate.orderDetailCancellation')}</h3>
+                  <dl className="seller-affiliate__order-detail-grid">
+                    <div><dt>{t('sellerAffiliate.cancelledBy')}</dt><dd><strong>{cancelBy || '—'}</strong></dd></div>
+                    {cancelTime ? <div><dt>{t('sellerAffiliate.cancelTime')}</dt><dd>{formatTime(cancelTime)}</dd></div> : null}
+                    <div style={{ gridColumn: 'span 2' }}>
+                      <dt>{t('sellerAffiliate.cancelReason')}</dt>
+                      <dd className="text-danger"><strong>{cancelReason || '—'}</strong></dd>
+                    </div>
+                  </dl>
+                </section>
               ) : null}
-            </dl>
-            <div style={{ marginTop: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-soft)' }}>
-                {t('sellerAffiliate.orderDetailTrackingNodes')}
-              </span>
-            </div>
 
-            <div className="seller-affiliate__detailed-tracking">
-              {loadingTracking ? (
-                <div className="empty-state empty-state--compact">
-                  <span className="loading-dot" /> {t('sellerAffiliate.loadingTracking')}
+              {/* Section 3: Products */}
+              <section className="drawer-section seller-affiliate__order-detail-section">
+                <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
+                <div className="seller-affiliate__order-detail-products">
+                  {products.length ? products.map((item) => (
+                    <article className="seller-affiliate__order-detail-product" key={item.id}>
+                      {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
+                      <div>
+                        {item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer">{item.productName}</a> : <strong>{item.productName}</strong>}
+                        <span>{item.skuName || t('sellerAffiliate.defaultSku')}</span>
+                        {item.sellerSku ? <span>{t('sellerAffiliate.sellerSku')}: {item.sellerSku}</span> : null}
+                        {item.productStatus ? <span>{t('sellerAffiliate.productStatus')}: {item.productStatus}</span> : null}
+                        <span>{t('sellerAffiliate.quantity')}: {item.quantity}</span>
+                      </div>
+                      <dl>
+                        <div><dt>{t('sellerAffiliate.price')}</dt><dd><DrawerMoney value={item.salePrice || item.price} formatMoneyValues={formatMoneyValues} /></dd></div>
+                        <div><dt>{t('sellerAffiliate.originalPrice')}</dt><dd><DrawerMoney value={item.originalPrice} formatMoneyValues={formatMoneyValues} /></dd></div>
+                        <div><dt>{t('sellerAffiliate.discount')}</dt><dd><DrawerMoney value={item.totalDiscount} formatMoneyValues={formatMoneyValues} /></dd></div>
+                      </dl>
+                    </article>
+                  )) : <div className="empty-state empty-state--compact">{t('sellerAffiliate.noData')}</div>}
                 </div>
-              ) : (
-                <>
-                  {trackingError ? (
-                    <div className="alert alert--warning" style={{ fontSize: '0.8rem', padding: '8px 12px', margin: '8px 0', borderRadius: 'var(--radius-sm)' }}>
-                      {trackingError}
+              </section>
+
+              {/* Section 4: Payment & Multi-tier Discounts Breakdown */}
+              {hasPaymentDetails ? (
+                <section className="drawer-section seller-affiliate__order-detail-section">
+                  <h3>{t('sellerAffiliate.orderDetailPayment')}</h3>
+                  <dl className="seller-affiliate__order-detail-grid">
+                    <div>
+                      <dt>{t('sellerAffiliate.originalProductPrice')}</dt>
+                      <dd>{formatMoneyValues([{ amount: Number(payment.original_total_product_price || payment.sub_total || 0), currency }])}</dd>
                     </div>
-                  ) : null}
+                    {Number(payment.seller_discount || 0) > 0 ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.sellerDiscount')}</dt>
+                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.seller_discount), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    {Number(payment.platform_discount || 0) > 0 ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.platformDiscount')}</dt>
+                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.platform_discount), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    {payment.original_shipping_fee ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.originalShippingFee')}</dt>
+                        <dd>{formatMoneyValues([{ amount: Number(payment.original_shipping_fee), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    {Number(payment.shipping_fee_platform_discount || 0) > 0 ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.platformShippingDiscount')}</dt>
+                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_platform_discount), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    {Number(payment.shipping_fee_seller_discount || 0) > 0 ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.sellerShippingDiscount')}</dt>
+                        <dd className="text-danger">-{formatMoneyValues([{ amount: Number(payment.shipping_fee_seller_discount), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    <div>
+                      <dt>{t('sellerAffiliate.customerShippingFee')}</dt>
+                      <dd>{formatMoneyValues([{ amount: Number(payment.shipping_fee || 0), currency }])}</dd>
+                    </div>
+                    {Number(payment.tax || 0) > 0 ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.taxes')}</dt>
+                        <dd>{formatMoneyValues([{ amount: Number(payment.tax), currency }])}</dd>
+                      </div>
+                    ) : null}
+                    <div className="seller-affiliate__order-detail-highlight" style={{ gridColumn: 'span 2' }}>
+                      <dt>{t('sellerAffiliate.totalPayment')}</dt>
+                      <dd><strong style={{ fontSize: '1.1rem' }}>{formatMoneyValues([{ amount: Number(payment.total_amount || 0), currency }])}</strong></dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
 
-                  {trackingNodes !== null && Array.isArray(trackingNodes) && trackingNodes.length === 0 ? (
-                    <p className="seller-affiliate__tracking-note" style={{ marginBottom: '6px' }}>
-                      {t('sellerAffiliate.noTrackingNodes')}
-                    </p>
-                  ) : null}
-
-                  {timeline && timeline.length ? (
-                    <div className="seller-affiliate__order-timeline" style={{ marginTop: '6px' }}>
-                      {timeline.map((event, idx) => {
-                        const isLatest = idx === timeline.length - 1;
-                        return (
-                          <div key={`${event.time || idx}-${event.label}`}>
-                            <i aria-hidden="true" style={{ background: isLatest ? 'var(--color-primary)' : undefined }} />
-                            <span>
-                              <strong>{event.label}</strong>
-                              {event.time ? <small>{formatTime(event.time)}</small> : null}
-                            </span>
+              {/* Section 5: Attribution */}
+              {(creators.length || sources.length) ? (
+                <section className="drawer-section seller-affiliate__order-detail-section">
+                  <h3>{t('sellerAffiliate.orderAttribution')}</h3>
+                  <dl className="seller-affiliate__order-detail-grid">
+                    {creators.length ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.koc') || 'KOC'}</dt>
+                        <dd>
+                          <div className="creator-identity creator-identity--compact">
+                            <CreatorAvatar src={creators[0].avatarUrl} name={creators[0].name || creators[0].username} />
+                            <span><strong>{creators[0].name || creators[0].username}</strong>{creators[0].username ? <span className="row-subtitle">@{creators[0].username.replace(/^@+/, '')}</span> : null}</span>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </dd>
+                      </div>
+                    ) : null}
+                    {sources.length ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.video') || 'Nguồn'}</dt>
+                        <dd>
+                          <AffiliateOrderVideos row={order} shopId={order.shop_id} t={t} />
+                        </dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeTab === 'shipping_tracking' ? (
+            <div role="tabpanel" id="order-panel-shipping_tracking" aria-labelledby="order-tab-shipping_tracking" className="seller-affiliate__order-tab-panel">
+              <section className="drawer-section seller-affiliate__order-detail-section">
+                <h3>{t('sellerAffiliate.orderDetailDelivery')}</h3>
+                <dl className="seller-affiliate__order-detail-grid">
+                  <div><dt>{t('sellerAffiliate.packageId')}</dt><dd>{shipping.packageId || '—'}</dd></div>
+                  <div>
+                    <dt>{t('sellerAffiliate.tracking')}</dt>
+                    <dd style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      {shipping.trackingNumber ? (
+                        <>
+                          {trackingUrl ? (
+                            <a href={trackingUrl} target="_blank" rel="noreferrer" className="seller-affiliate__tracking-link">
+                              {shipping.trackingNumber} ↗
+                            </a>
+                          ) : (
+                            <span>{shipping.trackingNumber}</span>
+                          )}
+                          <button
+                            type="button"
+                            className="order-compact-cell__copy-btn"
+                            onClick={copyTrackingNumber}
+                            title={copiedTracking ? t('sellerAffiliate.trackingCopied') : t('sellerAffiliate.copyTrackingNumber')}
+                            aria-label={copiedTracking ? t('sellerAffiliate.trackingCopied') : t('sellerAffiliate.copyTrackingNumber')}
+                          >
+                            {copiedTracking ? <Check size={13} className="text-positive" /> : <Copy size={13} />}
+                          </button>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </dd>
+                  </div>
+                  <div><dt>{t('sellerAffiliate.shippingCarrier')}</dt><dd>{shipping.provider || '—'}</dd></div>
+                  <div><dt>{t('sellerAffiliate.deliveryStatus')}</dt><dd>{orderStatusLabel(shipping.status, t)}</dd></div>
+                  {hasSlaInfo ? (
+                    <>
+                      {rtsSla ? <div><dt>{t('sellerAffiliate.rtsSla')}</dt><dd>{formatTime(rtsSla)}</dd></div> : null}
+                      {ttsSla ? <div><dt>{t('sellerAffiliate.ttsSla')}</dt><dd>{formatTime(ttsSla)}</dd></div> : null}
+                      {autoCancelSla ? <div><dt>{t('sellerAffiliate.autoCancelSla')}</dt><dd>{formatTime(autoCancelSla)}</dd></div> : null}
+                    </>
                   ) : null}
-                </>
+                </dl>
+                <div style={{ marginTop: '14px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-soft)' }}>
+                    {t('sellerAffiliate.orderDetailTrackingNodes')}
+                  </span>
+                </div>
+
+                <div className="seller-affiliate__detailed-tracking">
+                  {loadingTracking ? (
+                    <div className="empty-state empty-state--compact">
+                      <span className="loading-dot" /> {t('sellerAffiliate.loadingTracking')}
+                    </div>
+                  ) : (
+                    <>
+                      {trackingError ? (
+                        <div className="alert alert--warning" style={{ fontSize: '0.8rem', padding: '8px 12px', margin: '8px 0', borderRadius: 'var(--radius-sm)' }}>
+                          {trackingError}
+                        </div>
+                      ) : null}
+
+                      {trackingNodes !== null && Array.isArray(trackingNodes) && trackingNodes.length === 0 ? (
+                        <p className="seller-affiliate__tracking-note" style={{ marginBottom: '6px' }}>
+                          {t('sellerAffiliate.noTrackingNodes')}
+                        </p>
+                      ) : null}
+
+                      {timeline && timeline.length ? (
+                        <div className="seller-affiliate__order-timeline" style={{ marginTop: '6px' }}>
+                          {timeline.map((event, idx) => {
+                            const isLatest = idx === timeline.length - 1;
+                            return (
+                              <div key={`${event.time || idx}-${event.label}`}>
+                                <i aria-hidden="true" style={{ background: isLatest ? 'var(--color-primary)' : undefined }} />
+                                <span>
+                                  <strong>{event.label}</strong>
+                                  {event.time ? <small>{formatTime(event.time)}</small> : null}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'finance_settlement' ? (
+            <div role="tabpanel" id="order-panel-finance_settlement" aria-labelledby="order-tab-finance_settlement" className="seller-affiliate__order-tab-panel">
+              <section className="drawer-section seller-affiliate__order-detail-section">
+                <h3>{t('sellerAffiliate.orderDetailFinance')}</h3>
+                {order.finance_status === 'AVAILABLE' && finance ? (
+                  <>
+                    <div className="seller-affiliate__order-finance-summary">
+                      <div><span>{t('sellerAffiliate.financeRevenue')}</span><strong><DrawerMoney value={finance.revenue} formatMoneyValues={formatMoneyValues} /></strong></div>
+                      <div><span>{t('sellerAffiliate.tiktokFees')}</span><strong><DrawerMoney value={finance.fees} formatMoneyValues={formatMoneyValues} /></strong></div>
+                      <div><span>{t('sellerAffiliate.shippingCost')}</span><strong><DrawerMoney value={finance.shippingCost} formatMoneyValues={formatMoneyValues} /></strong></div>
+                      <div><span>{t('sellerAffiliate.refund')}</span><strong><DrawerMoney value={finance.refund} formatMoneyValues={formatMoneyValues} /></strong></div>
+                      <div className="is-settlement"><span>{t('sellerAffiliate.actualSettlement')}</span><strong><DrawerMoney value={finance.settlement} formatMoneyValues={formatMoneyValues} /></strong></div>
+                    </div>
+                    <div className="seller-affiliate__finance-breakdown" aria-label={t('sellerAffiliate.financeBreakdown')}>
+                      {breakdownRows.map(([key, value]) => (
+                        <div className={key === 'settlement' ? 'is-total' : ''} key={key}>
+                          <span>{t(`sellerAffiliate.financeBreakdown_${key}`)}</span>
+                          <strong><DrawerMoney value={value} formatMoneyValues={formatMoneyValues} /></strong>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="empty-state empty-state--compact">{t(`sellerAffiliate.financeStatus_${order.finance_status || 'PENDING'}`)}</div>
+                )}
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === 'buyer_address' ? (
+            <div role="tabpanel" id="order-panel-buyer_address" aria-labelledby="order-tab-buyer_address" className="seller-affiliate__order-tab-panel">
+              {hasAddress ? (
+                <section className="drawer-section seller-affiliate__order-detail-section">
+                  <dl className="seller-affiliate__order-detail-grid seller-affiliate__order-detail-grid--compact">
+                    {address.name ? <div><dt>{t('sellerAffiliate.recipientName')}</dt><dd>{address.name}</dd></div> : null}
+                    {address.phone_number ? <div><dt>{t('sellerAffiliate.recipientPhone')}</dt><dd>{address.phone_number}</dd></div> : null}
+                    {formattedAddress ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.recipientAddress')}</dt>
+                        <dd>{formattedAddress}</dd>
+                      </div>
+                    ) : null}
+                    {order.buyer_message ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.buyerMessage')}</dt>
+                        <dd>{order.buyer_message}</dd>
+                      </div>
+                    ) : null}
+                    {order.seller_note ? (
+                      <div>
+                        <dt>{t('sellerAffiliate.sellerNote')}</dt>
+                        <dd>{order.seller_note}</dd>
+                      </div>
+                    ) : null}
+                  </dl>
+                </section>
+              ) : (
+                <div className="empty-state empty-state--compact">
+                  {t('sellerAffiliate.noRecipientInfo')}
+                </div>
               )}
             </div>
-          </section>
+          ) : null}
         </div>
       </aside>
     </div>,

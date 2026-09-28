@@ -142,6 +142,7 @@ export default function useBookingAnalytics({
           totalCost: 0,
           totalRevenue: 0,
           videoCount: 0,
+          totalViews: 0,
         });
       }
       const group = groups.get(key);
@@ -157,6 +158,9 @@ export default function useBookingAnalytics({
       group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
       group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
       group.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
+      const videoPerformance = videoPerformanceByBooking.get(String(booking.id))?.performance
+        || booking.actual_performance;
+      group.totalViews += finiteNumber(videoPerformance?.views ?? videoPerformance?.video_views);
     }
 
     const revenueOf = (booking) => {
@@ -216,6 +220,7 @@ export default function useBookingAnalytics({
       const value = (group) => {
         if (key === 'koc') return group.kocCount;
         if (key === 'videos') return group.videoCount;
+        if (key === 'views') return group.totalViews;
         if (key === 'cost') return group.totalCost;
         if (key === 'revenue') return group.totalRevenue;
         if (key === 'ratio') return group.totalRevenue > 0
@@ -263,6 +268,11 @@ export default function useBookingAnalytics({
       if (key === 'revenue') return revenueOf(booking);
       if (key === 'cost') return costOf(booking);
       if (key === 'videos') return videoCountForBooking(booking, bookingTab, performanceOf(booking), videoPerformanceByBooking);
+      if (key === 'views') {
+        const videoPerformance = videoPerformanceByBooking.get(String(booking.id))?.performance
+          || booking.actual_performance;
+        return bookingPerformanceSortValue(videoPerformance, key);
+      }
       if (key === 'ratio') {
         const revenue = revenueOf(booking);
         return revenue > 0 ? costOf(booking) / revenue : (costOf(booking) > 0 ? Infinity : 0);

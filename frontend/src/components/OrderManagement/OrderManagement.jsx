@@ -106,21 +106,6 @@ export const OrderManagement = () => {
             />
           </div>
 
-          <form className="order-management__search-field" onSubmit={submitSearch}>
-            <input
-              id="order-search-input"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              placeholder={t('sellerAffiliate.ordersSearch')}
-            />
-            <button className="seller-affiliate__search-button" type="submit" aria-label={t('common.search')} title={t('common.search')}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <circle cx="11" cy="11" r="6.5" />
-                <path d="m16 16 4 4" />
-              </svg>
-            </button>
-          </form>
-
           <div className="order-management__period-field">
             <SelectDropdown
               id="order-period-select"
@@ -162,6 +147,21 @@ export const OrderManagement = () => {
               />
             </div>
           ) : null}
+
+          <form className="order-management__search-field" onSubmit={submitSearch}>
+            <input
+              id="order-search-input"
+              value={keyword}
+              onChange={(event) => setKeyword(event.target.value)}
+              placeholder={t('sellerAffiliate.ordersSearch')}
+            />
+            <button className="seller-affiliate__search-button" type="submit" aria-label={t('common.search')} title={t('common.search')}>
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <circle cx="11" cy="11" r="6.5" />
+                <path d="m16 16 4 4" />
+              </svg>
+            </button>
+          </form>
 
           <div className="order-management__toolbar-actions">
             <button

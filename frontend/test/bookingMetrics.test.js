@@ -21,6 +21,7 @@ import {
   currentBookingMonth,
   groupBookingRowsByCreator,
   mergeBookingProductBreakdowns,
+  bookingPerformanceSortValue,
 } from '../src/lib/bookingMetrics.js';
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
@@ -210,6 +211,11 @@ test('bookingVideoPerformanceForVideos aggregates metrics across videos', () => 
   assert.equal(perf.orders, 15);
   assert.equal(perf.items_sold, 15);
   assert.equal(perf.video_count, 2);
+});
+
+test('bookingPerformanceSortValue supports sorting booking rows by views', () => {
+  assert.equal(bookingPerformanceSortValue({ views: 12500 }, 'views'), 12500);
+  assert.equal(bookingPerformanceSortValue({ views: null }, 'views'), 0);
 });
 
 test('bookingVideoPerformanceForVideos keeps the currency of revenue-producing snapshots', () => {

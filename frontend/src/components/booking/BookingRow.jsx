@@ -78,6 +78,9 @@ const BookingRow = memo(({
           </div>
         </td>
         <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
+        <td className="cell-number booking-views-column">
+          {creatorMetric(videoData?.performance || performance, 'views')}
+        </td>
         <td className="cell-number booking-total-cost-column">
           <strong>{showBookingCost ? formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency) : '—'}</strong>
         </td>
@@ -113,7 +116,7 @@ const BookingRow = memo(({
       </tr>
       {expanded ? (
         <tr className="booking-video-detail-row">
-          <td colSpan={9}>
+          <td colSpan={10}>
             {bookingTab === 'product' ? (
               <BookingProductOrderExpansion
                 booking={booking}

@@ -246,6 +246,7 @@ export const finiteNumber = (value) => {
 };
 
 const BOOKING_PERFORMANCE_SORT_FIELDS = {
+  views: 'views',
   refunds: 'refunded_gmv',
   items_sold: 'items_sold',
   samples: 'samples_shipped',

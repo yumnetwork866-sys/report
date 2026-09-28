@@ -197,7 +197,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const orderPeriodOptions = useMemo(() => [
     { value: '7d', label: t('shopAnalytics.period7d') },
     { value: '30d', label: t('shopAnalytics.period30d') },
-    { value: '90d', label: t('shopAnalytics.period90d') },
     { value: 'custom', label: t('shopAnalytics.periodCustom') },
   ], [t]);
 

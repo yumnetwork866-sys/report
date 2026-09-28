@@ -817,18 +817,12 @@ const BookingManagement = ({
       return <span className="chip">{t('booking.noAttachedProducts')}</span>;
     }
     const gmv = optionalNumber(performance.affiliate_gmv ?? performance.gross_gmv);
-    const secondaryValue = performance.source === 'AFFILIATE_ORDERS'
-      ? null
-      : optionalNumber(performance.video_views ?? performance.views);
     return (
       <div className="booking-performance-cell">
         <strong>{gmv === null ? '—' : formatMoney(gmv, performance.currency)}</strong>
-        {performance.source !== 'AFFILIATE_ORDERS'
-          ? <small>{secondaryValue === null ? '—' : formatNumber(secondaryValue)} {t('booking.views')}</small>
-          : null}
       </div>
     );
-  }, [formatMoney, formatNumber, t]);
+  }, [formatMoney, t]);
 
   const creatorMetric = useCallback((performance, field, { money = false } = {}) => {
     const value = optionalNumber(performance?.[field]);
