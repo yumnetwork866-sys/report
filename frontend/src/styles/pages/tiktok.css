@@ -7504,9 +7504,9 @@ a.seller-affiliate__order-product-name:hover {
 }
 
 .seller-affiliate__payment-source-tag.is-platform {
-  background: color-mix(in srgb, #f43f5e 12%, transparent);
-  color: #e11d48;
-  border: 1px solid color-mix(in srgb, #f43f5e 22%, transparent);
+  background: color-mix(in srgb, var(--color-success, #168a4d) 12%, transparent);
+  color: var(--color-success, #168a4d);
+  border: 1px solid color-mix(in srgb, var(--color-success, #168a4d) 24%, transparent);
 }
 
 .seller-affiliate__payment-receipt-divider {
