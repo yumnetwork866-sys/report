@@ -6755,21 +6755,17 @@
 }
 
 .order-compact-kpi__bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px 12px;
   padding: 12px 16px;
-  gap: 16px;
 }
 
 .order-compact-kpi__metrics {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 10px 12px;
-  flex: 1;
+  display: contents;
 }
 
-/* Ẩn thanh phân cách đứng vì đã chia dạng lưới */
+/* Ẩn thanh phân cách đứng vì đã dùng lưới */
 .order-compact-kpi__divider {
   display: none;
 }
@@ -6787,19 +6783,6 @@
   border-radius: var(--radius-md);
   min-width: 0;
   transition: all 0.15s ease;
-}
-
-/* 3 ô hàng trên: mỗi ô chiếm 2 cột (2 * 3 = 6 cột) */
-.order-compact-kpi__metrics > .order-compact-kpi__item:nth-child(1),
-.order-compact-kpi__metrics > .order-compact-kpi__item:nth-child(3),
-.order-compact-kpi__metrics > .order-compact-kpi__item:nth-child(5) {
-  grid-column: span 2;
-}
-
-/* 2 ô hàng dưới: mỗi ô chiếm 3 cột (3 * 2 = 6 cột, chia đều 50% - 50%) */
-.order-compact-kpi__metrics > .order-compact-kpi__item:nth-child(7),
-.order-compact-kpi__metrics > .order-compact-kpi__item:nth-child(9) {
-  grid-column: span 3;
 }
 
 .order-compact-kpi__item--button {
@@ -6851,12 +6834,70 @@
   font-weight: 400;
 }
 
+/* Ô thứ 6: Cụm nút bấm Chi tiết & Top SP và nút ẩn, lấp đầy vị trí thứ 3 của hàng dưới */
 .order-compact-kpi__actions {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.order-compact-kpi__toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 6px;
-  margin-left: auto;
-  align-self: center;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+  flex: 1;
+  transition: all 0.15s ease;
+}
+
+.order-compact-kpi__toggle-btn:hover {
+  background: var(--color-surface);
+  border-color: var(--color-border-hover, var(--color-border));
+}
+
+.order-compact-kpi__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  color: var(--color-text-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.order-compact-kpi__icon-btn:hover {
+  color: var(--color-text);
+  border-color: var(--color-border-hover, var(--color-border));
+}
+
+@media (max-width: 900px) {
+  .order-compact-kpi__bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .order-compact-kpi__bar {
+    grid-template-columns: 1fr;
+  }
 }
 
 .order-compact-kpi__toggle-btn {
