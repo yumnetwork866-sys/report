@@ -913,8 +913,23 @@ export const cancelReasonLabel = (value, t) => {
     WRONG_ITEM: 'Đặt nhầm sản phẩm',
     DELIVERY_TIME_TOO_LONG: 'Thời gian giao hàng dự kiến quá lâu',
     DELIVERY_TOO_LONG: 'Thời gian giao hàng dự kiến quá lâu',
+    CUSTOMER_OVERDUE_TO_PAY: 'Khách hàng quá hạn thanh toán',
+    OVERDUE_TO_PAY: 'Khách hàng quá hạn thanh toán',
+    OVERDUE_PAYMENT: 'Quá hạn thanh toán',
     PAYMENT_FAILED: 'Thanh toán thất bại',
     PAYMENT_TIMEOUT: 'Quá thời hạn thanh toán',
+    SELLER_REQUESTING_ORDER_CANCELLATION: 'Người bán yêu cầu hủy đơn',
+    SELLER_CANCEL_REQUEST: 'Người bán yêu cầu hủy đơn',
+    PACKAGE_DELIVERY_FAILED: 'Giao bưu kiện thất bại',
+    PARCEL_DELIVERY_FAILED: 'Giao bưu kiện thất bại',
+    DELIVERY_FAILED: 'Giao hàng thất bại',
+    HIGH_DELIVERY_COSTS: 'Phí vận chuyển quá cao',
+    HIGH_SHIPPING_COST: 'Phí vận chuyển quá cao',
+    EXPENSIVE_SHIPPING: 'Phí vận chuyển quá cao',
+    TIDAK_LAGI_DIPERLUKAN: 'Không còn nhu cầu sử dụng',
+    NO_LONGER_NEEDED: 'Không còn nhu cầu sử dụng',
+    PENGHANTARAN_BUNGKUSAN_GAGAL: 'Giao bưu kiện thất bại',
+    PENGHANTARAN_GAGAL: 'Giao hàng thất bại',
     OUT_OF_STOCK: 'Sản phẩm hết hàng',
     SELLER_NOT_SHIPPING: 'Người bán chưa gửi hàng',
     BUYER_REQUEST: 'Người mua yêu cầu hủy',
@@ -923,6 +938,21 @@ export const cancelReasonLabel = (value, t) => {
   if (exactMap[normalized]) return exactMap[normalized];
 
   const lower = clean.toLowerCase();
+  if (lower.includes('overdue') || lower.includes('lewat bayar') || lower.includes('tamat tempoh')) {
+    return 'Khách hàng quá hạn thanh toán';
+  }
+  if (lower.includes('seller requesting') || lower.includes('penjual minta batal') || lower.includes('seller cancel')) {
+    return 'Người bán yêu cầu hủy đơn';
+  }
+  if (lower.includes('delivery failed') || lower.includes('bungkusan gagal') || lower.includes('penghantaran gagal') || lower.includes('parcel failed')) {
+    return 'Giao bưu kiện thất bại';
+  }
+  if (lower.includes('delivery cost') || lower.includes('shipping cost') || lower.includes('shipping fee') || lower.includes('kos penghantaran') || lower.includes('ongkir')) {
+    return 'Phí vận chuyển quá cao';
+  }
+  if (lower.includes('tidak lagi diperlukan') || lower.includes('no longer needed') || lower.includes('not needed anymore') || lower.includes('tak perlukan')) {
+    return 'Không còn nhu cầu sử dụng';
+  }
   if (lower.includes('payment') || lower.includes('bayar') || lower.includes('tukar bayaran')) {
     return 'Cần đổi phương thức thanh toán';
   }
