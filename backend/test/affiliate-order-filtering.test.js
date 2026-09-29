@@ -130,6 +130,32 @@ test('database affiliate orders combine versatile search and quick filters', asy
   assert.equal(captured.final.skuWhere[Op.and][0][Op.or][2].sku_id[Op.iLike], '%SKU-9%');
 });
 
+test('order attention uses the deadline for the current fulfillment stage', async (t) => {
+  const repositoryPath = require.resolve('../src/repositories/tiktokShopRepository');
+  const servicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
+  const restore = mockModule(repositoryPath, {});
+  delete require.cache[servicePath];
+  t.after(() => {
+    delete require.cache[servicePath];
+    restore();
+  });
+
+  const { __test } = require(servicePath);
+  assert.equal(__test.orderAttentionReasons({
+    order_status: 'AWAITING_COLLECTION',
+    shipping_due_time: 1000,
+    collection_due_time: 3000,
+  }, 2000).overdue, false);
+  assert.equal(__test.orderAttentionReasons({
+    order_status: 'AWAITING_COLLECTION',
+    collection_due_time: 1000,
+  }, 2000).overdue, true);
+  assert.equal(__test.orderAttentionReasons({
+    order_status: 'IN_TRANSIT',
+    shipping_due_time: 1000,
+  }, 2000).overdue, false);
+});
+
 test('database order page hydrates Finance data only for finalized orders', async (t) => {
   const repositoryPath = require.resolve('../src/repositories/tiktokShopRepository');
   const shopApiPath = require.resolve('../src/services/tiktokShopService');

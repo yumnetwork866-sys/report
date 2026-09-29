@@ -9,7 +9,7 @@ export const OrderStatusFulfillmentCell = ({ row, formatTime, t }) => {
   const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
 
   const isOverdue = sla.state === 'OVERDUE';
-  const isUrgent = sla.state === 'URGENT';
+  const isUrgent = sla.state === 'DUE_SOON';
   const hasCancelRequest = Boolean(
     row.buyer_cancel_reason || row.cancel_user === 'BUYER' || (row.buyer_cancellation && row.buyer_cancellation !== 'no')
   );

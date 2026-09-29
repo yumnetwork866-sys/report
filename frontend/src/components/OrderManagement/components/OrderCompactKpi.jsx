@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, BarChart2, ChevronDown, ChevronUp, Eye, EyeOff, Package } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronUp, Package } from 'lucide-react';
 
 export const OrderCompactKpi = ({
   orderOverview = {},
@@ -11,7 +11,6 @@ export const OrderCompactKpi = ({
   t,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isHidden, setIsHidden] = useState(false);
 
   const kpis = orderOverview.kpis || {};
   const topProducts = orderOverview.top_products || {};
@@ -22,22 +21,6 @@ export const OrderCompactKpi = ({
   const refundRevenue = kpis.refunded_revenue;
   const refundRate = Number(kpis.refund_return_rate || 0).toLocaleString(locale, { maximumFractionDigits: 1 });
   const attentionOrders = Number(kpis.attention_orders || 0);
-
-  if (isHidden) {
-    return (
-      <div className="order-compact-kpi order-compact-kpi--minimized">
-        <button
-          type="button"
-          className="button button--ghost order-compact-kpi__show-btn"
-          onClick={() => setIsHidden(false)}
-        >
-          <BarChart2 size={15} />
-          <span>{t('sellerAffiliate.kpiStripShow')}</span>
-          <Eye size={14} />
-        </button>
-      </div>
-    );
-  }
 
   const hasTopProducts = ['revenue', 'settlement', 'refund'].some(
     (metric) => topProducts[metric]?.length
@@ -118,16 +101,6 @@ export const OrderCompactKpi = ({
           >
             <span>{isExpanded ? t('sellerAffiliate.kpiStripToggleCollapse') : t('sellerAffiliate.kpiStripToggleExpand')}</span>
             {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-          </button>
-
-          <button
-            type="button"
-            className="button button--ghost order-compact-kpi__icon-btn"
-            onClick={() => setIsHidden(true)}
-            title={t('sellerAffiliate.kpiStripHide')}
-            aria-label={t('sellerAffiliate.kpiStripHide')}
-          >
-            <EyeOff size={15} />
           </button>
         </div>
       </div>

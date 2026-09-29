@@ -961,8 +961,6 @@
     "viewOrderDetail": "View details",
     "kpiStripToggleExpand": "Details & Top Products",
     "kpiStripToggleCollapse": "Collapse",
-    "kpiStripHide": "Hide stats",
-    "kpiStripShow": "Show stats",
     "buyerCancelRequested": "Cancel requested",
     "trackOrder": "Track Shipment",
     "orderAndCreatedAt": "Order ID / Created",
