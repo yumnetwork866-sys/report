@@ -13,11 +13,12 @@ import {
   getOrderFinanceBreakdown,
   getOrderPaymentValue,
   getOrderProductDetails,
-  getOrderDeliveryHistory,
   getUnifiedOrderTimeline,
   getOrderShipping,
   getOrderSla,
   getTrackingUrl,
+  cancelByLabel,
+  cancelReasonLabel,
   deliveryTypeLabel,
   orderStatusLabel,
   paymentMethodLabel,
@@ -519,11 +520,11 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
                 <section className="drawer-section seller-affiliate__order-detail-section seller-affiliate__order-detail-section--alert">
                   <h3>{t('sellerAffiliate.orderDetailCancellation')}</h3>
                   <dl className="seller-affiliate__order-detail-grid">
-                    <div><dt>{t('sellerAffiliate.cancelledBy')}</dt><dd><strong>{cancelBy || '—'}</strong></dd></div>
+                    <div><dt>{t('sellerAffiliate.cancelledBy')}</dt><dd><strong>{cancelByLabel(cancelBy, t)}</strong></dd></div>
                     {cancelTime ? <div><dt>{t('sellerAffiliate.cancelTime')}</dt><dd>{formatTime(cancelTime)}</dd></div> : null}
                     <div style={{ gridColumn: 'span 2' }}>
                       <dt>{t('sellerAffiliate.cancelReason')}</dt>
-                      <dd className="text-danger"><strong>{cancelReason || '—'}</strong></dd>
+                      <dd className="text-danger"><strong>{cancelReasonLabel(cancelReason, t)}</strong></dd>
                     </div>
                   </dl>
                 </section>

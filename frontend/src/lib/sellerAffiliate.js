@@ -865,3 +865,86 @@ export const paymentMethodLabel = (value, t) => {
   };
   return fallbackMap[normalized] || clean;
 };
+
+export const cancelByLabel = (value, t) => {
+  if (!value || value === '—') return '—';
+  const clean = String(value).trim();
+  const normalized = clean.toUpperCase().replace(/[\s/-]+/g, '_');
+  const key = `sellerAffiliate.cancelBy_${normalized}`;
+  const translated = t ? t(key, { defaultValue: '' }) : '';
+  if (translated && translated !== key) return translated;
+
+  const fallbackMap = {
+    BUYER: 'Khách hàng (Người mua)',
+    SELLER: 'Nhà bán hàng (Shop)',
+    TIKTOK: 'Hệ thống TikTok',
+    SYSTEM: 'Hệ thống tự động',
+    LOGISTICS: 'Đơn vị vận chuyển',
+    CUSTOMER: 'Khách hàng (Người mua)',
+  };
+  return fallbackMap[normalized] || clean;
+};
+
+export const cancelReasonLabel = (value, t) => {
+  if (!value || value === '—') return '—';
+  const clean = String(value).trim();
+  const normalized = clean.toUpperCase().replace(/[\s/-]+/g, '_');
+  const key = `sellerAffiliate.cancelReason_${normalized}`;
+  const translated = t ? t(key, { defaultValue: '' }) : '';
+  if (translated && translated !== key) return translated;
+
+  const exactMap = {
+    NEED_TO_CHANGE_PAYMENT_METHOD: 'Cần đổi phương thức thanh toán',
+    CHANGE_PAYMENT_METHOD: 'Cần đổi phương thức thanh toán',
+    CHANGE_OF_MIND: 'Đổi ý không muốn mua nữa',
+    DECIDED_NOT_TO_BUY: 'Đổi ý không muốn mua nữa',
+    DO_NOT_WANT_TO_BUY_ANYMORE: 'Đổi ý không muốn mua nữa',
+    MISTAKE_IN_ADDRESS: 'Sai thông tin địa chỉ nhận hàng',
+    INCORRECT_ADDRESS: 'Sai thông tin địa chỉ nhận hàng',
+    WRONG_ADDRESS: 'Sai thông tin địa chỉ nhận hàng',
+    CHANGE_ADDRESS: 'Cần đổi địa chỉ nhận hàng',
+    FOUND_CHEAPER_ELSEWHERE: 'Tìm được giá tốt hơn ở nơi khác',
+    FOUND_BETTER_PRICE: 'Tìm được giá tốt hơn ở nơi khác',
+    CHEAPER_PRICE: 'Tìm được giá tốt hơn ở nơi khác',
+    FORGOT_TO_USE_VOUCHER: 'Quên áp dụng mã giảm giá / voucher',
+    VOUCHER_ISSUE: 'Vấn đề mã giảm giá',
+    ORDER_PLACED_BY_MISTAKE: 'Đặt nhầm sản phẩm / số lượng',
+    WRONG_ORDER: 'Đặt nhầm sản phẩm',
+    WRONG_ITEM: 'Đặt nhầm sản phẩm',
+    DELIVERY_TIME_TOO_LONG: 'Thời gian giao hàng dự kiến quá lâu',
+    DELIVERY_TOO_LONG: 'Thời gian giao hàng dự kiến quá lâu',
+    PAYMENT_FAILED: 'Thanh toán thất bại',
+    PAYMENT_TIMEOUT: 'Quá thời hạn thanh toán',
+    OUT_OF_STOCK: 'Sản phẩm hết hàng',
+    SELLER_NOT_SHIPPING: 'Người bán chưa gửi hàng',
+    BUYER_REQUEST: 'Người mua yêu cầu hủy',
+    SYSTEM_CANCELLED: 'Hệ thống tự động hủy',
+  };
+  if (exactMap[normalized]) return exactMap[normalized];
+
+  const lower = clean.toLowerCase();
+  if (lower.includes('payment') || lower.includes('bayar') || lower.includes('tukar bayaran')) {
+    return 'Cần đổi phương thức thanh toán';
+  }
+  if (lower.includes('address') || lower.includes('alamat') || lower.includes('lokasi')) {
+    return 'Sai địa chỉ hoặc số điện thoại nhận hàng';
+  }
+  if (lower.includes('change of mind') || lower.includes('decided not to buy') || lower.includes('tak jadi') || lower.includes('batal')) {
+    return 'Đổi ý không muốn mua nữa';
+  }
+  if (lower.includes('cheap') || lower.includes('price') || lower.includes('murah') || lower.includes('harga')) {
+    return 'Tìm được giá tốt hơn ở nơi khác';
+  }
+  if (lower.includes('voucher') || lower.includes('coupon') || lower.includes('kupon') || lower.includes('diskaun') || lower.includes('promo')) {
+    return 'Quên áp dụng mã giảm giá / voucher';
+  }
+  if (lower.includes('wrong') || lower.includes('mistake') || lower.includes('salah')) {
+    return 'Đặt nhầm sản phẩm, phân loại hoặc số lượng';
+  }
+  if (lower.includes('long') || lower.includes('delay') || lower.includes('lambat') || lower.includes('lama')) {
+    return 'Thời gian giao hàng dự kiến quá lâu';
+  }
+
+  return clean;
+};
+
