@@ -875,12 +875,12 @@ export const cancelByLabel = (value, t) => {
   if (translated && translated !== key) return translated;
 
   const fallbackMap = {
-    BUYER: 'Khách hàng (Người mua)',
-    SELLER: 'Nhà bán hàng (Shop)',
+    BUYER: 'Khách hàng',
+    SELLER: 'Shop',
     TIKTOK: 'Hệ thống TikTok',
     SYSTEM: 'Hệ thống tự động',
     LOGISTICS: 'Đơn vị vận chuyển',
-    CUSTOMER: 'Khách hàng (Người mua)',
+    CUSTOMER: 'Khách hàng',
   };
   return fallbackMap[normalized] || clean;
 };
