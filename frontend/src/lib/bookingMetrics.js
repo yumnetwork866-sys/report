@@ -100,6 +100,13 @@ export const isBookingInPeriod = (booking, activeRange) => {
   return true;
 };
 
+export const isBookingVisibleInPeriod = (booking, activeRange, bookingTab, productPerformance = null) => {
+  if (isBookingInPeriod(booking, activeRange)) return true;
+  if (bookingTab !== 'product' || finiteNumber(productPerformance?.affiliate_videos) <= 0) return false;
+  const bookingDate = bookingDateOf(booking);
+  return Boolean(bookingDate && (!activeRange?.endDate || bookingDate <= activeRange.endDate));
+};
+
 export const defaultBookingForm = () => ({
   creator_key: '',
   staff_id: '',
@@ -324,6 +331,7 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
   const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
   const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
   const orderIds = new Set();
+  const videoIds = new Set();
   let affiliateGmv = 0;
   let refundedGmv = 0;
   let itemsSold = 0;
@@ -361,6 +369,9 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
       affiliateGmv += price * quantity;
       refundedGmv += price * refundedQuantity;
       estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
+      const contentId = String(sku?.content_id || '').trim();
+      const contentType = String(sku?.content_type || sku?.raw_data?.content_type || '').toUpperCase();
+      if (contentId && (!contentType || contentType.includes('VIDEO'))) videoIds.add(contentId);
       matchedOrder = true;
     }
     if (matchedOrder && orderId) orderIds.add(orderId);
@@ -372,6 +383,8 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
     currency,
     affiliate_gmv: affiliateGmv,
     affiliate_orders: orderIds.size,
+    affiliate_videos: videoIds.size,
+    affiliate_video_ids: [...videoIds],
     items_sold: itemsSold,
     items_refunded: itemsRefunded,
     refunded_gmv: refundedGmv,

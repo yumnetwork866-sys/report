@@ -448,6 +448,8 @@ test('applyBookingProductPerformance sets default product_performance when no db
   assert.equal(result[0].product_performance.has_products, true);
   assert.equal(result[0].product_performance.affiliate_gmv, 0);
   assert.equal(result[0].product_performance.affiliate_orders, 0);
+  assert.equal(result[0].product_performance.affiliate_videos, 0);
+  assert.deepEqual(result[0].product_performance.affiliate_video_ids, []);
   assert.equal(result[0].product_performance.breakdown.length, 1);
   assert.equal(result[0].product_performance.breakdown[0].id, 'p-1');
   assert.equal(result[1].product_performance.has_products, false);

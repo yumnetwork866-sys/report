@@ -39,7 +39,7 @@ const BookingRow = memo(({
   const startDate = booking.created_at;
   const deadlineDate = null;
   const videoCount = bookingTab === 'product'
-    ? Number(performance?.affiliate_orders || 0)
+    ? Number(performance?.affiliate_videos || 0)
     : (videoData?.videoCount ?? bookingVideos.length);
 
   const timeline = computeBookingTimeline({
@@ -88,7 +88,7 @@ const BookingRow = memo(({
           <span className="booking-video-count">
             <strong>
               {bookingTab === 'product'
-                ? t('booking.ordersCount', { count: performance?.affiliate_orders || 0 })
+                ? t('booking.videosCount', { count: videoCount })
                 : t('booking.videosCount', { count: videoCount })}
             </strong>
           </span>

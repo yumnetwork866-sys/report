@@ -5,6 +5,7 @@ import {
   resolveProductClassification,
   orderRangeForPeriod,
   isBookingInPeriod,
+  isBookingVisibleInPeriod,
   bookingProductOrderPerformance,
   bookingVideoHashtags,
   bookingVideoMatchesHashtags,
@@ -155,6 +156,16 @@ test('isBookingInPeriod scopes booking targets to the selected booking month', (
   assert.equal(isBookingInPeriod({ start_date: '2025-01-01' }, orderRangeForPeriod('all')), true);
 });
 
+test('orders tab keeps an older booked KOC when it has a matching video in the selected month', () => {
+  const september = orderRangeForPeriod('2026-09');
+  const olderBooking = { start_date: '2026-08-15' };
+
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'video', { affiliate_videos: 1 }), false);
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'product', { affiliate_videos: 1 }), true);
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'product', { affiliate_videos: 0 }), false);
+  assert.equal(isBookingVisibleInPeriod({ start_date: '2026-10-01' }, september, 'product', { affiliate_videos: 1 }), false);
+});
+
 test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refunds and commission', () => {
   const booking = {
     creator_username: 'koc_test',
@@ -173,6 +184,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
         {
           product_id: 'prod_1',
           creator_username: 'koc_test',
+          content_id: 'video_1',
+          content_type: 'VIDEO',
           quantity: 2,
           refunded_quantity: 0,
           price: { amount: 50, currency: 'MYR' },
@@ -187,6 +200,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
         {
           product_id: 'prod_1',
           creator_username: 'koc_test',
+          content_id: 'video_2',
+          content_type: 'VIDEO',
           quantity: 1,
           refunded_quantity: 1,
           price: { amount: 50, currency: 'MYR' },
@@ -204,6 +219,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
 
   const perf = bookingProductOrderPerformance(booking, orders);
   assert.equal(perf.affiliate_orders, 2);
+  assert.equal(perf.affiliate_videos, 2);
+  assert.deepEqual(perf.affiliate_video_ids, ['video_1', 'video_2']);
   assert.equal(perf.items_sold, 3);
   assert.equal(perf.items_refunded, 1);
   assert.equal(perf.affiliate_gmv, 150);

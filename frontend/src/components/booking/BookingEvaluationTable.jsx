@@ -20,6 +20,8 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     currency: selectedCurrency,
     affiliate_gmv: 0,
     affiliate_orders: 0,
+    affiliate_videos: 0,
+    affiliate_video_ids: [],
     items_sold: 0,
     items_refunded: 0,
     refunded_gmv: 0,
@@ -27,6 +29,7 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     breakdown: mergeBookingProductBreakdowns(performances),
   };
   let hasCommission = false;
+  const videoIds = new Set();
   for (const performance of performances) {
     result.has_products = result.has_products || Boolean(performance.has_products);
     result.affiliate_gmv += convertAmount(performance.affiliate_gmv, performance.currency)
@@ -34,6 +37,7 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     result.refunded_gmv += convertAmount(performance.refunded_gmv, performance.currency)
       ?? finiteNumber(performance.refunded_gmv);
     result.affiliate_orders += finiteNumber(performance.affiliate_orders);
+    for (const videoId of performance.affiliate_video_ids || []) videoIds.add(String(videoId));
     result.items_sold += finiteNumber(performance.items_sold);
     result.items_refunded += finiteNumber(performance.items_refunded);
     if (performance.estimated_commission !== null && performance.estimated_commission !== undefined) {
@@ -42,6 +46,8 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
       hasCommission = true;
     }
   }
+  result.affiliate_video_ids = [...videoIds].filter(Boolean);
+  result.affiliate_videos = result.affiliate_video_ids.length;
   if (!hasCommission) result.estimated_commission = null;
   return result;
 };
@@ -124,7 +130,7 @@ const BookingEvaluationTable = ({
               </th>
               <th className="booking-video-column sortable-th">
                 <button type="button" className="table-sort-btn" onClick={() => onSort('videos')}>
-                  <span>{t(bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo')}</span>
+                  <span>{t('booking.matchedVideo')}</span>
                   <SortIcon active={bookingSort.key === 'videos'} direction={bookingSort.direction} />
                 </button>
               </th>

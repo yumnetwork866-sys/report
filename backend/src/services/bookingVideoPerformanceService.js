@@ -357,6 +357,8 @@ const loadOrderMetricsForBookingProducts = async ({
       currency: booking?.currency || 'MYR',
       affiliate_gmv: 0,
       affiliate_orders: 0,
+      affiliate_videos: 0,
+      affiliate_video_ids: [],
       items_sold: 0,
       items_refunded: 0,
       refunded_gmv: 0,
@@ -415,6 +417,8 @@ const loadOrderMetricsForBookingProducts = async ({
         s.product_name,
         LOWER(TRIM(LEADING '@' FROM COALESCE(s.creator_username, ''))) AS creator_username,
         s.order_id,
+        s.content_id,
+        s.content_type,
         COALESCE(s.currency, 'MYR') AS currency,
         s.quantity,
         s.refunded_quantity,
@@ -440,6 +444,7 @@ const loadOrderMetricsForBookingProducts = async ({
       const bookingShopId = Number(booking?.target_shop_id);
 
       const orderIds = new Set();
+      const videoIds = new Set();
       let affiliateGmv = 0;
       let refundedGmv = 0;
       let itemsSold = 0;
@@ -481,6 +486,9 @@ const loadOrderMetricsForBookingProducts = async ({
         estimatedCommission += price * (quantity - refundedQuantity) * commRate;
 
         if (row.order_id) orderIds.add(String(row.order_id));
+        const contentId = String(row.content_id || '').trim();
+        const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
+        if (contentId && (!contentType || contentType.includes('VIDEO'))) videoIds.add(contentId);
 
         const breakdownItem = productBreakdown.get(productId);
         if (breakdownItem) {
@@ -503,6 +511,8 @@ const loadOrderMetricsForBookingProducts = async ({
         currency,
         affiliate_gmv: Math.round(affiliateGmv * 100) / 100,
         affiliate_orders: orderIds.size,
+        affiliate_videos: videoIds.size,
+        affiliate_video_ids: [...videoIds],
         items_sold: itemsSold,
         items_refunded: itemsRefunded,
         refunded_gmv: Math.round(refundedGmv * 100) / 100,

@@ -9,7 +9,7 @@ import {
   bookingVideosOf,
   filterVideosByPeriod,
   finiteNumber,
-  isBookingInPeriod,
+  isBookingVisibleInPeriod,
   orderRangeForPeriod,
   uniqueBookingVideosForBookings,
 } from '../../lib/bookingMetrics';
@@ -21,10 +21,22 @@ const performanceForBooking = (booking, bookingTab, productPerformanceByBooking,
 );
 
 const videoCountForBooking = (booking, bookingTab, performance, videoPerformanceByBooking) => {
-  if (bookingTab === 'product') return finiteNumber(performance?.affiliate_orders);
+  if (bookingTab === 'product') return finiteNumber(performance?.affiliate_videos);
   const videoData = videoPerformanceByBooking.get(String(booking.id));
   return videoData?.videoCount
     ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0));
+};
+
+const uniqueProductVideoCount = (bookings, productPerformanceByBooking) => {
+  const videoKeys = new Set();
+  for (const booking of bookings) {
+    const performance = productPerformanceByBooking.get(String(booking.id));
+    for (const videoId of performance?.affiliate_video_ids || []) {
+      const normalizedId = String(videoId || '').trim();
+      if (normalizedId) videoKeys.add(`${booking.target_shop_id}:${normalizedId}`);
+    }
+  }
+  return videoKeys.size;
 };
 
 const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersByShop, convertAmount) => {
@@ -113,9 +125,14 @@ export default function useBookingAnalytics({
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
     return new Map(bookings.map((booking) => [
       String(booking.id),
-      isBookingInPeriod(booking, activeRange),
+      isBookingVisibleInPeriod(
+        booking,
+        activeRange,
+        bookingTab,
+        productPerformanceByBooking.get(String(booking.id)),
+      ),
     ]));
-  }, [bookings, customRange, selectedMonth]);
+  }, [bookingTab, bookings, customRange, productPerformanceByBooking, selectedMonth]);
 
   const stats = useMemo(() => {
     const visibleBookings = bookings.filter((booking) => bookingInPeriodById.get(String(booking.id)));
@@ -133,11 +150,12 @@ export default function useBookingAnalytics({
       summary.totalCost += convertedCost;
       if (bookingTab === 'product') {
         summary.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
-        summary.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
       }
       return summary;
     }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 });
-    if (bookingTab === 'video') {
+    if (bookingTab === 'product') {
+      result.videoCount = uniqueProductVideoCount(visibleBookings, productPerformanceByBooking);
+    } else {
       const videoSummary = uniqueVideoSummary(
         visibleBookings,
         videoPerformanceByBooking,
@@ -193,7 +211,6 @@ export default function useBookingAnalytics({
       group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
       if (bookingTab === 'product') {
         group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
-        group.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
       }
     }
 
@@ -225,6 +242,8 @@ export default function useBookingAnalytics({
         group.totalRevenue = videoSummary.revenue;
         group.videoCount = videoSummary.videoCount;
         group.totalViews = videoSummary.views;
+      } else {
+        group.videoCount = uniqueProductVideoCount(group.bookings, productPerformanceByBooking);
       }
       group.kocCount = bookingTab === 'video'
         ? countPaidBookingKocs(
