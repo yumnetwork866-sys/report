@@ -7,7 +7,7 @@ const {
   normalizeBookingProducts,
   __test: {
     affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingDateRange, matchesBookingProducts, metricOfAffiliateSnapshot,
-    normalizeCachedVideoCandidate, productIdsOfVideo,
+    normalizeCachedVideoCandidate, productIdsOfVideo, attributedProductIdsForBooking,
     resolveOrderMetricsForVideo,
   },
 } = require('../src/services/bookingVideoPerformanceService');
@@ -107,6 +107,51 @@ test('booking without an explicit end date tracks videos only within its booking
 
   assert.equal(matchesBookingDateRange(septemberBooking, { posted_at: '2026-09-30T23:59:59.000Z' }, afterSeptember), true);
   assert.equal(matchesBookingDateRange(septemberBooking, { posted_at: '2026-10-01T00:00:00.000Z' }, afterSeptember), false);
+});
+
+test('a video product is attributed to the most recent eligible booking', () => {
+  const older = {
+    id: 1,
+    target_shop_id: 9,
+    creator_username: 'creator',
+    start_date: '2026-09-01',
+    evaluation_snapshot: { product_ids: ['product-a'] },
+  };
+  const newer = {
+    id: 2,
+    target_shop_id: 9,
+    creator_username: 'creator',
+    start_date: '2026-09-03',
+    evaluation_snapshot: { product_ids: ['product-a'] },
+  };
+  const video = { posted_at: '2026-09-04T12:00:00Z', products: [{ id: 'product-a' }] };
+
+  assert.deepEqual([...attributedProductIdsForBooking(older, video, [older, newer])], []);
+  assert.deepEqual([...attributedProductIdsForBooking(newer, video, [older, newer])], ['product-a']);
+});
+
+test('one video can fulfill different products from separate bookings without duplicating a product', () => {
+  const productA = {
+    id: 1,
+    target_shop_id: 9,
+    creator_username: 'creator',
+    start_date: '2026-09-01',
+    evaluation_snapshot: { product_ids: ['product-a'] },
+  };
+  const productB = {
+    id: 2,
+    target_shop_id: 9,
+    creator_username: 'creator',
+    start_date: '2026-09-03',
+    evaluation_snapshot: { product_ids: ['product-b'] },
+  };
+  const video = {
+    posted_at: '2026-09-04T12:00:00Z',
+    products: [{ id: 'product-a' }, { id: 'product-b' }],
+  };
+
+  assert.deepEqual([...attributedProductIdsForBooking(productA, video, [productA, productB])], ['product-a']);
+  assert.deepEqual([...attributedProductIdsForBooking(productB, video, [productA, productB])], ['product-b']);
 });
 
 test('booking performance only counts the selected product breakdown', () => {

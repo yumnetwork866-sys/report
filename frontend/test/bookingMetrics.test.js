@@ -22,6 +22,8 @@ import {
   groupBookingRowsByCreator,
   mergeBookingProductBreakdowns,
   bookingPerformanceSortValue,
+  bookingVideoLinkCountForBookings,
+  uniqueBookingVideosForBookings,
 } from '../src/lib/bookingMetrics.js';
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
@@ -52,6 +54,29 @@ test('groupBookingRowsByCreator renders one row per shop and KOC', () => {
   assert.deepEqual(rows[0]._creator_bookings.map((booking) => booking.id), [160, 219]);
   assert.deepEqual(rows[1]._creator_bookings.map((booking) => booking.id), [220]);
   assert.deepEqual(rows[2]._creator_bookings.map((booking) => booking.id), [221]);
+});
+
+test('uniqueBookingVideosForBookings counts a shop video once across repeated bookings', () => {
+  const bookings = [
+    { id: 1, target_shop_id: 4 },
+    { id: 2, target_shop_id: 4 },
+    { id: 3, target_shop_id: 5 },
+  ];
+  const performance = new Map([
+    ['1', { videos: [{ platform_video_id: 'video-1' }, { platform_video_id: 'video-2' }] }],
+    ['2', { videos: [{ platform_video_id: 'video-1' }] }],
+    ['3', { videos: [{ platform_video_id: 'video-1' }] }],
+  ]);
+
+  const videos = uniqueBookingVideosForBookings(bookings, performance);
+
+  assert.equal(videos.length, 3);
+  assert.deepEqual(videos.map((video) => `${video._booking_shop_id}:${video.platform_video_id}`), [
+    '4:video-1',
+    '4:video-2',
+    '5:video-1',
+  ]);
+  assert.equal(bookingVideoLinkCountForBookings(bookings, performance), 4);
 });
 
 test('mergeBookingProductBreakdowns keeps product counts without doubling repeated bookings', () => {

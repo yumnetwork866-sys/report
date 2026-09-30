@@ -94,6 +94,7 @@ const defaultMigrationNames = [
   '085_scope_shop_authorization_open_id_unique',
   '086_link_shop_avatar_channels',
   '087_add_order_source_sync_coverage',
+  '088_add_booking_video_product_attribution',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

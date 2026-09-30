@@ -95,6 +95,7 @@ const migrations = [
   require('./085_scope_shop_authorization_open_id_unique'),
   require('./086_link_shop_avatar_channels'),
   require('./087_add_order_source_sync_coverage'),
+  require('./088_add_booking_video_product_attribution'),
 ];
 
 const createMigrationRunner = ({

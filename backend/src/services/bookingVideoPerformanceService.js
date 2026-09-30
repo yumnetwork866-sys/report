@@ -101,6 +101,35 @@ const matchesBookingDateRange = (booking, video, now = new Date()) => {
   if (postDate > today) return false;
   return true;
 };
+const normalizedBookingUsername = (booking) => String(booking?.creator_username || '')
+  .trim().replace(/^@+/, '').toLowerCase();
+const bookingPrecedence = (left, right) => (
+  String(right?.start_date || '').localeCompare(String(left?.start_date || ''))
+  || Number(right?.id || 0) - Number(left?.id || 0)
+);
+const attributedProductIdsForBooking = (booking, video, peerBookings = [], now = new Date()) => {
+  if (String(booking?.status || '').toLowerCase() === 'cancelled') return new Set();
+  const videoProductIds = productIdsOfVideo(video);
+  if (!videoProductIds.size || !matchesBookingDateRange(booking, video, now)) return new Set();
+  const shopId = String(booking?.target_shop_id || '');
+  const username = normalizedBookingUsername(booking);
+  const peers = (Array.isArray(peerBookings) ? peerBookings : [])
+    .filter((peer) => String(peer?.target_shop_id || '') === shopId)
+    .filter((peer) => normalizedBookingUsername(peer) === username);
+  if (!peers.some((peer) => String(peer?.id) === String(booking?.id))) peers.push(booking);
+
+  const attributed = new Set();
+  for (const productId of videoProductIds) {
+    const eligible = peers.filter((peer) => {
+      if (String(peer?.status || '').toLowerCase() === 'cancelled') return false;
+      if (!matchesBookingDateRange(peer, video, now)) return false;
+      const selectedIds = selectedProductIdsOfBooking(peer);
+      return !selectedIds.size || selectedIds.has(productId);
+    }).sort(bookingPrecedence);
+    if (eligible.length && String(eligible[0]?.id) === String(booking?.id)) attributed.add(productId);
+  }
+  return attributed;
+};
 const normalizeCachedVideoCandidate = (videoInstance, orderMetrics = null) => {
   const video = typeof videoInstance?.toJSON === 'function' ? videoInstance.toJSON() : videoInstance;
   const latest = [...(video?.performance_snapshots || [])].sort((left, right) => (
@@ -736,6 +765,7 @@ const recordBookingVideoMatch = async (booking, candidate, source, now = new Dat
     posted_at: candidate.posted_at || null,
     attribution_start: attributionStart,
     attribution_end: shiftDate(attributionStart, 30),
+    attributed_product_ids: [...normalizedProductIds(candidate.attributed_product_ids)],
     mapping_source: source,
     status: 'COLLECTING',
     last_synced_at: candidate.manually_confirmed ? null : now,
@@ -855,12 +885,17 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
   };
 };
 
-const autoLinkBookingVideos = async (booking, now = new Date()) => {
+const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: suppliedPeerBookings } = {}) => {
   const username = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
   if (!username || !booking.target_shop_id) return { status: 'missing_identity' };
 
-  const selectedProductIds = selectedProductIdsOfBooking(booking);
+  const peerBookings = suppliedPeerBookings || await Booking.findAll({
+    where: {
+      target_shop_id: booking.target_shop_id,
+    },
+  });
   let candidates = [];
+  let attributionEvaluated = false;
   let mappingSource = 'SHOP_VIDEO_CATALOG';
 
   if (ShopVideo?.findAll) {
@@ -881,6 +916,7 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
     });
 
     if (cachedVideos.length) {
+      attributionEvaluated = true;
       const videoIds = cachedVideos.map((v) => String(v.platform_video_id));
       const orderMetricsMap = await loadOrderMetricsForVideos({
         shopId: booking.target_shop_id,
@@ -889,9 +925,14 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
 
       const catalogCandidates = cachedVideos.map((video) => {
         const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${video.platform_video_id}`);
-        const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
-        return normalizeCachedVideoCandidate(video, orderMetrics);
-      }).filter((candidate) => matchesBookingProducts(booking, candidate) && matchesBookingDateRange(booking, candidate));
+        const unscoped = normalizeCachedVideoCandidate(video, resolveOrderMetricsForVideo(videoData, new Set()));
+        const attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+        if (!attributedProductIds.size) return null;
+        return {
+          ...normalizeCachedVideoCandidate(video, resolveOrderMetricsForVideo(videoData, attributedProductIds)),
+          attributed_product_ids: [...attributedProductIds],
+        };
+      }).filter(Boolean);
 
       if (catalogCandidates.length) {
         candidates = catalogCandidates;
@@ -923,6 +964,7 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
       });
 
       if (snapshots.length) {
+        attributionEvaluated = true;
         const videoIds = snapshots.map((s) => String(s.video_id));
         const orderMetricsMap = await loadOrderMetricsForVideos({
           shopId: booking.target_shop_id,
@@ -931,10 +973,23 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
         const exportCandidates = snapshots
           .map((snapshot) => {
             const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${snapshot.video_id}`);
-            const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedProductIds);
-            return affiliateCandidateFromSnapshot(snapshot, selectedProductIds, orderMetrics);
+            const unscoped = affiliateCandidateFromSnapshot(
+              snapshot,
+              new Set(),
+              resolveOrderMetricsForVideo(videoData, new Set()),
+            );
+            const attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+            if (!attributedProductIds.size) return null;
+            return {
+              ...affiliateCandidateFromSnapshot(
+                snapshot,
+                attributedProductIds,
+                resolveOrderMetricsForVideo(videoData, attributedProductIds),
+              ),
+              attributed_product_ids: [...attributedProductIds],
+            };
           })
-          .filter((candidate) => matchesBookingProducts(booking, candidate) && matchesBookingDateRange(booking, candidate));
+          .filter(Boolean);
 
         if (exportCandidates.length) {
           candidates = exportCandidates;
@@ -944,6 +999,13 @@ const autoLinkBookingVideos = async (booking, now = new Date()) => {
     }
   }
 
+  const candidateIds = candidates.map((candidate) => String(candidate.id));
+  const staleAutoLinkWhere = {
+    booking_id: booking.id,
+    mapping_source: { [Op.in]: ['SHOP_VIDEO_CATALOG', 'AFFILIATE_VIDEO_PERFORMANCE', 'TIKTOK_SHOP_VIDEO_PERFORMANCE'] },
+    ...(candidateIds.length ? { platform_video_id: { [Op.notIn]: candidateIds } } : {}),
+  };
+  if (attributionEvaluated) await BookingVideo.destroy({ where: staleAutoLinkWhere });
   if (!candidates.length) return { status: 'no_match', candidate_count: 0 };
 
   const selected = candidates[0];
@@ -990,7 +1052,7 @@ const autoLinkCreatorVideos = async (now, signal) => {
       error.name = 'AbortError';
       throw error;
     }
-    results.push({ booking_id: booking.id, ...(await autoLinkBookingVideos(booking, now)) });
+    results.push({ booking_id: booking.id, ...(await autoLinkBookingVideos(booking, now, { peerBookings: bookings })) });
   }
   return results;
 };
@@ -1048,7 +1110,10 @@ const syncBookingVideo = async (bookingVideo, { shop: suppliedShop, now = new Da
       : bookingVideo.attribution_start;
     const effectiveAttributionEnd = dateOnly(now);
 
-    const selectedProductIds = selectedProductIdsOfBooking(booking);
+    const selectedProductIds = normalizedProductIds(bookingVideo.attributed_product_ids);
+    if (!selectedProductIds.size) {
+      selectedProductIdsOfBooking(booking).forEach((id) => selectedProductIds.add(id));
+    }
     const orderMetricsMap = await loadOrderMetricsForVideos({
       shopId: shop.id,
       videoIds: [bookingVideo.platform_video_id],
@@ -1272,6 +1337,7 @@ const serializeBookingWithActual = (instance) => {
 };
 
 module.exports = {
+  attributedProductIdsForBooking,
   autoLinkBookingVideos,
   bookingVideoInclude,
   calculateActualPerformance,
@@ -1308,5 +1374,6 @@ module.exports = {
     loadOrderMetricsForBookingProducts,
     applyBookingProductPerformance,
     normalizeBookingProducts,
+    attributedProductIdsForBooking,
   },
 };

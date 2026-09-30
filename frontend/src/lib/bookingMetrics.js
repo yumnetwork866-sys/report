@@ -125,6 +125,29 @@ export const snapshotOf = (booking) => booking?.evaluation_snapshot || {};
 
 export const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
 
+export const uniqueBookingVideosForBookings = (bookings = [], videoPerformanceByBooking = new Map()) => {
+  const videos = new Map();
+  for (const booking of Array.isArray(bookings) ? bookings : []) {
+    const videoData = videoPerformanceByBooking.get(String(booking?.id));
+    const list = videoData?.videos || bookingVideosOf(booking);
+    list.forEach((video, index) => {
+      const identity = String(video?.platform_video_id || video?.id || '').trim();
+      const shopId = String(booking?.target_shop_id || booking?.target_shop?.id || 'no-shop');
+      const key = identity ? `${shopId}:${identity}` : `${shopId}:booking:${booking?.id}:video:${index}`;
+      if (!videos.has(key)) videos.set(key, { ...video, _booking_shop_id: shopId });
+    });
+  }
+  return [...videos.values()];
+};
+
+export const bookingVideoLinkCountForBookings = (bookings = [], videoPerformanceByBooking = new Map()) => (
+  (Array.isArray(bookings) ? bookings : []).reduce((total, booking) => {
+    const videoData = videoPerformanceByBooking.get(String(booking?.id));
+    const videos = videoData?.videos || bookingVideosOf(booking);
+    return total + videos.length;
+  }, 0)
+);
+
 export const bookingProductsOf = (booking) => {
   const snapshot = snapshotOf(booking);
   const products = Array.isArray(snapshot.products) ? snapshot.products : [];

@@ -12,6 +12,10 @@ const SHOP_VIDEO_ACCOUNT_TYPES = [
   'MARKETING_ACCOUNTS',
   'AFFILIATE_ACCOUNTS',
 ];
+// TikTok's shop video performance endpoint accepts at most 60 days. The
+// exclusive end date is tomorrow so that today's metrics are included, which
+// leaves room for 59 preceding lookback days.
+const MAX_VIDEO_LOOKBACK_DAYS = 59;
 const dateOnly = (value = new Date()) => new Date(value).toISOString().slice(0, 10);
 const shiftDate = (value, days) => {
   const date = new Date(`${dateOnly(value)}T00:00:00.000Z`);
@@ -156,8 +160,8 @@ const syncShopVideoCatalog = async (shop, { now = new Date(), signal } = {}) => 
   if (!shop?.authorization) throw new Error('TikTok Shop is not connected.');
   const configuredLookback = Number(process.env.SHOP_VIDEO_SYNC_LOOKBACK_DAYS);
   const lookbackDays = Number.isInteger(configuredLookback)
-    ? Math.min(89, Math.max(1, configuredLookback))
-    : 89;
+    ? Math.min(MAX_VIDEO_LOOKBACK_DAYS, Math.max(1, configuredLookback))
+    : MAX_VIDEO_LOOKBACK_DAYS;
   const configuredMaxPages = Number(process.env.SHOP_VIDEO_SYNC_MAX_PAGES);
   const maxPages = Number.isInteger(configuredMaxPages)
     ? Math.min(500, Math.max(1, configuredMaxPages))

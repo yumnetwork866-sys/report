@@ -2,6 +2,7 @@ import { useCallback, useMemo } from 'react';
 import {
   bookingPerformanceSortValue,
   bookingProductOrderPerformance,
+  bookingVideoLinkCountForBookings,
   countPaidBookingKocs,
   bookingVideoMatchesHashtags,
   bookingVideoPerformanceForVideos,
@@ -11,6 +12,7 @@ import {
   finiteNumber,
   isBookingInPeriod,
   orderRangeForPeriod,
+  uniqueBookingVideosForBookings,
 } from '../../lib/bookingMetrics';
 
 const performanceForBooking = (booking, bookingTab, productPerformanceByBooking, videoPerformanceByBooking) => (
@@ -24,6 +26,33 @@ const videoCountForBooking = (booking, bookingTab, performance, videoPerformance
   const videoData = videoPerformanceByBooking.get(String(booking.id));
   return videoData?.videoCount
     ?? (bookingVideosOf(booking).length || Number(booking.actual_performance?.video_count || 0));
+};
+
+const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersByShop, convertAmount) => {
+  const videos = uniqueBookingVideosForBookings(bookings, videoPerformanceByBooking);
+  const videosByShop = new Map();
+  for (const video of videos) {
+    const shopId = String(video._booking_shop_id || 'no-shop');
+    if (!videosByShop.has(shopId)) videosByShop.set(shopId, []);
+    videosByShop.get(shopId).push(video);
+  }
+  const result = [...videosByShop.entries()].reduce((summary, [shopId, shopVideos]) => {
+    const performance = bookingVideoPerformanceForVideos(
+      shopVideos,
+      null,
+      productOrdersByShop[String(shopId)] || [],
+    );
+    summary.views += finiteNumber(performance.views ?? performance.video_views);
+    summary.videoCount += shopVideos.length;
+    return summary;
+  }, { revenue: 0, views: 0, videoCount: 0 });
+  for (const booking of bookings) {
+    const performance = videoPerformanceByBooking.get(String(booking.id))?.performance
+      || booking.actual_performance;
+    const rawRevenue = finiteNumber(performance?.gross_gmv ?? performance?.affiliate_gmv);
+    result.revenue += convertAmount(rawRevenue, performance?.currency || booking.currency) ?? rawRevenue;
+  }
+  return result;
 };
 
 export default function useBookingAnalytics({
@@ -94,7 +123,8 @@ export default function useBookingAnalytics({
   }, [bookings, customRange, selectedMonth]);
 
   const stats = useMemo(() => {
-    return bookings.reduce((result, booking) => {
+    const visibleBookings = bookings.filter((booking) => bookingInPeriodById.get(String(booking.id)));
+    const result = visibleBookings.reduce((summary, booking) => {
       const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
       const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
       const performance = performanceForBooking(
@@ -104,16 +134,26 @@ export default function useBookingAnalytics({
         videoPerformanceByBooking,
       );
       const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
-      const inBookingPeriod = bookingInPeriodById.get(String(booking.id));
-      if (inBookingPeriod) {
-        result.total += 1;
-        result.totalCost += convertedCost;
-        result.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
-        result.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
+      summary.total += 1;
+      summary.totalCost += convertedCost;
+      if (bookingTab === 'product') {
+        summary.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
+        summary.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
       }
-      return result;
+      return summary;
     }, { total: 0, totalCost: 0, totalRevenue: 0, videoCount: 0 });
-  }, [bookingInPeriodById, bookingTab, bookings, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
+    if (bookingTab === 'video') {
+      const videoSummary = uniqueVideoSummary(
+        visibleBookings,
+        videoPerformanceByBooking,
+        productOrdersByShop,
+        convertAmount,
+      );
+      result.totalRevenue = videoSummary.revenue;
+      result.videoCount = videoSummary.videoCount;
+    }
+    return result;
+  }, [bookingInPeriodById, bookingTab, bookings, convertAmount, productOrdersByShop, productPerformanceByBooking, videoPerformanceByBooking]);
 
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
@@ -156,11 +196,10 @@ export default function useBookingAnalytics({
       const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
       group.bookings.push(booking);
       group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
-      group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
-      group.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
-      const videoPerformance = videoPerformanceByBooking.get(String(booking.id))?.performance
-        || booking.actual_performance;
-      group.totalViews += finiteNumber(videoPerformance?.views ?? videoPerformance?.video_views);
+      if (bookingTab === 'product') {
+        group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
+        group.videoCount += videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
+      }
     }
 
     const revenueOf = (booking) => {
@@ -181,6 +220,17 @@ export default function useBookingAnalytics({
       return convertAmount(raw, booking.currency) ?? raw;
     };
     for (const group of groups.values()) {
+      if (bookingTab === 'video') {
+        const videoSummary = uniqueVideoSummary(
+          group.bookings,
+          videoPerformanceByBooking,
+          productOrdersByShop,
+          convertAmount,
+        );
+        group.totalRevenue = videoSummary.revenue;
+        group.videoCount = bookingVideoLinkCountForBookings(group.bookings, videoPerformanceByBooking);
+        group.totalViews = videoSummary.views;
+      }
       group.kocCount = bookingTab === 'video'
         ? countPaidBookingKocs(
           group.bookings,
@@ -199,7 +249,7 @@ export default function useBookingAnalytics({
       if (right.key === 'unassigned') return -1;
       return collator.compare(left.manager.name, right.manager.name);
     });
-  }, [bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
+  }, [bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, productOrdersByShop, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
 
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]

@@ -1,6 +1,7 @@
 const bookingRepository = require('../../repositories/bookingRepository');
 const { getShopVideoPerformance } = require('../tiktokShopService');
 const {
+  attributedProductIdsForBooking,
   autoLinkBookingVideos,
   matchesBookingDateRange,
   matchesBookingProducts,
@@ -212,8 +213,17 @@ const autoLinkCreatedBooking = async (booking) => {
   const linkResult = await autoLinkBookingVideos(booking);
   if (linkResult?.status === 'matched') return;
   const { candidates } = await findBookingVideoCandidates(booking);
-  if (!candidates.length) return;
-  const selected = candidates[0];
+  const peerBookings = await bookingRepository.findBookings({
+    where: { target_shop_id: booking.target_shop_id },
+  });
+  const attributedCandidates = candidates.map((candidate) => {
+    const attributedProductIds = attributedProductIdsForBooking(booking, candidate, peerBookings);
+    return attributedProductIds.size
+      ? { ...candidate, attributed_product_ids: [...attributedProductIds] }
+      : null;
+  }).filter(Boolean);
+  if (!attributedCandidates.length) return;
+  const selected = attributedCandidates[0];
   const mappingSource = selected.cached_catalog
     ? 'SHOP_VIDEO_CATALOG'
     : 'TIKTOK_SHOP_VIDEO_PERFORMANCE';
@@ -226,13 +236,13 @@ const autoLinkCreatedBooking = async (booking) => {
       video_match: {
         source: mappingSource,
         matched_at: new Date().toISOString(),
-        video_count: candidates.length,
+        video_count: attributedCandidates.length,
         ...selected,
       },
     },
     updated_at: new Date(),
   });
-  for (const candidate of candidates) {
+  for (const candidate of attributedCandidates) {
     await recordBookingVideoMatch(booking, candidate, mappingSource);
   }
 };
