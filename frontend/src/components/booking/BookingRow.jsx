@@ -147,6 +147,7 @@ const BookingRow = memo(({
                                 snapshot={latest}
                                 index={videoIndex}
                                 username={video.creator_username || booking.creator_username}
+                                shared={Boolean(video.is_shared_booking_video || Number(video.shared_booking_count) > 1)}
                               />
                               <div>
                                 {video.video_url ? (

@@ -3,7 +3,6 @@ import BookingRow from './BookingRow';
 import { SortIcon } from './BookingIcons';
 import {
   bookingProductsOf,
-  bookingVideoLinkCountForBookings,
   bookingVideoPerformanceForVideos,
   finiteNumber,
   groupBookingRowsByCreator,
@@ -48,56 +47,24 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
 };
 
 const aggregateVideoPerformance = (
-  bookingRecords,
   videos,
-  videoPerformanceByBooking,
   shopOrders,
   convertAmount,
   selectedCurrency,
 ) => {
   const uniquePerformance = bookingVideoPerformanceForVideos(videos, null, shopOrders);
-  const result = {
+  const currency = uniquePerformance.currency;
+  const converted = (value) => convertAmount(finiteNumber(value), currency) ?? finiteNumber(value);
+  return {
     ...uniquePerformance,
     currency: selectedCurrency,
-    gross_gmv: 0,
-    refunded_gmv: 0,
-    orders: 0,
-    items_sold: 0,
-    items_refunded: 0,
-    estimated_commission: 0,
+    gross_gmv: converted(uniquePerformance.gross_gmv),
+    refunded_gmv: uniquePerformance.refunded_gmv === null ? null : converted(uniquePerformance.refunded_gmv),
+    estimated_commission: uniquePerformance.estimated_commission === null
+      ? null
+      : converted(uniquePerformance.estimated_commission),
     video_count: videos.length,
   };
-  let hasRefunds = false;
-  let hasRefundedItems = false;
-  let hasCommission = false;
-  for (const booking of bookingRecords) {
-    const performance = videoPerformanceByBooking.get(String(booking.id))?.performance
-      || booking.actual_performance;
-    if (!performance) continue;
-    const currency = performance.currency || booking.currency;
-    const grossGmv = finiteNumber(performance.gross_gmv ?? performance.affiliate_gmv);
-    result.gross_gmv += convertAmount(grossGmv, currency) ?? grossGmv;
-    result.orders += finiteNumber(performance.orders);
-    result.items_sold += finiteNumber(performance.items_sold);
-    if (performance.refunded_gmv !== null && performance.refunded_gmv !== undefined) {
-      const refunded = finiteNumber(performance.refunded_gmv);
-      result.refunded_gmv += convertAmount(refunded, currency) ?? refunded;
-      hasRefunds = true;
-    }
-    if (performance.items_refunded !== null && performance.items_refunded !== undefined) {
-      result.items_refunded += finiteNumber(performance.items_refunded);
-      hasRefundedItems = true;
-    }
-    if (performance.estimated_commission !== null && performance.estimated_commission !== undefined) {
-      const commission = finiteNumber(performance.estimated_commission);
-      result.estimated_commission += convertAmount(commission, currency) ?? commission;
-      hasCommission = true;
-    }
-  }
-  if (!hasRefunds) result.refunded_gmv = null;
-  if (!hasRefundedItems) result.items_refunded = null;
-  if (!hasCommission) result.estimated_commission = null;
-  return result;
 };
 
 const BookingEvaluationTable = ({
@@ -194,9 +161,7 @@ const BookingEvaluationTable = ({
               const videos = uniqueBookingVideosForBookings(bookingRecords, videoPerformanceByBooking);
               const shopOrders = productOrdersByShop[String(booking.target_shop_id)] || [];
               const videoPerformance = aggregateVideoPerformance(
-                bookingRecords,
                 videos,
-                videoPerformanceByBooking,
                 shopOrders,
                 convertAmount,
                 selectedCurrency,
@@ -231,7 +196,7 @@ const BookingEvaluationTable = ({
               const videoData = {
                 videos,
                 performance: videoPerformance,
-                videoCount: bookingVideoLinkCountForBookings(bookingRecords, videoPerformanceByBooking),
+                videoCount: videos.length,
               };
               const expanded = String(expandedBookingId) === String(booking.id);
 

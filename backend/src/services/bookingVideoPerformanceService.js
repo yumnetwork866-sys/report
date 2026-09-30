@@ -101,34 +101,13 @@ const matchesBookingDateRange = (booking, video, now = new Date()) => {
   if (postDate > today) return false;
   return true;
 };
-const normalizedBookingUsername = (booking) => String(booking?.creator_username || '')
-  .trim().replace(/^@+/, '').toLowerCase();
-const bookingPrecedence = (left, right) => (
-  String(right?.start_date || '').localeCompare(String(left?.start_date || ''))
-  || Number(right?.id || 0) - Number(left?.id || 0)
-);
-const attributedProductIdsForBooking = (booking, video, peerBookings = [], now = new Date()) => {
+const attributedProductIdsForBooking = (booking, video, _peerBookings = [], now = new Date()) => {
   if (String(booking?.status || '').toLowerCase() === 'cancelled') return new Set();
   const videoProductIds = productIdsOfVideo(video);
   if (!videoProductIds.size || !matchesBookingDateRange(booking, video, now)) return new Set();
-  const shopId = String(booking?.target_shop_id || '');
-  const username = normalizedBookingUsername(booking);
-  const peers = (Array.isArray(peerBookings) ? peerBookings : [])
-    .filter((peer) => String(peer?.target_shop_id || '') === shopId)
-    .filter((peer) => normalizedBookingUsername(peer) === username);
-  if (!peers.some((peer) => String(peer?.id) === String(booking?.id))) peers.push(booking);
-
-  const attributed = new Set();
-  for (const productId of videoProductIds) {
-    const eligible = peers.filter((peer) => {
-      if (String(peer?.status || '').toLowerCase() === 'cancelled') return false;
-      if (!matchesBookingDateRange(peer, video, now)) return false;
-      const selectedIds = selectedProductIdsOfBooking(peer);
-      return !selectedIds.size || selectedIds.has(productId);
-    }).sort(bookingPrecedence);
-    if (eligible.length && String(eligible[0]?.id) === String(booking?.id)) attributed.add(productId);
-  }
-  return attributed;
+  const selectedIds = selectedProductIdsOfBooking(booking);
+  if (!selectedIds.size) return videoProductIds;
+  return new Set([...videoProductIds].filter((productId) => selectedIds.has(productId)));
 };
 const normalizeCachedVideoCandidate = (videoInstance, orderMetrics = null) => {
   const video = typeof videoInstance?.toJSON === 'function' ? videoInstance.toJSON() : videoInstance;

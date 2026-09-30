@@ -134,7 +134,24 @@ export const uniqueBookingVideosForBookings = (bookings = [], videoPerformanceBy
       const identity = String(video?.platform_video_id || video?.id || '').trim();
       const shopId = String(booking?.target_shop_id || booking?.target_shop?.id || 'no-shop');
       const key = identity ? `${shopId}:${identity}` : `${shopId}:booking:${booking?.id}:video:${index}`;
-      if (!videos.has(key)) videos.set(key, { ...video, _booking_shop_id: shopId });
+      const existing = videos.get(key);
+      if (!existing) {
+        videos.set(key, {
+          ...video,
+          attributed_product_ids: [...new Set(video?.attributed_product_ids || [])],
+          _booking_shop_id: shopId,
+        });
+        return;
+      }
+      existing.attributed_product_ids = [...new Set([
+        ...(existing.attributed_product_ids || []),
+        ...(video?.attributed_product_ids || []),
+      ].map((value) => String(value || '').trim()).filter(Boolean))];
+      existing.is_shared_booking_video = true;
+      existing.shared_booking_count = Math.max(
+        Number(existing.shared_booking_count || 1),
+        Number(video?.shared_booking_count || 2),
+      );
     });
   }
   return [...videos.values()];
@@ -459,6 +476,9 @@ export const bookingVideoMatchesHashtags = (video, configuredHashtags = []) => {
 export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
   const normVideoId = String(video?.platform_video_id || '').trim();
   const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const selectedProductIds = new Set((Array.isArray(video?.attributed_product_ids) ? video.attributed_product_ids : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean));
   if (!normVideoId || !Array.isArray(orders) || !orders.length) return null;
 
   let gmv = 0;
@@ -475,6 +495,8 @@ export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
     let matchedInOrder = false;
     for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
       if (String(sku?.content_id || '').trim() !== normVideoId) continue;
+      const productId = String(sku?.product_id || '').trim();
+      if (selectedProductIds.size && !selectedProductIds.has(productId)) continue;
       const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
       if (normCreator && skuCreator && skuCreator !== normCreator) continue;
 

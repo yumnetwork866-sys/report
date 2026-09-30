@@ -6,6 +6,7 @@ const {
 const { getShopVideoPerformance } = require('./tiktokShopService');
 const { upsertShopProducts } = require('./shopProductCatalogService');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../lib/tiktokDemoFixtures');
+const { parseTikTokShopDateTime } = require('../lib/tiktokShopDateTime');
 
 const SHOP_VIDEO_ACCOUNT_TYPES = [
   'OFFICIAL_ACCOUNTS',
@@ -27,14 +28,11 @@ const normalizedUsername = (value) => String(value || '').trim().replace(/^@+/, 
 const videoUsername = (video) => normalizedUsername(
   video?.creator?.user_name || video?.creator?.username || video?.username,
 );
-const videoPostedAt = (video) => {
+const videoPostedAt = (video, region) => {
   const raw = String(video?.video_post_time || video?.post_time || '').trim();
-  if (!raw) return null;
-  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const parsed = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return parseTikTokShopDateTime(raw, region);
 };
-const normalizedVideo = (shopId, video, now, accountType = 'AFFILIATE_ACCOUNTS') => {
+const normalizedVideo = (shopId, video, now, accountType = 'AFFILIATE_ACCOUNTS', region) => {
   const platformVideoId = String(video?.id || video?.video_id || '').trim();
   const creatorUsername = videoUsername(video);
   const gmv = video?.gmv && typeof video.gmv === 'object'
@@ -50,7 +48,7 @@ const normalizedVideo = (shopId, video, now, accountType = 'AFFILIATE_ACCOUNTS')
       video_url: platformVideoId && creatorUsername
         ? `https://www.tiktok.com/@${encodeURIComponent(creatorUsername)}/video/${encodeURIComponent(platformVideoId)}`
         : null,
-      posted_at: videoPostedAt(video),
+      posted_at: videoPostedAt(video, region),
       first_seen_at: now,
       last_seen_at: now,
       raw_data: video,
@@ -118,10 +116,10 @@ const requestPage = async (shop, options, signal) => {
 };
 
 const persistPage = async (shopId, videos, {
-  now, startDate, endDate, accountType,
+  now, startDate, endDate, accountType, region,
 }) => {
   const rowsByVideoId = new Map();
-  videos.map((video) => normalizedVideo(shopId, video, now, accountType))
+  videos.map((video) => normalizedVideo(shopId, video, now, accountType, region))
     .filter((row) => row.catalog.platform_video_id)
     .forEach((row) => rowsByVideoId.set(row.catalog.platform_video_id, row));
   const rows = [...rowsByVideoId.values()];
@@ -190,7 +188,7 @@ const syncShopVideoCatalog = async (shop, { now = new Date(), signal } = {}) => 
         return true;
       });
       const stored = await persistPage(shop.id, videos, {
-        now, startDate, endDate, accountType,
+        now, startDate, endDate, accountType, region: shop.region,
       });
       accountTotal += stored;
       total += stored;

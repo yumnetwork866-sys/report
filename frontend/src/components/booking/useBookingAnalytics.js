@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react';
 import {
   bookingPerformanceSortValue,
   bookingProductOrderPerformance,
-  bookingVideoLinkCountForBookings,
   countPaidBookingKocs,
   bookingVideoMatchesHashtags,
   bookingVideoPerformanceForVideos,
@@ -42,16 +41,12 @@ const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersBy
       null,
       productOrdersByShop[String(shopId)] || [],
     );
+    const rawRevenue = finiteNumber(performance.gross_gmv ?? performance.affiliate_gmv);
+    summary.revenue += convertAmount(rawRevenue, performance.currency) ?? rawRevenue;
     summary.views += finiteNumber(performance.views ?? performance.video_views);
     summary.videoCount += shopVideos.length;
     return summary;
   }, { revenue: 0, views: 0, videoCount: 0 });
-  for (const booking of bookings) {
-    const performance = videoPerformanceByBooking.get(String(booking.id))?.performance
-      || booking.actual_performance;
-    const rawRevenue = finiteNumber(performance?.gross_gmv ?? performance?.affiliate_gmv);
-    result.revenue += convertAmount(rawRevenue, performance?.currency || booking.currency) ?? rawRevenue;
-  }
   return result;
 };
 
@@ -228,7 +223,7 @@ export default function useBookingAnalytics({
           convertAmount,
         );
         group.totalRevenue = videoSummary.revenue;
-        group.videoCount = bookingVideoLinkCountForBookings(group.bookings, videoPerformanceByBooking);
+        group.videoCount = videoSummary.videoCount;
         group.totalViews = videoSummary.views;
       }
       group.kocCount = bookingTab === 'video'

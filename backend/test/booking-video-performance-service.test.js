@@ -109,7 +109,7 @@ test('booking without an explicit end date tracks videos only within its booking
   assert.equal(matchesBookingDateRange(septemberBooking, { posted_at: '2026-10-01T00:00:00.000Z' }, afterSeptember), false);
 });
 
-test('a video product is attributed to the most recent eligible booking', () => {
+test('a video product is attributed to every eligible booking', () => {
   const older = {
     id: 1,
     target_shop_id: 9,
@@ -126,7 +126,7 @@ test('a video product is attributed to the most recent eligible booking', () => 
   };
   const video = { posted_at: '2026-09-04T12:00:00Z', products: [{ id: 'product-a' }] };
 
-  assert.deepEqual([...attributedProductIdsForBooking(older, video, [older, newer])], []);
+  assert.deepEqual([...attributedProductIdsForBooking(older, video, [older, newer])], ['product-a']);
   assert.deepEqual([...attributedProductIdsForBooking(newer, video, [older, newer])], ['product-a']);
 });
 

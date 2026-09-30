@@ -24,6 +24,7 @@ import {
   bookingPerformanceSortValue,
   bookingVideoLinkCountForBookings,
   uniqueBookingVideosForBookings,
+  bookingVideoOrderMetrics,
 } from '../src/lib/bookingMetrics.js';
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
@@ -63,8 +64,8 @@ test('uniqueBookingVideosForBookings counts a shop video once across repeated bo
     { id: 3, target_shop_id: 5 },
   ];
   const performance = new Map([
-    ['1', { videos: [{ platform_video_id: 'video-1' }, { platform_video_id: 'video-2' }] }],
-    ['2', { videos: [{ platform_video_id: 'video-1' }] }],
+    ['1', { videos: [{ platform_video_id: 'video-1', attributed_product_ids: ['product-a'] }, { platform_video_id: 'video-2' }] }],
+    ['2', { videos: [{ platform_video_id: 'video-1', attributed_product_ids: ['product-a', 'product-b'] }] }],
     ['3', { videos: [{ platform_video_id: 'video-1' }] }],
   ]);
 
@@ -77,6 +78,25 @@ test('uniqueBookingVideosForBookings counts a shop video once across repeated bo
     '5:video-1',
   ]);
   assert.equal(bookingVideoLinkCountForBookings(bookings, performance), 4);
+  assert.deepEqual(videos[0].attributed_product_ids, ['product-a', 'product-b']);
+  assert.equal(videos[0].is_shared_booking_video, true);
+});
+
+test('booking video order metrics only counts products attributed to that booking', () => {
+  const video = { platform_video_id: 'video-1', attributed_product_ids: ['product-a'] };
+  const orders = [{
+    id: 'order-1',
+    skus: [
+      { content_id: 'video-1', product_id: 'product-a', quantity: 2, price: 10 },
+      { content_id: 'video-1', product_id: 'product-b', quantity: 3, price: 20 },
+    ],
+  }];
+
+  const metrics = bookingVideoOrderMetrics(video, null, orders);
+
+  assert.equal(metrics.grossGmv, 20);
+  assert.equal(metrics.itemsSold, 2);
+  assert.equal(metrics.orderCount, 1);
 });
 
 test('mergeBookingProductBreakdowns keeps product counts without doubling repeated bookings', () => {
