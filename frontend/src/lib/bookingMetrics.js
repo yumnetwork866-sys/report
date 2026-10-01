@@ -100,6 +100,13 @@ export const isBookingInPeriod = (booking, activeRange) => {
   return true;
 };
 
+export const isBookingVisibleInPeriod = (booking, activeRange, bookingTab, productPerformance = null) => {
+  if (isBookingInPeriod(booking, activeRange)) return true;
+  if (bookingTab !== 'product' || finiteNumber(productPerformance?.affiliate_videos) <= 0) return false;
+  const bookingDate = bookingDateOf(booking);
+  return Boolean(bookingDate && (!activeRange?.endDate || bookingDate <= activeRange.endDate));
+};
+
 export const defaultBookingForm = () => ({
   creator_key: '',
   staff_id: '',
@@ -124,6 +131,46 @@ export const targetKocKey = (creator) => {
 export const snapshotOf = (booking) => booking?.evaluation_snapshot || {};
 
 export const bookingVideosOf = (booking) => Array.isArray(booking?.booking_videos) ? booking.booking_videos : [];
+
+export const uniqueBookingVideosForBookings = (bookings = [], videoPerformanceByBooking = new Map()) => {
+  const videos = new Map();
+  for (const booking of Array.isArray(bookings) ? bookings : []) {
+    const videoData = videoPerformanceByBooking.get(String(booking?.id));
+    const list = videoData?.videos || bookingVideosOf(booking);
+    list.forEach((video, index) => {
+      const identity = String(video?.platform_video_id || video?.id || '').trim();
+      const shopId = String(booking?.target_shop_id || booking?.target_shop?.id || 'no-shop');
+      const key = identity ? `${shopId}:${identity}` : `${shopId}:booking:${booking?.id}:video:${index}`;
+      const existing = videos.get(key);
+      if (!existing) {
+        videos.set(key, {
+          ...video,
+          attributed_product_ids: [...new Set(video?.attributed_product_ids || [])],
+          _booking_shop_id: shopId,
+        });
+        return;
+      }
+      existing.attributed_product_ids = [...new Set([
+        ...(existing.attributed_product_ids || []),
+        ...(video?.attributed_product_ids || []),
+      ].map((value) => String(value || '').trim()).filter(Boolean))];
+      existing.is_shared_booking_video = true;
+      existing.shared_booking_count = Math.max(
+        Number(existing.shared_booking_count || 1),
+        Number(video?.shared_booking_count || 2),
+      );
+    });
+  }
+  return [...videos.values()];
+};
+
+export const bookingVideoLinkCountForBookings = (bookings = [], videoPerformanceByBooking = new Map()) => (
+  (Array.isArray(bookings) ? bookings : []).reduce((total, booking) => {
+    const videoData = videoPerformanceByBooking.get(String(booking?.id));
+    const videos = videoData?.videos || bookingVideosOf(booking);
+    return total + videos.length;
+  }, 0)
+);
 
 export const bookingProductsOf = (booking) => {
   const snapshot = snapshotOf(booking);
@@ -284,6 +331,7 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
   const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
   const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
   const orderIds = new Set();
+  const videoIds = new Set();
   let affiliateGmv = 0;
   let refundedGmv = 0;
   let itemsSold = 0;
@@ -321,6 +369,9 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
       affiliateGmv += price * quantity;
       refundedGmv += price * refundedQuantity;
       estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
+      const contentId = String(sku?.content_id || '').trim();
+      const contentType = String(sku?.content_type || sku?.raw_data?.content_type || '').toUpperCase();
+      if (contentId && (!contentType || contentType.includes('VIDEO'))) videoIds.add(contentId);
       matchedOrder = true;
     }
     if (matchedOrder && orderId) orderIds.add(orderId);
@@ -332,6 +383,8 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
     currency,
     affiliate_gmv: affiliateGmv,
     affiliate_orders: orderIds.size,
+    affiliate_videos: videoIds.size,
+    affiliate_video_ids: [...videoIds],
     items_sold: itemsSold,
     items_refunded: itemsRefunded,
     refunded_gmv: refundedGmv,
@@ -436,6 +489,9 @@ export const bookingVideoMatchesHashtags = (video, configuredHashtags = []) => {
 export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
   const normVideoId = String(video?.platform_video_id || '').trim();
   const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const selectedProductIds = new Set((Array.isArray(video?.attributed_product_ids) ? video.attributed_product_ids : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean));
   if (!normVideoId || !Array.isArray(orders) || !orders.length) return null;
 
   let gmv = 0;
@@ -452,6 +508,8 @@ export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
     let matchedInOrder = false;
     for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
       if (String(sku?.content_id || '').trim() !== normVideoId) continue;
+      const productId = String(sku?.product_id || '').trim();
+      if (selectedProductIds.size && !selectedProductIds.has(productId)) continue;
       const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
       if (normCreator && skuCreator && skuCreator !== normCreator) continue;
 

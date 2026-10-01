@@ -9,7 +9,7 @@ const HomePage = () => {
     { title: t('home.stepOrganize'), description: t('home.stepOrganizeMeta') },
     { title: t('home.stepReport'), description: t('home.stepReportMeta') },
   ];
-  const privacyContactEmail = import.meta.env.VITE_PRIVACY_CONTACT_EMAIL || 'privacy@yumnetwork.vn';
+  const contactEmail = import.meta.env.VITE_CONTACT_EMAIL || 'hello@yumnetwork.vn';
 
   return (
     <main className="page home-page">
@@ -113,7 +113,7 @@ const HomePage = () => {
         <div className="home-page__contact-grid">
           <div>
             <p className="home-page__contact-label">{t('home.privacyRequests')}</p>
-            <a className="home-page__contact-link" href={`mailto:${privacyContactEmail}`}>{privacyContactEmail}</a>
+            <a className="home-page__contact-link" href={`mailto:${contactEmail}`}>{contactEmail}</a>
           </div>
           <div>
             <p className="home-page__contact-label">{t('home.platformData')}</p>

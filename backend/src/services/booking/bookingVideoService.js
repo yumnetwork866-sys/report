@@ -1,6 +1,7 @@
 const bookingRepository = require('../../repositories/bookingRepository');
 const { getShopVideoPerformance } = require('../tiktokShopService');
 const {
+  attributedProductIdsForBooking,
   autoLinkBookingVideos,
   matchesBookingDateRange,
   matchesBookingProducts,
@@ -11,6 +12,7 @@ const {
   isDemoAuthorization,
   sellerAffiliateFixture,
 } = require('../../lib/tiktokDemoFixtures');
+const { parseTikTokShopDateTime } = require('../../lib/tiktokShopDateTime');
 
 const dateOnly = (value) => new Date(value).toISOString().slice(0, 10);
 const bookingQueryEndDate = (booking) => {
@@ -29,14 +31,11 @@ const tiktokVideoIdFromUrl = (value) => {
 const videoUsername = (video) => normalizedUsername(
   video?.creator?.user_name || video?.creator?.username || video?.username,
 );
-const videoPostedAt = (video) => {
+const videoPostedAt = (video, region) => {
   const raw = String(video?.video_post_time || video?.post_time || '').trim();
-  if (!raw) return null;
-  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const parsed = new Date(/[zZ]|[+-]\d\d:\d\d$/.test(normalized) ? normalized : `${normalized}Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+  return parseTikTokShopDateTime(raw, region);
 };
-const normalizeVideoCandidate = (video) => {
+const normalizeVideoCandidate = (video, region) => {
   const id = String(video?.id || video?.video_id || '').trim();
   const username = videoUsername(video);
   const gmv = video?.gmv && typeof video.gmv === 'object'
@@ -46,7 +45,7 @@ const normalizeVideoCandidate = (video) => {
     id,
     title: String(video?.title || id || 'TikTok video'),
     username,
-    posted_at: videoPostedAt(video),
+    posted_at: videoPostedAt(video, region),
     video_url: id && username ? `https://www.tiktok.com/@${encodeURIComponent(username)}/video/${encodeURIComponent(id)}` : null,
     gmv: {
       amount: Number(gmv?.amount || 0),
@@ -195,7 +194,7 @@ const findBookingVideoCandidates = async (booking) => {
   const candidatesById = new Map();
   videos
     .filter((video) => videoUsername(video) === username)
-    .map(normalizeVideoCandidate)
+    .map((video) => normalizeVideoCandidate(video, shop.region))
     .filter((video) => matchesBookingProducts(booking, video) && matchesBookingDateRange(booking, video))
     .filter((video) => video.id)
     .forEach((video) => candidatesById.set(video.id, video));
@@ -212,8 +211,17 @@ const autoLinkCreatedBooking = async (booking) => {
   const linkResult = await autoLinkBookingVideos(booking);
   if (linkResult?.status === 'matched') return;
   const { candidates } = await findBookingVideoCandidates(booking);
-  if (!candidates.length) return;
-  const selected = candidates[0];
+  const peerBookings = await bookingRepository.findBookings({
+    where: { target_shop_id: booking.target_shop_id },
+  });
+  const attributedCandidates = candidates.map((candidate) => {
+    const attributedProductIds = attributedProductIdsForBooking(booking, candidate, peerBookings);
+    return attributedProductIds.size
+      ? { ...candidate, attributed_product_ids: [...attributedProductIds] }
+      : null;
+  }).filter(Boolean);
+  if (!attributedCandidates.length) return;
+  const selected = attributedCandidates[0];
   const mappingSource = selected.cached_catalog
     ? 'SHOP_VIDEO_CATALOG'
     : 'TIKTOK_SHOP_VIDEO_PERFORMANCE';
@@ -226,13 +234,13 @@ const autoLinkCreatedBooking = async (booking) => {
       video_match: {
         source: mappingSource,
         matched_at: new Date().toISOString(),
-        video_count: candidates.length,
+        video_count: attributedCandidates.length,
         ...selected,
       },
     },
     updated_at: new Date(),
   });
-  for (const candidate of candidates) {
+  for (const candidate of attributedCandidates) {
     await recordBookingVideoMatch(booking, candidate, mappingSource);
   }
 };

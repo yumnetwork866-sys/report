@@ -5,6 +5,7 @@ import {
   resolveProductClassification,
   orderRangeForPeriod,
   isBookingInPeriod,
+  isBookingVisibleInPeriod,
   bookingProductOrderPerformance,
   bookingVideoHashtags,
   bookingVideoMatchesHashtags,
@@ -22,6 +23,9 @@ import {
   groupBookingRowsByCreator,
   mergeBookingProductBreakdowns,
   bookingPerformanceSortValue,
+  bookingVideoLinkCountForBookings,
+  uniqueBookingVideosForBookings,
+  bookingVideoOrderMetrics,
 } from '../src/lib/bookingMetrics.js';
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
@@ -52,6 +56,48 @@ test('groupBookingRowsByCreator renders one row per shop and KOC', () => {
   assert.deepEqual(rows[0]._creator_bookings.map((booking) => booking.id), [160, 219]);
   assert.deepEqual(rows[1]._creator_bookings.map((booking) => booking.id), [220]);
   assert.deepEqual(rows[2]._creator_bookings.map((booking) => booking.id), [221]);
+});
+
+test('uniqueBookingVideosForBookings counts a shop video once across repeated bookings', () => {
+  const bookings = [
+    { id: 1, target_shop_id: 4 },
+    { id: 2, target_shop_id: 4 },
+    { id: 3, target_shop_id: 5 },
+  ];
+  const performance = new Map([
+    ['1', { videos: [{ platform_video_id: 'video-1', attributed_product_ids: ['product-a'] }, { platform_video_id: 'video-2' }] }],
+    ['2', { videos: [{ platform_video_id: 'video-1', attributed_product_ids: ['product-a', 'product-b'] }] }],
+    ['3', { videos: [{ platform_video_id: 'video-1' }] }],
+  ]);
+
+  const videos = uniqueBookingVideosForBookings(bookings, performance);
+
+  assert.equal(videos.length, 3);
+  assert.deepEqual(videos.map((video) => `${video._booking_shop_id}:${video.platform_video_id}`), [
+    '4:video-1',
+    '4:video-2',
+    '5:video-1',
+  ]);
+  assert.equal(bookingVideoLinkCountForBookings(bookings, performance), 4);
+  assert.deepEqual(videos[0].attributed_product_ids, ['product-a', 'product-b']);
+  assert.equal(videos[0].is_shared_booking_video, true);
+});
+
+test('booking video order metrics only counts products attributed to that booking', () => {
+  const video = { platform_video_id: 'video-1', attributed_product_ids: ['product-a'] };
+  const orders = [{
+    id: 'order-1',
+    skus: [
+      { content_id: 'video-1', product_id: 'product-a', quantity: 2, price: 10 },
+      { content_id: 'video-1', product_id: 'product-b', quantity: 3, price: 20 },
+    ],
+  }];
+
+  const metrics = bookingVideoOrderMetrics(video, null, orders);
+
+  assert.equal(metrics.grossGmv, 20);
+  assert.equal(metrics.itemsSold, 2);
+  assert.equal(metrics.orderCount, 1);
 });
 
 test('mergeBookingProductBreakdowns keeps product counts without doubling repeated bookings', () => {
@@ -110,6 +156,16 @@ test('isBookingInPeriod scopes booking targets to the selected booking month', (
   assert.equal(isBookingInPeriod({ start_date: '2025-01-01' }, orderRangeForPeriod('all')), true);
 });
 
+test('orders tab keeps an older booked KOC when it has a matching video in the selected month', () => {
+  const september = orderRangeForPeriod('2026-09');
+  const olderBooking = { start_date: '2026-08-15' };
+
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'video', { affiliate_videos: 1 }), false);
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'product', { affiliate_videos: 1 }), true);
+  assert.equal(isBookingVisibleInPeriod(olderBooking, september, 'product', { affiliate_videos: 0 }), false);
+  assert.equal(isBookingVisibleInPeriod({ start_date: '2026-10-01' }, september, 'product', { affiliate_videos: 1 }), false);
+});
+
 test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refunds and commission', () => {
   const booking = {
     creator_username: 'koc_test',
@@ -128,6 +184,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
         {
           product_id: 'prod_1',
           creator_username: 'koc_test',
+          content_id: 'video_1',
+          content_type: 'VIDEO',
           quantity: 2,
           refunded_quantity: 0,
           price: { amount: 50, currency: 'MYR' },
@@ -142,6 +200,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
         {
           product_id: 'prod_1',
           creator_username: 'koc_test',
+          content_id: 'video_2',
+          content_type: 'VIDEO',
           quantity: 1,
           refunded_quantity: 1,
           price: { amount: 50, currency: 'MYR' },
@@ -159,6 +219,8 @@ test('bookingProductOrderPerformance calculates affiliate GMV, items sold, refun
 
   const perf = bookingProductOrderPerformance(booking, orders);
   assert.equal(perf.affiliate_orders, 2);
+  assert.equal(perf.affiliate_videos, 2);
+  assert.deepEqual(perf.affiliate_video_ids, ['video_1', 'video_2']);
   assert.equal(perf.items_sold, 3);
   assert.equal(perf.items_refunded, 1);
   assert.equal(perf.affiliate_gmv, 150);

@@ -3,7 +3,7 @@ import { fetchTikTokShopVideoThumbnail } from '../lib/api';
 import { cachedThumbnail, thumbnailFrom } from '../lib/bookingVideoThumbnails';
 
 
-const BookingVideoThumbnail = ({ shopId, video, snapshot, index, username: explicitUsername }) => {
+const BookingVideoThumbnail = ({ shopId, video, snapshot, index, username: explicitUsername, shared = false }) => {
   const directThumbnail = thumbnailFrom(video, snapshot);
   const [thumbnail, setThumbnail] = useState(directThumbnail);
   const [failed, setFailed] = useState(false);
@@ -29,7 +29,7 @@ const BookingVideoThumbnail = ({ shopId, video, snapshot, index, username: expli
     ? <img src={thumbnail} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setFailed(true)} />
     : <span className="booking-video-expansion__thumbnail-placeholder" aria-hidden="true">▶</span>;
   return (
-    <span className="booking-video-expansion__thumbnail">
+    <span className={'booking-video-expansion__thumbnail' + (shared ? ' booking-video-expansion__thumbnail--shared' : '')}>
       {video?.video_url ? <a href={video.video_url} target="_blank" rel="noreferrer" tabIndex={-1}>{content}</a> : content}
       <span className="booking-video-expansion__index" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
     </span>

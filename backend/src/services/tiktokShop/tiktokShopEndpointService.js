@@ -82,18 +82,24 @@ const settlementAmountTextSql = `NULLIF(COALESCE(
 ), '')`;
 const settlementAmountSql = `(CASE WHEN ${settlementAmountTextSql} ~ '^-?[0-9]+([.][0-9]+)?$' THEN ${settlementAmountTextSql}::NUMERIC END)`;
 const ACTIVE_DELIVERY_STATUSES = [
-  'AWAITING_SHIPMENT', 'PARTIALLY_SHIPPING', 'AWAITING_COLLECTION', 'IN_TRANSIT',
+  'AWAITING_SHIPMENT', 'PARTIALLY_SHIPPING', 'AWAITING_COLLECTION',
 ];
+const ORDER_DEADLINE_FIELDS = {
+  AWAITING_SHIPMENT: ['rts_sla_time', 'tts_sla_time', 'recommended_shipping_time', 'shipping_due_time'],
+  PARTIALLY_SHIPPING: ['collection_due_time'],
+  AWAITING_COLLECTION: ['collection_due_time'],
+};
 const orderAttentionReasons = (order = {}, now = Math.floor(Date.now() / 1000)) => {
   const status = String(order.status || order.order_status || '').toUpperCase();
-  const deadline = [order.shipping_due_time, order.collection_due_time, order.rts_sla_time, order.tts_sla_time]
-    .map(Number)
-    .find(Number.isFinite);
+  const deadlines = (ORDER_DEADLINE_FIELDS[status] || [])
+    .map((field) => Number(order[field]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  const deadline = deadlines.length ? Math.min(...deadlines) : null;
   return {
     buyerCancellation: String(order.cancellation_initiator || '').toUpperCase() === 'BUYER'
       && !['CANCELLED', 'COMPLETED'].includes(status),
     deliveryIssue: /FAILED|EXCEPTION/.test(status),
-    overdue: ACTIVE_DELIVERY_STATUSES.includes(status) && Number.isFinite(deadline) && deadline < now,
+    overdue: ACTIVE_DELIVERY_STATUSES.includes(status) && deadline !== null && deadline < now,
     onHold: status === 'ON_HOLD',
   };
 };
@@ -230,10 +236,20 @@ const addOrderDataFilters = (where, skuConditions, query, { requireDateRange = f
   }
 
   const deliveryIssue = String(query.delivery_issue || '').toLowerCase();
+  const overdueSql = `(
+    (COALESCE(${orderText('status')}, ${orderText('order_status')}, '') = 'AWAITING_SHIPMENT'
+      AND LEAST(
+        ${orderEpoch('rts_sla_time')},
+        ${orderEpoch('tts_sla_time')},
+        ${orderEpoch('recommended_shipping_time')},
+        ${orderEpoch('shipping_due_time')}
+      ) < EXTRACT(EPOCH FROM NOW())::BIGINT)
+    OR (COALESCE(${orderText('status')}, ${orderText('order_status')}, '') IN ('PARTIALLY_SHIPPING', 'AWAITING_COLLECTION')
+      AND ${orderEpoch('collection_due_time')} < EXTRACT(EPOCH FROM NOW())::BIGINT)
+  )`;
   const deliveryIssueSql = `(
     COALESCE(${orderText('status')}, ${orderText('order_status')}, '') ~* '(FAILED|EXCEPTION)'
-    OR (COALESCE(${orderText('status')}, ${orderText('order_status')}, '') IN (${ACTIVE_DELIVERY_STATUSES.map(sqlQuote).join(', ')})
-      AND COALESCE(${orderEpoch('shipping_due_time')}, ${orderEpoch('collection_due_time')}, ${orderEpoch('rts_sla_time')}, ${orderEpoch('tts_sla_time')}) < EXTRACT(EPOCH FROM NOW())::BIGINT)
+    OR ${overdueSql}
   )`;
   if (deliveryIssue === 'yes') where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(deliveryIssueSql)];
   if (deliveryIssue === 'no') where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`NOT ${deliveryIssueSql}`)];
@@ -2611,6 +2627,7 @@ const service = {
     alphanumericShopName,
     addMatchingChannelAvatar,
     productPerformance,
+    orderAttentionReasons,
   },
 };
 

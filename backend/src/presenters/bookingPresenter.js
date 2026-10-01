@@ -113,6 +113,28 @@ const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((bookin
   return booking;
 });
 
+const markSharedBookingVideos = (bookings) => {
+  const bookingIdsByVideo = new Map();
+  for (const booking of bookings) {
+    for (const video of booking.booking_videos || []) {
+      const videoId = String(video.platform_video_id || '').trim();
+      if (!videoId) continue;
+      const key = String(booking.target_shop_id) + ':' + videoId;
+      if (!bookingIdsByVideo.has(key)) bookingIdsByVideo.set(key, new Set());
+      bookingIdsByVideo.get(key).add(String(booking.id));
+    }
+  }
+  for (const booking of bookings) {
+    for (const video of booking.booking_videos || []) {
+      const key = String(booking.target_shop_id) + ':' + String(video.platform_video_id || '').trim();
+      const count = bookingIdsByVideo.get(key)?.size || 1;
+      video.shared_booking_count = count;
+      video.is_shared_booking_video = count > 1;
+    }
+  }
+  return bookings;
+};
+
 const serializeBookings = async (bookings = []) => {
   const serialized = bookings.map(serializeBookingWithActual);
   const bookingsByShop = new Map();
@@ -139,7 +161,9 @@ const serializeBookings = async (bookings = []) => {
     }
   }));
 
-  return filterBookingVideosBySelectedProducts(await hydrateBookingVideoProducts(serialized));
+  return markSharedBookingVideos(
+    filterBookingVideosBySelectedProducts(await hydrateBookingVideoProducts(serialized)),
+  );
 };
 
 module.exports = { serializeBookings };

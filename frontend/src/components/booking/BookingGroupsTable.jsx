@@ -24,7 +24,7 @@ const BookingGroupsTable = ({
           {[
             ['staff', 'booking.bookingStaff', ''],
             ['koc', 'booking.kocColumn', 'cell-number'],
-            ['videos', bookingTableProps.bookingTab === 'product' ? 'booking.affiliateOrders' : 'booking.matchedVideo', 'cell-number'],
+            ['videos', 'booking.matchedVideo', 'cell-number'],
             ['views', 'booking.viewsColumn', 'cell-number'],
             ['cost', 'booking.totalCost', 'cell-number'],
             ['revenue', 'booking.totalRevenue', 'cell-number'],

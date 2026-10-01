@@ -12,6 +12,7 @@ test('shop video catalog follows every TikTok page and stores daily snapshots', 
   let catalogRows = 0;
   let snapshotRows = 0;
   const requestedAccountTypes = [];
+  const requestedRanges = [];
   const storedAccountTypes = [];
   const restores = [
     mockModule(modelsPath, {
@@ -28,9 +29,10 @@ test('shop video catalog follows every TikTok page and stores daily snapshots', 
       },
     }),
     mockModule(shopServicePath, {
-      getShopVideoPerformance: async ({ accountType, pageToken }) => {
+      getShopVideoPerformance: async ({ accountType, pageToken, startDate, endDate }) => {
         apiCalls += 1;
         requestedAccountTypes.push(accountType);
+        requestedRanges.push({ startDate, endDate });
         const page = Number(pageToken || 0);
         return {
           data: {
@@ -78,6 +80,9 @@ test('shop video catalog follows every TikTok page and stores daily snapshots', 
     'OFFICIAL_ACCOUNTS',
     'MARKETING_ACCOUNTS',
     'AFFILIATE_ACCOUNTS',
+  ]);
+  assert.deepEqual([...new Set(requestedRanges.map(({ startDate, endDate }) => `${startDate}:${endDate}`))], [
+    '2026-05-26:2026-07-25',
   ]);
   assert.deepEqual(result.account_types, {
     OFFICIAL_ACCOUNTS: { total: 3, pages: 3 },

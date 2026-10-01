@@ -226,12 +226,21 @@ test('shop order SLA selects the earliest deadline and reports its urgency', () 
     collection_due_time: 1000,
   }, 2100), { state: 'OVERDUE', deadline: 2000 });
   assert.deepEqual(getOrderSla({
-    order_status: 'IN_TRANSIT',
+    order_status: 'AWAITING_SHIPMENT',
     shipping_due_time: 5000,
   }, 4900), { state: 'DUE_SOON', deadline: 5000 });
   assert.deepEqual(getOrderSla({ order_status: 'DELIVERED', shipping_due_time: 1 }, 2), {
     state: 'DONE', deadline: null,
   });
+  assert.deepEqual(getOrderSla({
+    order_status: 'AWAITING_COLLECTION',
+    shipping_due_time: 1000,
+    collection_due_time: 3000,
+  }, 2000), { state: 'DUE_SOON', deadline: 3000 });
+  assert.deepEqual(getOrderSla({
+    order_status: 'IN_TRANSIT',
+    shipping_due_time: 1000,
+  }, 2000), { state: 'UNKNOWN', deadline: null });
 });
 
 test('engagement percentage normalization handles TikTok basis-point rates and explicit units', () => {
@@ -464,4 +473,3 @@ test('getOrderProductDetails falls back to payment original_total_product_price 
   assert.deepEqual(product.platformDiscount, { amount: 17.5, currency: 'MYR' });
   assert.deepEqual(product.totalDiscount, { amount: 42.51, currency: 'MYR' });
 });
-

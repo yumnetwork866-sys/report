@@ -591,18 +591,11 @@ export const getOrderSla = (order = {}, nowSeconds = Date.now() / 1000) => {
     UNPAID: ['cancel_order_sla_time'],
     ON_HOLD: ['cancel_order_sla_time'],
     AWAITING_SHIPMENT: ['rts_sla_time', 'tts_sla_time', 'recommended_shipping_time', 'shipping_due_time'],
-    PARTIALLY_SHIPPING: ['collection_due_time', 'shipping_due_time'],
-    AWAITING_COLLECTION: ['collection_due_time', 'shipping_due_time'],
-    IN_TRANSIT: ['shipping_due_time'],
+    PARTIALLY_SHIPPING: ['collection_due_time'],
+    AWAITING_COLLECTION: ['collection_due_time'],
+    IN_TRANSIT: [],
   };
-  const fields = deadlineFields[status] || [
-    'shipping_due_time',
-    'collection_due_time',
-    'cancel_order_sla_time',
-    'rts_sla_time',
-    'tts_sla_time',
-    'recommended_shipping_time',
-  ];
+  const fields = deadlineFields[status] || [];
   const candidates = fields.map((field) => finiteNumber(order[field]))
     .filter((value) => value && value > 0);
   const deadline = candidates.length ? Math.min(...candidates) : null;
@@ -977,4 +970,3 @@ export const cancelReasonLabel = (value, t) => {
 
   return clean;
 };
-
