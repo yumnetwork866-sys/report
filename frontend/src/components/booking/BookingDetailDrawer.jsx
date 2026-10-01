@@ -54,7 +54,12 @@ const BookingDetailDrawer = ({
                 {selectedBooking.creator_name || selectedBooking.creator_username}
               </h2>
               <p>
-                @{selectedBooking.creator_username} · {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}
+                @{selectedBooking.creator_username}
+                {selectedBooking.target_shop?.name ? (
+                  <span className="booking-product-shop-tag">{selectedBooking.target_shop.name}</span>
+                ) : null}
+                {' · '}
+                {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}
               </p>
             </div>
           </div>

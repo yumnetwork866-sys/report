@@ -654,6 +654,8 @@
     "partnerProductHint": "Chọn KOC để tải target collaboration và sản phẩm bằng creator access token.",
     "partnerOverviewSummary": "{{collaborations}} target collaboration · {{products}} sản phẩm affiliate",
     "createBooking": "Tạo booking",
+    "shop": "Shop",
+    "selectShop": "Chọn Shop",
     "createBookingMeta": "Chọn staff, KOC, chi phí book, deadline và chọn các video đã có dữ liệu.",
     "bookingStaff": "Nhân sự booking",
     "allStaff": "Tất cả nhân sự",

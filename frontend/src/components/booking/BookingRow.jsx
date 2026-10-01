@@ -63,7 +63,12 @@ const BookingRow = memo(({
             <TargetKocAvatar src={booking.creator_avatar_url} name={booking.creator_name || booking.creator_username} />
             <span>
               <strong>{booking.creator_name || booking.creator_username || 'KOC'}</strong>
-              <small>@{booking.creator_username}</small>
+              <small>
+                <span>@{booking.creator_username}</span>
+                {booking.target_shop?.name ? (
+                  <span className="booking-product-shop-tag">{booking.target_shop.name}</span>
+                ) : null}
+              </small>
               {timeline.badge ? (
                 <div className="booking-row-timeline">
                   <span

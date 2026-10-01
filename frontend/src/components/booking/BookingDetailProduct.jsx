@@ -5,6 +5,7 @@ const BookingDetailProduct = ({ product, onRemove }) => {
   const source = product?.product || product || {};
   const name = source.title || source.name || source.product_name || source.id || source.product_id || '—';
   const id = source.id || source.product_id || null;
+  const shopName = source.shop_name || source.shopName || source.shop?.name || source.target_shop?.name || null;
   const thumbnailUrl = source.imageUrl
     || source.main_image_url
     || source.thumbnail_url
@@ -19,7 +20,15 @@ const BookingDetailProduct = ({ product, onRemove }) => {
       {thumbnailUrl && !imageFailed
         ? <img src={thumbnailUrl} alt="" loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setImageFailed(true)} />
         : <span className="booking-detail-product__placeholder" aria-hidden="true">P</span>}
-      <span><strong title={name}>{name}</strong>{id && String(id) !== String(name) ? <small>{id}</small> : null}</span>
+      <span>
+        <strong title={name}>{name}</strong>
+        {id && String(id) !== String(name) ? (
+          <small>
+            <span>{id}</span>
+            {shopName ? <span className="booking-product-shop-tag">{shopName}</span> : null}
+          </small>
+        ) : (shopName ? <small><span className="booking-product-shop-tag">{shopName}</span></small> : null)}
+      </span>
       {onRemove && id ? (
         <button
           type="button"

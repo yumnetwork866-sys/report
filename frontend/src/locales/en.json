@@ -653,6 +653,8 @@
     "partnerProductHint": "Select a KOC to load target collaborations and products with the creator access token.",
     "partnerOverviewSummary": "{{collaborations}} target collaborations · {{products}} affiliate products",
     "createBooking": "Create booking",
+    "shop": "Shop",
+    "selectShop": "Select Shop",
     "createBookingMeta": "Choose staff, KOC, booking cost, deadline, and select videos that have already been loaded.",
     "bookingStaff": "Booking staff",
     "allStaff": "All staff",

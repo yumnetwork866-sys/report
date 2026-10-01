@@ -98,6 +98,9 @@ const BookingMonthCard = ({
           <span className="booking-month-card__date-range">
             {formatDate(bookingDateOf(booking) || booking.created_at)}
           </span>
+          {booking.target_shop?.name ? (
+            <span className="booking-product-shop-tag">{booking.target_shop.name}</span>
+          ) : null}
         </div>
         <div className="booking-month-card__header-badges">
           {videoCount === 0 ? (

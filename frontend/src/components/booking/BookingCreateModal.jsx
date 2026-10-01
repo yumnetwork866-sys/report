@@ -27,6 +27,9 @@ const BookingCreateModal = ({
   users,
   usersLoading,
   selectedKoc,
+  shops = [],
+  selectedShopId = '',
+  onSelectShopId,
   t,
 }) => {
   const [productPickerOpen, setProductPickerOpen] = useState(false);
@@ -60,6 +63,24 @@ const BookingCreateModal = ({
         </header>
         <form className="filter-panel booking-evaluation-form" onSubmit={onSubmit}>
           <div className="booking-evaluation-form__col">
+            {shops && shops.length > 0 ? (
+              <div className="field">
+                <label htmlFor="booking-create-shop-select">{t('booking.shop', { defaultValue: 'Shop' })}</label>
+                <select
+                  id="booking-create-shop-select"
+                  className="input-select"
+                  value={selectedShopId}
+                  onChange={(e) => onSelectShopId?.(e.target.value)}
+                  disabled={saving}
+                >
+                  {shops.map((shop) => (
+                    <option key={shop.id} value={shop.id}>
+                      {shop.name || `Shop #${shop.id}`} {shop.code ? `(${shop.code})` : (shop.region ? `(${shop.region})` : '')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div className="field">
               <label>{t('booking.targetCreator')}</label>
               <TargetKocCombobox
@@ -109,7 +130,13 @@ const BookingCreateModal = ({
                           />
                           <span>
                             {product.imageUrl ? <img src={product.imageUrl} alt="" loading="lazy" /> : <span className="booking-product-picker__placeholder">P</span>}
-                            <span><strong>{product.name}</strong><small>{product.id}</small></span>
+                            <span>
+                              <strong>{product.name}</strong>
+                              <small>
+                                <span>{product.id}</span>
+                                {product.shopName ? <span className="booking-product-shop-tag">{product.shopName}</span> : null}
+                              </small>
+                            </span>
                           </span>
                         </label>
                       ))
@@ -129,6 +156,7 @@ const BookingCreateModal = ({
                             id,
                             name: p.name || id,
                             imageUrl: p.imageUrl || null,
+                            shopName: p.shopName || null,
                           }}
                           onRemove={() => toggleBookingProduct(id)}
                         />

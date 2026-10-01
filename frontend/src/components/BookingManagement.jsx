@@ -8,6 +8,7 @@ import {
   fetchBookingProductPerformance,
   fetchBookings,
   fetchTikTokSellerOpenCollaborations,
+  fetchTikTokShops,
   fetchUser,
   fetchUsers,
   matchBookingVideo,
@@ -98,6 +99,8 @@ const BookingManagement = ({
   const [targetKocsLoading, setTargetKocsLoading] = useState(false);
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
   const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create');
+  const [shops, setShops] = useState([]);
+  const [selectedShopId, setSelectedShopId] = useState('');
   const [channelProducts, setChannelProducts] = useState([]);
   const [channelProductsLoading, setChannelProductsLoading] = useState(false);
   const [form, setForm] = useState(() => ({ ...initialForm, staff_id: initialStaffId ? String(initialStaffId) : '' }));
@@ -395,6 +398,19 @@ const BookingManagement = ({
   }, [canManageUsers, session, t]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    fetchTikTokShops(controller.signal)
+      .then((items) => {
+        const list = Array.isArray(items) ? items : [];
+        setShops(list);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  const shopsById = useMemo(() => new Map(shops.map((s) => [String(s.id), s])), [shops]);
+
+  useEffect(() => {
     if (selectedMonth === 'custom' && (!customRange.start || !customRange.end || customRange.start > customRange.end)) {
       setLoading(false);
       setError(t('booking.invalidCustomRange'));
@@ -530,7 +546,22 @@ const BookingManagement = ({
     [form.creator_key, targetKocs],
   );
   const selectedKoc = selectedKocDetail?.key === form.creator_key ? selectedKocDetail.creator : null;
-  const channelShopId = selectedKocSummary?.shop_id || targetKocs[0]?.shop_id || '';
+  const activeShopId = String(
+    selectedShopId
+    || selectedKocSummary?.shop_id
+    || targetKocs[0]?.shop_id
+    || (shops[0] ? shops[0].id : '')
+  );
+
+  useEffect(() => {
+    if (selectedKocSummary?.shop_id) {
+      setSelectedShopId(String(selectedKocSummary.shop_id));
+    }
+  }, [selectedKocSummary]);
+
+  const activeShop = shopsById.get(String(activeShopId));
+  const activeShopName = activeShop?.name || selectedKocSummary?.shop_name || '';
+
   const bookingProducts = useMemo(() => {
     const byId = new Map();
     channelProducts.forEach((product) => {
@@ -540,20 +571,22 @@ const BookingManagement = ({
         id,
         name: product.title || product.name || product.product_name || id,
         imageUrl: product.main_image_url || product.image_url || product.thumbnail_url || '',
+        shopId: activeShopId,
+        shopName: activeShopName,
       });
     });
     return [...byId.values()];
-  }, [channelProducts]);
+  }, [activeShopId, activeShopName, channelProducts]);
 
   useEffect(() => {
-    if (!isCreateBookingOpen || !channelShopId) {
+    if (!isCreateBookingOpen || !activeShopId) {
       setChannelProducts([]);
       setChannelProductsLoading(false);
       return undefined;
     }
     const controller = new AbortController();
     setChannelProductsLoading(true);
-    fetchTikTokSellerOpenCollaborations(channelShopId, { signal: controller.signal, pageSize: 100 })
+    fetchTikTokSellerOpenCollaborations(activeShopId, { signal: controller.signal, pageSize: 100 })
       .then((payload) => {
         const products = (payload?.open_collaborations || [])
           .map((item) => item.product)
@@ -563,7 +596,7 @@ const BookingManagement = ({
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setChannelProductsLoading(false); });
     return () => controller.abort();
-  }, [channelShopId, isCreateBookingOpen, t]);
+  }, [activeShopId, isCreateBookingOpen, t]);
 
   useEffect(() => {
     setForm((current) => ({
@@ -657,7 +690,7 @@ const BookingManagement = ({
       setError('');
       const created = await createBooking({
         staff_id: Number(canManageUsers ? form.staff_id : session?.user?.id),
-        target_shop_id: selectedKoc.shop_id,
+        target_shop_id: Number(activeShopId) || selectedKoc.shop_id,
         target_collaboration_id: selectedKoc.collaboration_id || null,
         creator_open_id: selectedKoc.creator_open_id,
         creator_username: selectedKoc.username,
@@ -885,6 +918,12 @@ const BookingManagement = ({
         users={users}
         usersLoading={usersLoading}
         selectedKoc={selectedKoc}
+        shops={shops}
+        selectedShopId={activeShopId}
+        onSelectShopId={(shopId) => {
+          setSelectedShopId(String(shopId));
+          setForm((c) => ({ ...c, product_ids: [] }));
+        }}
         t={t}
       />
 

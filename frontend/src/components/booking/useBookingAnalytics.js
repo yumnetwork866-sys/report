@@ -441,15 +441,21 @@ export default function useBookingAnalytics({
           if (!productId) continue;
           const key = `prod:${productId}`;
           if (!groups.has(key)) {
+            const productShopName = product.shop_name
+              || product.shopName
+              || booking.target_shop?.name
+              || null;
             groups.set(key, {
               key,
               product: {
                 id: productId,
                 name: product.name || product.title || product.product_name || productId,
                 thumbnailUrl: product.thumbnail_url || product.image_url || product.thumbnailUrl || product.main_image_url || null,
+                shopName: productShopName,
               },
               bookings: [],
               creatorKeys: new Set(),
+              shopNames: new Set(productShopName ? [productShopName] : []),
               totalCost: 0,
               totalRevenue: 0,
               videoCount: 0,
@@ -457,6 +463,11 @@ export default function useBookingAnalytics({
             });
           }
           const g = groups.get(key);
+          const currentShopName = product.shop_name || product.shopName || booking.target_shop?.name;
+          if (currentShopName && g.shopNames && !g.shopNames.has(currentShopName)) {
+            g.shopNames.add(currentShopName);
+            g.product.shopName = Array.from(g.shopNames).join(', ');
+          }
           g.bookings.push(booking);
           g.creatorKeys.add(bookingCreatorKey(booking));
           g.totalCost += allocatedCost;
