@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus } from 'lucide-react';
 import TargetKocCombobox from './TargetKocCombobox';
-import BookingStaffSelect from './BookingStaffSelect';
 import BookingDetailProduct from './BookingDetailProduct';
 import DatePickerInput from '../DatePickerInput';
 
@@ -23,9 +22,6 @@ const BookingCreateModal = ({
   toggleBookingProduct,
   currencyLabel,
   selectedCurrency,
-  canManageUsers,
-  users,
-  usersLoading,
   selectedKoc,
   shops = [],
   selectedShopId = '',
@@ -75,7 +71,7 @@ const BookingCreateModal = ({
                 >
                   {shops.map((shop) => (
                     <option key={shop.id} value={shop.id}>
-                      {shop.name || `Shop #${shop.id}`} {shop.code ? `(${shop.code})` : (shop.region ? `(${shop.region})` : '')}
+                      {shop.name || `Shop #${shop.id}`}
                     </option>
                   ))}
                 </select>
@@ -166,6 +162,18 @@ const BookingCreateModal = ({
                 </div>
               ) : null}
             </div>
+          </div>
+
+          <div className="booking-evaluation-form__col">
+            <div className="field">
+              <label htmlFor="booking_date">{t('booking.bookingDate')}</label>
+              <DatePickerInput
+                id="booking_date"
+                label={t('booking.bookingDate')}
+                value={form.booking_date}
+                onChange={(value) => setForm((current) => ({ ...current, booking_date: value }))}
+              />
+            </div>
             <div className="field">
               <label htmlFor="total_cost">{t('booking.totalCost')} ({currencyLabel})</label>
               <input
@@ -181,34 +189,9 @@ const BookingCreateModal = ({
             </div>
           </div>
 
-          <div className="booking-evaluation-form__col">
-            {canManageUsers ? (
-              <div className="field">
-                <label>{t('booking.bookingStaff')}</label>
-                <BookingStaffSelect
-                  users={users}
-                  value={form.staff_id}
-                  onChange={(value) => setForm((current) => ({ ...current, staff_id: value }))}
-                  placeholder={t('booking.selectStaff')}
-                  loading={usersLoading}
-                  loadingLabel={t('booking.loading')}
-                />
-              </div>
-            ) : null}
-            <div className="field">
-              <label htmlFor="booking_date">{t('booking.bookingDate')}</label>
-              <DatePickerInput
-                id="booking_date"
-                label={t('booking.bookingDate')}
-                value={form.booking_date}
-                onChange={(value) => setForm((current) => ({ ...current, booking_date: value }))}
-              />
-            </div>
-          </div>
-
           <footer className="booking-create-modal__footer">
             <button className="button button--ghost" type="button" disabled={saving} onClick={onClose}>{t('common.cancel')}</button>
-            <button className="button" type="submit" disabled={saving || !selectedKoc || !form.staff_id}>
+            <button className="button" type="submit" disabled={saving || !selectedKoc}>
               {saving ? t('booking.submitting') : t('booking.evaluate')}
             </button>
           </footer>

@@ -103,7 +103,10 @@ const BookingManagement = ({
   const [selectedShopId, setSelectedShopId] = useState('');
   const [channelProducts, setChannelProducts] = useState([]);
   const [channelProductsLoading, setChannelProductsLoading] = useState(false);
-  const [form, setForm] = useState(() => ({ ...initialForm, staff_id: initialStaffId ? String(initialStaffId) : '' }));
+  const [form, setForm] = useState(() => ({
+    ...initialForm,
+    staff_id: session?.user?.id ? String(session.user.id) : (initialStaffId ? String(initialStaffId) : ''),
+  }));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
@@ -688,8 +691,9 @@ const BookingManagement = ({
     try {
       setSaving(true);
       setError('');
+      const loggedInUserId = session?.user?.id;
       const created = await createBooking({
-        staff_id: Number(canManageUsers ? form.staff_id : session?.user?.id),
+        staff_id: Number(loggedInUserId || form.staff_id || 1),
         target_shop_id: Number(activeShopId) || selectedKoc.shop_id,
         target_collaboration_id: selectedKoc.collaboration_id || null,
         creator_open_id: selectedKoc.creator_open_id,
@@ -914,9 +918,6 @@ const BookingManagement = ({
         toggleBookingProduct={toggleBookingProduct}
         currencyLabel={currencyLabel}
         selectedCurrency={selectedCurrency}
-        canManageUsers={canManageUsers}
-        users={users}
-        usersLoading={usersLoading}
         selectedKoc={selectedKoc}
         shops={shops}
         selectedShopId={activeShopId}
