@@ -1,7 +1,9 @@
 import { useCallback, useMemo } from 'react';
 import {
+  bookingCreatorKey,
   bookingPerformanceSortValue,
   bookingProductOrderPerformance,
+  bookingProductsOf,
   countPaidBookingKocs,
   bookingVideoMatchesHashtags,
   bookingVideoPerformanceForVideos,
@@ -301,10 +303,148 @@ export default function useBookingAnalytics({
     });
   }, [bookingInPeriodById, bookingSort, bookingTab, collator, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
 
+  const productCostGroups = useMemo(() => {
+    const accessibleBookings = canManageUsers
+      ? bookings
+      : bookings.filter((booking) => String(booking.staff_id || '') === sessionUserId);
+    const visibleBookings = accessibleBookings.filter((booking) => (
+      bookingInPeriodById.get(String(booking.id))
+    ));
+
+    const targetBookings = (selectedManagerKey && selectedManagerKey !== 'all')
+      ? visibleBookings.filter((booking) => {
+          const staffId = booking.staff_id ? String(booking.staff_id) : '';
+          const staffName = String(booking.staff_name || booking.staff?.name || '').trim();
+          const key = staffId ? `id:${staffId}` : staffName ? `name:${staffName.toLocaleLowerCase()}` : 'unassigned';
+          return key === selectedManagerKey;
+        })
+      : visibleBookings;
+
+    const groups = new Map();
+
+    for (const booking of targetBookings) {
+      const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
+      const performance = performanceForBooking(
+        booking,
+        bookingTab,
+        productPerformanceByBooking,
+        videoPerformanceByBooking,
+      );
+      const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
+      const convertedRevenue = convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
+      const videos = videoCountForBooking(booking, bookingTab, performance, videoPerformanceByBooking);
+      const videoPerformance = videoPerformanceByBooking.get(String(booking.id))?.performance
+        || booking.actual_performance;
+      const views = finiteNumber(videoPerformance?.views ?? videoPerformance?.video_views);
+
+      const products = bookingProductsOf(booking);
+      const productCount = products.length;
+
+      if (!productCount) {
+        const key = '__unassigned__';
+        if (!groups.has(key)) {
+          groups.set(key, {
+            key,
+            product: {
+              id: key,
+              name: t('booking.unassignedProduct', { defaultValue: 'Chưa gắn sản phẩm' }),
+              thumbnailUrl: null,
+            },
+            bookings: [],
+            creatorKeys: new Set(),
+            totalCost: 0,
+            totalRevenue: 0,
+            videoCount: 0,
+            totalViews: 0,
+          });
+        }
+        const g = groups.get(key);
+        g.bookings.push(booking);
+        g.creatorKeys.add(bookingCreatorKey(booking));
+        g.totalCost += convertedCost;
+        g.totalRevenue += convertedRevenue;
+        g.videoCount += videos;
+        g.totalViews += views;
+      } else {
+        const allocatedCost = convertedCost / productCount;
+        const allocatedRevenue = convertedRevenue / productCount;
+        const allocatedVideos = Math.max(1, Math.round(videos / productCount));
+        const allocatedViews = Math.round(views / productCount);
+
+        for (const product of products) {
+          const productId = String(product.id || product.product_id || '').trim();
+          if (!productId) continue;
+          const key = `prod:${productId}`;
+          if (!groups.has(key)) {
+            groups.set(key, {
+              key,
+              product: {
+                id: productId,
+                name: product.name || product.title || product.product_name || productId,
+                thumbnailUrl: product.thumbnail_url || product.image_url || product.thumbnailUrl || product.main_image_url || null,
+              },
+              bookings: [],
+              creatorKeys: new Set(),
+              totalCost: 0,
+              totalRevenue: 0,
+              videoCount: 0,
+              totalViews: 0,
+            });
+          }
+          const g = groups.get(key);
+          g.bookings.push(booking);
+          g.creatorKeys.add(bookingCreatorKey(booking));
+          g.totalCost += allocatedCost;
+          g.totalRevenue += allocatedRevenue;
+          g.videoCount += allocatedVideos;
+          g.totalViews += allocatedViews;
+        }
+      }
+    }
+
+    for (const group of groups.values()) {
+      group.kocCount = group.creatorKeys.size;
+    }
+
+    return [...groups.values()];
+  }, [bookingInPeriodById, bookingTab, bookings, canManageUsers, convertAmount, productPerformanceByBooking, selectedManagerKey, sessionUserId, t, videoPerformanceByBooking]);
+
+  const sortedProductCostGroupsToRender = useMemo(() => {
+    const list = [...productCostGroups];
+    if (!overviewSort.key) {
+      return list.sort((a, b) => b.totalCost - a.totalCost || collator.compare(a.product.name, b.product.name));
+    }
+    const { key, direction } = overviewSort;
+    const factor = direction === 'desc' ? -1 : 1;
+    return list.sort((a, b) => {
+      if (key === 'staff' || key === 'product') return factor * collator.compare(a.product.name, b.product.name);
+      const value = (group) => {
+        if (key === 'koc') return group.kocCount;
+        if (key === 'videos') return group.videoCount;
+        if (key === 'views') return group.totalViews;
+        if (key === 'cost') return group.totalCost;
+        if (key === 'revenue') return group.totalRevenue;
+        if (key === 'ratio') return group.totalRevenue > 0
+          ? group.totalCost / group.totalRevenue
+          : (group.totalCost > 0 ? Infinity : 0);
+        return 0;
+      };
+      const valA = value(a);
+      const valB = value(b);
+      if (valA !== valB) {
+        return factor * (valA > valB ? 1 : -1);
+      }
+      return b.totalCost - a.totalCost || collator.compare(a.product.name, b.product.name);
+    });
+  }, [collator, overviewSort, productCostGroups]);
+
   return {
     stats,
     bookingGroups,
     bookingGroupsToRender,
+    productCostGroups,
+    sortedProductCostGroupsToRender,
     bookingManagerFilterValue,
     sortedBookingGroupsToRender,
     sortedBookingsOfGroup,

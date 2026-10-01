@@ -33,7 +33,13 @@ const BookingListControls = ({
         </div>
       ) : null}
       <div className="field booking-month-filter">
-        <label htmlFor="booking-month-select">{bookingTab === 'video' ? t('booking.videoPostPeriod') : t('booking.orderPeriod')}</label>
+        <label htmlFor="booking-month-select">
+          {bookingTab === 'video'
+            ? t('booking.videoPostPeriod')
+            : bookingTab === 'by_product'
+              ? (t('booking.productPeriod') || 'Thời gian booking')
+              : t('booking.orderPeriod')}
+        </label>
         <select id="booking-month-select" value={selectedMonth} onChange={(event) => onMonthChange(event.target.value)}>
           {monthOptions.map((option) => (
             <option key={option.value} value={option.value}>

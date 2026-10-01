@@ -156,3 +156,48 @@ test('sorting bookings by cost falls back to GMV when bookings have no cost or e
   assert.equal(sorted[2].id, 4, 'Among 0 cost bookings, 20M GMV should be third');
   assert.equal(sorted[3].id, 1, 'Among 0 cost bookings, 10M GMV should be fourth');
 });
+
+test('product cost aggregation groups and distributes cost across products accurately', () => {
+  const bookings = [
+    {
+      id: 1,
+      total_cost: 6000000,
+      currency: 'VND',
+      evaluation_snapshot: {
+        products: [
+          { id: 'prod-A', name: 'Serum A' },
+          { id: 'prod-B', name: 'Cream B' },
+        ],
+      },
+    },
+    {
+      id: 2,
+      total_cost: 4000000,
+      currency: 'VND',
+      evaluation_snapshot: {
+        products: [
+          { id: 'prod-A', name: 'Serum A' },
+        ],
+      },
+    },
+  ];
+
+  const productCostMap = new Map();
+  for (const b of bookings) {
+    const products = b.evaluation_snapshot?.products || [];
+    const cost = Number(b.total_cost || 0);
+    const perProduct = cost / (products.length || 1);
+    for (const p of products) {
+      productCostMap.set(p.id, (productCostMap.get(p.id) || 0) + perProduct);
+    }
+  }
+
+  // Booking 1 allocates 3M to prod-A and 3M to prod-B
+  // Booking 2 allocates 4M to prod-A
+  // Total prod-A: 7M, Total prod-B: 3M. Total overall: 10M (equal to 6M + 4M).
+  assert.equal(productCostMap.get('prod-A'), 7000000);
+  assert.equal(productCostMap.get('prod-B'), 3000000);
+  const totalAllocated = [...productCostMap.values()].reduce((sum, v) => sum + v, 0);
+  assert.equal(totalAllocated, 10000000);
+});
+

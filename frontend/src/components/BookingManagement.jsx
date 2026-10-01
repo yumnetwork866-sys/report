@@ -45,6 +45,7 @@ import BookingDeleteConfirmModal from './booking/BookingDeleteConfirmModal';
 import BookingPageHero from './booking/BookingPageHero';
 import BookingListControls from './booking/BookingListControls';
 import BookingGroupsTable from './booking/BookingGroupsTable';
+import BookingProductsCostTable from './booking/BookingProductsCostTable';
 import BookingTableSkeleton from './booking/BookingTableSkeleton';
 import useBookingAnalytics from './booking/useBookingAnalytics';
 
@@ -75,9 +76,11 @@ const BookingManagement = ({
     bookingUiSession().selectedMonth || currentBookingMonth()
   ));
   const monthOptions = useMemo(() => generateBookingMonthOptions(), []);
-  const [bookingTab, setBookingTab] = useState(() => (
-    bookingUiSession().bookingTab === 'product' ? 'product' : 'video'
-  ));
+  const [bookingTab, setBookingTab] = useState(() => {
+    const saved = bookingUiSession().bookingTab;
+    if (saved === 'by_product' || saved === 'product') return saved;
+    return 'video';
+  });
   const [hashtagFilterEnabled, setHashtagFilterEnabled] = useState(() => {
     try {
       return window.localStorage.getItem(hashtagFilterStorageKey) === 'true';
@@ -602,6 +605,8 @@ const BookingManagement = ({
     stats,
     bookingGroups,
     bookingGroupsToRender,
+    productCostGroups,
+    sortedProductCostGroupsToRender,
     bookingManagerFilterValue,
     sortedBookingGroupsToRender,
     sortedBookingsOfGroup,
@@ -854,6 +859,7 @@ const BookingManagement = ({
         <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
           <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
           <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { if (bookingTab !== 'product') setProductPerformanceLoading(true); setBookingTab('product'); }}>{t('booking.productTab')}</button>
+          <button className={`booking-view-tabs__tab${bookingTab === 'by_product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'by_product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('by_product')}>{t('booking.byProductTab') || 'Theo sản phẩm'}</button>
         </div>
         <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
       </section>
@@ -903,6 +909,46 @@ const BookingManagement = ({
         {productPerformanceError && bookingTab === 'product' ? <p className="form-error" role="alert">{productPerformanceError}</p> : null}
         {listLoading ? (
           <BookingTableSkeleton label={t('booking.loading')} />
+        ) : bookingTab === 'by_product' ? (
+          sortedProductCostGroupsToRender.length ? (
+            <BookingProductsCostTable
+              groups={sortedProductCostGroupsToRender}
+              expandedGroupKeys={expandedGroupKeys}
+              onToggleGroup={toggleGroup}
+              overviewSort={overviewSort}
+              onOverviewSort={handleOverviewSort}
+              sortedBookingsOfGroup={sortedBookingsOfGroup}
+              bookingTableProps={{
+                bookingSort,
+                onSort: handleBookingSort,
+                expandedBookingId,
+                onToggleRow: toggleBookingRow,
+                onSelectBooking: setSelectedBooking,
+                bookingTab,
+                productPerformanceByBooking,
+                videoPerformanceByBooking,
+                bookingInPeriodById,
+                productOrdersByShop,
+                selectedCurrency,
+                convertAmount,
+                onSelectProduct: setProductOrderDetailModal,
+                formatMoney,
+                formatNumber,
+                formatDate,
+                formatRate,
+                renderPerformance,
+                creatorMetric,
+                t,
+              }}
+              selectedCurrency={selectedCurrency}
+              formatMoney={formatMoney}
+              formatNumber={formatNumber}
+              formatRatio={formatRatio}
+              t={t}
+            />
+          ) : (
+            <div className="empty-state">{t('booking.noEvaluations')}</div>
+          )
         ) : bookingGroupsToRender.length ? (
           <BookingGroupsTable
             groups={sortedBookingGroupsToRender}
