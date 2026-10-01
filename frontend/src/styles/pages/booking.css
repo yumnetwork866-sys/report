@@ -508,6 +508,12 @@
 .booking-row--expanded > td { background: #fbfdff; }
 .booking-video-detail-row > td { padding: 0 14px 14px; background: #fbfdff; }
 
+.booking-products-overview-table .booking-detail-product {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 @media (max-width: 640px) {
   .booking-performance-controls { width: 100%; align-items: stretch; flex-direction: column; }
   .booking-evaluation-list-header { align-items: stretch; flex-direction: column; }
