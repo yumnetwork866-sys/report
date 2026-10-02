@@ -279,34 +279,6 @@ export const OrderManagement = () => {
               </div>
 
               <div className="field">
-                <label htmlFor="order-filter-settlement-min">{t('sellerAffiliate.orderSettlementMin')}</label>
-                <input
-                  id="order-filter-settlement-min"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderFilterDraft.settlementMin}
-                  onChange={(event) => updateOrderFilter('settlementMin', event.target.value)}
-                  placeholder="0"
-                  aria-invalid={Boolean(orderFilterError)}
-                />
-              </div>
-
-              <div className="field">
-                <label htmlFor="order-filter-settlement-max">{t('sellerAffiliate.orderSettlementMax')}</label>
-                <input
-                  id="order-filter-settlement-max"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={orderFilterDraft.settlementMax}
-                  onChange={(event) => updateOrderFilter('settlementMax', event.target.value)}
-                  placeholder="500"
-                  aria-invalid={Boolean(orderFilterError)}
-                />
-              </div>
-
-              <div className="field">
                 <label htmlFor="order-filter-carrier">{t('sellerAffiliate.orderCarrierFilter')}</label>
                 <input
                   id="order-filter-carrier"
@@ -364,12 +336,6 @@ export const OrderManagement = () => {
                 />
               </div>
             </div>
-
-            {orderFilterError ? (
-              <p className="seller-affiliate__order-filter-error" role="alert">
-                {t('sellerAffiliate.orderSettlementRangeError')}
-              </p>
-            ) : null}
 
             <div className="order-management__filters-panel-actions">
               <button

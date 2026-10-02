@@ -157,14 +157,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     () => JSON.stringify(orderFilterDraft) !== JSON.stringify(orderFilters),
     [orderFilterDraft, orderFilters],
   );
-  const orderFilterError = useMemo(() => {
-    const minimum = Number(orderFilterDraft.settlementMin);
-    const maximum = Number(orderFilterDraft.settlementMax);
-    if (orderFilterDraft.settlementMin !== '' && (!Number.isFinite(minimum) || minimum < 0)) return 'minimum';
-    if (orderFilterDraft.settlementMax !== '' && (!Number.isFinite(maximum) || maximum < 0)) return 'maximum';
-    if (orderFilterDraft.settlementMin !== '' && orderFilterDraft.settlementMax !== '' && minimum > maximum) return 'range';
-    return '';
-  }, [orderFilterDraft.settlementMax, orderFilterDraft.settlementMin]);
+  const orderFilterError = useMemo(() => '', []);
 
   const applyOrderFilters = useCallback((event) => {
     event?.preventDefault();

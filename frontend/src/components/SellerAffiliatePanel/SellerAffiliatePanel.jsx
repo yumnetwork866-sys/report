@@ -140,7 +140,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     resetOrderFilters,
   } = useSellerAffiliateData({ initialSection, ordersOnly });
   const updateOrderFilter = (key, value) => setOrderFilterDraft((current) => ({ ...current, [key]: value }));
-  const advancedFilterKeys = ['warehouse', 'buyerCancellation', 'settlementStatus', 'carrier', 'productSku', 'settlementMin', 'settlementMax', 'deliveryIssue', 'source'];
+  const advancedFilterKeys = ['warehouse', 'buyerCancellation', 'settlementStatus', 'carrier', 'productSku', 'deliveryIssue', 'source'];
   const activeAdvancedFilterCount = advancedFilterKeys.filter((key) => {
     const value = orderFilters[key];
     return value !== '' && value !== 'all' && value !== false;
@@ -299,7 +299,6 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
                 <div className="field"><label htmlFor="affiliate-orders-delivery-issue">{t('sellerAffiliate.orderDeliveryIssue')}</label><SelectDropdown id="affiliate-orders-delivery-issue" value={orderFilterDraft.deliveryIssue} onChange={(value) => updateOrderFilter('deliveryIssue', value)} options={[{ value: 'all', label: t('sellerAffiliate.orderFilterAll') }, { value: 'yes', label: t('sellerAffiliate.orderDeliveryIssueOnly') }, { value: 'no', label: t('sellerAffiliate.orderDeliveryNoIssue') }]} /></div>
                 <div className="field"><label htmlFor="affiliate-orders-source">{t('sellerAffiliate.salesSource')}</label><SelectDropdown id="affiliate-orders-source" value={orderFilterDraft.source} onChange={(value) => updateOrderFilter('source', value)} options={[{ value: 'all', label: t('sellerAffiliate.orderFilterAll') }, { value: 'VIDEO', label: t('sellerAffiliate.orderSource_VIDEO') }, { value: 'LIVE', label: t('sellerAffiliate.orderSource_LIVE') }, { value: 'SHOP', label: t('sellerAffiliate.orderSource_SHOP') }, { value: 'DIRECT', label: t('sellerAffiliate.orderSource_DIRECT') }]} /></div>
               </div> : null}
-              {orderFilterError ? <p className="seller-affiliate__order-filter-error" role="alert">{t('sellerAffiliate.orderSettlementRangeError')}</p> : null}
             </form>
           </>
         ) : null}

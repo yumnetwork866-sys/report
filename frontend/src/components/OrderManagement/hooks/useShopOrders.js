@@ -111,14 +111,7 @@ export const useShopOrders = () => {
     [orderFilterDraft, orderFilters],
   );
 
-  const orderFilterError = useMemo(() => {
-    const minimum = Number(orderFilterDraft.settlementMin);
-    const maximum = Number(orderFilterDraft.settlementMax);
-    if (orderFilterDraft.settlementMin !== '' && (!Number.isFinite(minimum) || minimum < 0)) return 'minimum';
-    if (orderFilterDraft.settlementMax !== '' && (!Number.isFinite(maximum) || maximum < 0)) return 'maximum';
-    if (orderFilterDraft.settlementMin !== '' && orderFilterDraft.settlementMax !== '' && minimum > maximum) return 'range';
-    return '';
-  }, [orderFilterDraft.settlementMax, orderFilterDraft.settlementMin]);
+  const orderFilterError = useMemo(() => '', []);
 
   const activeQuickTab = useMemo(() => {
     if (orderFilters.attentionOnly) return 'attention';
@@ -336,7 +329,7 @@ export const useShopOrders = () => {
 
   const advancedFilterKeys = [
     'warehouse', 'buyerCancellation', 'settlementStatus',
-    'carrier', 'productSku', 'settlementMin', 'settlementMax',
+    'carrier', 'productSku',
     'deliveryIssue', 'source',
   ];
 
