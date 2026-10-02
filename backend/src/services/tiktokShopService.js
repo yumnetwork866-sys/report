@@ -608,15 +608,16 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
     if (!/CANCEL|UNPAID/.test(lifecycleStatus)) salesOrderIds.add(id);
     const skus = Array.isArray(order?.skus) ? order.skus : [];
     const orderStatus = String(order?.settlement_status || order?.order_status || order?.status || '').toUpperCase();
-    const orderReturned = /REFUND|RETURN|CANCEL/.test(orderStatus);
+    const orderReturned = /REFUND|RETURN/.test(orderStatus);
     const returned = orderReturned || skus.some((sku) => {
       const quantity = Math.max(0, Number(sku?.quantity) || 0);
       const refundedQuantity = Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0);
-      return sku?.fully_return === true
-        || String(sku?.fully_return).toLowerCase() === 'true'
+      const skuFullyReturned = sku?.fully_return === true
+        || ['true', 'yes', '1'].includes(String(sku?.fully_return || '').trim().toLowerCase());
+      return skuFullyReturned
         || refundedQuantity > 0
         || (quantity > 0 && refundedQuantity >= quantity)
-        || /REFUND|RETURN|CANCEL/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
+        || /REFUND|RETURN/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
     });
     if (returned) returnedOrderIds.add(id);
 
@@ -636,8 +637,8 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
         Math.max(0, Number(sku?.refunded_quantity ?? sku?.refund_quantity) || 0),
       );
       const skuReturned = sku?.fully_return === true
-        || String(sku?.fully_return).toLowerCase() === 'true'
-        || /REFUND|RETURN|CANCEL/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
+        || ['true', 'yes', '1'].includes(String(sku?.fully_return || '').trim().toLowerCase())
+        || /REFUND|RETURN/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
       const refundedQuantity = explicitRefundedQuantity || ((skuReturned || orderReturned) ? quantity : 0);
       const price = affiliateOrderMoney(
         sku?.price ?? sku?.price_amount ?? sku?.original_price,

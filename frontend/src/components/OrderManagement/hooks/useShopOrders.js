@@ -17,6 +17,7 @@ import {
   REQUIRED_SCOPE,
 } from '../../SellerAffiliatePanel/constants';
 import {
+  defaultOrderRange,
   defaultStatisticsRange,
   shiftDateValue,
   shopDateUnix,
@@ -53,7 +54,7 @@ export const useShopOrders = () => {
   const [shops, setShops] = useState([]);
   const [shopId, setShopId] = useState(getStoredSelectedShopId);
   const [orderPeriod, setOrderPeriod] = useState('30d');
-  const [orderRange, setOrderRange] = useState(() => defaultStatisticsRange(30));
+  const [orderRange, setOrderRange] = useState(() => defaultOrderRange(30));
   const [orderFilterDraft, setOrderFilterDraft] = useState(DEFAULT_ORDER_FILTERS);
   const [orderFilters, setOrderFilters] = useState(DEFAULT_ORDER_FILTERS);
   const [orderOverview, setOrderOverview] = useState({});
@@ -116,11 +117,34 @@ export const useShopOrders = () => {
   const activeQuickTab = useMemo(() => {
     if (orderFilters.attentionOnly) return 'attention';
     if (orderFilters.refundStatus === 'yes') return 'refund';
-    if (['AWAITING_SHIPMENT', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED'].includes(orderFilters.orderStatus)) {
+    if (['TO_SHIP', 'AWAITING_SHIPMENT', 'AWAITING_COLLECTION'].includes(orderFilters.orderStatus)) {
+      return 'TO_SHIP';
+    }
+    if (['IN_TRANSIT', 'DELIVERED', 'COMPLETED', 'CANCELLED'].includes(orderFilters.orderStatus)) {
       return orderFilters.orderStatus;
     }
     return 'all';
   }, [orderFilters]);
+
+  const shipmentSubStatus = useMemo(() => {
+    if (orderFilters.orderStatus === 'AWAITING_SHIPMENT') return 'AWAITING_SHIPMENT';
+    if (orderFilters.orderStatus === 'AWAITING_COLLECTION') return 'AWAITING_COLLECTION';
+    return 'all';
+  }, [orderFilters.orderStatus]);
+
+  const handleShipmentSubStatusChange = useCallback((subStatus) => {
+    const nextStatus = subStatus === 'AWAITING_SHIPMENT' || subStatus === 'AWAITING_COLLECTION'
+      ? subStatus
+      : 'TO_SHIP';
+    const patch = {
+      attentionOnly: false,
+      refundStatus: 'all',
+      orderStatus: nextStatus,
+    };
+    setOrderFilterDraft((current) => ({ ...current, ...patch }));
+    setOrderFilters((current) => ({ ...current, ...patch }));
+    setPageTokens([]);
+  }, []);
 
   const handleQuickTabChange = useCallback((tabId) => {
     const patch = {
@@ -132,6 +156,8 @@ export const useShopOrders = () => {
       patch.attentionOnly = true;
     } else if (tabId === 'refund') {
       patch.refundStatus = 'yes';
+    } else if (tabId === 'TO_SHIP' || tabId === 'AWAITING_SHIPMENT') {
+      patch.orderStatus = 'TO_SHIP';
     } else if (tabId !== 'all') {
       patch.orderStatus = tabId;
     }
@@ -226,9 +252,16 @@ export const useShopOrders = () => {
         orderId: '',
       };
 
+      const overviewFilters = {
+        ...orderRequestFilters,
+        orderStatus: '',
+        refundStatus: '',
+        attentionOnly: '',
+      };
+
       const [ordersResult, overviewResult] = await Promise.allSettled([
         fetchTikTokSellerAffiliateOrders(shopId, { signal, ...activeFilters }),
-        fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...orderRequestFilters }),
+        fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...overviewFilters }),
       ]);
 
       if (ordersResult.status === 'rejected') throw ordersResult.reason;
@@ -359,6 +392,7 @@ export const useShopOrders = () => {
     formatNumber,
     formatTime,
     handleQuickTabChange,
+    handleShipmentSubStatusChange,
     hasActiveOrderFilters,
     hasProductScope,
     hasScope,
@@ -387,6 +421,7 @@ export const useShopOrders = () => {
     setPageTokens,
     setSelectedOrder,
     setShopId,
+    shipmentSubStatus,
     shopId,
     shops,
     showAdvancedFilters,

@@ -1,5 +1,6 @@
 const LOCALIZED_STATUSES = new Set([
   'ACTIVE', 'INACTIVE', 'ONGOING', 'VALID', 'COMPLETED', 'PENDING', 'AWAITING_SHIPMENT',
+  'AWAITING_COLLECTION', 'TO_SHIP',
   'CONTENT_PENDING', 'SUCCEED', 'NORMAL', 'PROCESSING', 'FAILED', 'SUCCEEDED',
 ]);
 
@@ -7,6 +8,9 @@ export const normalizeCreatorSearchKeyword = (value) => String(value || '').trim
 
 export const formatStatus = (value, t) => {
   const normalized = String(value || '').toUpperCase();
+  if (normalized === 'TO_SHIP') return t('sellerAffiliate.orderState_TO_SHIP') || 'Chờ giao hàng';
+  if (normalized === 'AWAITING_SHIPMENT') return t('sellerAffiliate.toShipPacking') || t('sellerAffiliate.orderState_AWAITING_SHIPMENT') || 'Chờ đóng gói';
+  if (normalized === 'AWAITING_COLLECTION') return t('sellerAffiliate.toShipCollection') || t('sellerAffiliate.orderState_AWAITING_COLLECTION') || 'Chờ lấy hàng';
   return LOCALIZED_STATUSES.has(normalized) ? t(`sellerAffiliate.status_${normalized}`) : value || '—';
 };
 
@@ -75,6 +79,11 @@ export const shopDateUnix = (value, region) => {
 
 export const defaultStatisticsRange = (days = 30) => {
   const end = shiftDateValue(new Date().toISOString().slice(0, 10), -1);
+  return { start: shiftDateValue(end, -(days - 1)), end };
+};
+
+export const defaultOrderRange = (days = 30) => {
+  const end = new Date().toISOString().slice(0, 10);
   return { start: shiftDateValue(end, -(days - 1)), end };
 };
 

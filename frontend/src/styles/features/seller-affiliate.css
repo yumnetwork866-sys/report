@@ -948,22 +948,47 @@
   overflow-x: auto;
 }
 
+/* Quick Tabs Container & Segmented Control */
+.order-quick-tabs-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
 .order-status-tabs {
   display: flex;
+  align-items: center;
   width: fit-content;
   max-width: 100%;
-  gap: 6px;
-  padding: 4px;
+  gap: 4px;
+  padding: 4px 6px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface-subtle);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.order-status-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.order-tabs-divider {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: var(--color-border);
+  opacity: 0.8;
+  flex-shrink: 0;
 }
 
 .order-status-tabs button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 7px 12px;
+  padding: 6px 12px;
   border: 0;
   border-radius: var(--radius-default);
   background: transparent;
@@ -972,6 +997,7 @@
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .order-status-tabs button:hover {
@@ -982,18 +1008,30 @@
 .order-status-tabs button.is-active {
   background: var(--color-primary);
   color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.order-status-tabs button .tab-icon-alert {
+  color: var(--color-danger, #e11d48);
+  flex-shrink: 0;
 }
 
 .order-status-tabs button.is-warning {
-  color: var(--color-danger);
+  color: var(--color-danger, #e11d48);
 }
 
 .order-status-tabs button.is-warning:hover {
   background: color-mix(in srgb, var(--color-danger) 10%, transparent);
 }
 
+.order-status-tabs button.is-warning-active,
 .order-status-tabs button.is-warning.is-active {
-  background: var(--color-danger);
+  background: var(--color-danger, #e11d48);
+  color: #fff;
+}
+
+.order-status-tabs button.is-warning-active .tab-icon-alert,
+.order-status-tabs button.is-warning.is-active .tab-icon-alert {
   color: #fff;
 }
 
@@ -1003,12 +1041,13 @@
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  padding: 0 5px;
+  padding: 0 6px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
   color: var(--color-primary);
   font-size: 0.7rem;
   font-weight: 700;
+  line-height: 1;
 }
 
 .order-status-tabs button.is-active .tab-badge {
@@ -1016,13 +1055,139 @@
   color: #fff;
 }
 
-.order-status-tabs button.is-warning .tab-badge {
-  background: color-mix(in srgb, var(--color-danger) 18%, transparent);
-  color: var(--color-danger);
+.order-status-tabs button .tab-badge--warning {
+  background: color-mix(in srgb, var(--color-danger) 16%, transparent);
+  color: var(--color-danger, #e11d48);
 }
 
+.order-status-tabs button.is-active .tab-badge--warning,
 .order-status-tabs button.is-warning.is-active .tab-badge {
   background: rgba(255, 255, 255, 0.3);
+  color: #fff;
+}
+
+.order-status-tabs button .tab-badge--refund {
+  background: color-mix(in srgb, #9333ea 16%, transparent);
+  color: #9333ea;
+}
+
+.order-status-tabs button.is-active .tab-badge--refund {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* Two-tier Sub-pills (Tầng 2) */
+.order-sub-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  margin-left: 2px;
+  background: color-mix(in srgb, var(--color-surface) 60%, var(--color-surface-subtle));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, var(--color-border));
+  border-radius: var(--radius-md);
+  width: fit-content;
+  animation: slideDownFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDownFade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.order-sub-tabs__branch-indicator {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-right: 2px;
+  user-select: none;
+}
+
+.order-sub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted-strong);
+  font: 500 0.78rem var(--font-heading);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.order-sub-tab:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  color: var(--color-primary);
+}
+
+.order-sub-tab.is-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.order-sub-tab__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.order-sub-tab__dot--amber {
+  background: #f59e0b;
+}
+
+.order-sub-tab__dot--blue {
+  background: #3b82f6;
+}
+
+.order-sub-tab.is-active .order-sub-tab__dot {
+  background: #fff;
+}
+
+.order-sub-tab .tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  color: var(--color-primary);
+}
+
+.order-sub-tab.is-active .tab-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+.order-sub-tab .tab-badge--packing {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #b45309;
+}
+
+.order-sub-tab .tab-badge--collection {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  color: #1d4ed8;
+}
+
+.order-sub-tab.is-active .tab-badge--packing,
+.order-sub-tab.is-active .tab-badge--collection {
+  background: rgba(255, 255, 255, 0.25);
   color: #fff;
 }
 

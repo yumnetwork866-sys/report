@@ -350,7 +350,7 @@ const persistOrderDay = async (shop, metricDate, {
           price: Number.isFinite(price) ? price : null,
           currency: sku?.price?.currency || sku?.currency || null,
           settlement_status: sku?.settlement_status || null,
-          fully_return: sku?.fully_return === true || String(sku?.fully_return).toLowerCase() === 'true',
+          fully_return: sku?.fully_return === true || ['true', 'yes', '1'].includes(String(sku?.fully_return || '').trim().toLowerCase()),
           raw_data: sku,
           synced_at: syncedAt,
         });

@@ -213,7 +213,14 @@ const addOrderDataFilters = (where, skuConditions, query, { requireDateRange = f
   }
 
   const status = String(query.order_status || '').trim().toUpperCase();
-  if (status) {
+  if (status === 'TO_SHIP' || status === 'AWAITING_SHIPMENT_ALL' || status === 'AWAITING_SHIPMENT,AWAITING_COLLECTION') {
+    where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('status')}, ${orderText('order_status')}) IN ('AWAITING_SHIPMENT', 'AWAITING_COLLECTION', 'PARTIALLY_SHIPPING')`)];
+  } else if (status.includes(',')) {
+    const statuses = status.split(',').map((s) => sqlQuote(s.trim())).filter(Boolean);
+    if (statuses.length) {
+      where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('status')}, ${orderText('order_status')}) IN (${statuses.join(', ')})`)];
+    }
+  } else if (status) {
     const safeStatus = sqlQuote(status);
     where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(`COALESCE(${orderText('status')}, ${orderText('order_status')}) = ${safeStatus}`)];
   }
@@ -266,8 +273,11 @@ const addOrderDataFilters = (where, skuConditions, query, { requireDateRange = f
   const refundedOrderSql = `EXISTS (
     SELECT 1 FROM tiktok_affiliate_order_skus AS refund_sku
     WHERE refund_sku.affiliate_order_id = ${ORDER_ALIAS}."id"
-      AND (refund_sku.fully_return = TRUE OR refund_sku.refunded_quantity > 0
-        OR refund_sku.settlement_status ILIKE '%REFUND%' OR refund_sku.settlement_status ILIKE '%RETURN%')
+      AND (refund_sku.fully_return = TRUE
+        OR refund_sku.raw_data->>'fully_return' ILIKE 'yes'
+        OR refund_sku.refunded_quantity > 0
+        OR refund_sku.settlement_status ILIKE '%REFUND%'
+        OR refund_sku.settlement_status ILIKE '%RETURN%')
   )`;
   if (refundStatus === 'yes') {
     where[Op.and] = [...(where[Op.and] || []), Sequelize.literal(refundedOrderSql)];
@@ -1548,6 +1558,9 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
         buyer_cancel_requests: attention.filter((reason) => reason.buyerCancellation).length,
         delivery_issue_orders: attention.filter((reason) => reason.deliveryIssue).length,
         on_hold_orders: attention.filter((reason) => reason.onHold).length,
+        to_ship_orders: orders.filter((o) => ['AWAITING_SHIPMENT', 'AWAITING_COLLECTION', 'PARTIALLY_SHIPPING'].includes(String(o.status || o.order_status || ''))).length,
+        awaiting_shipment_orders: orders.filter((o) => String(o.status || o.order_status || '') === 'AWAITING_SHIPMENT').length,
+        awaiting_collection_orders: orders.filter((o) => String(o.status || o.order_status || '') === 'AWAITING_COLLECTION').length,
       },
       top_products: topProducts,
       range: { start_time: startTime, end_time: endTime },

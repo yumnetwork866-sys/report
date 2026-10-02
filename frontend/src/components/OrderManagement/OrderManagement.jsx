@@ -5,7 +5,7 @@ import SelectDropdown from '../SelectDropdown';
 import DatePickerInput from '../DatePickerInput';
 import Pagination from '../Pagination';
 import { setStoredSelectedShopId } from '../../lib/shopSelection';
-import { defaultStatisticsRange } from '../SellerAffiliatePanel/utils/sellerAffiliateUtils';
+import { defaultOrderRange, defaultStatisticsRange } from '../SellerAffiliatePanel/utils/sellerAffiliateUtils';
 import {
   AffiliateOrderProducts,
   OrderDetailDrawer,
@@ -36,6 +36,7 @@ export const OrderManagement = () => {
     formatNumber,
     formatTime,
     handleQuickTabChange,
+    handleShipmentSubStatusChange,
     hasActiveOrderFilters,
     hasProductScope,
     hasScope,
@@ -62,6 +63,7 @@ export const OrderManagement = () => {
     setPageTokens,
     setSelectedOrder,
     setShopId,
+    shipmentSubStatus,
     shopId,
     shops,
     showAdvancedFilters,
@@ -80,6 +82,9 @@ export const OrderManagement = () => {
   const quickTabCounts = {
     refunded: orderOverview.kpis?.refunded_returned_orders,
     attention: orderOverview.kpis?.attention_orders,
+    toShip: orderOverview.kpis?.to_ship_orders,
+    awaitingShipment: orderOverview.kpis?.awaiting_shipment_orders,
+    awaitingCollection: orderOverview.kpis?.awaiting_collection_orders,
   };
 
   const totalFilterCount = activeAdvancedFilterCount
@@ -114,7 +119,7 @@ export const OrderManagement = () => {
               onChange={(nextPeriod) => {
                 setOrderPeriod(nextPeriod);
                 if (nextPeriod !== 'custom') {
-                  setOrderRange(defaultStatisticsRange(Number.parseInt(nextPeriod, 10)));
+                  setOrderRange(defaultOrderRange(Number.parseInt(nextPeriod, 10)));
                   setPageTokens([]);
                 }
               }}
@@ -197,6 +202,8 @@ export const OrderManagement = () => {
           <OrderQuickTabs
             activeTab={activeQuickTab}
             onTabChange={handleQuickTabChange}
+            shipmentSubStatus={shipmentSubStatus}
+            onShipmentSubStatusChange={handleShipmentSubStatusChange}
             counts={quickTabCounts}
             t={t}
           />
