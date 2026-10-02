@@ -582,6 +582,23 @@ const subtractAffiliateOrderMoneyTotals = (totals, deductions) => {
   }));
 };
 
+const affiliateFinanceAmount = (value) => {
+  const amount = Number(typeof value === 'object' ? value?.amount : value);
+  return Number.isFinite(amount) ? amount : null;
+};
+
+const sumAffiliateFinanceFields = (value, matcher, path = '') => {
+  if (!value || typeof value !== 'object') return 0;
+  return Object.entries(value).reduce((total, [key, child]) => {
+    const childPath = path ? `${path}.${key}` : key;
+    if (child && typeof child === 'object') {
+      return total + sumAffiliateFinanceFields(child, matcher, childPath);
+    }
+    const amount = affiliateFinanceAmount(child);
+    return total + (amount !== null && matcher(childPath) ? amount : 0);
+  }, 0);
+};
+
 const affiliateCommissionRate = (value) => {
   const raw = typeof value === 'object' ? value?.percentage ?? value?.rate ?? value?.value : value;
   if (raw === undefined || raw === null || raw === '') return null;
@@ -596,6 +613,7 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
   const returnedOrderIds = new Set();
   const gmv = new Map();
   const refundedGmv = new Map();
+  const revenueDeductions = new Map();
   const ordersByCurrency = new Map();
   const commission = new Map();
   let itemsSold = 0;
@@ -620,6 +638,25 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
         || /REFUND|RETURN/.test(String(sku?.settlement_status || sku?.item_status || '').toUpperCase());
     });
     if (returned) returnedOrderIds.add(id);
+
+    const finance = order?.finance;
+    if (finance) {
+      const financeCurrency = String(
+        finance.currency || order?.currency || order?.payment?.currency || 'USD',
+      ).toUpperCase();
+      const feeAndTax = affiliateFinanceAmount(finance.fee_and_tax_amount ?? finance.fee_tax_amount);
+      const shippingCost = affiliateFinanceAmount(finance.shipping_cost_amount);
+      const sellerDiscount = (Array.isArray(finance.sku_transactions) ? finance.sku_transactions : [])
+        .reduce((total, transaction) => total + sumAffiliateFinanceFields(
+          transaction?.revenue_breakdown,
+          (path) => /(^|\.)seller_discount_amount$/i.test(path) && !/refund/i.test(path),
+        ), 0);
+      [feeAndTax, shippingCost, sellerDiscount].forEach((amount) => {
+        if (amount !== null && amount !== 0) {
+          addAffiliateOrderMoney(revenueDeductions, { currency: financeCurrency, amount: Math.abs(amount) });
+        }
+      });
+    }
 
     const topLevelCommissionValue = order?.commission_amount ?? order?.actual_commission ?? order?.estimated_commission;
     const hasTopLevelCommission = topLevelCommissionValue !== undefined
@@ -680,13 +717,17 @@ const summarizeAffiliateOrderKpis = (orders = []) => {
     currency,
     amount: amount / (ordersByCurrency.get(currency) || orderIds.size || 1),
   }));
+  const netRevenueDeductions = new Map(refundedGmv);
+  revenueDeductions.forEach((amount, currency) => {
+    netRevenueDeductions.set(currency, (netRevenueDeductions.get(currency) || 0) + amount);
+  });
 
   return {
     orders: orderIds.size,
     sales_orders: salesOrderIds.size,
     affiliate_gmv: affiliateOrderMoneyTotals(gmv),
     gross_revenue: affiliateOrderMoneyTotals(gmv),
-    net_revenue: subtractAffiliateOrderMoneyTotals(gmv, refundedGmv),
+    net_revenue: subtractAffiliateOrderMoneyTotals(gmv, netRevenueDeductions),
     refunded_revenue: affiliateOrderMoneyTotals(refundedGmv),
     average_order_value: averageOrderValue,
     items_sold: itemsSold,

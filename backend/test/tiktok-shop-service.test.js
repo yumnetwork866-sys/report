@@ -739,6 +739,29 @@ test('affiliate order KPIs only subtract the returned SKU from a partially retur
   assert.equal(result.items_refunded, 1);
 });
 
+test('affiliate order revenue subtracts available fees without using settlement', () => {
+  const result = summarizeAffiliateOrderKpis([{
+    id: 'order-with-finance',
+    currency: 'MYR',
+    skus: [{ quantity: 1, price: { amount: '100', currency: 'MYR' } }],
+    finance: {
+      currency: 'MYR',
+      fee_and_tax_amount: '-12',
+      shipping_cost_amount: '-5',
+      settlement_amount: '1',
+      sku_transactions: [{
+        revenue_breakdown: {
+          seller_discount_amount: '-3',
+          refund_seller_discount_amount: '-99',
+        },
+      }],
+    },
+  }]);
+
+  assert.deepEqual(result.gross_revenue, [{ amount: 100, currency: 'MYR' }]);
+  assert.deepEqual(result.net_revenue, [{ amount: 80, currency: 'MYR' }]);
+});
+
 test('affiliate order KPIs exclude cancelled and unpaid lifecycle statuses from sales orders', () => {
   const result = summarizeAffiliateOrderKpis([
     { id: 'paid', order_status: 'COMPLETED', skus: [] },
