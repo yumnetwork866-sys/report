@@ -16,7 +16,6 @@ import {
   getOrderProductDetails,
   getOrderDeliveryHistory,
   getUnifiedOrderTimeline,
-  orderStatusLabel,
   trackingStatusLabel,
   getOrderPaymentValue,
   getOrderShipping,

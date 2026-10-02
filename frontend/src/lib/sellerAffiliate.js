@@ -341,7 +341,7 @@ export const getOrderDeliveryHistory = (order = {}) => {
 export const trackingStatusLabel = (value, t) => {
   if (!value || value === '—') return '—';
   const raw = String(value).trim();
-  const normalizedKey = raw.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const normalizedKey = raw.toUpperCase().replace(/[\s/-]+/g, '_');
   const translationKey = `sellerAffiliate.orderState_${normalizedKey}`;
 
   if (t) {
@@ -794,7 +794,7 @@ export const getTrackingUrl = (provider, trackingNumber) => {
 export const deliveryTypeLabel = (value, t) => {
   if (!value || value === '—') return '—';
   const clean = String(value).trim();
-  const normalized = clean.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const normalized = clean.toUpperCase().replace(/[\s/-]+/g, '_');
   const key = `sellerAffiliate.deliveryType_${normalized}`;
   const translated = t ? t(key, { defaultValue: '' }) : '';
   if (translated && translated !== key) return translated;
@@ -825,7 +825,7 @@ export const deliveryTypeLabel = (value, t) => {
 export const paymentMethodLabel = (value, t) => {
   if (!value || value === '—') return '—';
   const clean = String(value).trim();
-  const normalized = clean.toUpperCase().replace(/[\s\/-]+/g, '_');
+  const normalized = clean.toUpperCase().replace(/[\s/-]+/g, '_');
   const key = `sellerAffiliate.paymentMethod_${normalized}`;
   const translated = t ? t(key, { defaultValue: '' }) : '';
   if (translated && translated !== key) return translated;

@@ -9,7 +9,6 @@ import { useMoneyFormatter } from '../../../lib/currency';
 import {
   getStoredSelectedShopId,
   resolveSelectedShopId,
-  setStoredSelectedShopId,
   subscribeSelectedShop,
 } from '../../../lib/shopSelection';
 import {

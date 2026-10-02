@@ -21,13 +21,13 @@ router.get('/:id/bookings', requirePermission('users'), getUserBookings);
 router.post('/:id/unassign-bookings', requirePermission('users'), unassignUserBookings);
 
 // GET /api/users/:id
-router.get('/:id', getUserById);
+router.get('/:id', requirePermission('users'), getUserById);
 
 // POST /api/users
 router.post('/', requirePermission('users'), createUser);
 
 // PUT /api/users/:id
-router.put('/:id', updateUser);
+router.put('/:id', requirePermission('users'), updateUser);
 
 // DELETE /api/users/:id
 router.delete('/:id', requirePermission('admin'), deleteUser);
