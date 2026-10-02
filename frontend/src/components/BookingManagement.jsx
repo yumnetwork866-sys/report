@@ -49,6 +49,7 @@ import BookingGroupsTable from './booking/BookingGroupsTable';
 import BookingProductsCostTable from './booking/BookingProductsCostTable';
 import BookingTableSkeleton from './booking/BookingTableSkeleton';
 import useBookingAnalytics from './booking/useBookingAnalytics';
+import '../styles/features/booking.css';
 
 const initialForm = defaultBookingForm();
 const emptyProductOrdersByShop = Object.freeze({});

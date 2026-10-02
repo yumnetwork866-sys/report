@@ -19,6 +19,7 @@ import OrderAttributionCell from './components/OrderAttributionCell';
 import OrderStatusFulfillmentCell from './components/cells/OrderStatusFulfillmentCell';
 import OrderFinancialCell from './components/cells/OrderFinancialCell';
 import OrderActionCell from './components/cells/OrderActionCell';
+import '../../styles/features/order-management.css';
 
 export const OrderManagement = () => {
   const {
@@ -156,7 +157,7 @@ export const OrderManagement = () => {
               placeholder={t('sellerAffiliate.ordersSearch')}
             />
             <button className="seller-affiliate__search-button" type="submit" aria-label={t('common.search')} title={t('common.search')}>
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false">
                 <circle cx="11" cy="11" r="6.5" />
                 <path d="m16 16 4 4" />
               </svg>
