@@ -140,6 +140,24 @@ const BookingMonthCard = ({
           <div className="booking-month-card__metric-item">
             <span>{t('booking.cost')}</span>
             <strong>{formatMoney(numCost, booking.currency)}</strong>
+            {selectedProductsList.length > 1 ? (
+              <small
+                className="booking-cost-split-badge"
+                style={{ justifyContent: 'flex-start' }}
+                title={t('booking.allocatedCostTooltip', {
+                  defaultValue: `Chi phí phân bổ (tổng booking: ${formatMoney(numCost, booking.currency)} chia đều cho ${selectedProductsList.length} sản phẩm)`,
+                  originalCost: formatMoney(numCost, booking.currency),
+                  count: selectedProductsList.length,
+                })}
+              >
+                <span>
+                  {t('booking.allocatedPerProduct', {
+                    defaultValue: `≈ ${formatMoney(numCost / selectedProductsList.length, booking.currency)} / SP`,
+                    amount: formatMoney(numCost / selectedProductsList.length, booking.currency),
+                  })}
+                </span>
+              </small>
+            ) : null}
           </div>
           <div className="booking-month-card__metric-item">
             <span>GMV</span>

@@ -87,7 +87,28 @@ const BookingRow = memo(({
           {creatorMetric(videoData?.performance || performance, 'views')}
         </td>
         <td className="cell-number booking-total-cost-column">
-          <strong>{showBookingCost ? formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency) : '—'}</strong>
+          {showBookingCost ? (
+            <div className="booking-cost-cell">
+              <strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong>
+              {booking.isAllocated ? (
+                <div
+                  className="booking-cost-split-badge"
+                  title={t('booking.allocatedCostTooltip', {
+                    defaultValue: `Chi phí phân bổ (tổng booking: ${formatMoney(booking.originalTotalCost, booking.currency)} chia đều cho ${booking.allocatedProductCount} sản phẩm)`,
+                    originalCost: formatMoney(booking.originalTotalCost, booking.currency),
+                    count: booking.allocatedProductCount,
+                  })}
+                >
+                  <span>
+                    {t('booking.allocatedCostNote', {
+                      defaultValue: `(÷ ${booking.allocatedProductCount} SP)`,
+                      count: booking.allocatedProductCount,
+                    })}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+          ) : '—'}
         </td>
         <td className="booking-video-column">
           <span className="booking-video-count">

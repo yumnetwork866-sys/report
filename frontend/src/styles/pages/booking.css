@@ -518,6 +518,21 @@
 .booking-row--expanded > td { background: #fbfdff; }
 .booking-video-detail-row > td { padding: 0 14px 14px; background: #fbfdff; }
 
+.booking-cost-split-badge {
+  font-size: 0.72rem;
+  color: var(--color-text-soft, #64748b);
+  margin-top: 2px;
+  line-height: 1.2;
+  cursor: help;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.booking-cost-split-badge span {
+  border-bottom: 1px dotted var(--color-text-soft, #94a3b8);
+}
+
 .booking-products-overview-table .booking-detail-product {
   padding: 0;
   border: 0;

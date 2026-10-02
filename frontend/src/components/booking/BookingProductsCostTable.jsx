@@ -76,6 +76,7 @@ const BookingProductsCostTable = ({
                   <td colSpan={7}>
                     <BookingEvaluationTable
                       {...bookingTableProps}
+                      currentProduct={group.product}
                       bookings={sortedBookingsOfGroup ? sortedBookingsOfGroup(group.bookings) : group.bookings}
                     />
                   </td>

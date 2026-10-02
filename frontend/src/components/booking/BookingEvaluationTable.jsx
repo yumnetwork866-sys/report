@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import BookingRow from './BookingRow';
-import { SortIcon } from './BookingIcons';
+import { HeaderTooltip, SortIcon } from './BookingIcons';
 import {
   bookingProductsOf,
   bookingVideoPerformanceForVideos,
@@ -94,6 +94,7 @@ const BookingEvaluationTable = ({
   formatRate,
   renderPerformance,
   creatorMetric,
+  currentProduct,
   t,
 }) => {
   const creatorRows = useMemo(() => groupBookingRowsByCreator(bookings), [bookings]);
@@ -124,7 +125,10 @@ const BookingEvaluationTable = ({
               </th>
               <th className="cell-number booking-total-cost-column sortable-th">
                 <button type="button" className="table-sort-btn" onClick={() => onSort('cost')}>
-                  <span>{t('booking.totalCost')}</span>
+                  <span>{currentProduct ? t('booking.allocatedCost', { defaultValue: 'Chi phí phân bổ' }) : t('booking.totalCost')}</span>
+                  {currentProduct ? (
+                    <HeaderTooltip text={t('booking.allocatedCostHeaderTooltip', { defaultValue: 'Chi phí được phân bổ cho sản phẩm này (chia đều theo số sản phẩm trong booking).' })} />
+                  ) : null}
                   <SortIcon active={bookingSort.key === 'cost'} direction={bookingSort.direction} />
                 </button>
               </th>
@@ -180,11 +184,31 @@ const BookingEvaluationTable = ({
                   selectedCurrency,
                 )
                 : videoPerformance;
-              const totalCost = bookingRecords.reduce((sum, record) => {
-                if (!bookingInPeriodById.get(String(record.id))) return sum;
+              let totalCost = 0;
+              let originalCost = 0;
+              let hasMultiProductSplit = false;
+              let splitProductCount = 1;
+
+              for (const record of bookingRecords) {
+                if (!bookingInPeriodById.get(String(record.id))) continue;
                 const rawCost = finiteNumber(record.total_cost ?? record.booking_cost);
-                return sum + (convertAmount(rawCost, record.currency) ?? rawCost);
-              }, 0);
+                const converted = convertAmount(rawCost, record.currency) ?? rawCost;
+                originalCost += converted;
+
+                if (currentProduct) {
+                  const products = bookingProductsOf(record);
+                  const pCount = products.length;
+                  if (pCount > 1) {
+                    hasMultiProductSplit = true;
+                    splitProductCount = pCount;
+                    totalCost += converted / pCount;
+                  } else {
+                    totalCost += converted;
+                  }
+                } else {
+                  totalCost += converted;
+                }
+              }
               const productsById = new Map(bookingRecords.flatMap((record) => bookingProductsOf(record))
                 .map((product) => [String(product.id || product.product_id), product]));
               const displayBooking = {
@@ -192,6 +216,9 @@ const BookingEvaluationTable = ({
                 total_cost: totalCost,
                 booking_cost: totalCost,
                 currency: selectedCurrency,
+                isAllocated: hasMultiProductSplit,
+                originalTotalCost: originalCost,
+                allocatedProductCount: splitProductCount,
                 booking_videos: videos,
                 evaluation_snapshot: {
                   ...(booking.evaluation_snapshot || {}),

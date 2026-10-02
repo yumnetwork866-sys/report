@@ -323,12 +323,22 @@ export default function useBookingAnalytics({
       const raw = finiteNumber(bookingTab === 'product'
         ? performance?.affiliate_gmv
         : (performance?.gross_gmv ?? performance?.affiliate_gmv));
-      return convertAmount(raw, performance?.currency) ?? raw;
+      const converted = convertAmount(raw, performance?.currency) ?? raw;
+      if (bookingTab === 'by_product') {
+        const productCount = bookingProductsOf(booking).length;
+        return productCount > 0 ? converted / productCount : converted;
+      }
+      return converted;
     };
     const costOf = (booking) => {
       if (!bookingInPeriodById.get(String(booking.id))) return 0;
       const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
-      return convertAmount(raw, booking.currency) ?? raw;
+      const converted = convertAmount(raw, booking.currency) ?? raw;
+      if (bookingTab === 'by_product') {
+        const productCount = bookingProductsOf(booking).length;
+        return productCount > 0 ? converted / productCount : converted;
+      }
+      return converted;
     };
     const value = (booking) => {
       if (key === 'revenue') return revenueOf(booking);
