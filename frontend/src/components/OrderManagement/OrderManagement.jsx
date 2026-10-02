@@ -5,7 +5,7 @@ import SelectDropdown from '../SelectDropdown';
 import DatePickerInput from '../DatePickerInput';
 import Pagination from '../Pagination';
 import { setStoredSelectedShopId } from '../../lib/shopSelection';
-import { defaultOrderRange, defaultStatisticsRange } from '../SellerAffiliatePanel/utils/sellerAffiliateUtils';
+import { defaultOrderRange } from '../SellerAffiliatePanel/utils/sellerAffiliateUtils';
 import {
   AffiliateOrderProducts,
   OrderDetailDrawer,
@@ -69,6 +69,7 @@ export const OrderManagement = () => {
     showAdvancedFilters,
     setShowAdvancedFilters,
     submitSearch,
+    tabOverview,
     t,
     totalPages,
     updateOrderFilter,
@@ -80,11 +81,11 @@ export const OrderManagement = () => {
   };
 
   const quickTabCounts = {
-    refunded: orderOverview.kpis?.refunded_returned_orders,
-    attention: orderOverview.kpis?.attention_orders,
-    toShip: orderOverview.kpis?.to_ship_orders,
-    awaitingShipment: orderOverview.kpis?.awaiting_shipment_orders,
-    awaitingCollection: orderOverview.kpis?.awaiting_collection_orders,
+    refunded: tabOverview.kpis?.refunded_returned_orders,
+    attention: tabOverview.kpis?.attention_orders,
+    toShip: tabOverview.kpis?.to_ship_orders,
+    awaitingShipment: tabOverview.kpis?.awaiting_shipment_orders,
+    awaitingCollection: tabOverview.kpis?.awaiting_collection_orders,
   };
 
   const totalFilterCount = activeAdvancedFilterCount

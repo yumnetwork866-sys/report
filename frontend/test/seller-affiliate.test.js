@@ -4,8 +4,10 @@ import {
   getAffiliateOrderCommission,
   getAffiliateOrderCreators,
   getAffiliateOrderItems,
+  getAffiliateOrderItemReturnState,
   getAffiliateOrderProductIds,
   getAffiliateOrderProgramIds,
+  getAffiliateOrderReturnSummary,
   getAffiliateOrderSettlementStatus,
   getAffiliateOrderSources,
   getAffiliateOrderValue,
@@ -66,6 +68,57 @@ test('affiliate order settlement gives refunds priority and supports explicit co
   assert.deepEqual(getAffiliateOrderCommission(order), {
     amounts: [{ amount: 2.5, currency: 'MYR' }], rates: [],
   });
+});
+
+test('affiliate order returns accept TikTok Yes values without treating cancelled orders as returns', () => {
+  const returnedOrder = {
+    order_status: 'COMPLETED',
+    skus: [{
+      sku_id: 'returned-sku',
+      product_name: 'Returned product',
+      quantity: 1,
+      refunded_quantity: 0,
+      fully_return: 'Yes',
+      settlement_status: 'INELIGIBLE',
+    }],
+  };
+  const cancelledOrder = {
+    order_status: 'CANCELLED',
+    skus: [{
+      sku_id: 'cancelled-sku',
+      quantity: 1,
+      refunded_quantity: 0,
+      fully_return: 'No',
+      settlement_status: 'CANCELLED',
+    }],
+  };
+
+  assert.deepEqual(getAffiliateOrderItemReturnState(returnedOrder.skus[0]), {
+    isReturned: true,
+    fullyReturned: true,
+    refundedQuantity: 0,
+    quantity: 1,
+  });
+  assert.deepEqual(getAffiliateOrderReturnSummary(returnedOrder), {
+    hasReturn: true,
+    items: [{
+      id: 'returned-sku',
+      productId: '',
+      productName: 'Returned product',
+      skuName: '',
+      quantity: 1,
+      refundedQuantity: 0,
+      imageUrl: null,
+      price: null,
+      raw: returnedOrder.skus[0],
+      isReturned: true,
+      fullyReturned: true,
+    }],
+    fullyReturned: true,
+    returnedQuantity: 1,
+  });
+  assert.equal(getAffiliateOrderSettlementStatus(returnedOrder), 'REFUNDED');
+  assert.equal(getAffiliateOrderSettlementStatus(cancelledOrder), 'UNKNOWN');
 });
 
 test('affiliate order fields are collected from every SKU and deduplicated', () => {

@@ -128,6 +128,46 @@ export const getAffiliateOrderItems = (order = {}) => {
   });
 };
 
+const truthyReturnValue = (value) => ['true', 'yes', '1'].includes(
+  String(value ?? '').trim().toLowerCase(),
+);
+
+export const getAffiliateOrderItemReturnState = (item = {}) => {
+  const raw = item.raw || item;
+  const quantity = Math.max(0, finiteNumber(item.quantity ?? raw.quantity) ?? 0);
+  const refundedQuantity = Math.max(0, finiteNumber(
+    item.refundedQuantity ?? raw.refunded_quantity ?? raw.refund_quantity,
+  ) ?? 0);
+  const fullyReturned = truthyReturnValue(raw.fully_return)
+    || (quantity > 0 && refundedQuantity >= quantity);
+  const hasReturnStatus = /REFUND|RETURN/.test(
+    String(raw.settlement_status || raw.item_status || '').toUpperCase(),
+  );
+
+  return {
+    isReturned: fullyReturned || refundedQuantity > 0 || hasReturnStatus,
+    fullyReturned,
+    refundedQuantity,
+    quantity,
+  };
+};
+
+export const getAffiliateOrderReturnSummary = (order = {}) => {
+  const items = getAffiliateOrderItems(order)
+    .map((item) => ({ ...item, ...getAffiliateOrderItemReturnState(item) }))
+    .filter((item) => item.isReturned);
+
+  return {
+    hasReturn: items.length > 0,
+    items,
+    fullyReturned: items.length > 0 && items.every((item) => item.fullyReturned),
+    returnedQuantity: items.reduce(
+      (total, item) => total + (item.fullyReturned ? item.quantity : item.refundedQuantity),
+      0,
+    ),
+  };
+};
+
 export const getAffiliateOrderCreators = (order = {}) => {
   const candidates = [...(Array.isArray(order.skus) ? order.skus : []), order];
   const creators = new Map();
@@ -650,11 +690,8 @@ export const getAffiliateOrderSettlementStatus = (order = {}) => {
   const statuses = items.map((item) => String(
     item.raw?.settlement_status || item.raw?.item_status || '',
   ).toUpperCase()).filter(Boolean);
-  const returned = items.some((item) => item.raw?.fully_return === true
-    || String(item.raw?.fully_return).toLowerCase() === 'true'
-    || (item.quantity > 0 && item.refundedQuantity >= item.quantity)
-    || /REFUND|RETURN|CANCEL/.test(String(item.raw?.settlement_status || item.raw?.item_status || '').toUpperCase()));
-  if (returned || /REFUND|RETURN|CANCEL/.test(String(order?.settlement_status || order?.order_status || order?.status || '').toUpperCase())) return 'REFUNDED';
+  const returned = items.some((item) => getAffiliateOrderItemReturnState(item).isReturned);
+  if (returned || /REFUND|RETURN/.test(String(order?.settlement_status || '').toUpperCase())) return 'REFUNDED';
   const orderStatus = String(order?.settlement_status || '').toUpperCase();
   if (statuses.some((status) => /UNSETTLED|PENDING|PROCESSING/.test(status)) || /UNSETTLED|PENDING|PROCESSING/.test(orderStatus)) return 'UNSETTLED';
   if ((statuses.length && statuses.every((status) => /SETTLED|COMPLETED/.test(status))) || /SETTLED|COMPLETED/.test(orderStatus)) return 'SETTLED';

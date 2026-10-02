@@ -18,7 +18,6 @@ import {
 } from '../../SellerAffiliatePanel/constants';
 import {
   defaultOrderRange,
-  defaultStatisticsRange,
   shiftDateValue,
   shopDateUnix,
   shopTimezone,
@@ -57,9 +56,12 @@ export const useShopOrders = () => {
   const [orderRange, setOrderRange] = useState(() => defaultOrderRange(30));
   const [orderFilterDraft, setOrderFilterDraft] = useState(DEFAULT_ORDER_FILTERS);
   const [orderFilters, setOrderFilters] = useState(DEFAULT_ORDER_FILTERS);
-  const [orderOverview, setOrderOverview] = useState({});
-  const [orderOverviewLoading, setOrderOverviewLoading] = useState(false);
-  const [orderOverviewError, setOrderOverviewError] = useState('');
+  const [tabOverview, setTabOverview] = useState({});
+  const [tabOverviewLoading, setTabOverviewLoading] = useState(false);
+  const [tabOverviewError, setTabOverviewError] = useState('');
+  const [filteredOrderOverview, setFilteredOrderOverview] = useState({});
+  const [filteredOverviewLoading, setFilteredOverviewLoading] = useState(false);
+  const [filteredOverviewError, setFilteredOverviewError] = useState('');
   const [keyword, setKeyword] = useState('');
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [data, setData] = useState({});
@@ -87,25 +89,50 @@ export const useShopOrders = () => {
 
   const currentPageToken = pageTokens.at(-1) || '';
 
-  const orderRequestFilters = useMemo(() => ({
+  const baseOrderRequestFilters = useMemo(() => ({
     startTime: shopDateUnix(orderRange.start, selectedShop?.region),
     endTime: shopDateUnix(shiftDateValue(orderRange.end, 1), selectedShop?.region),
     keyword: submittedKeyword,
     dateField: orderFilters.dateField,
-    orderStatus: orderFilters.orderStatus === 'all' ? '' : orderFilters.orderStatus,
     shippingType: orderFilters.shippingType === 'all' ? '' : orderFilters.shippingType,
     warehouse: orderFilters.warehouse,
     buyerCancellation: orderFilters.buyerCancellation === 'all' ? '' : orderFilters.buyerCancellation,
-    refundStatus: orderFilters.refundStatus === 'all' ? '' : orderFilters.refundStatus,
     settlementStatus: orderFilters.settlementStatus === 'all' ? '' : orderFilters.settlementStatus,
     carrier: orderFilters.carrier,
     productSku: orderFilters.productSku,
     settlementAmountMin: orderFilters.settlementMin,
     settlementAmountMax: orderFilters.settlementMax,
     deliveryIssue: orderFilters.deliveryIssue === 'all' ? '' : orderFilters.deliveryIssue,
-    attentionOnly: orderFilters.attentionOnly ? 'yes' : '',
     contentType: orderFilters.source === 'all' ? '' : orderFilters.source,
-  }), [orderFilters, orderRange.end, orderRange.start, selectedShop?.region, submittedKeyword]);
+  }), [
+    orderFilters.buyerCancellation,
+    orderFilters.carrier,
+    orderFilters.dateField,
+    orderFilters.deliveryIssue,
+    orderFilters.productSku,
+    orderFilters.settlementMax,
+    orderFilters.settlementMin,
+    orderFilters.settlementStatus,
+    orderFilters.shippingType,
+    orderFilters.source,
+    orderFilters.warehouse,
+    orderRange.end,
+    orderRange.start,
+    selectedShop?.region,
+    submittedKeyword,
+  ]);
+
+  const orderRequestFilters = useMemo(() => ({
+    ...baseOrderRequestFilters,
+    orderStatus: orderFilters.orderStatus === 'all' ? '' : orderFilters.orderStatus,
+    refundStatus: orderFilters.refundStatus === 'all' ? '' : orderFilters.refundStatus,
+    attentionOnly: orderFilters.attentionOnly ? 'yes' : '',
+  }), [
+    baseOrderRequestFilters,
+    orderFilters.attentionOnly,
+    orderFilters.orderStatus,
+    orderFilters.refundStatus,
+  ]);
 
   const orderFiltersDirty = useMemo(
     () => JSON.stringify(orderFilterDraft) !== JSON.stringify(orderFilters),
@@ -125,6 +152,11 @@ export const useShopOrders = () => {
     }
     return 'all';
   }, [orderFilters]);
+
+  const hasQuickOverviewFilter = activeQuickTab !== 'all';
+  const orderOverview = hasQuickOverviewFilter ? filteredOrderOverview : tabOverview;
+  const orderOverviewLoading = hasQuickOverviewFilter ? filteredOverviewLoading : tabOverviewLoading;
+  const orderOverviewError = hasQuickOverviewFilter ? filteredOverviewError : tabOverviewError;
 
   const shipmentSubStatus = useMemo(() => {
     if (orderFilters.orderStatus === 'AWAITING_SHIPMENT') return 'AWAITING_SHIPMENT';
@@ -232,7 +264,7 @@ export const useShopOrders = () => {
     });
   }, [shops]);
 
-  const load = useCallback(async (signal) => {
+  const loadOrders = useCallback(async (signal) => {
     if (!shopId || !hasScope) {
       setData({});
       setLoading(false);
@@ -240,8 +272,6 @@ export const useShopOrders = () => {
     }
     setLoading(true);
     setError('');
-    setOrderOverviewLoading(true);
-    setOrderOverviewError('');
 
     try {
       const activeFilters = {
@@ -251,42 +281,84 @@ export const useShopOrders = () => {
         pageToken: currentPageToken,
         orderId: '',
       };
-
-      const overviewFilters = {
-        ...orderRequestFilters,
-        orderStatus: '',
-        refundStatus: '',
-        attentionOnly: '',
-      };
-
-      const [ordersResult, overviewResult] = await Promise.allSettled([
-        fetchTikTokSellerAffiliateOrders(shopId, { signal, ...activeFilters }),
-        fetchTikTokSellerAffiliateOrderOverview(shopId, { signal, ...overviewFilters }),
-      ]);
-
-      if (ordersResult.status === 'rejected') throw ordersResult.reason;
-      if (!signal?.aborted) setData(ordersResult.value || {});
-
-      if (overviewResult.status === 'fulfilled') {
-        if (!signal?.aborted) setOrderOverview(overviewResult.value || {});
-      } else if (overviewResult.reason?.name !== 'AbortError' && !signal?.aborted) {
-        setOrderOverviewError(overviewResult.reason?.message || t('sellerAffiliate.loadError'));
-      }
+      const result = await fetchTikTokSellerAffiliateOrders(shopId, { signal, ...activeFilters });
+      if (!signal?.aborted) setData(result || {});
     } catch (err) {
       if (err.name !== 'AbortError') setError(err.message || t('sellerAffiliate.loadError'));
     } finally {
-      if (!signal?.aborted) {
-        setLoading(false);
-        setOrderOverviewLoading(false);
-      }
+      if (!signal?.aborted) setLoading(false);
     }
   }, [currentPageToken, hasScope, orderRequestFilters, shopId, t]);
 
   useEffect(() => {
     const controller = new AbortController();
-    load(controller.signal);
+    loadOrders(controller.signal);
     return () => controller.abort();
-  }, [load]);
+  }, [loadOrders]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!shopId || !hasScope) {
+      setTabOverview({});
+      setTabOverviewLoading(false);
+      return () => controller.abort();
+    }
+
+    setTabOverview({});
+    setTabOverviewLoading(true);
+    setTabOverviewError('');
+    fetchTikTokSellerAffiliateOrderOverview(shopId, {
+      signal: controller.signal,
+      ...baseOrderRequestFilters,
+      orderStatus: '',
+      refundStatus: '',
+      attentionOnly: '',
+    })
+      .then((result) => {
+        if (!controller.signal.aborted) setTabOverview(result || {});
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError' && !controller.signal.aborted) {
+          setTabOverviewError(err.message || t('sellerAffiliate.loadError'));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setTabOverviewLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [baseOrderRequestFilters, hasScope, shopId, t]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!shopId || !hasScope || !hasQuickOverviewFilter) {
+      setFilteredOrderOverview({});
+      setFilteredOverviewLoading(false);
+      setFilteredOverviewError('');
+      return () => controller.abort();
+    }
+
+    setFilteredOrderOverview({});
+    setFilteredOverviewLoading(true);
+    setFilteredOverviewError('');
+    fetchTikTokSellerAffiliateOrderOverview(shopId, {
+      signal: controller.signal,
+      ...orderRequestFilters,
+    })
+      .then((result) => {
+        if (!controller.signal.aborted) setFilteredOrderOverview(result || {});
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError' && !controller.signal.aborted) {
+          setFilteredOverviewError(err.message || t('sellerAffiliate.loadError'));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFilteredOverviewLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [hasQuickOverviewFilter, hasScope, orderRequestFilters, shopId, t]);
 
   const rows = useMemo(() => data.orders || data.affiliate_orders || [], [data]);
 
@@ -427,6 +499,7 @@ export const useShopOrders = () => {
     showAdvancedFilters,
     setShowAdvancedFilters,
     submitSearch,
+    tabOverview,
     t,
     totalPages,
     updateOrderFilter,

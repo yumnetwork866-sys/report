@@ -15,7 +15,7 @@ export const OrderCompactKpi = ({
   const kpis = orderOverview.kpis || {};
   const topProducts = orderOverview.top_products || {};
 
-  const totalOrders = kpis.sales_orders ?? kpis.orders;
+  const totalOrders = kpis.orders ?? kpis.sales_orders;
   const grossRevenue = kpis.gross_revenue || kpis.affiliate_gmv;
   const netRevenue = kpis.net_revenue;
   const refundRevenue = kpis.refunded_revenue;

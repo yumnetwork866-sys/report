@@ -969,6 +969,11 @@
   border-color: color-mix(in srgb, var(--color-border) 80%, var(--color-primary));
 }
 
+.seller-affiliate__order-detail-product.is-returned {
+  border-color: color-mix(in srgb, var(--color-danger) 28%, var(--color-border));
+  background: color-mix(in srgb, var(--color-danger) 5%, var(--color-surface));
+}
+
 .seller-affiliate__order-detail-product > img,
 .seller-affiliate__order-detail-product > .seller-affiliate__order-product-placeholder {
   width: 50px;
@@ -1052,6 +1057,69 @@ a.seller-affiliate__order-product-name:hover {
   color: var(--color-text);
   font-weight: 700;
   font-size: 0.75rem;
+}
+
+.seller-affiliate__order-return-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 24%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: var(--color-danger);
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.seller-affiliate__order-return-section {
+  border-left: 3px solid var(--color-danger);
+}
+
+.seller-affiliate__order-return-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.seller-affiliate__order-return-products {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+}
+
+.seller-affiliate__order-return-products > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.seller-affiliate__order-return-products > div:last-child {
+  border-bottom: 0;
+}
+
+.seller-affiliate__order-return-products span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.seller-affiliate__order-return-products span > strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seller-affiliate__order-return-products small {
+  color: var(--color-text-soft);
 }
 
 .seller-affiliate__order-detail-product-price {
@@ -1338,6 +1406,12 @@ a.seller-affiliate__order-product-name:hover {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.seller-affiliate__order-product.is-returned {
+  padding: 6px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-danger) 5%, transparent);
 }
 
 .seller-affiliate__order-product-thumb,

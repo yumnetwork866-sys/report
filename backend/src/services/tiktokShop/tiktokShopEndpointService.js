@@ -142,8 +142,9 @@ const productPerformance = (orders = [], products = []) => {
       const currency = moneyCurrency(sku.price, sku.currency || order.currency);
       const quantity = Math.max(0, Number(sku.quantity) || 0);
       const explicitRefunded = Math.max(0, Number(sku.refunded_quantity ?? sku.refund_quantity) || 0);
-      const returned = sku.fully_return === true || String(sku.fully_return).toLowerCase() === 'true'
-        || /REFUND|RETURN|CANCEL/.test(String(sku.settlement_status || sku.item_status || '').toUpperCase());
+      const returned = sku.fully_return === true
+        || ['true', 'yes', '1'].includes(String(sku.fully_return || '').trim().toLowerCase())
+        || /REFUND|RETURN/.test(String(sku.settlement_status || sku.item_status || '').toUpperCase());
       const refundedQuantity = explicitRefunded || (returned ? quantity : 0);
       const gross = price * quantity;
       const transaction = financeBySku.get(String(sku.sku_id || ''));
@@ -1174,7 +1175,6 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
           { refunded_quantity: { [Op.gt]: 0 } },
           { settlement_status: { [Op.iLike]: '%REFUND%' } },
           { settlement_status: { [Op.iLike]: '%RETURN%' } },
-          { settlement_status: { [Op.iLike]: '%CANCEL%' } },
         ],
       });
     } else if (filterSettlement === 'UNSETTLED') {
@@ -1447,7 +1447,6 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
         { refunded_quantity: { [Op.gt]: 0 } },
         { settlement_status: { [Op.iLike]: '%REFUND%' } },
         { settlement_status: { [Op.iLike]: '%RETURN%' } },
-        { settlement_status: { [Op.iLike]: '%CANCEL%' } },
       ],
     });
   } else if (filterSettlement === 'UNSETTLED') {

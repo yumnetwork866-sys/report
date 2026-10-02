@@ -6,6 +6,8 @@ import { fetchShopOrderTracking, fetchTikTokShopVideoThumbnail } from '../../../
 import {
   getAffiliateOrderCommission,
   getAffiliateOrderCreators,
+  getAffiliateOrderItemReturnState,
+  getAffiliateOrderReturnSummary,
   getAffiliateOrderSettlementStatus,
   getAffiliateOrderSources,
   getAffiliateOrderValue,
@@ -157,23 +159,33 @@ export const MarketplaceCreatorCell = ({ creator, followerCount, t }) => {
 export const AffiliateOrderProducts = ({ row, t }) => {
   const items = getOrderProductDetails(row);
   if (!items.length) return '—';
-  return <div className="seller-affiliate__order-products">{items.map((item) => (
-    <div className="seller-affiliate__order-product" key={item.id}>
-      <span className="seller-affiliate__order-product-thumb">
-        {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
-        <span
-          className="booking-video-expansion__product-badge"
-          aria-label={`${t('sellerAffiliate.quantity')}: ${item.quantity}`}
-        >
-          x{item.quantity}
+  return <div className="seller-affiliate__order-products">{items.map((item) => {
+    const returnState = getAffiliateOrderItemReturnState(item);
+    return (
+      <div className={`seller-affiliate__order-product${returnState.isReturned ? ' is-returned' : ''}`} key={item.id}>
+        <span className="seller-affiliate__order-product-thumb">
+          {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="seller-affiliate__order-product-placeholder" aria-hidden="true">P</span>}
+          <span
+            className="booking-video-expansion__product-badge"
+            aria-label={`${t('sellerAffiliate.quantity')}: ${item.quantity}`}
+          >
+            x{item.quantity}
+          </span>
         </span>
-      </span>
-      <span className="seller-affiliate__order-product-info">
-        {item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer" title={item.productName} onClick={(event) => event.stopPropagation()}>{item.productName}</a> : <strong title={item.productName}>{item.productName}</strong>}
-        <span className="row-subtitle">{item.skuName.replace(/^phân loại\s*:?\s*/i, '') || t('sellerAffiliate.defaultSku')}{item.sellerSku ? ` · ${item.sellerSku}` : ''}</span>
-      </span>
-    </div>
-  ))}</div>;
+        <span className="seller-affiliate__order-product-info">
+          {item.productUrl ? <a href={item.productUrl} target="_blank" rel="noreferrer" title={item.productName} onClick={(event) => event.stopPropagation()}>{item.productName}</a> : <strong title={item.productName}>{item.productName}</strong>}
+          <span className="row-subtitle">{item.skuName.replace(/^phân loại\s*:?\s*/i, '') || t('sellerAffiliate.defaultSku')}{item.sellerSku ? ` · ${item.sellerSku}` : ''}</span>
+          {returnState.isReturned ? (
+            <span className="seller-affiliate__order-return-badge">
+              {returnState.fullyReturned
+                ? t('sellerAffiliate.returnedFully')
+                : t('sellerAffiliate.returnedQuantity', { count: returnState.refundedQuantity, total: returnState.quantity })}
+            </span>
+          ) : null}
+        </span>
+      </div>
+    );
+  })}</div>;
 };
 
 export const AffiliateOrderSummary = ({ row, t }) => <div className="seller-affiliate__order-summary">
@@ -342,6 +354,7 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
   const status = String(order.order_status || order.status || 'UNKNOWN').toUpperCase();
   const shipping = getOrderShipping(order);
   const products = getOrderProductDetails(order);
+  const returnSummary = getAffiliateOrderReturnSummary(order);
   const finance = getOrderFinanceSummary(order);
   const breakdown = getOrderFinanceBreakdown(order);
   const timeline = getUnifiedOrderTimeline(order, trackingNodes, t);
@@ -360,6 +373,10 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
   const creators = getAffiliateOrderCreators(order);
   const sources = getAffiliateOrderSources(order);
   const trackingUrl = getTrackingUrl(shipping.provider, shipping.trackingNumber);
+  const refundAmount = Number(finance?.refund?.amount) > 0 ? finance.refund : null;
+  const returnSettlementStatuses = [...new Set(returnSummary.items
+    .map((item) => item.raw?.settlement_status || item.raw?.item_status)
+    .filter(Boolean))];
 
   const copyTrackingNumber = async () => {
     if (!shipping.trackingNumber || !navigator.clipboard) return;
@@ -535,6 +552,7 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
                 <h3>{t('sellerAffiliate.orderDetailProducts')}</h3>
                 <div className="seller-affiliate__order-detail-products">
                   {products.length ? products.map((item) => {
+                    const returnState = getAffiliateOrderItemReturnState(item);
                     const hasDiscount = Boolean(item.totalDiscount?.amount > 0);
                     const hasOriginalDiff = Boolean(
                       item.originalPrice?.amount && item.salePrice?.amount
@@ -543,7 +561,7 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
                     const showOriginal = hasOriginalDiff || hasDiscount;
 
                     return (
-                      <article className="seller-affiliate__order-detail-product" key={item.id}>
+                      <article className={`seller-affiliate__order-detail-product${returnState.isReturned ? ' is-returned' : ''}`} key={item.id}>
                         {item.imageUrl ? (
                           <img src={item.imageUrl} alt="" loading="lazy" />
                         ) : (
@@ -582,6 +600,13 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
                             <span className="seller-affiliate__order-product-qty">
                               x{item.quantity}
                             </span>
+                            {returnState.isReturned ? (
+                              <span className="seller-affiliate__order-return-badge">
+                                {returnState.fullyReturned
+                                  ? t('sellerAffiliate.returnedFully')
+                                  : t('sellerAffiliate.returnedQuantity', { count: returnState.refundedQuantity, total: returnState.quantity })}
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                         <div className="seller-affiliate__order-detail-product-price">
@@ -868,6 +893,54 @@ export const OrderDetailDrawer = ({ order, shopId, onClose, formatTime, formatMo
 
           {activeTab === 'finance_settlement' ? (
             <div role="tabpanel" id="order-panel-finance_settlement" aria-labelledby="order-tab-finance_settlement" className="seller-affiliate__order-tab-panel">
+              {returnSummary.hasReturn ? (
+                <section className="drawer-section seller-affiliate__order-detail-section seller-affiliate__order-return-section">
+                  <div className="seller-affiliate__order-return-heading">
+                    <h3>{t('sellerAffiliate.returnAndRefund')}</h3>
+                    <span className="seller-affiliate__order-return-badge">
+                      {returnSummary.fullyReturned
+                        ? t('sellerAffiliate.returnedFully')
+                        : t('sellerAffiliate.returnedPartially')}
+                    </span>
+                  </div>
+                  <div className="seller-affiliate__order-return-products">
+                    {returnSummary.items.map((item) => (
+                      <div key={item.id}>
+                        <span>
+                          <strong>{item.productName}</strong>
+                          {item.skuName ? <small>{item.skuName}</small> : null}
+                        </span>
+                        <strong>
+                          {t('sellerAffiliate.returnedQuantity', {
+                            count: item.fullyReturned ? item.quantity : item.refundedQuantity,
+                            total: item.quantity,
+                          })}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                  <dl className="seller-affiliate__order-detail-grid seller-affiliate__order-detail-grid--compact">
+                    <div>
+                      <dt>{t('sellerAffiliate.returnedItemCount')}</dt>
+                      <dd>{returnSummary.returnedQuantity}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sellerAffiliate.refundAmount')}</dt>
+                      <dd>{refundAmount
+                        ? formatMoneyValues([refundAmount])
+                        : t('sellerAffiliate.refundAmountUnavailable')}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sellerAffiliate.settlementStatus')}</dt>
+                      <dd>{returnSettlementStatuses.join(', ') || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>{t('sellerAffiliate.orderStatus')}</dt>
+                      <dd>{orderStatusLabel(status, t)}</dd>
+                    </div>
+                  </dl>
+                </section>
+              ) : null}
               <section className="drawer-section seller-affiliate__order-detail-section">
                 <h3>{t('sellerAffiliate.orderDetailFinance')}</h3>
                 {order.finance_status === 'AVAILABLE' && finance ? (
