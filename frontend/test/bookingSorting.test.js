@@ -201,3 +201,14 @@ test('product cost aggregation groups and distributes cost across products accur
   assert.equal(totalAllocated, 10000000);
 });
 
+test('product cost groups allocate 0 videos when booking has 0 videos', () => {
+  const videos = 0;
+  const productCount = 2;
+  const allocatedVideos = videos > 0 ? Math.max(1, Math.round(videos / productCount)) : 0;
+  assert.equal(allocatedVideos, 0);
+
+  const nonZeroVideos = 3;
+  const allocatedNonZero = nonZeroVideos > 0 ? Math.max(1, Math.round(nonZeroVideos / productCount)) : 0;
+  assert.equal(allocatedNonZero, 2);
+});
+

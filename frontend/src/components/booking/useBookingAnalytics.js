@@ -433,7 +433,7 @@ export default function useBookingAnalytics({
       } else {
         const allocatedCost = convertedCost / productCount;
         const allocatedRevenue = convertedRevenue / productCount;
-        const allocatedVideos = Math.max(1, Math.round(videos / productCount));
+        const allocatedVideos = videos > 0 ? Math.max(1, Math.round(videos / productCount)) : 0;
         const allocatedViews = Math.round(views / productCount);
 
         for (const product of products) {
@@ -479,7 +479,10 @@ export default function useBookingAnalytics({
     }
 
     for (const group of groups.values()) {
-      group.kocCount = group.creatorKeys.size;
+      group.kocCount = countPaidBookingKocs(
+        group.bookings,
+        (booking) => bookingInPeriodById.get(String(booking.id)),
+      );
     }
 
     return [...groups.values()];

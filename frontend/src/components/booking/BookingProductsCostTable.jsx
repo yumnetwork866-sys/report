@@ -1,7 +1,7 @@
 import React from 'react';
 import BookingEvaluationTable from './BookingEvaluationTable';
 import BookingDetailProduct from './BookingDetailProduct';
-import { SortIcon } from './BookingIcons';
+import { HeaderTooltip, SortIcon } from './BookingIcons';
 
 const BookingProductsCostTable = ({
   groups = [],
@@ -33,6 +33,9 @@ const BookingProductsCostTable = ({
             <th key={key} className={`${className} sortable-th`.trim()}>
               <button type="button" className="table-sort-btn" onClick={() => onOverviewSort(key)}>
                 <span>{t(label, { defaultValue: key === 'product' ? 'Sản phẩm' : label })}</span>
+                {key === 'koc' ? (
+                  <HeaderTooltip text={t('booking.paidKocTooltip')} />
+                ) : null}
                 <SortIcon active={overviewSort.key === key} direction={overviewSort.direction} />
               </button>
             </th>
