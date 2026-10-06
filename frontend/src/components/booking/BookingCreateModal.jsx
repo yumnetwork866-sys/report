@@ -26,6 +26,7 @@ const BookingCreateModal = ({
   shops = [],
   selectedShopId = '',
   onSelectShopId,
+  onSelectCustomCreator,
   t,
 }) => {
   const [productPickerOpen, setProductPickerOpen] = useState(false);
@@ -93,6 +94,7 @@ const BookingCreateModal = ({
                 collaborationLabel={t('booking.collaboration')}
                 loadMoreLabel={t('booking.loadMoreKocs')}
                 loadingLabel={t('booking.loadingKocs')}
+                onSelectCustomCreator={onSelectCustomCreator}
               />
             </div>
             <div className="field booking-product-picker-field">

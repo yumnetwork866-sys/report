@@ -549,13 +549,32 @@ const BookingManagement = ({
     () => targetKocs.find((creator) => targetKocKey(creator) === form.creator_key) || null,
     [form.creator_key, targetKocs],
   );
-  const selectedKoc = selectedKocDetail?.key === form.creator_key ? selectedKocDetail.creator : null;
+  const selectedKoc = (selectedKocDetail?.key === form.creator_key ? selectedKocDetail.creator : null)
+    || selectedKocSummary;
   const activeShopId = String(
     selectedShopId
     || selectedKocSummary?.shop_id
     || targetKocs[0]?.shop_id
     || (shops[0] ? shops[0].id : '')
   );
+
+  const handleSelectCustomCreator = useCallback((rawUsername) => {
+    const username = String(rawUsername || '').trim().replace(/^@+/, '');
+    if (!username) return;
+    const shopId = Number(activeShopId) || 1;
+    const customCreator = {
+      shop_id: shopId,
+      creator_open_id: null,
+      username,
+      nickname: username,
+      avatar_url: null,
+      collaboration_count: 0,
+    };
+    const key = `${shopId}:username:${username.toLowerCase()}`;
+    setSelectedKocDetail({ key, creator: customCreator });
+    setTargetKocs((current) => [customCreator, ...current.filter((c) => targetKocKey(c) !== key)]);
+    setForm((current) => ({ ...current, creator_key: key }));
+  }, [activeShopId]);
 
   useEffect(() => {
     if (selectedKocSummary?.shop_id) {
@@ -623,8 +642,10 @@ const BookingManagement = ({
       setSelectedKocDetail(null);
       return undefined;
     }
+    if (selectedKocDetail?.key === form.creator_key && selectedKocDetail?.creator) {
+      return undefined;
+    }
     const controller = new AbortController();
-    setSelectedKocDetail(null);
     fetchBookingTargetKocDetail({
       shopId: selectedKocSummary.shop_id,
       creatorOpenId: selectedKocSummary.creator_open_id,
@@ -634,9 +655,13 @@ const BookingManagement = ({
       .then((creator) => {
         setSelectedKocDetail({ key: form.creator_key, creator });
       })
-      .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          setSelectedKocDetail({ key: form.creator_key, creator: selectedKocSummary });
+        }
+      });
     return () => controller.abort();
-  }, [form.creator_key, selectedKocSummary, t]);
+  }, [form.creator_key, selectedKocSummary, selectedKocDetail, t]);
 
   const {
     stats,
@@ -696,9 +721,11 @@ const BookingManagement = ({
       const created = await createBooking({
         staff_id: Number(loggedInUserId || form.staff_id || 1),
         target_shop_id: Number(activeShopId) || selectedKoc.shop_id,
-        target_collaboration_id: selectedKoc.collaboration_id || null,
-        creator_open_id: selectedKoc.creator_open_id,
+        target_collaboration_id: selectedKoc.shop_id === Number(activeShopId) ? (selectedKoc.collaboration_id || null) : null,
+        creator_open_id: selectedKoc.creator_open_id || null,
         creator_username: selectedKoc.username,
+        creator_name: selectedKoc.nickname || selectedKoc.username,
+        creator_avatar_url: selectedKoc.avatar_url || null,
         total_cost: Number(form.total_cost),
         currency: selectedCurrency,
         start_date: form.booking_date || dateInputValue(new Date()),
@@ -926,6 +953,7 @@ const BookingManagement = ({
           setSelectedShopId(String(shopId));
           setForm((c) => ({ ...c, product_ids: [] }));
         }}
+        onSelectCustomCreator={handleSelectCustomCreator}
         t={t}
       />
 

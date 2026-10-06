@@ -73,9 +73,13 @@ const createBooking = async ({ body, session }) => {
     creatorOpenId: body.creator_open_id,
     creatorUsername: body.creator_username,
     performanceWindow: body.performance_window_type,
+    fallbackProfile: {
+      nickname: body.creator_name || body.nickname,
+      avatar_url: body.creator_avatar_url || body.avatar_url,
+    },
   });
   if (!targetCreator) {
-    throw requestError('Select a KOC from synced Target Collaboration or Creator Performance data.');
+    throw requestError('Please select or provide a TikTok creator username.');
   }
 
   const {

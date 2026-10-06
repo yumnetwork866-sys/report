@@ -16,6 +16,8 @@ const TargetKocCombobox = ({
   collaborationLabel,
   loadMoreLabel,
   loadingLabel,
+  onSelectCustomCreator,
+  customCreatorLabel,
 }) => {
   const rootRef = useRef(null);
   const selectedCreator = useMemo(
@@ -92,6 +94,31 @@ const TargetKocCombobox = ({
       </div>
       {open ? (
         <div className="booking-koc-combobox__menu" id="booking-koc-options" role="listbox">
+          {(() => {
+            const cleanQuery = query.trim().replace(/^@+/, '');
+            const hasExactMatch = cleanQuery && creators.some(
+              (c) => (c.username || '').toLowerCase() === cleanQuery.toLowerCase(),
+            );
+            return cleanQuery && !hasExactMatch ? (
+              <button
+                className="booking-koc-combobox__option"
+                type="button"
+                role="option"
+                style={{ borderBottom: '1px dashed var(--border-color, #e2e8f0)', background: 'var(--bg-subtle, #f8fafc)' }}
+                onClick={() => {
+                  onSelectCustomCreator?.(cleanQuery);
+                  setQuery(cleanQuery);
+                  setOpen(false);
+                }}
+              >
+                <TargetKocAvatar src={null} name={cleanQuery} />
+                <span>
+                  <strong>@{cleanQuery}</strong>
+                  <small>{customCreatorLabel || `+ Sử dụng @${cleanQuery} (KOC mới)`}</small>
+                </span>
+              </button>
+            ) : null;
+          })()}
           {creators.length ? creators.map((creator) => (
             <button
               className={`booking-koc-combobox__option${targetKocKey(creator) === value ? ' booking-koc-combobox__option--active' : ''}`}

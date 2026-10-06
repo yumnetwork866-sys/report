@@ -13,6 +13,7 @@ const {
   TikTokPartnerAuthorization,
   TikTokShop,
   TikTokTargetCollaborationSnapshot,
+  TikTokCreatorProfile,
   User,
   sequelize,
 } = require('../models');
@@ -84,20 +85,39 @@ const deleteById = (bookingId) => Booking.destroy({
   where: { id: bookingId },
 });
 
-const findTargetCollaborations = async ({ shopId, collaborationId }) => {
+const findTargetCollaborations = async ({ shopId, collaborationId } = {}) => {
   if (collaborationId) {
     const row = await TikTokTargetCollaborationSnapshot.findOne({
-      where: { shop_id: shopId, collaboration_id: collaborationId },
+      where: {
+        ...(shopId ? { shop_id: shopId } : {}),
+        collaboration_id: collaborationId,
+      },
     });
     return row ? [row] : [];
   }
   if (!TikTokTargetCollaborationSnapshot?.findAll) return [];
   return TikTokTargetCollaborationSnapshot.findAll({
     where: {
-      shop_id: shopId,
+      ...(shopId ? { shop_id: shopId } : {}),
       status: { [Op.in]: ['ONGOING', 'VALID', 'EXPIRING'] },
     },
     order: [['end_at', 'DESC'], ['synced_at', 'DESC']],
+  });
+};
+
+const findCreatorProfile = ({ creatorOpenId, username } = {}) => {
+  if (!TikTokCreatorProfile?.findOne) return Promise.resolve(null);
+  const normalizedUsername = String(username || '').trim().replace(/^@+/, '');
+  const openId = String(creatorOpenId || '').trim();
+  if (!openId && !normalizedUsername) return Promise.resolve(null);
+  return TikTokCreatorProfile.findOne({
+    where: {
+      [Op.or]: [
+        ...(openId ? [{ creator_open_id: openId }] : []),
+        ...(normalizedUsername ? [{ username: { [Op.iLike]: normalizedUsername } }] : []),
+      ],
+    },
+    order: [['refreshed_at', 'DESC'], ['id', 'DESC']],
   });
 };
 
@@ -196,6 +216,7 @@ module.exports = {
   findCachedShopVideos,
   findCreatorPerformance,
   findCreatorPerformanceSnapshots,
+  findCreatorProfile,
   findCreatorVideoMetrics,
   findForProductPerformance,
   findKoc,

@@ -201,3 +201,69 @@ test('booking performance service resolves month range and formats the response'
     endTime: 20,
   });
 });
+
+test('findTargetCreator resolves cross-shop creator when target shop has no synced records', async (t) => {
+  const targetService = loadWithMocks(t, '../src/services/booking/bookingTargetService', {
+    '../src/repositories/bookingRepository': {
+      findTargetCollaborations: async ({ shopId }) => {
+        // Shop 7 has no collabs, but Shop 1 has
+        if (shopId === 7) return [];
+        return [];
+      },
+      findCreatorPerformance: async ({ shopId, username }) => {
+        // If searching shop 7, not found
+        if (shopId === 7) return null;
+        // If searching across all shops (shopId is undefined), found!
+        if (!shopId && username === 'cross_creator') {
+          return {
+            toJSON: () => ({
+              creator_open_id: 'open-123',
+              username: 'cross_creator',
+              nickname: 'Cross Creator',
+              avatar_url: 'https://img.com/avatar.jpg',
+            }),
+          };
+        }
+        return null;
+      },
+    },
+    '../src/services/booking/bookingPerformanceService': {
+      enrichPerformanceViews: async (p) => p,
+    },
+  });
+
+  const resolved = await targetService.findTargetCreator({
+    shopId: 7,
+    creatorUsername: 'cross_creator',
+  });
+
+  assert.equal(resolved.shopId, 7);
+  assert.equal(resolved.profile.username, 'cross_creator');
+  assert.equal(resolved.profile.nickname, 'Cross Creator');
+  assert.equal(resolved.profile.avatar_url, 'https://img.com/avatar.jpg');
+  assert.equal(resolved.performance, null);
+});
+
+test('findTargetCreator falls back to raw username for completely new creator without sync data', async (t) => {
+  const targetService = loadWithMocks(t, '../src/services/booking/bookingTargetService', {
+    '../src/repositories/bookingRepository': {
+      findTargetCollaborations: async () => [],
+      findCreatorPerformance: async () => null,
+      findCreatorProfile: async () => null,
+    },
+    '../src/services/booking/bookingPerformanceService': {
+      enrichPerformanceViews: async (p) => p,
+    },
+  });
+
+  const resolved = await targetService.findTargetCreator({
+    shopId: 7,
+    creatorUsername: '@brand_new_koc',
+    fallbackProfile: { nickname: 'Brand New KOC' },
+  });
+
+  assert.equal(resolved.shopId, 7);
+  assert.equal(resolved.profile.username, 'brand_new_koc');
+  assert.equal(resolved.profile.nickname, 'Brand New KOC');
+  assert.equal(resolved.performance, null);
+});
