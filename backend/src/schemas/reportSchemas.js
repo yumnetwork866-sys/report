@@ -3,7 +3,6 @@ const {
   optionalIsoDate, positiveId, tiktokVideoId, withDateRange,
 } = require('./commonSchemas');
 
-const reportIdParamsSchema = z.object({ id: positiveId('report ID') });
 const creatorIdParamsSchema = z.object({ creatorId: positiveId('creator ID') });
 const memberIdParamsSchema = z.object({ userId: positiveId('user ID') });
 const videoRevenueParamsSchema = z.object({
@@ -19,6 +18,5 @@ module.exports = {
   creatorIdParamsSchema,
   memberIdParamsSchema,
   reportDateQuerySchema,
-  reportIdParamsSchema,
   videoRevenueParamsSchema,
 };

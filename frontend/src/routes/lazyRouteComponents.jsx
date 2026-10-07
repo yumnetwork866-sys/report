@@ -25,8 +25,6 @@ export const ScheduleManagement = lazyWithReload(() => import('../components/Sch
 export const QueueManagement = lazyWithReload(() => import('../components/QueueManagement'));
 export const HomePage = lazyWithReload(() => import('../components/HomePage'));
 export const Login = lazyWithReload(() => import('../components/Login'));
-export const PublicReport = lazyWithReload(() => import('../components/PublicReport'));
-
 export const TermsPage = lazyWithReload(() => import('../pages/legal/TermsPage'));
 export const PrivacyPage = lazyWithReload(() => import('../pages/legal/PrivacyPage'));
 export const DataDeletionPage = lazyWithReload(() => import('../pages/legal/DataDeletionPage'));

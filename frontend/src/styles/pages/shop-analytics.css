@@ -1884,11 +1884,6 @@
 
 
 @media (prefers-reduced-motion: reduce) {
-.shop-analytics__status i,
-  .ai-chat-panel__brand strong::before {
-    animation: none;
-    box-shadow: none;
-  }
 }
 
 

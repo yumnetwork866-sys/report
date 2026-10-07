@@ -528,27 +528,6 @@
   transform: rotate(45deg);
 }
 
-.ai-chat-panel__brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.ai-chat-panel__brand strong {
-  display: block;
-  color: var(--color-text);
-  font-size: 0.96rem;
-  line-height: 1.2;
-}
-
-.ai-chat-panel__brand span {
-  display: block;
-  color: var(--color-muted);
-  font-size: 0.76rem;
-  line-height: 1.35;
-}
-
 @media (max-width: 900px) {
 
   .topbar__inner {
@@ -1099,55 +1078,6 @@ h6),
   color: var(--color-primary);
 }
 
-.ai-chat-panel__brand strong {
-  font-family: var(--font-heading);
-  font-weight: 700;
-}
-
-.ai-chat-panel__brand strong::before {
-  content: '';
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  margin-right: 8px;
-  border-radius: var(--radius-sm);
-  background: #0f9f91;
-  box-shadow: none;
-  animation: kinetic-status-pulse 1.9s ease-out infinite;
-}
-
-.ai-chat-panel__brand {
-  gap: 10px;
-}
-
-.ai-chat-panel__brand strong {
-  font-size: 0.92rem;
-}
-
-.ai-chat-panel__brand strong::before {
-  display: none;
-}
-
-.ai-chat-panel__brand > div span {
-  position: relative;
-  margin-top: 3px;
-  padding-left: 11px;
-  color: var(--color-muted);
-  font-size: 0.72rem;
-}
-
-.ai-chat-panel__brand > div > span::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #16a085;
-  transform: translateY(-50%);
-}
-
 @media (min-width: 600px) and (max-width: 1023px) {
 .topbar__inner {
     display: flex;
@@ -1327,54 +1257,6 @@ h6),
 .topbar__connect-trigger:focus-visible {
   outline-color: var(--color-action);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-action) 30%, transparent);
-}
-
-.ai-chat-panel__brand > div > span::before {
-  background: var(--color-action);
-}
-
-.ai-chat-panel__brand {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.ai-chat-panel__brand > div {
-  display: grid;
-  min-height: 40px;
-  align-content: center;
-}
-
-.ai-chat-panel__brand strong {
-  display: block;
-  overflow: hidden;
-  color: #182946;
-  font-family: var(--font-heading);
-  font-size: 0.94rem;
-  font-weight: 750;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ai-chat-panel__brand strong::before,
-.ai-chat-panel__brand > div > span::before {
-  display: none;
-  content: none;
-}
-
-.ai-chat-panel__brand > div > span {
-  display: block;
-  margin-top: 3px;
-  padding: 0;
-  overflow: hidden;
-  color: #56677f;
-  font-size: 0.72rem;
-  font-weight: 500;
-  line-height: 1.35;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Sidebar and workspace layout: canonical styles */

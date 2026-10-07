@@ -39,7 +39,6 @@ export const useChannelReportData = () => {
   const memberRequestRef = useRef(new Map());
   const videoRevenueRequestRef = useRef(null);
   const [videoRevenueDetail, setVideoRevenueDetail] = useState(null);
-  const [expandedRevenueDates, setExpandedRevenueDates] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
@@ -128,7 +127,6 @@ export const useChannelReportData = () => {
     setMemberTabs({});
     videoRevenueRequestRef.current?.abort();
     setVideoRevenueDetail(null);
-    setExpandedRevenueDates(new Set());
   }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
   
   useEffect(() => () => videoRevenueRequestRef.current?.abort(), []);
@@ -433,7 +431,6 @@ export const useChannelReportData = () => {
     videoRevenueRequestRef.current?.abort();
     videoRevenueRequestRef.current = null;
     setVideoRevenueDetail(null);
-    setExpandedRevenueDates(new Set());
   };
   
   const openVideoRevenueDetail = async (video) => {
@@ -441,7 +438,6 @@ export const useChannelReportData = () => {
     videoRevenueRequestRef.current?.abort();
     const controller = new AbortController();
     videoRevenueRequestRef.current = controller;
-    setExpandedRevenueDates(new Set());
     setVideoRevenueDetail({ video, loading: true, error: '', data: null });
     try {
       const data = await fetchChannelReportVideoDailyRevenue(video.platform_video_id, {
@@ -475,7 +471,6 @@ export const useChannelReportData = () => {
     endDate,
     error,
     expandedMemberIds,
-    expandedRevenueDates,
     formatDailyDate,
     formatNumber,
     formatPublishedDate,
@@ -504,7 +499,6 @@ export const useChannelReportData = () => {
     selectedTeamIds,
     setActiveReportTab,
     setEndDate,
-    setExpandedRevenueDates,
     setMemberTabs,
     setProductSearchQuery,
     setProductTeamFilter,

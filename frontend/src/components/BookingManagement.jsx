@@ -70,7 +70,6 @@ const BookingManagement = ({
   const [searchParams, setSearchParams] = useSearchParams();
   const [bookings, setBookings] = useState([]);
   const [users, setUsers] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(true);
   const [targetKocs, setTargetKocs] = useState([]);
   const [targetKocQuery, setTargetKocQuery] = useState('');
   const performanceWindow = DEFAULT_PERFORMANCE_WINDOW;
@@ -376,11 +375,9 @@ const BookingManagement = ({
       setUsers(currentUser?.id ? [currentUser] : []);
       setForm((current) => ({ ...current, staff_id: currentUser?.id ? String(currentUser.id) : '' }));
       if (!currentUser?.id) {
-        setUsersLoading(false);
         return undefined;
       }
       const controller = new AbortController();
-      setUsersLoading(true);
       fetchUser(currentUser.id, controller.signal)
         .then((user) => {
           if (!controller.signal.aborted) setUsers(user ? [user] : [currentUser]);
@@ -388,16 +385,13 @@ const BookingManagement = ({
         .catch((err) => {
           if (err.name !== 'AbortError' && !controller.signal.aborted) setUsers([currentUser]);
         })
-        .finally(() => { if (!controller.signal.aborted) setUsersLoading(false); });
       return () => controller.abort();
     }
 
     const controller = new AbortController();
-    setUsersLoading(true);
     fetchUsers(controller.signal)
       .then((rows) => setUsers(Array.isArray(rows) ? rows : []))
-      .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
-      .finally(() => { if (!controller.signal.aborted) setUsersLoading(false); });
+      .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
   }, [canManageUsers, session, t]);
 
@@ -667,7 +661,6 @@ const BookingManagement = ({
     stats,
     bookingGroups,
     bookingGroupsToRender,
-    productCostGroups,
     sortedProductCostGroupsToRender,
     bookingManagerFilterValue,
     sortedBookingGroupsToRender,

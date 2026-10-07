@@ -11,7 +11,6 @@ import {
   KOCPerformance,
   Login,
   PrivacyPage,
-  PublicReport,
   ScheduleManagement,
   QueueManagement,
   SellerAffiliatePanel,
@@ -49,7 +48,6 @@ export const publicRouteConfig = [
   { path: '/terms', element: <TermsPage /> },
   { path: '/privacy', element: <PrivacyPage /> },
   { path: '/data-deletion', element: <DataDeletionPage /> },
-  { path: '/shared/reports/:token', element: <PublicReport /> },
 ];
 
 export const protectedRouteConfig = protectedRouteCards.map(({ path, component, props, permission }) => ({

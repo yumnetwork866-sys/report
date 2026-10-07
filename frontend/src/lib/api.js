@@ -495,14 +495,6 @@ export function fetchVideoOptions(signal) {
   return apiRequest('/videos/options', { signal });
 }
 
-export function fetchReports(signal) {
-  return apiRequest('/reports', { signal });
-}
-
-export function fetchPublicReport(token, signal) {
-  return apiRequest(`/public/reports/${encodeURIComponent(token)}`, { signal });
-}
-
 export function fetchKpis(signal, role, filters = {}) {
   const params = new URLSearchParams();
   if (role) params.set('role', role);
@@ -711,21 +703,6 @@ export function createAssignment(payload) {
     method: 'POST',
     body: payload,
   });
-}
-
-export function generateWeeklyReport(payload) {
-  return apiRequest('/reports/generate', {
-    method: 'POST',
-    body: payload,
-  });
-}
-
-export function shareReport(reportId) {
-  return apiRequest(`/reports/${encodeURIComponent(reportId)}/share`, { method: 'POST' });
-}
-
-export function deleteReport(reportId) {
-  return apiRequest(`/reports/${encodeURIComponent(reportId)}`, { method: 'DELETE' });
 }
 
 export function loginAdmin(payload) {

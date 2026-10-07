@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const {
   Booking,
-  ChatbotSetting,
   Product,
   TikTokChannel,
   TikTokPartnerAuthorization,
@@ -13,7 +12,6 @@ const {
   Video,
   VideoAssignment,
   VideoDailyStats,
-  WeeklyReport,
   sequelize,
 } = require('../models');
 const { encryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
@@ -262,19 +260,6 @@ const seed = async () => {
     await Booking.bulkCreate(bookingRows, { transaction });
     summary.bookings = bookingRows.length;
 
-    await WeeklyReport.destroy({ where: { generated_content: { [require('sequelize').Op.like]: '[DEMO]%' } }, transaction });
-    const reportRows = Array.from({ length: 4 }, (_, index) => {
-      const end = addDays(now, -index * 7);
-      const start = addDays(end, -6);
-      return {
-        week_start: dateOnly(start),
-        week_end: dateOnly(end),
-        generated_content: `[DEMO] Báo cáo tuần ${dateOnly(start)} – ${dateOnly(end)}\n\nKOC demo duy trì tăng trưởng tốt. Video review và routine đang đóng góp phần lớn lượt xem; đề xuất tăng nội dung có hook so sánh trước/sau.`,
-      };
-    });
-    await WeeklyReport.bulkCreate(reportRows, { transaction });
-    summary.weeklyReports = reportRows.length;
-
     for (const [index, koc] of kocs.slice(0, 3).entries()) {
       const values = {
         creator_id: koc.id,
@@ -378,11 +363,6 @@ const seed = async () => {
     summary.shops = shops.length;
     summary.shopAnalyticsSnapshots = shops.length * 3;
 
-    await ChatbotSetting.findOrCreate({
-      where: { id: 1 },
-      defaults: { id: 1, provider: 'gemini', model: 'gemma-3-27b-it', ollama_host: 'http://127.0.0.1:11434', updated_at: now },
-      transaction,
-    });
   });
 
   console.log(JSON.stringify({ ok: true, seededAt: now.toISOString(), summary }, null, 2));

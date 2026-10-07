@@ -16,7 +16,6 @@ const loadController = (t, query, revenueLoader = async () => ({
     BookingVideo: {},
     BookingVideoPerformanceSnapshot: {},
     User: {},
-    WeeklyReport: {},
     sequelize: { query },
   });
   const restoreRevenueService = mockModule(revenueServicePath, {

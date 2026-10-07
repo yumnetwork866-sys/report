@@ -1154,6 +1154,7 @@ const VideoDailyStats = sequelize.define('VideoDailyStats', {
   ],
 });
 
+// Kept only because historical migration 002 imports this model while seeding a fresh database.
 const WeeklyReport = sequelize.define('WeeklyReport', {
   id: {
     type: DataTypes.INTEGER,
@@ -1179,34 +1180,6 @@ const WeeklyReport = sequelize.define('WeeklyReport', {
   },
 }, {
   tableName: 'weekly_reports',
-  timestamps: false,
-});
-
-const ChatbotSetting = sequelize.define('ChatbotSetting', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-  },
-  provider: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    defaultValue: 'gemini',
-  },
-  model: {
-    type: DataTypes.STRING,
-    allowNull: false,
-  },
-  ollama_host: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  updated_at: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    defaultValue: DataTypes.NOW,
-  },
-}, {
-  tableName: 'chatbot_settings',
   timestamps: false,
 });
 
@@ -1361,7 +1334,5 @@ module.exports = {
   VideoProduct,
   VideoDailyStats,
   WeeklyReport,
-  ChatbotSetting,
-  Report: WeeklyReport,
   sequelize,
 };
