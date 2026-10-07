@@ -572,62 +572,6 @@ export function fetchKocDetail(creatorId, { signal, startDate, endDate } = {}) {
   return apiRequest(`/reports/koc/${encodeURIComponent(creatorId)}/detail${query ? `?${query}` : ''}`, { signal });
 }
 
-export function chatWithAssistant(message) {
-  return apiRequest('/assistant/chat', {
-    method: 'POST',
-    body: { message },
-  });
-}
-
-export async function streamAssistant(message, { onDelta, signal } = {}) {
-  const sessionToken = getStoredSession()?.token || null;
-  const response = await fetch(`${API_BASE_URL}/assistant/chat/stream`, {
-    method: 'POST',
-    cache: 'no-store',
-    credentials: 'include',
-    signal,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-    },
-    body: JSON.stringify({ message }),
-  });
-
-  if (!response.ok) {
-    let errorMessage = `Request failed with status ${response.status}`;
-    try {
-      const payload = await response.json();
-      if (payload?.message) errorMessage = payload.message;
-    } catch {
-      // Keep the status-based message when the response is not JSON.
-    }
-    throw new Error(errorMessage);
-  }
-
-  if (!response.body) throw new Error('Streaming is not supported by this browser');
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  const consumeLine = (line) => {
-    if (!line.trim()) return;
-    const event = JSON.parse(line);
-    if (event.type === 'delta' && event.delta) onDelta?.(event.delta);
-    if (event.type === 'error') throw new Error(event.message || 'Assistant stream failed');
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    lines.forEach(consumeLine);
-    if (done) break;
-  }
-
-  if (buffer.trim()) consumeLine(buffer);
-}
 
 export function fetchChannels(signal) {
   return apiRequest('/channels', { signal });

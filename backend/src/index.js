@@ -25,7 +25,6 @@ const productRoutes = require('./routes/productRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const importRoutes = require('./routes/importRoutes');
 const authRoutes = require('./routes/authRoutes');
-const assistantRoutes = require('./routes/assistantRoutes');
 
 const tiktokPartnerPublicRoutes = require('./routes/tiktokPartnerPublicRoutes');
 const tiktokShopRoutes = require('./routes/tiktokShopRoutes');
@@ -82,7 +81,6 @@ const createApp = () => {
   app.use('/api/assignments', requireAdmin, requirePermission('tiktok'), assignmentRoutes);
   app.use('/api/import', requireAdmin, requirePermission('tiktok'), importRoutes);
   app.use('/api/auth', authRoutes);
-  app.use('/api/assistant', requireAdmin, requirePermission('reports'), assistantRoutes);
   app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
   app.get('/api/exchange-rates', async (req, res) => {
     try {

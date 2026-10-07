@@ -14,13 +14,11 @@ const clearReportCache = () => delByPattern('report:*');
 const toDateOnly = (date) => date.toISOString().slice(0, 10);
 const REPORT_OLLAMA_HOST = String(
   process.env.REPORT_OLLAMA_HOST
-    || process.env.AI_CHAT_OLLAMA_HOST
     || process.env.OLLAMA_HOST
     || 'http://127.0.0.1:11434',
 ).trim().replace(/\/+$/, '');
 const REPORT_OLLAMA_MODEL = String(
   process.env.REPORT_OLLAMA_MODEL
-    || process.env.AI_CHAT_MODEL
     || 'llama3.1:8b',
 ).trim().replace(/^ollama:/i, '');
 const REPORT_OLLAMA_TIMEOUT_MS = Math.max(1000, Number(process.env.REPORT_OLLAMA_TIMEOUT_MS) || 90000);

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import AiChatBubble from '../components/AiChatBubble';
 import { useI18n } from '../lib/language';
 import Sidebar from '../components/Sidebar';
 import { RequireSession } from '../routes/guards';
@@ -69,7 +68,6 @@ const ProtectedLayout = () => {
             </div>
           </div>
         </main>
-        <AiChatBubble />
       </div>
     </RequireSession>
   );
