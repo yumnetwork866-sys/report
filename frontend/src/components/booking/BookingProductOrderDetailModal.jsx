@@ -9,6 +9,29 @@ import {
   formatOrderTimestamp,
 } from '../../lib/bookingMetrics';
 
+const ORDER_STATUS_LABELS = {
+  COMPLETED: 'Hoàn thành',
+  DELIVERED: 'Đã giao',
+  SHIPPED: 'Đang giao',
+  IN_TRANSIT: 'Đang vận chuyển',
+  AWAITING_SHIPMENT: 'Chờ giao hàng',
+  AWAITING_COLLECTION: 'Chờ lấy hàng',
+  PARTIALLY_SHIPPING: 'Giao một phần',
+  UNPAID: 'Chưa thanh toán',
+  ON_HOLD: 'Tạm giữ',
+};
+
+const orderStatusMeta = (row) => {
+  if (row.isCancelled) return { label: 'Đã hủy', tone: 'cancelled' };
+  if (row.isFullyRefunded) return { label: 'Đã hoàn', tone: 'refunded' };
+  if (row.isPartiallyRefunded) return { label: 'Hoàn một phần', tone: 'partial-refund' };
+  const status = String(row.orderStatus || 'COMPLETED').toUpperCase();
+  return {
+    label: ORDER_STATUS_LABELS[status] || status.replaceAll('_', ' '),
+    tone: 'active',
+  };
+};
+
 const OrderVideoThumbnail = ({ row, shopId, username }) => {
   const [thumbnail, setThumbnail] = useState(null);
   const [title, setTitle] = useState(row.videoTitle || '');
@@ -239,8 +262,8 @@ const BookingProductOrderDetailModal = ({
     let gmv = 0;
     let comm = 0;
     for (const r of list) {
-      if (r.orderId) orderIds.add(r.orderId);
-      items += r.quantity;
+      if (r.orderId && r.effectiveQuantity > 0) orderIds.add(r.orderId);
+      items += r.effectiveQuantity;
       refundedItems += r.refundedQuantity;
       gmv += r.gmv;
       comm += r.commission;
@@ -429,6 +452,7 @@ const BookingProductOrderDetailModal = ({
                     <th style={{ textAlign: 'right' }}>Đơn giá</th>
                     <th style={{ textAlign: 'right' }}>Thành tiền</th>
                     <th style={{ textAlign: 'right' }}>Hoa hồng</th>
+                    <th>Trạng thái</th>
                     <th>Nguồn</th>
                   </tr>
                 </thead>
@@ -436,6 +460,7 @@ const BookingProductOrderDetailModal = ({
                   {filteredRows.map((row, idx) => {
                     const thumb = row.thumbnailUrl || productThumbMap.get(String(row.productId)) || null;
                     const displaySkuName = row.classification || row.skuName || 'Mặc định';
+                    const status = orderStatusMeta(row);
                     return (
                       <tr key={`${row.orderId}:${row.skuId || idx}`}>
                         <td>
@@ -510,6 +535,11 @@ const BookingProductOrderDetailModal = ({
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--color-accent-strong)' }}>
                           {formatMoney(row.commission, row.currency)}
+                        </td>
+                        <td>
+                          <span className={`booking-product-order-modal__status booking-product-order-modal__status--${status.tone}`}>
+                            {status.label}
+                          </span>
                         </td>
                         <td>
                           {video && row.isVideoMatch ? (

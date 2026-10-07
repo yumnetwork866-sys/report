@@ -800,6 +800,17 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
       const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
       const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
       const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
+      const normalizedOrderStatus = String(orderStatus || '').trim().toUpperCase();
+      const normalizedItemStatus = String(sku?.item_status || '').trim().toUpperCase();
+      const normalizedStatus = normalizedItemStatus || normalizedOrderStatus || 'COMPLETED';
+      const combinedStatus = `${normalizedOrderStatus} ${normalizedItemStatus}`;
+      const isCancelled = /CANCEL/.test(combinedStatus);
+      const hasRefundStatus = /REFUND|RETURN/.test(combinedStatus);
+      const isFullyRefunded = quantity > 0 && (refundedQuantity >= quantity || hasRefundStatus);
+      const isPartiallyRefunded = !isFullyRefunded && refundedQuantity > 0;
+      const effectiveQuantity = isCancelled || isFullyRefunded
+        ? 0
+        : Math.max(quantity - refundedQuantity, 0);
       const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
       const price = Math.max(0, finiteNumber(rawPrice));
       const rawCommRate = finiteNumber(sku?.creator_commission_rate);
@@ -840,7 +851,11 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
       rows.push({
         orderId: orderId || `order-${rows.length}`,
         orderTime,
-        orderStatus: sku?.item_status || orderStatus || 'COMPLETED',
+        orderStatus: normalizedStatus,
+        isCancelled,
+        isFullyRefunded,
+        isPartiallyRefunded,
+        effectiveQuantity,
         skuId: sku?.sku_id || '',
         productId: skuProdId,
         productName: rawProdName,

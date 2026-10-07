@@ -7,6 +7,8 @@ const BookingListControls = ({
   bookingManagerFilterValue,
   onManagerChange,
   canManageUsers,
+  hashtagFilterEnabled,
+  onHashtagFilterChange,
   bookingTab,
   selectedMonth,
   onMonthChange,
@@ -16,6 +18,18 @@ const BookingListControls = ({
   t,
 }) => (
   <div className="section-card__header booking-evaluation-list-header">
+    <label
+      className={`booking-hashtag-toggle${hashtagFilterEnabled ? ' booking-hashtag-toggle--active' : ''}`}
+      title={t('booking.hashtagFilterHelp')}
+    >
+      <input
+        type="checkbox"
+        checked={hashtagFilterEnabled}
+        onChange={(event) => onHashtagFilterChange(event.target.checked)}
+      />
+      <span className="booking-hashtag-toggle__label">Hashtag</span>
+      <span className="booking-hashtag-toggle__track" aria-hidden="true"><i /></span>
+    </label>
     <div className="booking-performance-controls">
       {bookingGroups.length ? (
         <div className="field booking-manager-filter">

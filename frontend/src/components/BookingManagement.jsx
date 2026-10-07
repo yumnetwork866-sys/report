@@ -899,8 +899,6 @@ const BookingManagement = ({
     <div className={`page${embeddedMode ? ' booking-management--embedded' : ''}`}>
       <BookingPageHero
         heroTitle={heroTitle}
-        hashtagFilterEnabled={hashtagFilterEnabled}
-        onHashtagFilterChange={setHashtagFilterEnabled}
         bookingTab={bookingTab}
         stats={stats}
         selectedCurrency={selectedCurrency}
@@ -960,6 +958,8 @@ const BookingManagement = ({
             setExpandedGroupKeys(value !== 'all' ? new Set([value]) : new Set());
           }}
           canManageUsers={canManageUsers}
+          hashtagFilterEnabled={hashtagFilterEnabled}
+          onHashtagFilterChange={setHashtagFilterEnabled}
           bookingTab={bookingTab}
           selectedMonth={selectedMonth}
           onMonthChange={setSelectedMonth}

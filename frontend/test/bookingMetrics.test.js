@@ -375,6 +375,32 @@ test('extractProductOrderRows creates sorted rows with video match check', () =>
   assert.equal(result.rows[0].videoPostedAt, '2026-09-21 22:05:25');
 });
 
+test('extractProductOrderRows keeps cancelled and refunded rows but excludes their quantities', () => {
+  const result = extractProductOrderRows([
+    {
+      id: 'cancelled-order',
+      order_status: 'CANCELLED',
+      skus: [{ product_id: 'prod_1', item_status: 'COMPLETED', quantity: 2, refunded_quantity: 0 }],
+    },
+    {
+      id: 'refunded-order',
+      order_status: 'COMPLETED',
+      skus: [{ product_id: 'prod_1', quantity: 1, refunded_quantity: 1 }],
+    },
+    {
+      id: 'partial-order',
+      order_status: 'COMPLETED',
+      skus: [{ product_id: 'prod_1', quantity: 3, refunded_quantity: 1 }],
+    },
+  ], 'prod_1');
+
+  assert.equal(result.rows.length, 3);
+  assert.deepEqual(result.rows.map((row) => row.effectiveQuantity), [0, 0, 2]);
+  assert.equal(result.rows[0].isCancelled, true);
+  assert.equal(result.rows[1].isFullyRefunded, true);
+  assert.equal(result.rows[2].isPartiallyRefunded, true);
+});
+
 test('formatOrderTimestamp formats unix and ISO timestamps correctly', () => {
   const ts = formatOrderTimestamp(1700000000);
   assert.ok(ts.date.includes('/'));

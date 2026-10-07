@@ -2,7 +2,28 @@
 /* Booking page shell, KPI header, hashtag filter and primary view tabs. */
 .booking-stats,
 .booking-stats--evaluation {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.booking-stats--evaluation .stat-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.booking-stats--evaluation .stat-card__label,
+.booking-stats--evaluation .stat-card__value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-shell__content .booking-page-hero .booking-stats--evaluation .stat-card__label {
+  font-size: clamp(.64rem, .72vw, .7rem);
+}
+
+.app-shell__content .booking-page-hero .booking-stats--evaluation .stat-card__value {
+  font-size: clamp(1.08rem, 1.55vw, 1.55rem);
+  font-variant-numeric: tabular-nums;
 }
 
 .booking-page-hero__title-row {
@@ -187,11 +208,23 @@
 
   .app-shell__content .booking-page-hero > .booking-stats--evaluation {
     grid-row: auto;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
     width: 100%;
   }
 
   .booking-manager-group__metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1280px) {
+  .app-shell__content .booking-page-hero > .booking-stats--evaluation {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .booking-stats,
+  .booking-stats--evaluation {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 520px) {
@@ -207,6 +240,14 @@
   .booking-view-tabs { flex: 1 1 auto; }
   .booking-view-tabs__tab { flex: 1; min-width: 0; }
   .booking-stats { grid-template-columns: 1fr; }
+
+  .app-shell__content .booking-page-hero .booking-stats--evaluation .stat-card__label {
+    font-size: .7rem;
+  }
+
+  .app-shell__content .booking-page-hero .booking-stats--evaluation .stat-card__value {
+    font-size: 1.35rem;
+  }
 }
 
 /* Booking filters and overview/evaluation tables. */
@@ -219,7 +260,37 @@
   max-width: 100%;
 }
 
-.booking-evaluation-list-header { justify-content: flex-end; }
+.booking-evaluation-list-header { justify-content: space-between; }
+.booking-evaluation-list-header > .booking-hashtag-toggle {
+  display: grid;
+  grid-template-rows: auto var(--control-height);
+  align-items: start;
+  align-self: flex-end;
+  gap: 6px;
+}
+
+.booking-hashtag-toggle__label {
+  color: var(--color-muted-strong);
+  font-family: var(--font-heading);
+  font-size: .84rem;
+  font-weight: 650;
+}
+
+.booking-evaluation-list-header > .booking-hashtag-toggle .booking-hashtag-toggle__track {
+  width: 44px;
+  height: 26px;
+  flex-basis: 44px;
+  align-self: center;
+}
+
+.booking-evaluation-list-header > .booking-hashtag-toggle .booking-hashtag-toggle__track i {
+  width: 18px;
+  height: 18px;
+}
+
+.booking-evaluation-list-header > .booking-hashtag-toggle--active .booking-hashtag-toggle__track i {
+  transform: translateX(18px);
+}
 .booking-performance-controls { display: flex; align-items: end; gap: 10px; }
 
 .booking-performance-controls .field select,
@@ -596,6 +667,7 @@
   .booking-performance-controls { width: 100%; align-items: stretch; flex-direction: column; }
   .booking-evaluation-list-header { align-items: stretch; flex-direction: column; }
   .booking-performance-period { width: 100%; min-width: 0; }
+  .booking-evaluation-list-header > .booking-hashtag-toggle { align-self: flex-start; }
 }
 
 
@@ -1843,6 +1915,34 @@
   color: var(--color-danger, #ef4444);
   font-size: .68rem;
   font-weight: 650;
+}
+
+.booking-product-order-modal__status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid #bbf7d0;
+  border-radius: 999px;
+  background: #f0fdf4;
+  color: #15803d;
+  font-size: .7rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.booking-product-order-modal__status--cancelled,
+.booking-product-order-modal__status--refunded {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.booking-product-order-modal__status--partial-refund {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
 }
 
 .booking-product-order-modal__product-cell-info {
