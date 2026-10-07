@@ -21,7 +21,6 @@ const ChannelReport = () => {
     endDate,
     error,
     expandedMemberIds,
-    expandedRevenueDates,
     formatDailyDate,
     formatNumber,
     formatPublishedDate,
@@ -49,7 +48,6 @@ const ChannelReport = () => {
     selectedTeamIds,
     setActiveReportTab,
     setEndDate,
-    setExpandedRevenueDates,
     setMemberTabs,
     setProductSearchQuery,
     setProductTeamFilter,
@@ -538,13 +536,10 @@ const ChannelReport = () => {
       <RevenueDetailModal
         closeVideoRevenueDetail={closeVideoRevenueDetail}
         compactNumber={compactNumber}
-        expandedRevenueDates={expandedRevenueDates}
         formatDailyDate={formatDailyDate}
         formatNumber={formatNumber}
-        formatPublishedTime={formatPublishedTime}
         formatRevenue={formatRevenue}
         openVideoRevenueDetail={openVideoRevenueDetail}
-        setExpandedRevenueDates={setExpandedRevenueDates}
         videoRevenueDetail={videoRevenueDetail}
       />
 

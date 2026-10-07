@@ -29,7 +29,7 @@ const positiveInteger = (value, fallback) => {
 
 const config = () => ({
   historyDays: positiveInteger(process.env.AFFILIATE_ORDER_HISTORY_DAYS, 90),
-  refreshDays: positiveInteger(process.env.AFFILIATE_ORDER_REFRESH_DAYS, 7),
+  refreshDays: positiveInteger(process.env.AFFILIATE_ORDER_REFRESH_DAYS, 30),
   initialBackfillDays: positiveInteger(process.env.AFFILIATE_ORDER_INITIAL_BACKFILL_DAYS, 30),
   backfillDays: positiveInteger(process.env.AFFILIATE_ORDER_BACKFILL_DAYS, 7),
   maxPages: positiveInteger(process.env.AFFILIATE_ORDER_MAX_PAGES, 100),

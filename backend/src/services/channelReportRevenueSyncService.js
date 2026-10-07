@@ -17,7 +17,7 @@ const positiveInteger = (value, fallback) => {
 
 const config = () => ({
   historyDays: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_HISTORY_DAYS, 90),
-  refreshDays: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_REFRESH_DAYS, 7),
+  refreshDays: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_REFRESH_DAYS, 30),
   initialBackfillDays: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_INITIAL_BACKFILL_DAYS, 30),
   backfillDays: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_BACKFILL_DAYS, 10),
   maxPages: positiveInteger(process.env.CHANNEL_REPORT_REVENUE_MAX_PAGES, 500),
