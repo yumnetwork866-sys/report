@@ -8,7 +8,12 @@ const {
 } = require('../src/lib/queue');
 const { checkRedisHealth, closeRedis } = require('../src/lib/redis');
 
-test('BullMQ queue adds and processes job via worker', async () => {
+test('BullMQ queue adds and processes job via worker', async (t) => {
+  t.after(async () => {
+    await closeAllQueuesAndWorkers();
+    await closeRedis();
+  });
+
   const isHealthy = await checkRedisHealth();
   if (!isHealthy) {
     return;
