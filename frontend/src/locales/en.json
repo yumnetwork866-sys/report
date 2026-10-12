@@ -327,6 +327,7 @@
     "search": "Search users",
     "searchPlaceholder": "Search by name, email or team...",
     "clearSearch": "Clear search",
+    "status": "Status",
     "filterStatus": "Filter by status",
     "allStatuses": "All statuses",
     "statusActive": "Active",

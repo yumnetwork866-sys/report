@@ -322,6 +322,7 @@
     "search": "Tìm kiếm người dùng",
     "searchPlaceholder": "Tìm theo tên, email hoặc team...",
     "clearSearch": "Xóa tìm kiếm",
+    "status": "Trạng thái",
     "filterStatus": "Lọc theo trạng thái",
     "allStatuses": "Tất cả trạng thái",
     "statusActive": "Đang hoạt động",

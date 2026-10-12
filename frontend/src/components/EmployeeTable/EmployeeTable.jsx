@@ -279,6 +279,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
                 </th>
                 <th>{t('users.account')}</th>
                 <th>{t('users.role')}</th>
+                <th>{t('users.status')}</th>
                 <th>Team</th>
                 <th>{t('users.hashtags')}</th>
                 <th className="cell-actions">{t('users.actions')}</th>
@@ -287,7 +288,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={6}>
+                  <td className="table-state-cell" colSpan={7}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('users.loading')}</div>
@@ -309,20 +310,35 @@ const EmployeeTable = ({ heroSubtitle }) => {
                       <div className="employee-table__account-cell">
                         <AppAvatar src={user.avatar_url} name={user.name} seed={user.id} className="employee-table__avatar" />
                         <div className="employee-table__account">
-                          <span className="row-title">
-                            {user.name}
-                            {user.is_active === false ? (
-                              <span className="chip employee-table__status-pill is-disabled">
-                                {t('users.statusDisabled')}
-                              </span>
-                            ) : null}
-                          </span>
+                          <span className="row-title">{user.name}</span>
                           <span className="row-subtitle">{user.email}</span>
                         </div>
                       </div>
                     </td>
                     <td>
                       <span className="chip employee-table__role-chip">{getRoleLabel(user.role)}</span>
+                    </td>
+                    <td>
+                      <label
+                        className={`employee-table__switch ${user.is_active === false ? 'is-disabled' : 'is-active'}`}
+                        title={user.is_active === false ? t('users.enable') : t('users.disable')}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={user.is_active !== false}
+                          disabled={togglingId === user.id}
+                          onChange={() => handleToggleActive(user)}
+                          aria-label={`${t('users.status')}: ${user.name}`}
+                        />
+                        <span className="employee-table__switch-track" aria-hidden="true">
+                          <span className="employee-table__switch-thumb" />
+                        </span>
+                        {togglingId === user.id ? (
+                          <span className="employee-table__switch-label">{t('users.saving')}</span>
+                        ) : user.is_active === false ? (
+                          <span className="employee-table__status-pill is-disabled">{t('users.statusDisabled')}</span>
+                        ) : null}
+                      </label>
                     </td>
                     <td className="employee-table__attribution-cell">
                       <select
@@ -384,18 +400,6 @@ const EmployeeTable = ({ heroSubtitle }) => {
                           >
                             {t('users.edit')}
                           </button>
-                          <button
-                            type="button"
-                            className="action-menu__item"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                              handleToggleActive(user);
-                            }}
-                            disabled={togglingId === user.id}
-                          >
-                            {togglingId === user.id ? t('users.saving') : (user.is_active === false ? t('users.enable') : t('users.disable'))}
-                          </button>
                           {isAdmin ? (
                             <button
                               type="button"
@@ -418,7 +422,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
                 ))
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={6}>
+                  <td className="table-state-cell" colSpan={7}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('users.noMatch')}</div>
                     </div>
