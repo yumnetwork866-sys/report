@@ -46,6 +46,7 @@ export const useEmployeeManagement = () => {
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState('');
   const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
   const [loading, setLoading] = useState(true);
@@ -143,13 +144,12 @@ export const useEmployeeManagement = () => {
   }, []);
   
   useEffect(() => {
-    const timer = window.setTimeout(() => setQuery(queryInput.trim()), 250);
-    return () => window.clearTimeout(timer);
+    setQuery(queryInput.trim());
   }, [queryInput]);
   
   useEffect(() => {
     setCurrentPage(1);
-  }, [query, roleFilter, teamFilter]);
+  }, [queryInput, roleFilter, statusFilter, teamFilter]);
   
   useEffect(() => {
     if (!confirm) return undefined;
@@ -162,34 +162,49 @@ export const useEmployeeManagement = () => {
   
   const activeUsers = useMemo(() => users.filter((user) => user.is_active !== false), [users]);
   const disabledUsers = useMemo(() => users.filter((user) => user.is_active === false), [users]);
-  const rows = useMemo(
-    () => (activeTab === 'disabled' ? disabledUsers : activeUsers),
-    [activeTab, activeUsers, disabledUsers],
-  );
+  const rows = useMemo(() => {
+    if (statusFilter === 'active') return activeUsers;
+    if (statusFilter === 'disabled') return disabledUsers;
+    return users;
+  }, [statusFilter, activeUsers, disabledUsers, users]);
   
   const filteredRows = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+    const rawQuery = queryInput.trim().toLowerCase();
+    const foldedQuery = rawQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   
     return rows.filter((user) => {
       const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-      const userTeamId = String(user.content_attribution?.team_id || '');
+      const userTeamId = String(
+        user.content_attribution?.team_id || user.content_attribution?.team?.id || ''
+      );
       const matchesTeam = teamFilter === 'all'
         || (teamFilter === 'unassigned' ? !userTeamId : userTeamId === teamFilter);
-      const matchesQuery = !normalizedQuery
+
+      const teamName =
+        user.content_attribution?.team?.name
+        || teams.find((item) => String(item.id) === userTeamId)?.name
+        || '';
+
+      const matchesQuery = !rawQuery
         || [
           user.name,
           user.email,
-          user.content_attribution?.team?.name,
+          teamName,
           ...(user.content_attribution?.hashtags || []),
         ]
           .filter(Boolean)
-          .some((value) => String(value).toLowerCase().includes(normalizedQuery));
+          .some((value) => {
+            const str = String(value).toLowerCase();
+            const foldedStr = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            return str.includes(rawQuery) || foldedStr.includes(foldedQuery);
+          });
   
       return matchesRole && matchesTeam && matchesQuery;
     });
-  }, [query, roleFilter, rows, teamFilter]);
+  }, [queryInput, roleFilter, rows, teamFilter, teams]);
   
-  const activeFilters = Number(Boolean(query.trim()))
+  const activeFilters = Number(Boolean(queryInput.trim()))
+    + Number(statusFilter !== 'all')
     + Number(roleFilter !== 'all')
     + Number(teamFilter !== 'all');
   
@@ -732,9 +747,11 @@ export const useEmployeeManagement = () => {
     setRoleFilter,
     setRoleForm,
     setSelectedIds,
+    setStatusFilter,
     setTargetReassignStaffId,
     setTeamFilter,
     setTeamForm,
+    statusFilter,
     t,
     targetReassignStaffId,
     teamError,

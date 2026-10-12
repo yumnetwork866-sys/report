@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCheck, Lock, Trash2, X } from 'lucide-react';
+import { CheckCheck, Lock, Plus, Search, Trash2, X } from 'lucide-react';
 import AppAvatar from '../AppAvatar';
 import Pagination from '../Pagination';
 import { PERMISSIONS, permissionLabelKey } from '../../lib/permissions';
@@ -72,8 +72,10 @@ const EmployeeTable = ({ heroSubtitle }) => {
     setRoleFilter,
     setRoleForm,
     setSelectedIds,
+    setStatusFilter,
     setTeamFilter,
     setTeamForm,
+    statusFilter,
     t,
     teamError,
     teamFilter,
@@ -87,6 +89,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     toggleSelectAll,
     togglingId,
     totalPages,
+    users,
   } = useEmployeeManagement();
   return (
     <div className="page employee-table-page">
@@ -100,8 +103,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
 
       <nav className="employee-table__tabs" aria-label="Quản lý hệ thống">
         {[
-          { key: 'users', label: 'Người dùng', count: activeUsers.length },
-          { key: 'disabled', label: 'Đã khóa', count: disabledUsers.length },
+          { key: 'users', label: 'Người dùng', count: users.length },
           { key: 'teams', label: 'Team', count: teams.length },
           { key: 'roles', label: 'Vai trò', count: roles.length },
         ].map((tab) => (
@@ -123,7 +125,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
         ))}
       </nav>
 
-      {activeTab === 'users' || activeTab === 'disabled' ? (
+      {activeTab === 'users' ? (
         <>
           {error && !isEditorOpen ? (
             <section className="section-card empty-state empty-state--compact">
@@ -132,70 +134,95 @@ const EmployeeTable = ({ heroSubtitle }) => {
           ) : null}
 
           <section className="section-card employee-table__table-card">
-        <div className="section-card__header section-card__header--compact">
-          <div>
-            <h2 className="section-card__title">{t('users.list')}</h2>
-            <p className="section-card__meta">
-              {t('users.showing', { visible: pageRows.length, total: filteredRows.length })}
-            </p>
-          </div>
-          <button className="button" type="button" onClick={openCreateModal}>
-            {t('users.create')}
-          </button>
-        </div>
+            <div className="employee-table__toolbar">
+              <div className="employee-table__search">
+                <Search className="employee-table__search-icon" size={16} aria-hidden="true" />
+                <label className="sr-only" htmlFor="user-search">{t('users.search')}</label>
+                <input
+                  id="user-search"
+                  value={queryInput}
+                  onChange={(event) => setQueryInput(event.target.value)}
+                  placeholder={t('users.searchPlaceholder')}
+                />
+                {queryInput ? (
+                  <button
+                    type="button"
+                    className="employee-table__search-clear"
+                    onClick={() => setQueryInput('')}
+                    aria-label={t('users.clearSearch')}
+                  >
+                    <X size={14} aria-hidden="true" />
+                  </button>
+                ) : null}
+              </div>
 
-        <div className="employee-table__toolbar">
-          <div className="employee-table__search">
-            <label className="sr-only" htmlFor="user-search">{t('users.search')}</label>
-            <input
-              id="user-search"
-              value={queryInput}
-              onChange={(event) => setQueryInput(event.target.value)}
-              placeholder={t('users.searchPlaceholder')}
-            />
-          </div>
-          <div className="employee-table__role-filter employee-table__select-wrap">
-            <label className="sr-only" htmlFor="user-role-filter">{t('users.filterRole')}</label>
-            <select
-              id="user-role-filter"
-              value={roleFilter}
-              onChange={(event) => setRoleFilter(event.target.value)}
-            >
-              <option value="all">{t('users.allRoles')}</option>
-              {roleOptions.map((role) => (
-                <option key={role} value={role}>{getRoleLabel(role)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="employee-table__team-filter employee-table__select-wrap">
-            <label className="sr-only" htmlFor="user-team-filter">Lọc theo team</label>
-            <select
-              id="user-team-filter"
-              value={teamFilter}
-              onChange={(event) => setTeamFilter(event.target.value)}
-            >
-              <option value="all">Tất cả team</option>
-              <option value="unassigned">Chưa có team</option>
-              {teams.map((team) => (
-                <option key={team.id} value={String(team.id)}>{team.name}</option>
-              ))}
-            </select>
-          </div>
-          {activeFilters ? (
-            <button
-              className="button button--ghost button--small"
-              type="button"
-              onClick={() => {
-                setQueryInput('');
-                setRoleFilter('all');
-                setTeamFilter('all');
-              }}
-              disabled={!activeFilters}
-            >
-              {t('users.clearFilter')}
-            </button>
-          ) : null}
-        </div>
+              <div className="employee-table__status-filter employee-table__select-wrap">
+                <label className="sr-only" htmlFor="user-status-filter">{t('users.filterStatus')}</label>
+                <select
+                  id="user-status-filter"
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                >
+                  <option value="all">{t('users.allStatuses')}</option>
+                  <option value="active">{t('users.statusActive')}</option>
+                  <option value="disabled">{t('users.statusDisabled')}</option>
+                </select>
+              </div>
+
+              <div className="employee-table__role-filter employee-table__select-wrap">
+                <label className="sr-only" htmlFor="user-role-filter">{t('users.filterRole')}</label>
+                <select
+                  id="user-role-filter"
+                  value={roleFilter}
+                  onChange={(event) => setRoleFilter(event.target.value)}
+                >
+                  <option value="all">{t('users.allRoles')}</option>
+                  {roleOptions.map((role) => (
+                    <option key={role} value={role}>{getRoleLabel(role)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="employee-table__team-filter employee-table__select-wrap">
+                <label className="sr-only" htmlFor="user-team-filter">{t('users.filterTeam')}</label>
+                <select
+                  id="user-team-filter"
+                  value={teamFilter}
+                  onChange={(event) => setTeamFilter(event.target.value)}
+                >
+                  <option value="all">{t('users.allTeams')}</option>
+                  <option value="unassigned">{t('users.unassignedTeam')}</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={String(team.id)}>{team.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {activeFilters ? (
+                <button
+                  className="button button--ghost button--small employee-table__clear-filters"
+                  type="button"
+                  onClick={() => {
+                    setQueryInput('');
+                    setStatusFilter('all');
+                    setRoleFilter('all');
+                    setTeamFilter('all');
+                  }}
+                  disabled={!activeFilters}
+                >
+                  {t('users.clearFilter')}
+                </button>
+              ) : null}
+
+              <button
+                className="button employee-table__create-btn"
+                type="button"
+                onClick={openCreateModal}
+              >
+                <Plus size={16} aria-hidden="true" />
+                <span>{t('users.create')}</span>
+              </button>
+            </div>
 
           {selectedIds.size > 0 ? (
             <div className="employee-table__bulk-bar">
@@ -282,7 +309,14 @@ const EmployeeTable = ({ heroSubtitle }) => {
                       <div className="employee-table__account-cell">
                         <AppAvatar src={user.avatar_url} name={user.name} seed={user.id} className="employee-table__avatar" />
                         <div className="employee-table__account">
-                          <span className="row-title">{user.name}</span>
+                          <span className="row-title">
+                            {user.name}
+                            {user.is_active === false ? (
+                              <span className="chip employee-table__status-pill is-disabled">
+                                {t('users.statusDisabled')}
+                              </span>
+                            ) : null}
+                          </span>
                           <span className="row-subtitle">{user.email}</span>
                         </div>
                       </div>
@@ -395,6 +429,9 @@ const EmployeeTable = ({ heroSubtitle }) => {
           </table>
         </div>
         <div className="employee-table__pagination">
+          <span className="employee-table__pagination-meta">
+            {t('users.showing', { visible: pageRows.length, total: filteredRows.length })}
+          </span>
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}
