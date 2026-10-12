@@ -15,11 +15,9 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     activeTab,
     activeUsers,
     allPageSelected,
-    bookingDrawerUser,
     bulkAssignTeam,
     bulkBusy,
     bulkChangeRole,
-    closeBookingsDrawer,
     closeEditor,
     confirm,
     confirmBulkDelete,
@@ -42,18 +40,14 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     handleDelete,
     handleDeleteRole,
     handleDeleteTeam,
-    handleReassignAllBookings,
     handleRoleSubmit,
     handleSubmit,
     handleTeamSubmit,
     handleToggleActive,
-    handleUnassignAllBookings,
-    handleUnassignSingleBooking,
     isAdmin,
     isEditorOpen,
     loading,
     openActions,
-    openBookingsDrawer,
     openCreateModal,
     openEditModal,
     pageRows,
@@ -95,28 +89,17 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     toggleSelectAll,
     togglingId,
     totalPages,
-    userBookings,
-    userBookingsBusy,
-    userBookingsError,
-    userBookingsLoading,
     users,
   } = useEmployeeManagement();
   return (
     <div className="page employee-table-page">
-      <section className="page__hero admin-page__hero employee-table__hero">
-        <div className="employee-table__hero-copy">
-          <h1 className="page__title">{t('users.heroTitle') || heroTitle}</h1>
-          {heroSubtitle ? <p className="page__subtitle">{heroSubtitle}</p> : null}
-        </div>
-
-        {activeTab === 'users' || activeTab === 'disabled' ? (
-          <div className="employee-table__hero-actions">
-          <button className="button" type="button" onClick={openCreateModal}>
-            {t('users.create')}
-          </button>
+      {heroSubtitle ? (
+        <section className="page__hero admin-page__hero employee-table__hero">
+          <div className="employee-table__hero-copy">
+            <p className="page__subtitle">{heroSubtitle}</p>
           </div>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
 
       <nav className="employee-table__tabs" aria-label="Quản lý hệ thống">
         {[
@@ -159,6 +142,9 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
               {t('users.showing', { visible: pageRows.length, total: filteredRows.length })}
             </p>
           </div>
+          <button className="button" type="button" onClick={openCreateModal}>
+            {t('users.create')}
+          </button>
         </div>
 
         <div className="employee-table__toolbar">
@@ -356,17 +342,6 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
                             bottom: openActions.direction === 'up' ? `${openActions.bottom}px` : 'auto',
                           }}
                         >
-                          <button
-                            type="button"
-                            className="action-menu__item"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                              openBookingsDrawer(user);
-                            }}
-                          >
-                            {t('users.viewBookings')}
-                          </button>
                           <button
                             type="button"
                             className="action-menu__item"
@@ -611,8 +586,6 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
       ) : null}
 
       <EmployeeOverlays
-        bookingDrawerUser={bookingDrawerUser}
-        closeBookingsDrawer={closeBookingsDrawer}
         closeEditor={closeEditor}
         confirm={confirm}
         confirmPending={confirmPending}
@@ -622,25 +595,15 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
         getRoleLabel={getRoleLabel}
         handleBackdropClick={handleBackdropClick}
         handleChange={handleChange}
-        handleReassignAllBookings={handleReassignAllBookings}
         handleSubmit={handleSubmit}
-        handleUnassignAllBookings={handleUnassignAllBookings}
-        handleUnassignSingleBooking={handleUnassignSingleBooking}
         isEditorOpen={isEditorOpen}
         roleOptions={roleOptions}
         runConfirm={runConfirm}
         saving={saving}
         setConfirm={setConfirm}
-        setTargetReassignStaffId={setTargetReassignStaffId}
         t={t}
-        targetReassignStaffId={targetReassignStaffId}
         teams={teams}
         toast={toast}
-        userBookings={userBookings}
-        userBookingsBusy={userBookingsBusy}
-        userBookingsError={userBookingsError}
-        userBookingsLoading={userBookingsLoading}
-        users={users}
       />
     </div>
   );

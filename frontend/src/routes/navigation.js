@@ -71,7 +71,7 @@ export const protectedRouteCards = [
     component: 'EmployeeTable',
     permission: 'users',
     props: {
-      heroTitle: 'User management',
+      heroTitle: '',
       heroSubtitle: '',
     },
   },
