@@ -1,6 +1,18 @@
-import React from 'react';
-import { createPortal } from 'react-dom';
-import { CheckCheck, Lock, Plus, Search, Trash2, X } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Check,
+  CheckCheck,
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  LoaderCircle,
+  Lock,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import AppAvatar from '../AppAvatar';
 import Pagination from '../Pagination';
 import { PERMISSIONS, permissionLabelKey } from '../../lib/permissions';
@@ -9,12 +21,119 @@ import { useEmployeeManagement } from './hooks/useEmployeeManagement';
 import { createRoleKey } from './utils/employeeUtils';
 import '../../styles/pages/admin.css';
 
+const normalizeHashtags = (values) => [...new Map(
+  values
+    .flatMap((value) => String(value || '').split(','))
+    .map((value) => value.trim().replace(/^#+/, ''))
+    .filter(Boolean)
+    .map((value) => [value.toLocaleLowerCase(), value]),
+).values()];
+
+const getRoleTone = (role = '') => {
+  const normalizedRole = String(role).toLowerCase();
+  if (normalizedRole === 'admin' || normalizedRole === 'administrator') return 'admin';
+  if (['manager', 'editor', 'leader'].includes(normalizedRole)) return 'manager';
+  return 'member';
+};
+
+const InlineSaveStatus = ({ status }) => {
+  if (!status) return null;
+  return (
+    <span className={`employee-table__save-status is-${status}`} role="status">
+      {status === 'saving' ? <LoaderCircle size={13} aria-hidden="true" /> : null}
+      {status === 'saved' ? <Check size={13} aria-hidden="true" /> : null}
+      {status === 'saving' ? 'Đang lưu' : status === 'saved' ? 'Đã lưu' : 'Lỗi lưu'}
+    </span>
+  );
+};
+
+const SortableHeader = ({ active, direction, label, onClick }) => (
+  <th aria-sort={active ? (direction === 'asc' ? 'ascending' : 'descending') : 'none'}>
+    <button className="employee-table__sort-button" type="button" onClick={onClick}>
+      <span>{label}</span>
+      {active && direction === 'asc' ? <ChevronUp size={14} aria-hidden="true" /> : null}
+      {active && direction === 'desc' ? <ChevronDown size={14} aria-hidden="true" /> : null}
+      {!active ? <ChevronsUpDown size={14} aria-hidden="true" /> : null}
+    </button>
+  </th>
+);
+
+const HashtagEditor = ({ suggestions, user, onSave, status, t }) => {
+  const sourceTags = useMemo(
+    () => normalizeHashtags(user.content_attribution?.hashtags || []),
+    [user.content_attribution?.hashtags],
+  );
+  const [tags, setTags] = useState(sourceTags);
+  const [draft, setDraft] = useState('');
+  const listId = `employee-hashtag-suggestions-${user.id}`;
+
+  useEffect(() => {
+    setTags(sourceTags);
+  }, [sourceTags]);
+
+  const persist = (nextTags) => {
+    const normalized = normalizeHashtags(nextTags);
+    setTags(normalized);
+    if (normalized.join(',') !== sourceTags.join(',')) {
+      onSave(user, 'content_hashtags', normalized.join(', '));
+    }
+  };
+
+  const addDraft = () => {
+    if (!draft.trim()) return;
+    persist([...tags, draft]);
+    setDraft('');
+  };
+
+  return (
+    <div className="employee-table__hashtag-editor">
+      <div className="employee-table__tag-input-wrap">
+        {tags.map((tag) => (
+          <span className="employee-table__editable-tag" key={tag.toLocaleLowerCase()}>
+            #{tag}
+            <button
+              type="button"
+              aria-label={`Xóa hashtag ${tag}`}
+              disabled={status === 'saving'}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => persist(tags.filter((item) => item !== tag))}
+            >
+              <X size={11} aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          list={listId}
+          disabled={status === 'saving'}
+          aria-label={`${t('users.hashtags')}: ${user.name}`}
+          placeholder={tags.length ? 'Thêm…' : t('users.hashtagsPlaceholder')}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={addDraft}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ',') {
+              event.preventDefault();
+              addDraft();
+            }
+          }}
+        />
+        <datalist id={listId}>
+          {suggestions.filter((tag) => !tags.includes(tag)).map((tag) => (
+            <option value={tag} key={tag} />
+          ))}
+        </datalist>
+      </div>
+      <InlineSaveStatus status={status} />
+    </div>
+  );
+};
+
 const EmployeeTable = ({ heroSubtitle }) => {
   const {
     activeFilters,
     activeTab,
-    activeUsers,
     allPageSelected,
+    attributionStatus,
     bulkAssignTeam,
     bulkBusy,
     bulkChangeRole,
@@ -24,7 +143,6 @@ const EmployeeTable = ({ heroSubtitle }) => {
     confirmPending,
     currentPage,
     deletingId,
-    disabledUsers,
     editRole,
     editTeam,
     editingRoleKey,
@@ -47,10 +165,10 @@ const EmployeeTable = ({ heroSubtitle }) => {
     isAdmin,
     isEditorOpen,
     loading,
-    openActions,
     openCreateModal,
     openEditModal,
     pageRows,
+    pageSize,
     queryInput,
     resetRoleForm,
     resetTeamForm,
@@ -67,7 +185,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     setActiveTab,
     setConfirm,
     setCurrentPage,
-    setOpenActions,
+    setPageSize,
     setQueryInput,
     setRoleFilter,
     setRoleForm,
@@ -76,6 +194,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     setTeamFilter,
     setTeamForm,
     statusFilter,
+    sortConfig,
     t,
     teamError,
     teamFilter,
@@ -83,14 +202,17 @@ const EmployeeTable = ({ heroSubtitle }) => {
     teamSaving,
     teams,
     toast,
-    toggleActionsMenu,
     toggleRolePermission,
+    toggleSort,
     toggleSelect,
     toggleSelectAll,
     togglingId,
     totalPages,
     users,
   } = useEmployeeManagement();
+  const hashtagSuggestions = useMemo(() => normalizeHashtags(
+    users.flatMap((user) => user.content_attribution?.hashtags || []),
+  ).sort((left, right) => left.localeCompare(right, 'vi')), [users]);
   return (
     <div className="page employee-table-page">
       {heroSubtitle ? (
@@ -113,7 +235,6 @@ const EmployeeTable = ({ heroSubtitle }) => {
             key={tab.key}
             onClick={() => {
               setActiveTab(tab.key);
-              setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
               setSelectedIds(new Set());
               setCurrentPage(1);
             }}
@@ -277,12 +398,12 @@ const EmployeeTable = ({ heroSubtitle }) => {
                     onChange={toggleSelectAll}
                   />
                 </th>
-                <th>{t('users.account')}</th>
-                <th>{t('users.role')}</th>
-                <th>{t('users.status')}</th>
-                <th>Team</th>
+                <SortableHeader active={sortConfig.key === 'name'} direction={sortConfig.direction} label={t('users.account')} onClick={() => toggleSort('name')} />
+                <SortableHeader active={sortConfig.key === 'role'} direction={sortConfig.direction} label={t('users.role')} onClick={() => toggleSort('role')} />
+                <SortableHeader active={sortConfig.key === 'status'} direction={sortConfig.direction} label={t('users.status')} onClick={() => toggleSort('status')} />
+                <SortableHeader active={sortConfig.key === 'team'} direction={sortConfig.direction} label="Team" onClick={() => toggleSort('team')} />
                 <th>{t('users.hashtags')}</th>
-                <th className="cell-actions">{t('users.actions')}</th>
+                <th className="cell-actions employee-table__sticky-actions">{t('users.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -297,7 +418,13 @@ const EmployeeTable = ({ heroSubtitle }) => {
                 </tr>
               ) : pageRows.length ? (
                 pageRows.map((user) => (
-                  <tr key={user.id} className={user.is_active === false ? 'is-disabled' : undefined}>
+                  <tr
+                    key={user.id}
+                    className={`${user.is_active === false ? 'is-disabled' : ''}${selectedIds.has(user.id) ? ' is-selected' : ''}`.trim() || undefined}
+                    onDoubleClick={(event) => {
+                      if (!event.target.closest('button, input, select, label')) openEditModal(user);
+                    }}
+                  >
                     <td className="employee-table__select-cell">
                       <input
                         type="checkbox"
@@ -310,13 +437,17 @@ const EmployeeTable = ({ heroSubtitle }) => {
                       <div className="employee-table__account-cell">
                         <AppAvatar src={user.avatar_url} name={user.name} seed={user.id} className="employee-table__avatar" />
                         <div className="employee-table__account">
-                          <span className="row-title">{user.name}</span>
+                          <button className="employee-table__account-button row-title" type="button" onClick={() => openEditModal(user)}>
+                            {user.name}
+                          </button>
                           <span className="row-subtitle">{user.email}</span>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span className="chip employee-table__role-chip">{getRoleLabel(user.role)}</span>
+                      <span className={`chip employee-table__role-chip employee-table__role-chip--${getRoleTone(user.role)}`}>
+                        {getRoleLabel(user.role)}
+                      </span>
                     </td>
                     <td>
                       <label
@@ -341,81 +472,54 @@ const EmployeeTable = ({ heroSubtitle }) => {
                       </label>
                     </td>
                     <td className="employee-table__attribution-cell">
-                      <select
-                        className="employee-table__inline-select"
-                        value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
-                        aria-label={`${t('users.team')}: ${user.name}`}
-                        onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
-                      >
-                        <option value="">{t('users.unassignedTeam')}</option>
-                        {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
-                      </select>
+                      <div className="employee-table__inline-field">
+                        <select
+                          className="employee-table__inline-select"
+                          value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
+                          disabled={attributionStatus[`${user.id}:content_team_id`] === 'saving'}
+                          aria-label={`${t('users.team')}: ${user.name}`}
+                          onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
+                        >
+                          <option value="">{t('users.unassignedTeam')}</option>
+                          {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+                        </select>
+                        <InlineSaveStatus status={attributionStatus[`${user.id}:content_team_id`]} />
+                      </div>
                     </td>
                     <td>
-                      <input
-                        className="employee-table__inline-input"
-                        defaultValue={(user.content_attribution?.hashtags || []).join(', ')}
-                        aria-label={`${t('users.hashtags')}: ${user.name}`}
-                        placeholder={t('users.hashtagsPlaceholder')}
-                        onBlur={(event) => {
-                          const value = event.target.value.trim();
-                          const current = (user.content_attribution?.hashtags || []).join(', ');
-                          if (value !== current) handleAttributionChange(user, 'content_hashtags', value);
-                        }}
+                      <HashtagEditor
+                        suggestions={hashtagSuggestions}
+                        user={user}
+                        onSave={handleAttributionChange}
+                        status={attributionStatus[`${user.id}:content_hashtags`]}
+                        t={t}
                       />
                     </td>
-                    <td className="cell-actions">
-                      <div className="action-menu employee-table__action-menu">
+                    <td className="cell-actions employee-table__sticky-actions">
+                      <div className="employee-table__row-actions">
                         <button
                           type="button"
-                          className="action-menu__trigger"
-                          aria-haspopup="menu"
-                          aria-expanded={openActions.id === user.id}
-                          aria-label={t('users.openActions', { name: user.name })}
-                          onClick={(event) => toggleActionsMenu(user.id, event.currentTarget)}
+                          className="employee-table__action-button"
+                          aria-label={`${t('users.edit')}: ${user.name}`}
+                          title={t('users.edit')}
+                          onClick={() => openEditModal(user)}
                         >
-                          ...
+                          <Pencil size={15} aria-hidden="true" />
                         </button>
-                        {openActions.id === user.id ? createPortal((
-                          <div
-                          className="action-menu__panel employee-table__action-menu-panel"
-                          role="menu"
-                          aria-label={`Thao tác với ${user.name}`}
-                          style={{
-                            position: 'fixed',
-                            zIndex: 30000,
-                            right: `${openActions.right}px`,
-                            top: openActions.direction === 'down' ? `${openActions.top}px` : 'auto',
-                            bottom: openActions.direction === 'up' ? `${openActions.bottom}px` : 'auto',
-                          }}
-                        >
+                        {isAdmin ? (
                           <button
                             type="button"
-                            className="action-menu__item"
-                            role="menuitem"
-                            onClick={() => {
-                              setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                              openEditModal(user);
-                            }}
+                            className="employee-table__action-button employee-table__action-button--danger"
+                            aria-label={`${t('users.delete')}: ${user.name}`}
+                            title={t('users.delete')}
+                            onClick={() => handleDelete(user)}
+                            disabled={deletingId === user.id}
                           >
-                            {t('users.edit')}
+                            {deletingId === user.id
+                              ? <LoaderCircle size={15} aria-hidden="true" />
+                              : <Trash2 size={15} aria-hidden="true" />}
                           </button>
-                          {isAdmin ? (
-                            <button
-                              type="button"
-                              className="action-menu__item action-menu__item--danger"
-                              role="menuitem"
-                              onClick={() => {
-                                setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-                                handleDelete(user);
-                              }}
-                              disabled={deletingId === user.id}
-                            >
-                              {deletingId === user.id ? t('users.deleting') : t('users.delete')}
-                            </button>
-                          ) : null}
-                          </div>
-                        ), document.body) : null}
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -433,9 +537,17 @@ const EmployeeTable = ({ heroSubtitle }) => {
           </table>
         </div>
         <div className="employee-table__pagination">
-          <span className="employee-table__pagination-meta">
-            {t('users.showing', { visible: pageRows.length, total: filteredRows.length })}
-          </span>
+          <div className="employee-table__pagination-summary">
+            <span className="employee-table__pagination-meta">
+              {t('users.showing', { visible: pageRows.length, total: filteredRows.length })}
+            </span>
+            <label className="employee-table__page-size">
+              <span>Số dòng</span>
+              <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}>
+                {[10, 25, 50].map((size) => <option value={size} key={size}>{size}</option>)}
+              </select>
+            </label>
+          </div>
           <Pagination
             currentPage={currentPage}
             totalPages={totalPages}

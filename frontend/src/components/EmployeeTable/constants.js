@@ -1,6 +1,6 @@
 import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../../lib/permissions';
 
-export const PAGE_SIZE = 20;
+export const PAGE_SIZE = 25;
 
 export const initialForm = {
   name: '',

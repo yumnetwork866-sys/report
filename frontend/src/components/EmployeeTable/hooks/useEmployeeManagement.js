@@ -45,7 +45,6 @@ export const useEmployeeManagement = () => {
   const [editingRoleKey, setEditingRoleKey] = useState(null);
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState('');
-  const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
   const [teamFilter, setTeamFilter] = useState('all');
@@ -53,10 +52,13 @@ export const useEmployeeManagement = () => {
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
-  const [openActions, setOpenActions] = useState({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
   const [error, setError] = useState('');
   const [queryInput, setQueryInput] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZE);
+  const [sortConfig, setSortConfig] = useState({ key: 'name', direction: 'asc' });
+  const [attributionStatus, setAttributionStatus] = useState({});
+  const attributionStatusTimers = useRef(new Map());
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [confirm, setConfirm] = useState(null);
   const [confirmPending, setConfirmPending] = useState(false);
@@ -123,33 +125,13 @@ export const useEmployeeManagement = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditorOpen]);
   
-  useEffect(() => {
-    const closeActions = (event) => {
-      if (!event.target.closest('.employee-table__action-menu, .employee-table__action-menu-panel')) {
-        setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-      }
-    };
-    const closeActionsOnViewportChange = () => {
-      setOpenActions({ id: null, direction: 'down', top: 0, bottom: 0, right: 0 });
-    };
-  
-    document.addEventListener('click', closeActions);
-    window.addEventListener('resize', closeActionsOnViewportChange);
-    window.addEventListener('scroll', closeActionsOnViewportChange, true);
-    return () => {
-      document.removeEventListener('click', closeActions);
-      window.removeEventListener('resize', closeActionsOnViewportChange);
-      window.removeEventListener('scroll', closeActionsOnViewportChange, true);
-    };
+  useEffect(() => () => {
+    attributionStatusTimers.current.forEach((timer) => window.clearTimeout(timer));
   }, []);
   
   useEffect(() => {
-    setQuery(queryInput.trim());
-  }, [queryInput]);
-  
-  useEffect(() => {
     setCurrentPage(1);
-  }, [queryInput, roleFilter, statusFilter, teamFilter]);
+  }, [pageSize, queryInput, roleFilter, statusFilter, teamFilter]);
   
   useEffect(() => {
     if (!confirm) return undefined;
@@ -208,11 +190,33 @@ export const useEmployeeManagement = () => {
     + Number(roleFilter !== 'all')
     + Number(teamFilter !== 'all');
   
-  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const sortedRows = useMemo(() => {
+    const getSortValue = (user) => {
+      if (sortConfig.key === 'role') return roles.find((role) => role.key === user.role)?.label || user.role;
+      if (sortConfig.key === 'status') return user.is_active === false ? 0 : 1;
+      if (sortConfig.key === 'team') {
+        return user.content_attribution?.team?.name
+          || teams.find((team) => String(team.id) === String(user.content_attribution?.team_id || ''))?.name
+          || '';
+      }
+      return user.name || user.email || '';
+    };
+
+    return [...filteredRows].sort((left, right) => {
+      const leftValue = getSortValue(left);
+      const rightValue = getSortValue(right);
+      const comparison = typeof leftValue === 'number'
+        ? leftValue - rightValue
+        : String(leftValue).localeCompare(String(rightValue), 'vi', { sensitivity: 'base' });
+      return sortConfig.direction === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredRows, roles, sortConfig, teams]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
   const pageRows = useMemo(() => {
     const page = Math.min(currentPage, totalPages);
-    return filteredRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  }, [currentPage, filteredRows, totalPages]);
+    return sortedRows.slice((page - 1) * pageSize, page * pageSize);
+  }, [currentPage, pageSize, sortedRows, totalPages]);
   
   const pageSelectedCount = pageRows.filter((user) => selectedIds.has(user.id)).length;
   const allPageSelected = pageRows.length > 0 && pageSelectedCount === pageRows.length;
@@ -244,6 +248,14 @@ export const useEmployeeManagement = () => {
       else pageRows.forEach((user) => next.add(user.id));
       return next;
     });
+  };
+
+  const toggleSort = (key) => {
+    setSortConfig((current) => ({
+      key,
+      direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
+    }));
+    setCurrentPage(1);
   };
   
   const showToast = (message, status = 'success') => {
@@ -308,27 +320,6 @@ export const useEmployeeManagement = () => {
       setConfirmPending(false);
       setConfirm(null);
     }
-  };
-  
-  const toggleActionsMenu = (userId, triggerElement) => {
-    setOpenActions((current) => {
-      if (current.id === userId) {
-        return { id: null, direction: 'down', top: 0, bottom: 0, right: 0 };
-      }
-  
-      const rect = triggerElement.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const direction = spaceBelow < 130 && spaceAbove > spaceBelow ? 'up' : 'down';
-  
-      return {
-        id: userId,
-        direction,
-        top: Math.min(window.innerHeight - 12, rect.bottom + 8),
-        bottom: Math.max(12, window.innerHeight - rect.top + 8),
-        right: Math.max(12, window.innerWidth - rect.right),
-      };
-    });
   };
   
   const openCreateModal = () => {
@@ -498,6 +489,10 @@ export const useEmployeeManagement = () => {
   };
   
   const handleAttributionChange = async (user, field, value) => {
+    const statusKey = `${user.id}:${field}`;
+    const existingTimer = attributionStatusTimers.current.get(statusKey);
+    if (existingTimer) window.clearTimeout(existingTimer);
+    setAttributionStatus((current) => ({ ...current, [statusKey]: 'saving' }));
     const payload = field === 'content_team_id'
       ? { content_team_id: value || null }
       : { content_hashtags: value };
@@ -505,11 +500,24 @@ export const useEmployeeManagement = () => {
       setError('');
       await updateUser(user.id, payload);
       await loadData();
+      setAttributionStatus((current) => ({ ...current, [statusKey]: 'saved' }));
+      const timer = window.setTimeout(() => {
+        setAttributionStatus((current) => {
+          const next = { ...current };
+          delete next[statusKey];
+          return next;
+        });
+        attributionStatusTimers.current.delete(statusKey);
+      }, 1800);
+      attributionStatusTimers.current.set(statusKey, timer);
       showToast(t('users.updatedToast'));
+      return true;
     } catch (err) {
       const message = err.message || t('users.updateError');
+      setAttributionStatus((current) => ({ ...current, [statusKey]: 'error' }));
       setError(message);
       showToast(message, 'error');
+      return false;
     }
   };
   
@@ -684,6 +692,7 @@ export const useEmployeeManagement = () => {
     activeTab,
     activeUsers,
     allPageSelected,
+    attributionStatus,
     bookingDrawerUser,
     bulkAssignTeam,
     bulkBusy,
@@ -721,11 +730,11 @@ export const useEmployeeManagement = () => {
     isAdmin,
     isEditorOpen,
     loading,
-    openActions,
     openBookingsDrawer,
     openCreateModal,
     openEditModal,
     pageRows,
+    pageSize,
     queryInput,
     resetRoleForm,
     resetTeamForm,
@@ -742,7 +751,7 @@ export const useEmployeeManagement = () => {
     setActiveTab,
     setConfirm,
     setCurrentPage,
-    setOpenActions,
+    setPageSize,
     setQueryInput,
     setRoleFilter,
     setRoleForm,
@@ -752,6 +761,7 @@ export const useEmployeeManagement = () => {
     setTeamFilter,
     setTeamForm,
     statusFilter,
+    sortConfig,
     t,
     targetReassignStaffId,
     teamError,
@@ -760,8 +770,8 @@ export const useEmployeeManagement = () => {
     teamSaving,
     teams,
     toast,
-    toggleActionsMenu,
     toggleRolePermission,
+    toggleSort,
     toggleSelect,
     toggleSelectAll,
     togglingId,
