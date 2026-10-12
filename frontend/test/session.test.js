@@ -6,6 +6,7 @@ import {
   getSessionRole,
   getSessionSnapshot,
   getStoredSession,
+  hasPermission,
   isAdminSession,
   saveStoredSession,
   subscribeSession,
@@ -201,4 +202,16 @@ test('session role helpers identify admin sessions', async () => {
   assert.equal(getSessionRole(legacySession), 'member');
   assert.equal(isAdminSession(legacySession), false);
   assert.equal(getSessionRole(null), null);
+});
+
+test('granular permissions support new roles, admins, and legacy sessions', () => {
+  const granular = { user: { role: 'member', permissions: ['shop.bookings.video.view'] } };
+  const legacy = { user: { role: 'member', permissions: ['tiktok'] } };
+  const admin = { user: { role: 'admin', permissions: [] } };
+
+  assert.equal(hasPermission(granular, 'shop.bookings.video.view'), true);
+  assert.equal(hasPermission(granular, 'shop.orders.view'), false);
+  assert.equal(hasPermission(granular, ['shop.orders.view', 'shop.bookings.video.view']), true);
+  assert.equal(hasPermission(legacy, 'shop.orders.view'), true);
+  assert.equal(hasPermission(admin, 'admin.queues.view'), true);
 });

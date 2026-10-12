@@ -191,6 +191,21 @@
     "tiktok": "Access TikTok Shop",
     "users": "Manage users"
   },
+  "rolePermissions": {
+    "shop": "TikTok Shop", "channels": "TikTok Channel", "administration": "System administration",
+    "analytics": "Shop Analytics", "videos": "Videos", "affiliate": "Affiliate", "orders": "Orders", "bookings": "Bookings",
+    "dashboard": "Overview", "reports": "Reports", "manageChannels": "Manage channels", "manageShops": "Manage Shops",
+    "users": "Users", "roles": "Roles", "teams": "Teams", "schedules": "Schedules", "queues": "Queues",
+    "view": "View", "manage": "Manage", "videoLibrary": "Video library", "videoPerformance": "Video performance",
+    "affiliateOpen": "Open collaboration", "affiliateTarget": "Target collaboration", "affiliateDiscovery": "Creator discovery",
+    "affiliatePerformance": "Creator performance", "affiliateCreators": "Creator list", "inviteCreator": "Invite creators", "messageCreator": "Message creators",
+    "bookingVideo": "Video tab", "bookingProductPerformance": "Product performance tab", "bookingByProduct": "By product tab",
+    "reportVideo": "Video tab", "reportRevenue": "Revenue tab", "reportStatistics": "Statistics tab",
+    "selectGroup": "Select entire group", "selectedCount": "{{count}} permissions selected",
+    "expandAll": "Expand all", "collapseAll": "Collapse all", "selectAll": "Select all", "deselectAll": "Deselect all",
+    "searchPermissions": "Search permissions...", "noPermissionsFound": "No matching permissions found",
+    "selectedSummary": "Selected {{selected}}/{{total}} permissions"
+  },
   "shell": {
     "loadingContent": "Loading content...",
     "legal": "Legal",

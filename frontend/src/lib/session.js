@@ -1,3 +1,5 @@
+import { expandLegacyPermissions } from './permissions.js';
+
 const SESSION_STORAGE_KEY = 'content_report_session';
 const SESSION_CHANGE_EVENT = 'content-report-session-change';
 const MAX_TIMEOUT_MS = 2_147_483_647;
@@ -172,5 +174,10 @@ export function hasPermission(session, permission) {
   if (!session) return false;
   if (!permission) return true;
   if (isAdminSession(session)) return true;
-  return getSessionPermissions(session).includes(permission);
+  if (Array.isArray(permission)) return permission.some((key) => hasPermission(session, key));
+  return expandLegacyPermissions(getSessionPermissions(session)).includes(permission);
+}
+
+export function hasAnyPermission(session, permissions) {
+  return Array.isArray(permissions) && permissions.some((permission) => hasPermission(session, permission));
 }

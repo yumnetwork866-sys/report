@@ -7,6 +7,8 @@ import {
 } from '../../../lib/api';
 import { useMoneyFormatter } from '../../../lib/currency';
 import { useI18n } from '../../../lib/language';
+import { hasPermission } from '../../../lib/session';
+import { useSession } from '../../../lib/useSession';
 import {
   currentMonthValue,
   formatMonth,
@@ -18,6 +20,9 @@ import {
 
 export const useChannelReportData = () => {
   const { language } = useI18n();
+  const session = useSession();
+  const canLoadContent = hasPermission(session, ['channels.reports.video.view', 'channels.reports.statistics.view']);
+  const canLoadRevenue = hasPermission(session, 'channels.reports.revenue.view');
   const [report, setReport] = useState(null);
   const [revenueReport, setRevenueReport] = useState(null);
   const [previousReport, setPreviousReport] = useState(null);
@@ -29,7 +34,7 @@ export const useChannelReportData = () => {
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [selectedTeamIds, setSelectedTeamIds] = useState('all');
   const [selectedChannelId, setSelectedChannelId] = useState('all');
-  const [activeReportTab, setActiveReportTab] = useState('teams');
+  const [activeReportTab, setActiveReportTab] = useState(() => canLoadContent ? 'teams' : 'revenue');
   const [productTeamFilter, setProductTeamFilter] = useState('all');
   const [productSearchQuery, setProductSearchQuery] = useState('');
   const [expandedMemberIds, setExpandedMemberIds] = useState(() => new Set());
@@ -80,10 +85,10 @@ export const useChannelReportData = () => {
           pageSize: 20,
         };
         const [contentPayload, revenuePayload, previousContentPayload, previousRevenuePayload] = await Promise.all([
-          fetchChannelReport({ ...period, ...requestOptions, metric: 'content', signal: controller.signal }),
-          fetchChannelReport({ ...period, ...requestOptions, metric: 'revenue', signal: controller.signal }),
-          fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'content', signal: controller.signal }),
-          fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'revenue', signal: controller.signal }),
+          canLoadContent ? fetchChannelReport({ ...period, ...requestOptions, metric: 'content', signal: controller.signal }) : Promise.resolve(null),
+          canLoadRevenue ? fetchChannelReport({ ...period, ...requestOptions, metric: 'revenue', signal: controller.signal }) : Promise.resolve(null),
+          canLoadContent ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'content', signal: controller.signal }) : Promise.resolve(null),
+          canLoadRevenue ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'revenue', signal: controller.signal }) : Promise.resolve(null),
         ]);
         setReport(contentPayload);
         setRevenueReport(revenuePayload);
@@ -97,7 +102,7 @@ export const useChannelReportData = () => {
     };
     load();
     return () => controller.abort();
-  }, [activeReportTab, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
+  }, [activeReportTab, canLoadContent, canLoadRevenue, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
   
   useEffect(() => {
     if (!report) return;

@@ -31,7 +31,7 @@ const scheduleRoutes = require('./routes/scheduleRoutes');
 const queueRoutes = require('./routes/queueRoutes');
 const { TikTokChannel, User } = require('./models');
 const { encryptToken, isEncryptedToken } = require('./lib/tokenEncryption');
-const { requireAdmin, requirePermission } = require('./lib/session');
+const { requireAdmin, requirePermission, requireAnyPermission } = require('./lib/session');
 const { getAdminAccount } = require('./lib/adminAccount');
 const { startDatabaseScheduler } = require('./services/scheduledJobService');
 const { serverAdapter, bullBoardAuth } = require('./routes/bullBoardRoutes');
@@ -68,18 +68,18 @@ const createApp = () => {
     res.json({ message: 'Content Performance Reporting API' });
   });
 
-  app.use('/api/users', requireAdmin, userRoutes);
-  app.use('/api/roles', requireAdmin, requirePermission('users'), roleRoutes);
-  app.use('/api/content-teams', requireAdmin, requirePermission('users'), contentTeamRoutes);
-  app.use('/api/bookings', requireAdmin, requirePermission('tiktok'), bookingRoutes);
-  app.use('/api/videos', requireAdmin, requirePermission('tiktok'), videoRoutes);
-  app.use('/api/reports', requireAdmin, requirePermission('reports'), reportRoutes);
+  app.use('/api/users', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), userRoutes);
+  app.use('/api/roles', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), roleRoutes);
+  app.use('/api/content-teams', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), contentTeamRoutes);
+  app.use('/api/bookings', requireAdmin, requireAnyPermission(['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage']), bookingRoutes);
+  app.use('/api/videos', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.videos.performance.view', 'shop.bookings.video.view', 'shop.bookings.manage']), videoRoutes);
+  app.use('/api/reports', requireAdmin, requireAnyPermission(['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view', 'shop.affiliate.performance.view']), reportRoutes);
   app.use('/api/channels', channelRoutes);
-  app.use('/api/products', requireAdmin, requirePermission('tiktok'), productRoutes);
-  app.use('/api/assignments', requireAdmin, requirePermission('tiktok'), assignmentRoutes);
-  app.use('/api/import', requireAdmin, requirePermission('tiktok'), importRoutes);
+  app.use('/api/products', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.bookings.manage']), productRoutes);
+  app.use('/api/assignments', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.bookings.manage']), assignmentRoutes);
+  app.use('/api/import', requireAdmin, requirePermission('shop.videos.library.view'), importRoutes);
   app.use('/api/auth', authRoutes);
-  app.use('/api/tiktok-shop', requireAdmin, requirePermission('tiktok'), tiktokShopRoutes.adminRouter);
+  app.use('/api/tiktok-shop', requireAdmin, requireAnyPermission(['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage', 'shop.affiliate.invite', 'shop.affiliate.message', 'admin.shops.manage']), tiktokShopRoutes.adminRouter);
   app.get('/api/exchange-rates', async (req, res) => {
     try {
       res.json(await getMyrExchangeRates());
@@ -88,8 +88,8 @@ const createApp = () => {
       res.json(FALLBACK_EXCHANGE_RATES);
     }
   });
-  app.use('/api/schedules', requireAdmin, scheduleRoutes);
-  app.use('/api/queues', requireAdmin, queueRoutes);
+  app.use('/api/schedules', requireAdmin, requirePermission('admin.schedules.manage'), scheduleRoutes);
+  app.use('/api/queues', requireAdmin, requirePermission('admin.queues.view'), queueRoutes);
   app.use('/admin/queues', bullBoardAuth, serverAdapter.getRouter());
 
   return app;

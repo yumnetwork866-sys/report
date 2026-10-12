@@ -1,4 +1,7 @@
+import { useEffect, useMemo } from 'react';
 import DatePickerInput from '../DatePickerInput';
+import { hasPermission } from '../../lib/session';
+import { useSession } from '../../lib/useSession';
 
 import {
   ChannelSelectDropdown,
@@ -11,6 +14,7 @@ import { useChannelReportData } from './hooks/useChannelReportData';
 import { compactProductName, todayValue } from './utils/reportUtils';
 
 const ChannelReport = () => {
+  const session = useSession();
   const {
     activeReportTab,
     allTeamOrders,
@@ -65,6 +69,15 @@ const ChannelReport = () => {
     videoRevenueDetail,
     visibleGroups,
   } = useChannelReportData();
+  const visibleReportTabs = useMemo(() => [
+    ['teams', 'channels.reports.video.view'],
+    ['revenue', 'channels.reports.revenue.view'],
+    ['comparison', 'channels.reports.statistics.view'],
+  ].filter(([, permission]) => hasPermission(session, permission)).map(([key]) => key), [session]);
+
+  useEffect(() => {
+    if (visibleReportTabs.length && !visibleReportTabs.includes(activeReportTab)) setActiveReportTab(visibleReportTabs[0]);
+  }, [activeReportTab, setActiveReportTab, visibleReportTabs]);
 
   const renderMembersTable = (members, showTeamBadge = false) => (
     <MemberTable
@@ -93,7 +106,7 @@ const ChannelReport = () => {
           <h1 className="page__title">Báo cáo</h1>
         </div>
         <div className="koc-tabs channel-report-tabs" role="tablist" aria-label="Chế độ xem báo cáo">
-          <button
+          {visibleReportTabs.includes('teams') ? <button
             id="channel-report-teams-tab"
             type="button"
             role="tab"
@@ -104,8 +117,8 @@ const ChannelReport = () => {
             onClick={() => setActiveReportTab('teams')}
           >
             Video
-          </button>
-          <button
+          </button> : null}
+          {visibleReportTabs.includes('revenue') ? <button
             id="channel-report-revenue-tab"
             type="button"
             role="tab"
@@ -116,8 +129,8 @@ const ChannelReport = () => {
             onClick={() => setActiveReportTab('revenue')}
           >
             Doanh thu
-          </button>
-          <button
+          </button> : null}
+          {visibleReportTabs.includes('comparison') ? <button
             id="channel-report-comparison-tab"
             type="button"
             role="tab"
@@ -128,7 +141,7 @@ const ChannelReport = () => {
             onClick={() => setActiveReportTab('comparison')}
           >
             Thống kê
-          </button>
+          </button> : null}
         </div>
       </section>
 

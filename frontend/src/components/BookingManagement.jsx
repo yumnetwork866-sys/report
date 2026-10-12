@@ -64,7 +64,17 @@ const BookingManagement = ({
 }) => {
   const { t, language } = useI18n();
   const session = useSession();
-  const canManageUsers = hasPermission(session, 'users');
+  const canManageUsers = hasPermission(session, 'admin.users.manage');
+  const canManageBookings = hasPermission(session, 'shop.bookings.manage');
+  const bookingTabPermissions = useMemo(() => ({
+    video: hasPermission(session, 'shop.bookings.video.view'),
+    product: hasPermission(session, 'shop.bookings.product_performance.view'),
+    by_product: hasPermission(session, 'shop.bookings.by_product.view'),
+  }), [session]);
+  const visibleBookingTabs = useMemo(
+    () => Object.keys(bookingTabPermissions).filter((key) => bookingTabPermissions[key]),
+    [bookingTabPermissions],
+  );
   const sessionUserId = String(session?.user?.id || 'anonymous');
   const hashtagFilterStorageKey = `booking-hashtag-filter:${sessionUserId}`;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,8 +89,8 @@ const BookingManagement = ({
   const monthOptions = useMemo(() => generateBookingMonthOptions(), []);
   const [bookingTab, setBookingTab] = useState(() => {
     const saved = bookingUiSession().bookingTab;
-    if (saved === 'by_product' || saved === 'product') return saved;
-    return 'video';
+    if (bookingTabPermissions[saved]) return saved;
+    return visibleBookingTabs[0] || 'video';
   });
   const [hashtagFilterEnabled, setHashtagFilterEnabled] = useState(() => {
     try {
@@ -98,7 +108,7 @@ const BookingManagement = ({
   const [targetKocPagination, setTargetKocPagination] = useState({ page: 1, total_pages: 1 });
   const [targetKocsLoading, setTargetKocsLoading] = useState(false);
   const [selectedKocDetail, setSelectedKocDetail] = useState(null);
-  const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create');
+  const [isCreateBookingOpen, setIsCreateBookingOpen] = useState(embeddedMode === 'create' && canManageBookings);
   const [shops, setShops] = useState([]);
   const [selectedShopId, setSelectedShopId] = useState('');
   const [channelProducts, setChannelProducts] = useState([]);
@@ -135,6 +145,10 @@ const BookingManagement = ({
     setSelectedShopId('');
     if (embeddedMode === 'create') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
+
+  useEffect(() => {
+    if (!bookingTabPermissions[bookingTab] && visibleBookingTabs.length) setBookingTab(visibleBookingTabs[0]);
+  }, [bookingTab, bookingTabPermissions, visibleBookingTabs]);
 
   const closeBookingDetail = useCallback(() => {
     setCreatorDeleteConfirmOpen(false);
@@ -478,7 +492,7 @@ const BookingManagement = ({
     const action = searchParams.get('action');
     const requestedBookingId = searchParams.get('booking');
     const requestedStaffId = searchParams.get('staff');
-    if (action === 'create') setIsCreateBookingOpen(true);
+    if (action === 'create' && canManageBookings) setIsCreateBookingOpen(true);
     if (requestedStaffId && canManageUsers) {
       const groupKey = `id:${requestedStaffId}`;
       setSelectedManagerKey(groupKey);
@@ -503,7 +517,7 @@ const BookingManagement = ({
       next.delete('staff');
       setSearchParams(next, { replace: true });
     }
-  }, [bookings, canManageUsers, loading, searchParams, setSearchParams]);
+  }, [bookings, canManageBookings, canManageUsers, loading, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (embeddedMode !== 'detail' || !embeddedBookingId || loading) return;
@@ -911,11 +925,11 @@ const BookingManagement = ({
 
       <section className="booking-create-action">
         <div className="booking-view-tabs" role="tablist" aria-label={t('booking.viewTabs')}>
-          <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button>
-          <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { if (bookingTab !== 'product') setProductPerformanceLoading(true); setBookingTab('product'); }}>{t('booking.productTab')}</button>
-          <button className={`booking-view-tabs__tab${bookingTab === 'by_product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'by_product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('by_product')}>{t('booking.byProductTab') || 'Theo sản phẩm'}</button>
+          {bookingTabPermissions.video ? <button className={`booking-view-tabs__tab${bookingTab === 'video' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'video'} aria-controls="booking-list-panel" onClick={() => setBookingTab('video')}>{t('booking.videoTab')}</button> : null}
+          {bookingTabPermissions.product ? <button className={`booking-view-tabs__tab${bookingTab === 'product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'product'} aria-controls="booking-list-panel" onClick={() => { if (bookingTab !== 'product') setProductPerformanceLoading(true); setBookingTab('product'); }}>{t('booking.productTab')}</button> : null}
+          {bookingTabPermissions.by_product ? <button className={`booking-view-tabs__tab${bookingTab === 'by_product' ? ' booking-view-tabs__tab--active' : ''}`} type="button" role="tab" aria-selected={bookingTab === 'by_product'} aria-controls="booking-list-panel" onClick={() => setBookingTab('by_product')}>{t('booking.byProductTab') || 'Theo sản phẩm'}</button> : null}
         </div>
-        <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button>
+        {canManageBookings ? <button className="button" type="button" onClick={() => setIsCreateBookingOpen(true)}>＋ {t('booking.addBooking')}</button> : null}
       </section>
 
       <BookingCreateModal

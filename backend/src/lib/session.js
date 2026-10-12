@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const { expandLegacyPermissions } = require('./permissions');
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
@@ -50,10 +51,19 @@ const requirePermission = (permission) => (req, res, next) => {
   if (session.role === 'admin') {
     return next();
   }
-  if (Array.isArray(session.permissions) && session.permissions.includes(permission)) {
+  if (expandLegacyPermissions(session.permissions).includes(permission)) {
     return next();
   }
   return res.status(403).json({ message: 'Không có quyền truy cập' });
 };
 
-module.exports = { createSessionToken, requireAdmin, requirePermission };
+const requireAnyPermission = (permissions) => (req, res, next) => {
+  const session = req.session;
+  if (!session) return res.status(401).json({ message: 'Authentication is required' });
+  if (session.role === 'admin') return next();
+  const effectivePermissions = expandLegacyPermissions(session.permissions);
+  if (permissions.some((permission) => effectivePermissions.includes(permission))) return next();
+  return res.status(403).json({ message: 'Không có quyền truy cập' });
+};
+
+module.exports = { createSessionToken, requireAdmin, requirePermission, requireAnyPermission };

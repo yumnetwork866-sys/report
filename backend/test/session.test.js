@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSessionToken, requireAdmin } = require('../src/lib/session');
+const { createSessionToken, requireAdmin, requireAnyPermission, requirePermission } = require('../src/lib/session');
 
 const makeResponse = () => ({
   statusCode: 200,
@@ -78,4 +78,27 @@ test('requireAdmin rejects malformed sessions', (t) => {
   assert.equal(nextCalled, false);
   assert.equal(res.statusCode, 401);
   assert.equal(res.body.message, 'Session is invalid or expired');
+});
+
+test('permission middleware accepts granular, any-of, and legacy permissions', () => {
+  const nextCalls = [];
+  const next = () => nextCalls.push(true);
+
+  requirePermission('shop.orders.view')(
+    { session: { role: 'member', permissions: ['shop.orders.view'] } },
+    makeResponse(),
+    next,
+  );
+  requireAnyPermission(['shop.orders.view', 'shop.bookings.video.view'])(
+    { session: { role: 'member', permissions: ['shop.bookings.video.view'] } },
+    makeResponse(),
+    next,
+  );
+  requirePermission('shop.analytics.view')(
+    { session: { role: 'member', permissions: ['tiktok'] } },
+    makeResponse(),
+    next,
+  );
+
+  assert.equal(nextCalls.length, 3);
 });

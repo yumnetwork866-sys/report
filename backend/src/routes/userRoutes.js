@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { requirePermission } = require('../lib/session');
+const { requireAnyPermission, requirePermission } = require('../lib/session');
 const {
   getUsers,
   getUserById,
@@ -12,24 +12,24 @@ const {
 } = require('../controllers/userController');
 
 // GET /api/users
-router.get('/', requirePermission('users'), getUsers);
+router.get('/', requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), getUsers);
 
 // GET /api/users/:id/bookings
-router.get('/:id/bookings', requirePermission('users'), getUserBookings);
+router.get('/:id/bookings', requirePermission('admin.users.manage'), getUserBookings);
 
 // POST /api/users/:id/unassign-bookings
-router.post('/:id/unassign-bookings', requirePermission('users'), unassignUserBookings);
+router.post('/:id/unassign-bookings', requirePermission('admin.users.manage'), unassignUserBookings);
 
 // GET /api/users/:id
-router.get('/:id', requirePermission('users'), getUserById);
+router.get('/:id', requirePermission('admin.users.manage'), getUserById);
 
 // POST /api/users
-router.post('/', requirePermission('users'), createUser);
+router.post('/', requirePermission('admin.users.manage'), createUser);
 
 // PUT /api/users/:id
-router.put('/:id', requirePermission('users'), updateUser);
+router.put('/:id', requirePermission('admin.users.manage'), updateUser);
 
 // DELETE /api/users/:id
-router.delete('/:id', requirePermission('admin'), deleteUser);
+router.delete('/:id', requirePermission('admin.users.manage'), deleteUser);
 
 module.exports = router;

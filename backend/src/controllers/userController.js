@@ -9,6 +9,7 @@ const {
   sequelize,
 } = require('../models');
 const { hashPassword } = require('../lib/password');
+const { expandLegacyPermissions } = require('../lib/permissions');
 const { delByPattern } = require('../lib/redis');
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -83,7 +84,7 @@ const getUserById = async (req, res) => {
     const isSelf = Number(req.session?.sub) === targetUserId;
     const canManageUsers = !req.session
       || req.session.role === 'admin'
-      || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+      || expandLegacyPermissions(req.session.permissions).includes('admin.users.manage');
 
     if (!isSelf && !canManageUsers) {
       return res.status(403).json({ message: 'Không có quyền truy cập' });
@@ -150,7 +151,7 @@ const updateUser = async (req, res) => {
     const isSelf = Number(req.session?.sub) === targetUserId;
     const canManageUsers = !req.session
       || req.session.role === 'admin'
-      || (Array.isArray(req.session.permissions) && req.session.permissions.includes('users'));
+      || expandLegacyPermissions(req.session.permissions).includes('admin.users.manage');
 
     if (!isSelf && !canManageUsers) {
       return res.status(403).json({ message: 'Không có quyền truy cập' });

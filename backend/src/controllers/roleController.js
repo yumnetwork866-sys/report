@@ -7,6 +7,7 @@ const serializeRole = async (role) => {
   const value = role.get ? role.get({ plain: true }) : role;
   return {
     ...value,
+    permissions: value.key === 'admin' ? ALL_PERMISSIONS : normalizePermissions(value.permissions),
     user_count: await User.count({ where: { role: value.key } }),
   };
 };

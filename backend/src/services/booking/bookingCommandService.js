@@ -3,6 +3,7 @@ const { delByPattern } = require('../../lib/redis');
 const { serializeBookings } = require('../../presenters/bookingPresenter');
 const { upsertShopProducts } = require('../shopProductCatalogService');
 const { BookingNotFoundError } = require('./bookingErrors');
+const { expandLegacyPermissions } = require('../../lib/permissions');
 const { findTargetCreator } = require('./bookingTargetService');
 const { autoLinkCreatedBooking } = require('./bookingVideoService');
 
@@ -41,7 +42,7 @@ const normalizeBookingVideoUrl = (value) => {
 
 const canManageUsers = (session) => !session
   || session.role === 'admin'
-  || (Array.isArray(session.permissions) && session.permissions.includes('users'));
+  || expandLegacyPermissions(session.permissions).includes('admin.users.manage');
 
 const clearBookingCaches = () => Promise.all([
   delByPattern('bookings:*'),

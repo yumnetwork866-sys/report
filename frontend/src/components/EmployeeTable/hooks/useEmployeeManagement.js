@@ -441,12 +441,24 @@ export const useEmployeeManagement = () => {
   
   const toggleRolePermission = (key, checked) => {
     if (roleForm.isSystem) return;
-    setRoleForm((current) => ({
-      ...current,
-      permissions: checked
-        ? [...new Set([...current.permissions, key])]
-        : current.permissions.filter((permission) => permission !== key),
-    }));
+    const requiredView = {
+      'shop.affiliate.invite': 'shop.affiliate.discovery.view',
+      'shop.affiliate.message': 'shop.affiliate.discovery.view',
+      'shop.bookings.manage': 'shop.bookings.video.view',
+    }[key];
+    const dependentActions = {
+      'shop.affiliate.discovery.view': ['shop.affiliate.invite', 'shop.affiliate.message'],
+      'shop.bookings.video.view': ['shop.bookings.manage'],
+    }[key] || [];
+    setRoleForm((current) => {
+      const additions = requiredView ? [key, requiredView] : [key];
+      return {
+        ...current,
+        permissions: checked
+          ? [...new Set([...current.permissions, ...additions])]
+          : current.permissions.filter((permission) => permission !== key && !dependentActions.includes(permission)),
+      };
+    });
   };
   
   const handleRoleSubmit = async (event) => {

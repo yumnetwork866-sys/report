@@ -191,6 +191,21 @@
     "tiktok": "Truy cập TikTok Shop",
     "users": "Quản lý người dùng"
   },
+  "rolePermissions": {
+    "shop": "TikTok Shop", "channels": "TikTok Channel", "administration": "Quản trị hệ thống",
+    "analytics": "Shop Analytics", "videos": "Video", "affiliate": "Tiếp thị liên kết", "orders": "Đơn hàng", "bookings": "Booking",
+    "dashboard": "Tổng quan", "reports": "Báo cáo", "manageChannels": "Quản lý kênh", "manageShops": "Quản lý Shop",
+    "users": "Người dùng", "roles": "Vai trò", "teams": "Team", "schedules": "Lịch chạy", "queues": "Hàng đợi",
+    "view": "Xem", "manage": "Quản lý", "videoLibrary": "Thư viện video", "videoPerformance": "Hiệu suất video",
+    "affiliateOpen": "Open collaboration", "affiliateTarget": "Target collaboration", "affiliateDiscovery": "Khám phá creator",
+    "affiliatePerformance": "Hiệu quả creator", "affiliateCreators": "Danh sách creator", "inviteCreator": "Mời creator", "messageCreator": "Nhắn tin creator",
+    "bookingVideo": "Tab Video", "bookingProductPerformance": "Tab Hiệu quả sản phẩm", "bookingByProduct": "Tab Theo sản phẩm",
+    "reportVideo": "Tab Video", "reportRevenue": "Tab Doanh thu", "reportStatistics": "Tab Thống kê",
+    "selectGroup": "Chọn toàn bộ nhóm", "selectedCount": "Đã chọn {{count}} quyền",
+    "expandAll": "Mở rộng", "collapseAll": "Thu gọn", "selectAll": "Chọn hết", "deselectAll": "Bỏ chọn",
+    "searchPermissions": "Tìm kiếm quyền...", "noPermissionsFound": "Không tìm thấy quyền phù hợp",
+    "selectedSummary": "Đã chọn {{selected}}/{{total}} quyền"
+  },
   "shell": {
     "loadingContent": "Đang tải nội dung...",
     "legal": "Pháp lý",

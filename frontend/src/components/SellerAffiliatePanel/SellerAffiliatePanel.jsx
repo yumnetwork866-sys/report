@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import ShopDropdown from '../ShopDropdown';
 import SelectDropdown from '../SelectDropdown';
 import { BarChart3, CalendarDays, Filter } from 'lucide-react';
 import { setStoredSelectedShopId } from '../../lib/shopSelection';
+import { hasPermission } from '../../lib/session';
+import { useSession } from '../../lib/useSession';
 import Pagination from '../Pagination';
 import DatePickerInput from '../DatePickerInput';
 import { useSellerAffiliateData } from './hooks/useSellerAffiliateData';
@@ -39,6 +41,18 @@ import {
 import '../../styles/features/seller-affiliate.css';
 
 const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) => {
+  const session = useSession();
+  const visibleSections = useMemo(() => [
+    ['open', 'shop.affiliate.open.view'],
+    ['target', 'shop.affiliate.target.view'],
+    ['discover', 'shop.affiliate.discovery.view'],
+    ['performance', 'shop.affiliate.performance.view'],
+    ['creators', 'shop.affiliate.creators.view'],
+    ['orders', 'shop.orders.view'],
+  ].filter(([, permission]) => hasPermission(session, permission)).map(([value]) => value), [session]);
+  const authorizedInitialSection = ordersOnly
+    ? 'orders'
+    : visibleSections.includes(initialSection) ? initialSection : visibleSections[0] || initialSection;
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showAdvancedOrderFilters, setShowAdvancedOrderFilters] = useState(false);
   const {
@@ -138,7 +152,11 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     applyOrderFilters,
     applyOrderFilterPatch,
     resetOrderFilters,
-  } = useSellerAffiliateData({ initialSection, ordersOnly });
+  } = useSellerAffiliateData({ initialSection: authorizedInitialSection, ordersOnly });
+
+  useEffect(() => {
+    if (!ordersOnly && visibleSections.length && !visibleSections.includes(section)) changeSection(visibleSections[0]);
+  }, [changeSection, ordersOnly, section, visibleSections]);
   const updateOrderFilter = (key, value) => setOrderFilterDraft((current) => ({ ...current, [key]: value }));
   const advancedFilterKeys = ['warehouse', 'buyerCancellation', 'settlementStatus', 'carrier', 'productSku', 'deliveryIssue', 'source'];
   const activeAdvancedFilterCount = advancedFilterKeys.filter((key) => {
@@ -155,7 +173,7 @@ const SellerAffiliatePanel = ({ initialSection = 'open', ordersOnly = false }) =
     <div className="page seller-affiliate">
       {selectedShop && hasScope && !ordersOnly ? (
         <div className="seller-affiliate__subtabs" role="tablist" aria-label={t('sellerAffiliate.sections')}>
-          {['open', 'target', 'discover', 'performance', 'creators', 'orders'].map((value) => <button className={section === value ? 'is-active' : ''} type="button" role="tab" aria-selected={section === value} onClick={() => changeSection(value)} key={value}>{t(`sellerAffiliate.${value}Tab`)}</button>)}
+          {visibleSections.map((value) => <button className={section === value ? 'is-active' : ''} type="button" role="tab" aria-selected={section === value} onClick={() => changeSection(value)} key={value}>{t(`sellerAffiliate.${value}Tab`)}</button>)}
         </div>
       ) : null}
       <section className={`section-card seller-affiliate__controls${ordersOnly ? ' seller-affiliate__controls--orders' : ''}${ordersOnly && orderPeriod === 'custom' ? ' seller-affiliate__controls--orders-custom' : ''}${(!ordersOnly && (section === 'open' || section === 'discover')) ? ' seller-affiliate__controls--two-columns' : ''}`}>

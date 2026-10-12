@@ -17,8 +17,10 @@ import {
 } from 'lucide-react';
 import AppAvatar from '../AppAvatar';
 import Pagination from '../Pagination';
-import { PERMISSIONS, permissionLabelKey } from '../../lib/permissions';
+import { hasPermission } from '../../lib/session';
+import { useSession } from '../../lib/useSession';
 import { EmployeeOverlays } from './components/EmployeeOverlays';
+import { RolePermissionTree } from './components/RolePermissionTree';
 import { useEmployeeManagement } from './hooks/useEmployeeManagement';
 import { createRoleKey } from './utils/employeeUtils';
 import '../../styles/pages/admin.css';
@@ -215,6 +217,18 @@ const EmployeeTable = ({ heroSubtitle }) => {
     totalPages,
     users,
   } = useEmployeeManagement();
+  const session = useSession();
+  const managementTabs = [
+    { key: 'users', label: 'Người dùng', count: users.length, permission: 'admin.users.manage' },
+    { key: 'teams', label: 'Team', count: teams.length, permission: 'admin.teams.manage' },
+    { key: 'roles', label: 'Vai trò', count: roles.length, permission: 'admin.roles.manage' },
+  ].filter((tab) => hasPermission(session, tab.permission));
+
+  useEffect(() => {
+    if (managementTabs.length && !managementTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(managementTabs[0].key);
+    }
+  }, [activeTab, managementTabs, setActiveTab]);
   const [teamQuery, setTeamQuery] = useState('');
   const [teamSort, setTeamSort] = useState('name-asc');
   const [teamScope, setTeamScope] = useState('all');
@@ -257,11 +271,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
       ) : null}
 
       <nav className="employee-table__tabs" aria-label="Quản lý hệ thống">
-        {[
-          { key: 'users', label: 'Người dùng', count: users.length },
-          { key: 'teams', label: 'Team', count: teams.length },
-          { key: 'roles', label: 'Vai trò', count: roles.length },
-        ].map((tab) => (
+        {managementTabs.map((tab) => (
           <button
             className={`employee-table__tab${activeTab === tab.key ? ' is-active' : ''}`}
             type="button"
@@ -773,9 +783,6 @@ const EmployeeTable = ({ heroSubtitle }) => {
 
           <div className="employee-table__management-layout">
             <section className="employee-table__role-list-panel">
-              <div className="employee-table__role-panel-heading">
-                <div><strong>{t('users.roleList')}</strong><span>{t('users.roleCount', { count: roles.length })}</span></div>
-              </div>
               {roles.length ? (
                 <div className="employee-table__role-list">
                   {roles.map((role) => (
@@ -795,12 +802,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
                           </span>
                           {role.is_system ? null : role.permissions?.length ? (
                             <span className="employee-table__role-permissions">
-                              {role.permissions.map((permission) => {
-                                const labelKey = permissionLabelKey(permission);
-                                return labelKey ? (
-                                  <span className={`employee-table__permission-badge employee-table__permission-badge--${permission}`} key={permission}>{t(labelKey)}</span>
-                                ) : null;
-                              })}
+                              <span className="employee-table__role-permission-labels">{t('rolePermissions.selectedCount', { count: role.permissions.length })}</span>
                             </span>
                           ) : (
                             <span className="employee-table__role-permissions">
@@ -833,10 +835,6 @@ const EmployeeTable = ({ heroSubtitle }) => {
             </section>
 
             <form className="employee-table__role-form" onSubmit={handleRoleSubmit}>
-              <div className="employee-table__manager-form-heading">
-                <strong>{editingRoleKey ? 'Sửa vai trò' : 'Tạo vai trò mới'}</strong>
-                {editingRoleKey ? <span>{t('users.roleKeyHint', { key: editingRoleKey })}</span> : null}
-              </div>
               <div className="field">
                 <label htmlFor="role-label">{t('users.roleName')}</label>
                 <input
@@ -852,21 +850,16 @@ const EmployeeTable = ({ heroSubtitle }) => {
                 />
               </div>
               <div className="field">
-                <span className="employee-table__role-permissions-label">{t('users.rolePermissions')}</span>
-                <div className="employee-table__permission-grid">
-                  {PERMISSIONS.map((permission) => (
-                    <label className={`employee-table__permission-item employee-table__permission-item--${permission.key}${roleForm.permissions.includes(permission.key) ? ' is-checked' : ''}`} key={permission.key}>
-                      <input
-                        type="checkbox"
-                        checked={roleForm.permissions.includes(permission.key)}
-                        disabled={roleForm.isSystem}
-                        onChange={(event) => toggleRolePermission(permission.key, event.target.checked)}
-                      />
-                      <span>{t(permission.labelKey)}</span>
-                    </label>
-                  ))}
-                </div>
-
+                <RolePermissionTree
+                  permissions={roleForm.permissions}
+                  disabled={roleForm.isSystem}
+                  onChange={(nextPermissions) => setRoleForm((current) => ({
+                    ...current,
+                    permissions: nextPermissions,
+                  }))}
+                  onTogglePermission={toggleRolePermission}
+                  t={t}
+                />
               </div>
               <div className="actions">
                 {editingRoleKey ? <button className="button button--ghost" type="button" onClick={resetRoleForm}>{t('users.cancelEdit')}</button> : null}

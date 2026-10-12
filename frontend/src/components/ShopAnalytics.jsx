@@ -1,7 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../lib/language';
 import { formatDateOnly } from '../lib/date';
 import { useMoneyFormatter } from '../lib/currency';
+import { hasPermission } from '../lib/session';
+import { useSession } from '../lib/useSession';
 import AnalyticsIcon from './shop-analytics/AnalyticsIcon';
 import AnalyticsCharts from './shop-analytics/AnalyticsCharts';
 import ConnectionsPanel from './shop-analytics/ConnectionsPanel';
@@ -32,6 +34,9 @@ const ShopAnalytics = ({
   combinedVideoTabs = false,
 }) => {
   const { t, language } = useI18n();
+  const session = useSession();
+  const canViewVideoLibrary = hasPermission(session, 'shop.videos.library.view');
+  const canViewVideoPerformance = hasPermission(session, 'shop.videos.performance.view');
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
   const initialRange = useMemo(() => rangeForDays(7), []);
@@ -41,9 +46,9 @@ const ShopAnalytics = ({
   const [chartMetric, setChartMetric] = useState('gmv');
   const [error, setError] = useState('');
   const [combinedVideoView, setCombinedVideoView] = useState(() => (
-    new URLSearchParams(window.location.search).get('view') === 'performance'
+    new URLSearchParams(window.location.search).get('view') === 'performance' && canViewVideoPerformance
       ? 'performance'
-      : 'library'
+      : canViewVideoLibrary ? 'library' : 'performance'
   ));
   const videoExportOnly = combinedVideoTabs
     ? combinedVideoView === 'library'
@@ -90,7 +95,7 @@ const ShopAnalytics = ({
     t, videoExportOnly, videoOnly,
   });
 
-  const changeCombinedVideoView = (nextView) => {
+  const changeCombinedVideoView = useCallback((nextView) => {
     if (nextView === combinedVideoView) return;
     setCombinedVideoView(nextView);
     setVideoAnalytics(null);
@@ -101,7 +106,13 @@ const ShopAnalytics = ({
     else params.delete('view');
     const query = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-  };
+  }, [combinedVideoView, setVideoAnalytics, setVideoAnalyticsLoading, setVideoPage]);
+
+  useEffect(() => {
+    if (!combinedVideoTabs) return;
+    if (combinedVideoView === 'library' && !canViewVideoLibrary && canViewVideoPerformance) changeCombinedVideoView('performance');
+    if (combinedVideoView === 'performance' && !canViewVideoPerformance && canViewVideoLibrary) changeCombinedVideoView('library');
+  }, [canViewVideoLibrary, canViewVideoPerformance, changeCombinedVideoView, combinedVideoTabs, combinedVideoView]);
 
   const formatNumber = (value) => numericValue(value).toLocaleString(locale, {
     maximumFractionDigits: 2,
@@ -246,7 +257,7 @@ const ShopAnalytics = ({
 
       {videoOnly && combinedVideoTabs ? (
         <div className="shop-video-analytics__view-tabs" role="tablist" aria-label={t('navigation.videos')}>
-          <button
+          {canViewVideoLibrary ? <button
             className={combinedVideoView === 'library' ? 'is-active' : ''}
             type="button"
             role="tab"
@@ -254,8 +265,8 @@ const ShopAnalytics = ({
             onClick={() => changeCombinedVideoView('library')}
           >
             {t('navigation.videos')}
-          </button>
-          <button
+          </button> : null}
+          {canViewVideoPerformance ? <button
             className={combinedVideoView === 'performance' ? 'is-active' : ''}
             type="button"
             role="tab"
@@ -263,7 +274,7 @@ const ShopAnalytics = ({
             onClick={() => changeCombinedVideoView('performance')}
           >
             {t('navigation.videoAnalytics')}
-          </button>
+          </button> : null}
         </div>
       ) : null}
 

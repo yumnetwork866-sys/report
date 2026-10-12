@@ -10,8 +10,8 @@ const {
 const router = express.Router();
 
 router.get('/', getTeams);
-router.post('/', createTeam);
-router.put('/:id', updateTeam);
-router.delete('/:id', requirePermission('admin'), deleteTeam);
+router.post('/', requirePermission('admin.teams.manage'), createTeam);
+router.put('/:id', requirePermission('admin.teams.manage'), updateTeam);
+router.delete('/:id', requirePermission('admin.teams.manage'), deleteTeam);
 
 module.exports = router;
