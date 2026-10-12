@@ -39,7 +39,10 @@ export const useEmployeeManagement = () => {
   const [activeTab, setActiveTab] = useState('users');
   const [teamForm, setTeamForm] = useState({ name: '' });
   const [editingTeamId, setEditingTeamId] = useState(null);
+  const [isTeamEditorOpen, setIsTeamEditorOpen] = useState(false);
   const [teamSaving, setTeamSaving] = useState(false);
+  const [teamSaveStatus, setTeamSaveStatus] = useState('idle');
+  const teamSaveStatusTimer = useRef(null);
   const [teamError, setTeamError] = useState('');
   const [roleForm, setRoleForm] = useState({ key: '', label: '', description: '', permissions: [], isSystem: false });
   const [editingRoleKey, setEditingRoleKey] = useState(null);
@@ -124,9 +127,25 @@ export const useEmployeeManagement = () => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditorOpen]);
+
+  useEffect(() => {
+    if (!isTeamEditorOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !teamSaving) {
+        setIsTeamEditorOpen(false);
+        setEditingTeamId(null);
+        setTeamForm({ name: '' });
+        setTeamError('');
+        setTeamSaveStatus('idle');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTeamEditorOpen, teamSaving]);
   
   useEffect(() => () => {
     attributionStatusTimers.current.forEach((timer) => window.clearTimeout(timer));
+    if (teamSaveStatusTimer.current) window.clearTimeout(teamSaveStatusTimer.current);
   }, []);
   
   useEffect(() => {
@@ -335,31 +354,50 @@ export const useEmployeeManagement = () => {
     setRoleError('');
   };
   
-  const resetTeamForm = () => {
+  const closeTeamEditor = () => {
+    if (teamSaveStatusTimer.current) window.clearTimeout(teamSaveStatusTimer.current);
+    setIsTeamEditorOpen(false);
     setEditingTeamId(null);
     setTeamForm({ name: '' });
     setTeamError('');
+    setTeamSaveStatus('idle');
+  };
+
+  const openTeamCreate = () => {
+    closeTeamEditor();
+    setIsTeamEditorOpen(true);
   };
   
   const editTeam = (team) => {
+    if (teamSaveStatusTimer.current) window.clearTimeout(teamSaveStatusTimer.current);
     setEditingTeamId(team.id);
     setTeamForm({ name: team.name });
     setTeamError('');
+    setTeamSaveStatus('idle');
+    setIsTeamEditorOpen(false);
   };
   
   const handleTeamSubmit = async (event) => {
     event.preventDefault();
+    const wasEditing = Boolean(editingTeamId);
+    if (teamSaveStatusTimer.current) window.clearTimeout(teamSaveStatusTimer.current);
     try {
       setTeamSaving(true);
+      setTeamSaveStatus('saving');
       setTeamError('');
       const payload = { name: teamForm.name.trim() };
       if (editingTeamId) await updateContentTeam(editingTeamId, payload);
       else await createContentTeam(payload);
       await loadData();
-      resetTeamForm();
-      showToast(editingTeamId ? 'Đã cập nhật team' : 'Đã tạo team');
+      setEditingTeamId(null);
+      setTeamForm({ name: '' });
+      setIsTeamEditorOpen(false);
+      setTeamSaveStatus('saved');
+      teamSaveStatusTimer.current = window.setTimeout(() => setTeamSaveStatus('idle'), 2400);
+      showToast(wasEditing ? 'Đã cập nhật team' : 'Đã tạo team');
     } catch (err) {
       const message = err.message || 'Không lưu được team.';
+      setTeamSaveStatus('error');
       setTeamError(message);
       showToast(message, 'error');
     } finally {
@@ -378,7 +416,7 @@ export const useEmployeeManagement = () => {
           await deleteContentTeam(team.id);
           await loadData();
           if (teamFilter === String(team.id)) setTeamFilter('all');
-          resetTeamForm();
+          closeTeamEditor();
           showToast(`Đã xóa team ${team.name}`);
         } catch (err) {
           const message = err.message || 'Không xóa được team.';
@@ -699,6 +737,7 @@ export const useEmployeeManagement = () => {
     bulkChangeRole,
     closeBookingsDrawer,
     closeEditor,
+    closeTeamEditor,
     confirm,
     confirmBulkDelete,
     confirmPending,
@@ -729,15 +768,16 @@ export const useEmployeeManagement = () => {
     handleUnassignSingleBooking,
     isAdmin,
     isEditorOpen,
+    isTeamEditorOpen,
     loading,
     openBookingsDrawer,
     openCreateModal,
     openEditModal,
+    openTeamCreate,
     pageRows,
     pageSize,
     queryInput,
     resetRoleForm,
-    resetTeamForm,
     roleError,
     roleFilter,
     roleForm,
@@ -767,6 +807,7 @@ export const useEmployeeManagement = () => {
     teamError,
     teamFilter,
     teamForm,
+    teamSaveStatus,
     teamSaving,
     teams,
     toast,

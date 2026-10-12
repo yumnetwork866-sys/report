@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Check,
   CheckCheck,
@@ -11,6 +12,7 @@ import {
   Plus,
   Search,
   Trash2,
+  UsersRound,
   X,
 } from 'lucide-react';
 import AppAvatar from '../AppAvatar';
@@ -138,6 +140,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     bulkBusy,
     bulkChangeRole,
     closeEditor,
+    closeTeamEditor,
     confirm,
     confirmBulkDelete,
     confirmPending,
@@ -164,14 +167,15 @@ const EmployeeTable = ({ heroSubtitle }) => {
     handleToggleActive,
     isAdmin,
     isEditorOpen,
+    isTeamEditorOpen,
     loading,
     openCreateModal,
     openEditModal,
+    openTeamCreate,
     pageRows,
     pageSize,
     queryInput,
     resetRoleForm,
-    resetTeamForm,
     roleError,
     roleFilter,
     roleForm,
@@ -199,6 +203,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     teamError,
     teamFilter,
     teamForm,
+    teamSaveStatus,
     teamSaving,
     teams,
     toast,
@@ -210,9 +215,37 @@ const EmployeeTable = ({ heroSubtitle }) => {
     totalPages,
     users,
   } = useEmployeeManagement();
+  const [teamQuery, setTeamQuery] = useState('');
+  const [teamSort, setTeamSort] = useState('name-asc');
+  const [teamScope, setTeamScope] = useState('all');
   const hashtagSuggestions = useMemo(() => normalizeHashtags(
     users.flatMap((user) => user.content_attribution?.hashtags || []),
   ).sort((left, right) => left.localeCompare(right, 'vi')), [users]);
+  const visibleTeams = useMemo(() => {
+    const query = teamQuery.trim().toLocaleLowerCase('vi');
+    const foldedQuery = query.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    return teams
+      .filter((team) => {
+        const count = Number(team.user_count) || 0;
+        if (teamScope === 'empty' && count !== 0) return false;
+        if (teamScope === 'active' && count === 0) return false;
+        if (!query) return true;
+        const name = String(team.name || '').toLocaleLowerCase('vi');
+        return name.includes(query) || name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes(foldedQuery);
+      })
+      .sort((left, right) => {
+        if (teamSort.startsWith('count')) {
+          const comparison = (Number(left.user_count) || 0) - (Number(right.user_count) || 0);
+          return teamSort === 'count-asc' ? comparison : -comparison;
+        }
+        const comparison = String(left.name || '').localeCompare(String(right.name || ''), 'vi', { sensitivity: 'base' });
+        return teamSort === 'name-desc' ? -comparison : comparison;
+      });
+  }, [teamQuery, teamScope, teamSort, teams]);
+  const teamMemberCount = useMemo(
+    () => teams.reduce((total, team) => total + (Number(team.user_count) || 0), 0),
+    [teams],
+  );
   return (
     <div className="page employee-table-page">
       {heroSubtitle ? (
@@ -562,60 +595,169 @@ const EmployeeTable = ({ heroSubtitle }) => {
       ) : null}
 
       {activeTab === 'teams' ? (
-        <section className="section-card employee-table__management-card" aria-labelledby="team-manager-title">
-          <div className="section-card__header">
+        <>
+        <section className="section-card employee-table__management-card employee-table__team-manager" aria-labelledby="team-manager-title">
+          <div className="section-card__header employee-table__team-header">
             <div>
               <h2 id="team-manager-title" className="section-card__title">Quản lý team</h2>
-
+              <p className="section-card__meta">{teams.length} team · {teamMemberCount} nhân viên đã phân nhóm</p>
             </div>
-            <button className="button button--ghost button--small" type="button" onClick={resetTeamForm}>Thêm team</button>
+            <button className="button button--small" type="button" onClick={openTeamCreate}>
+              <Plus size={15} aria-hidden="true" />
+              Thêm team
+            </button>
           </div>
 
-          {teamError ? <div className="employee-table__inline-error empty-state empty-state--compact">{teamError}</div> : null}
-
-          <div className="employee-table__management-layout">
-            <section className="employee-table__role-list-panel">
-              <div className="employee-table__role-panel-heading">
-                <div><strong>Danh sách team</strong><span>{teams.length} team</span></div>
-              </div>
-              <div className="employee-table__role-list">
-                {teams.length ? teams.map((team) => (
-                  <div className={`employee-table__role-item${editingTeamId === team.id ? ' is-active' : ''}`} key={team.id}>
-                    <button type="button" className="employee-table__role-edit" onClick={() => editTeam(team)}>
-                      <span><span className="employee-table__role-name"><strong>{team.name}</strong></span></span>
-                      <span>{team.user_count || 0} nhân viên</span>
+          <section className="employee-table__role-list-panel employee-table__team-list-panel">
+              <div className="employee-table__team-toolbar">
+                <div className="employee-table__team-search">
+                  <Search size={15} aria-hidden="true" />
+                  <label className="sr-only" htmlFor="team-search">Tìm team</label>
+                  <input
+                    id="team-search"
+                    value={teamQuery}
+                    onChange={(event) => setTeamQuery(event.target.value)}
+                    placeholder="Tìm theo tên team…"
+                  />
+                  {teamQuery ? (
+                    <button type="button" onClick={() => setTeamQuery('')} aria-label="Xóa tìm kiếm team">
+                      <X size={13} aria-hidden="true" />
                     </button>
-                    {isAdmin ? <button className="button button--ghost button--small button--danger" type="button" onClick={() => handleDeleteTeam(team)}>Xóa</button> : null}
+                  ) : null}
+                </div>
+                <label className="employee-table__team-filter-control">
+                  <span className="sr-only">Lọc team</span>
+                  <select value={teamScope} onChange={(event) => setTeamScope(event.target.value)}>
+                    <option value="all">Tất cả team</option>
+                    <option value="active">Có nhân viên</option>
+                    <option value="empty">Team trống</option>
+                  </select>
+                </label>
+                <label className="employee-table__team-filter-control">
+                  <span className="sr-only">Sắp xếp team</span>
+                  <select value={teamSort} onChange={(event) => setTeamSort(event.target.value)}>
+                    <option value="name-asc">Tên A–Z</option>
+                    <option value="name-desc">Tên Z–A</option>
+                    <option value="count-desc">Nhiều nhân viên nhất</option>
+                    <option value="count-asc">Ít nhân viên nhất</option>
+                  </select>
+                </label>
+              </div>
+              <div className="employee-table__team-list" aria-live="polite">
+                {visibleTeams.length ? visibleTeams.map((team) => (
+                  <article className={`employee-table__team-card${editingTeamId === team.id ? ' is-active' : ''}`} key={team.id}>
+                    {editingTeamId === team.id ? (
+                      <form className="employee-table__team-inline-form" onSubmit={handleTeamSubmit}>
+                        <input
+                          value={teamForm.name}
+                          required
+                          autoFocus
+                          maxLength={120}
+                          onChange={(event) => setTeamForm({ name: event.target.value })}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Escape') closeTeamEditor();
+                          }}
+                          aria-label={`Tên team ${team.name}`}
+                        />
+                        <div className="employee-table__team-inline-actions">
+                          <button type="button" onClick={closeTeamEditor} disabled={teamSaving} aria-label="Hủy sửa" title="Hủy">
+                            <X size={15} aria-hidden="true" />
+                          </button>
+                          <button className="is-save" type="submit" disabled={teamSaving} aria-label="Lưu thay đổi" title="Lưu">
+                            {teamSaving ? <LoaderCircle size={15} aria-hidden="true" /> : <Check size={15} aria-hidden="true" />}
+                          </button>
+                        </div>
+                        <InlineSaveStatus status={teamSaveStatus === 'idle' ? null : teamSaveStatus} />
+                      </form>
+                    ) : (
+                      <>
+                        <button type="button" className="employee-table__team-card-main" onClick={() => editTeam(team)}>
+                          <span className="employee-table__team-avatar" aria-hidden="true">
+                            {String(team.name || 'T').trim().slice(0, 2).toLocaleUpperCase('vi')}
+                          </span>
+                          <span className="employee-table__team-card-copy">
+                            <strong>{team.name}</strong>
+                            <span><UsersRound size={13} aria-hidden="true" /> {team.user_count || 0} nhân viên</span>
+                          </span>
+                        </button>
+                        <div className="employee-table__team-card-actions">
+                          <button type="button" onClick={() => editTeam(team)} aria-label={`Sửa team ${team.name}`} title="Sửa team">
+                            <Pencil size={15} aria-hidden="true" />
+                          </button>
+                          {isAdmin ? (
+                            <button className="is-danger" type="button" onClick={() => handleDeleteTeam(team)} aria-label={`Xóa team ${team.name}`} title="Xóa team">
+                              <Trash2 size={15} aria-hidden="true" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </>
+                    )}
+                  </article>
+                )) : (
+                  <div className="employee-table__team-empty">
+                    <span className="employee-table__team-empty-icon"><UsersRound size={22} aria-hidden="true" /></span>
+                    <strong>{teams.length ? 'Không tìm thấy team phù hợp' : 'Chưa có team nào'}</strong>
+                    <p>{teams.length ? 'Thử thay đổi từ khóa hoặc bộ lọc.' : 'Tạo team để nhóm nhân viên và theo dõi báo cáo dễ hơn.'}</p>
+                    {teams.length ? (
+                      <button className="button button--ghost button--small" type="button" onClick={() => { setTeamQuery(''); setTeamScope('all'); }}>Xóa bộ lọc</button>
+                    ) : (
+                      <button className="button button--small" type="button" onClick={openTeamCreate}><Plus size={14} aria-hidden="true" /> Tạo team đầu tiên</button>
+                    )}
                   </div>
-                )) : <div className="empty-state empty-state--compact">Chưa có team.</div>}
+                )}
               </div>
-            </section>
-
-            <form className="employee-table__role-form" onSubmit={handleTeamSubmit}>
-              <div className="employee-table__manager-form-heading">
-                <strong>{editingTeamId ? 'Sửa tên team' : 'Tạo team mới'}</strong>
-                 <span>{editingTeamId ? 'Tên mới sẽ được cập nhật trên báo cáo.' : ''}</span>
+          </section>
+        </section>
+        {isTeamEditorOpen ? createPortal(
+          <div
+            className="modal-backdrop"
+            role="presentation"
+            onClick={(event) => {
+              if (event.target === event.currentTarget && !teamSaving) closeTeamEditor();
+            }}
+          >
+            <form
+              className="modal-card employee-table__team-editor-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label={editingTeamId ? 'Chỉnh sửa team' : 'Tạo team mới'}
+              onSubmit={handleTeamSubmit}
+            >
+              <div className="employee-table__team-editor-close-row">
+                <button className="employee-table__modal-close" type="button" onClick={closeTeamEditor} disabled={teamSaving} aria-label="Đóng">
+                  <X size={18} aria-hidden="true" />
+                </button>
               </div>
-              <div className="field">
-                <label htmlFor="content-team-name">Tên team</label>
-                <input
-                  id="content-team-name"
-                  value={teamForm.name}
-                  required
-                  maxLength={120}
-                  onChange={(event) => setTeamForm({ name: event.target.value })}
-                  placeholder="Ví dụ: Content MKT"
-                />
+              <div className="employee-table__team-editor-body">
+                {teamError ? <div className="employee-table__inline-error empty-state empty-state--compact" role="alert">{teamError}</div> : null}
+                <div className="field">
+                  <label htmlFor="content-team-name">Tên team</label>
+                  <input
+                    id="content-team-name"
+                    value={teamForm.name}
+                    required
+                    autoFocus
+                    maxLength={120}
+                    onChange={(event) => setTeamForm({ name: event.target.value })}
+                    placeholder="Ví dụ: Content MKT"
+                  />
+                </div>
+                <div className="employee-table__team-save-feedback">
+                  <InlineSaveStatus status={teamSaveStatus === 'idle' ? null : teamSaveStatus} />
+                </div>
               </div>
-              <div className="actions">
-                {editingTeamId ? <button className="button button--ghost" type="button" onClick={resetTeamForm}>Hủy sửa</button> : null}
+              <div className="actions employee-table__team-editor-actions">
+                <button className="button button--ghost" type="button" onClick={closeTeamEditor} disabled={teamSaving}>Hủy</button>
                 <button className="button" type="submit" disabled={teamSaving}>
-                  {teamSaving ? 'Đang lưu…' : editingTeamId ? 'Cập nhật' : 'Thêm team'}
+                  {teamSaving ? <LoaderCircle size={15} aria-hidden="true" /> : null}
+                  {teamSaving ? 'Đang lưu…' : editingTeamId ? 'Lưu thay đổi' : 'Tạo team'}
                 </button>
               </div>
             </form>
-          </div>
-        </section>
+          </div>,
+          document.body,
+        ) : null}
+        </>
       ) : null}
 
       {activeTab === 'roles' ? (
