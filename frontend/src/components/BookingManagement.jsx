@@ -132,6 +132,7 @@ const BookingManagement = ({
 
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
+    setSelectedShopId('');
     if (embeddedMode === 'create') onEmbeddedClose?.();
   }, [embeddedMode, onEmbeddedClose]);
 
@@ -159,6 +160,9 @@ const BookingManagement = ({
     setTargetKocQuery('');
     setTargetKocPage(1);
     setSelectedKocDetail(null);
+    if (selectedBooking.target_shop_id) {
+      setSelectedShopId(String(selectedBooking.target_shop_id));
+    }
     setForm({
       ...defaultBookingForm(),
       creator_key: creatorKey,
@@ -569,12 +573,6 @@ const BookingManagement = ({
     setTargetKocs((current) => [customCreator, ...current.filter((c) => targetKocKey(c) !== key)]);
     setForm((current) => ({ ...current, creator_key: key }));
   }, [activeShopId]);
-
-  useEffect(() => {
-    if (selectedKocSummary?.shop_id) {
-      setSelectedShopId(String(selectedKocSummary.shop_id));
-    }
-  }, [selectedKocSummary]);
 
   const activeShop = shopsById.get(String(activeShopId));
   const activeShopName = activeShop?.name || selectedKocSummary?.shop_name || '';
