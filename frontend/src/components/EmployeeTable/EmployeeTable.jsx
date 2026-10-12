@@ -9,7 +9,7 @@ import { useEmployeeManagement } from './hooks/useEmployeeManagement';
 import { createRoleKey } from './utils/employeeUtils';
 import '../../styles/pages/admin.css';
 
-const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
+const EmployeeTable = ({ heroSubtitle }) => {
   const {
     activeFilters,
     activeTab,
@@ -72,11 +72,9 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     setRoleFilter,
     setRoleForm,
     setSelectedIds,
-    setTargetReassignStaffId,
     setTeamFilter,
     setTeamForm,
     t,
-    targetReassignStaffId,
     teamError,
     teamFilter,
     teamForm,
@@ -89,7 +87,6 @@ const EmployeeTable = ({ heroTitle, heroSubtitle }) => {
     toggleSelectAll,
     togglingId,
     totalPages,
-    users,
   } = useEmployeeManagement();
   return (
     <div className="page employee-table-page">
