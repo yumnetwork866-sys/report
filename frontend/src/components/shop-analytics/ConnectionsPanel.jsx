@@ -60,7 +60,6 @@ const ConnectionsPanel = ({
                   <th>{t('shopAnalytics.shop')}</th>
                   <th>{t('shopAnalytics.videoAccountType')}</th>
                   <th>{t('shopAnalytics.status', 'Trạng thái')}</th>
-                  <th>{t('shopAnalytics.avatarChannel')}</th>
                   <th>{t('shopAnalytics.connectedAt')}</th>
                   <th>{t('shopAnalytics.permissions')}</th>
                   <th className="cell-actions">{t('common.actions')}</th>
@@ -127,33 +126,6 @@ const ConnectionsPanel = ({
                                 : t('shopAnalytics.connected')}
                           </span>
                         </td>
-                        <td>
-                          {authorizationShops.length === 0 ? (
-                            <span className="cell-muted">—</span>
-                          ) : (
-                            <div className="shop-management__channels-col">
-                              {authorizationShops.map((shop) => (
-                                <select
-                                  key={shop.id || shop.name}
-                                  className="shop-management__avatar-select"
-                                  aria-label={`${t('shopAnalytics.avatarChannel')}: ${shop.name || t('common.unknown')}`}
-                                  disabled={String(updatingAvatarShopId) === String(shop.id)}
-                                  value={shop.avatar_channel_id || ''}
-                                  onChange={(event) => onAvatarChannelChange(shop.id, event.target.value || null)}
-                                >
-                                  <option value="">{t('shopAnalytics.avatarChannelAuto')}</option>
-                                  {channels.filter((channel) => channel.platform === 'tiktok').map((channel) => (
-                                    <option value={channel.id} key={channel.id}>
-                                      {channel.display_name
-                                        ? `${channel.display_name} · @${channel.username}`
-                                        : `@${channel.username}`}
-                                    </option>
-                                  ))}
-                                </select>
-                              ))}
-                            </div>
-                          )}
-                        </td>
                         <td className="cell-date">
                           {formatDateTime(authorization.connected_at)}
                         </td>
@@ -188,7 +160,7 @@ const ConnectionsPanel = ({
                                 key={shop.id || shop.name}
                                 className="button button--small button--danger shop-management__disconnect"
                                 type="button"
-                                disabled={connecting || disconnectingId !== null || updatingAvatarShopId !== null}
+                                disabled={connecting || disconnectingId !== null}
                                 onClick={() => onDisconnect(shop)}
                               >
                                 {String(disconnectingId) === String(shop.id)
@@ -201,7 +173,7 @@ const ConnectionsPanel = ({
                       </tr>
                       {isExpanded ? (
                         <tr className="shop-management__expanded-row">
-                          <td colSpan="7">
+                          <td colSpan="6">
                             <div className="shop-management__expanded-content">
                               <div className="shop-management__expanded-header">
                                 <div className="shop-management__expanded-title">
