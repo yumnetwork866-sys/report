@@ -12,7 +12,7 @@ const authorizedLandingPages = [
   ['channels.dashboard.view', '/channels/overview'],
   [['channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view'], '/channels/reports'],
   ['channels.manage', '/channels/manage'],
-  [['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'], '/manage/users'],
+  [['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'], '/manage/users'],
   ['admin.shops.manage', '/manage/shops'],
   ['admin.schedules.manage', '/manage/schedules'],
   ['admin.queues.view', '/manage/queues'],

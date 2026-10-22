@@ -38,7 +38,10 @@ export const PERMISSION_GROUPS = [
   },
   {
     key: 'admin', labelKey: 'rolePermissions.administration', items: [
-      { key: 'users', labelKey: 'rolePermissions.users', permissions: [{ key: 'admin.users.manage', labelKey: 'rolePermissions.manage' }] },
+      { key: 'users', labelKey: 'rolePermissions.users', permissions: [
+        { key: 'admin.users.view', labelKey: 'rolePermissions.view' },
+        { key: 'admin.users.manage', labelKey: 'rolePermissions.manage' },
+      ] },
       { key: 'roles', labelKey: 'rolePermissions.roles', permissions: [{ key: 'admin.roles.manage', labelKey: 'rolePermissions.manage' }] },
       { key: 'teams', labelKey: 'rolePermissions.teams', permissions: [{ key: 'admin.teams.manage', labelKey: 'rolePermissions.manage' }] },
       { key: 'schedules', labelKey: 'rolePermissions.schedules', permissions: [{ key: 'admin.schedules.manage', labelKey: 'rolePermissions.manage' }] },
@@ -53,7 +56,7 @@ export const DEFAULT_PERMISSIONS = ['channels.dashboard.view', 'channels.reports
 export const LEGACY_PERMISSION_MAP = {
   reports: PERMISSION_GROUPS.find((group) => group.key === 'channels').items.flatMap((item) => item.permissions.map(({ key }) => key)),
   tiktok: PERMISSION_GROUPS.find((group) => group.key === 'shop').items.flatMap((item) => item.permissions.map(({ key }) => key)),
-  users: ['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
+  users: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
 };
 
 export const expandLegacyPermissions = (permissions) => (

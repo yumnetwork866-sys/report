@@ -64,6 +64,7 @@ const BookingManagement = ({
 }) => {
   const { t, language } = useI18n();
   const session = useSession();
+  const canViewUsers = hasPermission(session, ['admin.users.view', 'admin.users.manage']);
   const canManageUsers = hasPermission(session, 'admin.users.manage');
   const canManageBookings = hasPermission(session, 'shop.bookings.manage');
   const bookingTabPermissions = useMemo(() => ({
@@ -100,7 +101,7 @@ const BookingManagement = ({
     }
   });
   const [selectedManagerKey, setSelectedManagerKey] = useState(() => (
-    bookingUiSession().selectedManagerKey || (canManageUsers ? 'all' : '')
+    bookingUiSession().selectedManagerKey || (canViewUsers ? 'all' : '')
   ));
   const [expandedGroupKeys, setExpandedGroupKeys] = useState(() => new Set());
   const [customRange, setCustomRange] = useState(defaultCustomRange);
@@ -388,7 +389,7 @@ const BookingManagement = ({
   }, [bookings, convertAmount, performanceWindow, selectedBooking, selectedCurrency]);
 
   useEffect(() => {
-    if (!canManageUsers) {
+    if (!canViewUsers) {
       const currentUser = session?.user;
       setUsers(currentUser?.id ? [currentUser] : []);
       setForm((current) => ({ ...current, staff_id: currentUser?.id ? String(currentUser.id) : '' }));
@@ -402,8 +403,13 @@ const BookingManagement = ({
         })
         .catch((err) => {
           if (err.name !== 'AbortError' && !controller.signal.aborted) setUsers([currentUser]);
-        })
+        });
       return () => controller.abort();
+    }
+
+    if (!canManageUsers) {
+      const currentUser = session?.user;
+      setForm((current) => ({ ...current, staff_id: currentUser?.id ? String(currentUser.id) : '' }));
     }
 
     const controller = new AbortController();
@@ -411,7 +417,7 @@ const BookingManagement = ({
       .then((rows) => setUsers(Array.isArray(rows) ? rows : []))
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); });
     return () => controller.abort();
-  }, [canManageUsers, session, t]);
+  }, [canManageUsers, canViewUsers, session, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -493,7 +499,7 @@ const BookingManagement = ({
     const requestedBookingId = searchParams.get('booking');
     const requestedStaffId = searchParams.get('staff');
     if (action === 'create' && canManageBookings) setIsCreateBookingOpen(true);
-    if (requestedStaffId && canManageUsers) {
+    if (requestedStaffId && canViewUsers) {
       const groupKey = `id:${requestedStaffId}`;
       setSelectedManagerKey(groupKey);
       setExpandedGroupKeys(new Set([groupKey]));
@@ -505,7 +511,7 @@ const BookingManagement = ({
         const staffId = booking.staff_id ? String(booking.staff_id) : '';
         const staffName = String(booking.staff_name || booking.staff?.name || '').trim();
         const groupKey = staffId ? `id:${staffId}` : staffName ? `name:${staffName.toLocaleLowerCase()}` : 'unassigned';
-        setSelectedManagerKey(canManageUsers ? groupKey : '');
+        setSelectedManagerKey(canViewUsers ? groupKey : '');
         setExpandedGroupKeys(new Set([groupKey]));
         setExpandedBookingId(booking.id);
       }
@@ -517,7 +523,7 @@ const BookingManagement = ({
       next.delete('staff');
       setSearchParams(next, { replace: true });
     }
-  }, [bookings, canManageBookings, canManageUsers, loading, searchParams, setSearchParams]);
+  }, [bookings, canManageBookings, canManageUsers, canViewUsers, loading, searchParams, setSearchParams]);
 
   useEffect(() => {
     if (embeddedMode !== 'detail' || !embeddedBookingId || loading) return;
@@ -683,7 +689,7 @@ const BookingManagement = ({
   } = useBookingAnalytics({
     bookings,
     users,
-    canManageUsers,
+    canManageUsers: canViewUsers,
     sessionUserId,
     bookingTab,
     selectedMonth,
@@ -711,10 +717,10 @@ const BookingManagement = ({
   }, { totalCost: 0, totalGmv: 0, itemsSold: 0 }), [creatorBookings, convertAmount]);
 
   useEffect(() => {
-    if (!canManageUsers && bookingGroups.length === 1) {
+    if (!canViewUsers && bookingGroups.length === 1) {
       setExpandedGroupKeys(new Set([bookingGroups[0].key]));
     }
-  }, [canManageUsers, bookingGroups]);
+  }, [canViewUsers, bookingGroups]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -969,7 +975,7 @@ const BookingManagement = ({
             setExpandedBookingId(null);
             setExpandedGroupKeys(value !== 'all' ? new Set([value]) : new Set());
           }}
-          canManageUsers={canManageUsers}
+          canManageUsers={canViewUsers}
           hashtagFilterEnabled={hashtagFilterEnabled}
           onHashtagFilterChange={setHashtagFilterEnabled}
           bookingTab={bookingTab}

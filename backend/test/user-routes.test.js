@@ -49,6 +49,14 @@ test('user routes enforce requirePermission("users") on GET /:id and PUT /:id', 
   );
   assert.equal(nextCalled, true);
 
+  nextCalled = false;
+  getPermissionMiddleware(
+    { session: { sub: 2, role: 'member', permissions: ['admin.users.view'] } },
+    resForbidden,
+    () => { nextCalled = true; },
+  );
+  assert.equal(nextCalled, true);
+
   // Test middleware on PUT /:id
   const putPermissionMiddleware = putByIdLayer.route.stack[0].handle;
   nextCalled = false;
@@ -60,6 +68,24 @@ test('user routes enforce requirePermission("users") on GET /:id and PUT /:id', 
   );
   assert.equal(nextCalled, false);
   assert.equal(resForbiddenPut.statusCode, 403);
+
+  nextCalled = false;
+  const resForbiddenPutViewOnly = makeResponse();
+  putPermissionMiddleware(
+    { session: { sub: 2, role: 'member', permissions: ['admin.users.view'] } },
+    resForbiddenPutViewOnly,
+    () => { nextCalled = true; },
+  );
+  assert.equal(nextCalled, false);
+  assert.equal(resForbiddenPutViewOnly.statusCode, 403);
+
+  nextCalled = false;
+  putPermissionMiddleware(
+    { session: { sub: 2, role: 'member', permissions: ['admin.users.manage'] } },
+    resForbiddenPut,
+    () => { nextCalled = true; },
+  );
+  assert.equal(nextCalled, true);
 
   nextCalled = false;
   putPermissionMiddleware(

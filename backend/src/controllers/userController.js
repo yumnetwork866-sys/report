@@ -82,11 +82,12 @@ const getUserById = async (req, res) => {
   try {
     const targetUserId = Number(req.params.id);
     const isSelf = Number(req.session?.sub) === targetUserId;
-    const canManageUsers = !req.session
+    const canViewUsers = !req.session
       || req.session.role === 'admin'
+      || expandLegacyPermissions(req.session.permissions).includes('admin.users.view')
       || expandLegacyPermissions(req.session.permissions).includes('admin.users.manage');
 
-    if (!isSelf && !canManageUsers) {
+    if (!isSelf && !canViewUsers) {
       return res.status(403).json({ message: 'Không có quyền truy cập' });
     }
 

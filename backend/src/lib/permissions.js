@@ -33,6 +33,7 @@ const PERMISSION_GROUPS = [
   {
     key: 'admin',
     permissions: [
+      'admin.users.view',
       'admin.users.manage',
       'admin.roles.manage',
       'admin.teams.manage',
@@ -52,7 +53,7 @@ const DEFAULT_PERMISSIONS = PERMISSION_GROUPS
 const LEGACY_PERMISSION_MAP = {
   reports: PERMISSION_GROUPS.find((group) => group.key === 'channels').permissions,
   tiktok: PERMISSION_GROUPS.find((group) => group.key === 'shop').permissions,
-  users: ['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
+  users: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
 };
 
 const expandLegacyPermissions = (value) => {

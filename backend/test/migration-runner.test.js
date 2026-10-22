@@ -96,6 +96,7 @@ const defaultMigrationNames = [
   '087_add_order_source_sync_coverage',
   '088_add_booking_video_product_attribution',
   '089_expand_tiktok_permissions',
+  '090_add_admin_users_view_permission',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

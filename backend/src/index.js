@@ -68,9 +68,9 @@ const createApp = () => {
     res.json({ message: 'Content Performance Reporting API' });
   });
 
-  app.use('/api/users', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), userRoutes);
-  app.use('/api/roles', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), roleRoutes);
-  app.use('/api/content-teams', requireAdmin, requireAnyPermission(['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), contentTeamRoutes);
+  app.use('/api/users', requireAdmin, requireAnyPermission(['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), userRoutes);
+  app.use('/api/roles', requireAdmin, requireAnyPermission(['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), roleRoutes);
+  app.use('/api/content-teams', requireAdmin, requireAnyPermission(['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage']), contentTeamRoutes);
   app.use('/api/bookings', requireAdmin, requireAnyPermission(['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage']), bookingRoutes);
   app.use('/api/videos', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.videos.performance.view', 'shop.bookings.video.view', 'shop.bookings.manage']), videoRoutes);
   app.use('/api/reports', requireAdmin, requireAnyPermission(['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view', 'shop.affiliate.performance.view']), reportRoutes);

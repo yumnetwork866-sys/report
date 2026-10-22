@@ -62,7 +62,7 @@ const SortableHeader = ({ active, direction, label, onClick }) => (
   </th>
 );
 
-const HashtagEditor = ({ suggestions, user, onSave, status, t }) => {
+const HashtagEditor = ({ suggestions, user, onSave, status, disabled = false, t }) => {
   const sourceTags = useMemo(
     () => normalizeHashtags(user.content_attribution?.hashtags || []),
     [user.content_attribution?.hashtags],
@@ -76,6 +76,7 @@ const HashtagEditor = ({ suggestions, user, onSave, status, t }) => {
   }, [sourceTags]);
 
   const persist = (nextTags) => {
+    if (disabled) return;
     const normalized = normalizeHashtags(nextTags);
     setTags(normalized);
     if (normalized.join(',') !== sourceTags.join(',')) {
@@ -84,7 +85,7 @@ const HashtagEditor = ({ suggestions, user, onSave, status, t }) => {
   };
 
   const addDraft = () => {
-    if (!draft.trim()) return;
+    if (disabled || !draft.trim()) return;
     persist([...tags, draft]);
     setDraft('');
   };
@@ -95,37 +96,45 @@ const HashtagEditor = ({ suggestions, user, onSave, status, t }) => {
         {tags.map((tag) => (
           <span className="employee-table__editable-tag" key={tag.toLocaleLowerCase()}>
             #{tag}
-            <button
-              type="button"
-              aria-label={`Xóa hashtag ${tag}`}
-              disabled={status === 'saving'}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => persist(tags.filter((item) => item !== tag))}
-            >
-              <X size={11} aria-hidden="true" />
-            </button>
+            {!disabled ? (
+              <button
+                type="button"
+                aria-label={`Xóa hashtag ${tag}`}
+                disabled={status === 'saving'}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => persist(tags.filter((item) => item !== tag))}
+              >
+                <X size={11} aria-hidden="true" />
+              </button>
+            ) : null}
           </span>
         ))}
-        <input
-          value={draft}
-          list={listId}
-          disabled={status === 'saving'}
-          aria-label={`${t('users.hashtags')}: ${user.name}`}
-          placeholder={tags.length ? 'Thêm…' : t('users.hashtagsPlaceholder')}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={addDraft}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ',') {
-              event.preventDefault();
-              addDraft();
-            }
-          }}
-        />
-        <datalist id={listId}>
-          {suggestions.filter((tag) => !tags.includes(tag)).map((tag) => (
-            <option value={tag} key={tag} />
-          ))}
-        </datalist>
+        {!disabled ? (
+          <>
+            <input
+              value={draft}
+              list={listId}
+              disabled={status === 'saving'}
+              aria-label={`${t('users.hashtags')}: ${user.name}`}
+              placeholder={tags.length ? 'Thêm…' : t('users.hashtagsPlaceholder')}
+              onChange={(event) => setDraft(event.target.value)}
+              onBlur={addDraft}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ',') {
+                  event.preventDefault();
+                  addDraft();
+                }
+              }}
+            />
+            <datalist id={listId}>
+              {suggestions.filter((tag) => !tags.includes(tag)).map((tag) => (
+                <option value={tag} key={tag} />
+              ))}
+            </datalist>
+          </>
+        ) : tags.length === 0 ? (
+          <span className="row-subtitle">—</span>
+        ) : null}
       </div>
       <InlineSaveStatus status={status} />
     </div>
@@ -218,8 +227,9 @@ const EmployeeTable = ({ heroSubtitle }) => {
     users,
   } = useEmployeeManagement();
   const session = useSession();
+  const canManageUsers = hasPermission(session, 'admin.users.manage');
   const managementTabs = [
-    { key: 'users', label: 'Người dùng', count: users.length, permission: 'admin.users.manage' },
+    { key: 'users', label: 'Người dùng', count: users.length, permission: ['admin.users.view', 'admin.users.manage'] },
     { key: 'teams', label: 'Team', count: teams.length, permission: 'admin.teams.manage' },
     { key: 'roles', label: 'Vai trò', count: roles.length, permission: 'admin.roles.manage' },
   ].filter((tab) => hasPermission(session, tab.permission));
@@ -378,17 +388,19 @@ const EmployeeTable = ({ heroSubtitle }) => {
                 </button>
               ) : null}
 
-              <button
-                className="button employee-table__create-btn"
-                type="button"
-                onClick={openCreateModal}
-              >
-                <Plus size={16} aria-hidden="true" />
-                <span>{t('users.create')}</span>
-              </button>
+              {canManageUsers ? (
+                <button
+                  className="button employee-table__create-btn"
+                  type="button"
+                  onClick={openCreateModal}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                  <span>{t('users.create')}</span>
+                </button>
+              ) : null}
             </div>
 
-          {selectedIds.size > 0 ? (
+          {canManageUsers && selectedIds.size > 0 ? (
             <div className="employee-table__bulk-bar">
               <span className="employee-table__bulk-count">
                 <span className="employee-table__bulk-count-badge" aria-hidden="true"><CheckCheck size={14} /></span>
@@ -432,27 +444,29 @@ const EmployeeTable = ({ heroSubtitle }) => {
           <table className="data-table employee-table__data-table">
             <thead>
               <tr>
-                <th className="employee-table__select-cell">
-                  <input
-                    ref={selectAllRef}
-                    type="checkbox"
-                    aria-label={t('users.selectAll')}
-                    checked={allPageSelected}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
+                {canManageUsers ? (
+                  <th className="employee-table__select-cell">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      aria-label={t('users.selectAll')}
+                      checked={allPageSelected}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                ) : null}
                 <SortableHeader active={sortConfig.key === 'name'} direction={sortConfig.direction} label={t('users.account')} onClick={() => toggleSort('name')} />
                 <SortableHeader active={sortConfig.key === 'role'} direction={sortConfig.direction} label={t('users.role')} onClick={() => toggleSort('role')} />
                 <SortableHeader active={sortConfig.key === 'status'} direction={sortConfig.direction} label={t('users.status')} onClick={() => toggleSort('status')} />
                 <SortableHeader active={sortConfig.key === 'team'} direction={sortConfig.direction} label="Team" onClick={() => toggleSort('team')} />
                 <th>{t('users.hashtags')}</th>
-                <th className="cell-actions employee-table__sticky-actions">{t('users.actions')}</th>
+                {canManageUsers ? <th className="cell-actions employee-table__sticky-actions">{t('users.actions')}</th> : null}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={7}>
+                  <td className="table-state-cell" colSpan={canManageUsers ? 7 : 5}>
                     <div className="empty-state table-empty-state">
                       <div className="loading-dot" />
                       <div>{t('users.loading')}</div>
@@ -465,24 +479,32 @@ const EmployeeTable = ({ heroSubtitle }) => {
                     key={user.id}
                     className={`${user.is_active === false ? 'is-disabled' : ''}${selectedIds.has(user.id) ? ' is-selected' : ''}`.trim() || undefined}
                     onDoubleClick={(event) => {
-                      if (!event.target.closest('button, input, select, label')) openEditModal(user);
+                      if (canManageUsers && !event.target.closest('button, input, select, label')) openEditModal(user);
                     }}
                   >
-                    <td className="employee-table__select-cell">
-                      <input
-                        type="checkbox"
-                        aria-label={t('users.selectUser', { name: user.name })}
-                        checked={selectedIds.has(user.id)}
-                        onChange={() => toggleSelect(user.id)}
-                      />
-                    </td>
+                    {canManageUsers ? (
+                      <td className="employee-table__select-cell">
+                        <input
+                          type="checkbox"
+                          aria-label={t('users.selectUser', { name: user.name })}
+                          checked={selectedIds.has(user.id)}
+                          onChange={() => toggleSelect(user.id)}
+                        />
+                      </td>
+                    ) : null}
                     <td>
                       <div className="employee-table__account-cell">
                         <AppAvatar src={user.avatar_url} name={user.name} seed={user.id} className="employee-table__avatar" />
                         <div className="employee-table__account">
-                          <button className="employee-table__account-button row-title" type="button" onClick={() => openEditModal(user)}>
-                            {user.name}
-                          </button>
+                          {canManageUsers ? (
+                            <button className="employee-table__account-button row-title" type="button" onClick={() => openEditModal(user)}>
+                              {user.name}
+                            </button>
+                          ) : (
+                            <span className="row-title">
+                              {user.name}
+                            </span>
+                          )}
                           <span className="row-subtitle">{user.email}</span>
                         </div>
                       </div>
@@ -495,12 +517,12 @@ const EmployeeTable = ({ heroSubtitle }) => {
                     <td>
                       <label
                         className={`employee-table__switch ${user.is_active === false ? 'is-disabled' : 'is-active'}`}
-                        title={user.is_active === false ? t('users.enable') : t('users.disable')}
+                        title={!canManageUsers ? t('users.status') : (user.is_active === false ? t('users.enable') : t('users.disable'))}
                       >
                         <input
                           type="checkbox"
                           checked={user.is_active !== false}
-                          disabled={togglingId === user.id}
+                          disabled={!canManageUsers || togglingId === user.id}
                           onChange={() => handleToggleActive(user)}
                           aria-label={`${t('users.status')}: ${user.name}`}
                         />
@@ -519,7 +541,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
                         <select
                           className="employee-table__inline-select"
                           value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
-                          disabled={attributionStatus[`${user.id}:content_team_id`] === 'saving'}
+                          disabled={!canManageUsers || attributionStatus[`${user.id}:content_team_id`] === 'saving'}
                           aria-label={`${t('users.team')}: ${user.name}`}
                           onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
                         >
@@ -535,41 +557,44 @@ const EmployeeTable = ({ heroSubtitle }) => {
                         user={user}
                         onSave={handleAttributionChange}
                         status={attributionStatus[`${user.id}:content_hashtags`]}
+                        disabled={!canManageUsers}
                         t={t}
                       />
                     </td>
-                    <td className="cell-actions employee-table__sticky-actions">
-                      <div className="employee-table__row-actions">
-                        <button
-                          type="button"
-                          className="employee-table__action-button"
-                          aria-label={`${t('users.edit')}: ${user.name}`}
-                          title={t('users.edit')}
-                          onClick={() => openEditModal(user)}
-                        >
-                          <Pencil size={15} aria-hidden="true" />
-                        </button>
-                        {isAdmin ? (
+                    {canManageUsers ? (
+                      <td className="cell-actions employee-table__sticky-actions">
+                        <div className="employee-table__row-actions">
                           <button
                             type="button"
-                            className="employee-table__action-button employee-table__action-button--danger"
-                            aria-label={`${t('users.delete')}: ${user.name}`}
-                            title={t('users.delete')}
-                            onClick={() => handleDelete(user)}
-                            disabled={deletingId === user.id}
+                            className="employee-table__action-button"
+                            aria-label={`${t('users.edit')}: ${user.name}`}
+                            title={t('users.edit')}
+                            onClick={() => openEditModal(user)}
                           >
-                            {deletingId === user.id
-                              ? <LoaderCircle size={15} aria-hidden="true" />
-                              : <Trash2 size={15} aria-hidden="true" />}
+                            <Pencil size={15} aria-hidden="true" />
                           </button>
-                        ) : null}
-                      </div>
-                    </td>
+                          {isAdmin ? (
+                            <button
+                              type="button"
+                              className="employee-table__action-button employee-table__action-button--danger"
+                              aria-label={`${t('users.delete')}: ${user.name}`}
+                              title={t('users.delete')}
+                              onClick={() => handleDelete(user)}
+                              disabled={deletingId === user.id}
+                            >
+                              {deletingId === user.id
+                                ? <LoaderCircle size={15} aria-hidden="true" />
+                                : <Trash2 size={15} aria-hidden="true" />}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               ) : (
                 <tr className="table-state-row">
-                  <td className="table-state-cell" colSpan={7}>
+                  <td className="table-state-cell" colSpan={canManageUsers ? 7 : 5}>
                     <div className="empty-state empty-state--compact table-empty-state">
                       <div>{t('users.noMatch')}</div>
                     </div>

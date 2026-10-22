@@ -6,7 +6,7 @@ export const topNavItems = [
     alternatePermission: ['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view', 'channels.manage'],
     fallbackTo: '/channels/overview',
   },
-  { to: '/manage/users', label: 'Admin', permission: ['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage', 'admin.shops.manage', 'admin.schedules.manage', 'admin.queues.view'] },
+  { to: '/manage/users', label: 'Admin', permission: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage', 'admin.shops.manage', 'admin.schedules.manage', 'admin.queues.view'] },
 ];
 
 export const sidebarSections = [
@@ -42,7 +42,7 @@ export const sidebarSections = [
   {
     title: 'Admin',
     items: [
-      { to: '/manage/users', labelKey: 'navigation.users', permission: ['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'] },
+      { to: '/manage/users', labelKey: 'navigation.users', permission: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'] },
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'admin.shops.manage' },
       { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin.schedules.manage' },
       { to: '/manage/queues', labelKey: 'navigation.queues', permission: 'admin.queues.view' },
@@ -69,7 +69,7 @@ export const protectedRouteCards = [
   {
     path: '/manage/users',
     component: 'EmployeeTable',
-    permission: ['admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
+    permission: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage'],
     props: {
       heroTitle: '',
       heroSubtitle: '',

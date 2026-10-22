@@ -10,11 +10,13 @@ const DEPENDENT_VIEWS = {
   'shop.affiliate.invite': 'shop.affiliate.discovery.view',
   'shop.affiliate.message': 'shop.affiliate.discovery.view',
   'shop.bookings.manage': 'shop.bookings.video.view',
+  'admin.users.manage': 'admin.users.view',
 };
 
 const DEPENDENT_ACTIONS = {
   'shop.affiliate.discovery.view': ['shop.affiliate.invite', 'shop.affiliate.message'],
   'shop.bookings.video.view': ['shop.bookings.manage'],
+  'admin.users.view': ['admin.users.manage'],
 };
 
 const TreeCheckbox = ({ checked, indeterminate, disabled, onChange, id, title }) => {

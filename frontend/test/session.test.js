@@ -214,4 +214,11 @@ test('granular permissions support new roles, admins, and legacy sessions', () =
   assert.equal(hasPermission(granular, ['shop.orders.view', 'shop.bookings.video.view']), true);
   assert.equal(hasPermission(legacy, 'shop.orders.view'), true);
   assert.equal(hasPermission(admin, 'admin.queues.view'), true);
+
+  const viewOnly = { user: { role: 'member', permissions: ['admin.users.view'] } };
+  const legacyUsers = { user: { role: 'member', permissions: ['users'] } };
+  assert.equal(hasPermission(viewOnly, 'admin.users.view'), true);
+  assert.equal(hasPermission(viewOnly, 'admin.users.manage'), false);
+  assert.equal(hasPermission(legacyUsers, 'admin.users.view'), true);
+  assert.equal(hasPermission(legacyUsers, 'admin.users.manage'), true);
 });

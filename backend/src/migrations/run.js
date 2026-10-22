@@ -97,6 +97,7 @@ const migrations = [
   require('./087_add_order_source_sync_coverage'),
   require('./088_add_booking_video_product_attribution'),
   require('./089_expand_tiktok_permissions'),
+  require('./090_add_admin_users_view_permission'),
 ];
 
 const createMigrationRunner = ({
