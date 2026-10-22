@@ -15,6 +15,12 @@ const { encryptPartnerToken } = require('../src/lib/tiktokPartnerTokenEncryption
 const ENV_KEYS = [
   'TIKTOK_PARTNER_APP_KEY',
   'TIKTOK_PARTNER_APP_SECRET',
+  'TIKTOK_PARTNER_MY_APP_KEY',
+  'TIKTOK_PARTNER_MY_APP_SECRET',
+  'TIKTOK_PARTNER_MY_SERVICE_ID',
+  'TIKTOK_PARTNER_VN_APP_KEY',
+  'TIKTOK_PARTNER_VN_APP_SECRET',
+  'TIKTOK_PARTNER_VN_SERVICE_ID',
   'TIKTOK_PARTNER_REDIRECT_URI',
   'TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY',
   'TIKTOK_PARTNER_API_BASE_URL',
@@ -28,6 +34,9 @@ const configure = (t) => {
       else process.env[key] = value;
     }
   });
+  for (const key of ENV_KEYS) {
+    delete process.env[key];
+  }
   Object.assign(process.env, {
     TIKTOK_PARTNER_APP_KEY: 'app-key',
     TIKTOK_PARTNER_APP_SECRET: 'app-secret',

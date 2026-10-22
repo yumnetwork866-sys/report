@@ -69,6 +69,19 @@ const ENV_KEYS = [
   'TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY',
   'TIKTOK_PARTNER_TOKEN_BASE_URL',
   'TIKTOK_PARTNER_API_BASE_URL',
+  'TIKTOK_PARTNER_MY_APP_KEY',
+  'TIKTOK_PARTNER_MY_APP_SECRET',
+  'TIKTOK_PARTNER_MY_SERVICE_ID',
+  'TIKTOK_PARTNER_VN_APP_KEY',
+  'TIKTOK_PARTNER_VN_APP_SECRET',
+  'TIKTOK_PARTNER_VN_SERVICE_ID',
+  'TIKTOK_PARTNER_VN_REDIRECT_URI',
+  'TIKTOK_SHOP_VN_AUTHORIZE_URL',
+  'TIKTOK_PARTNER_US_APP_KEY',
+  'TIKTOK_PARTNER_US_APP_SECRET',
+  'TIKTOK_PARTNER_US_SERVICE_ID',
+  'TIKTOK_PARTNER_US_REDIRECT_URI',
+  'TIKTOK_SHOP_US_AUTHORIZE_URL',
   'TIKTOK_SHOP_SERVICE_ID',
   'TIKTOK_SHOP_AUTHORIZE_URL',
   'TIKTOK_SHOP_CUSTOM_APP_KEY',
@@ -86,6 +99,9 @@ const configure = (t) => {
       else process.env[key] = value;
     }
   });
+  for (const key of ENV_KEYS) {
+    delete process.env[key];
+  }
   Object.assign(process.env, {
     TIKTOK_PARTNER_APP_KEY: 'shop-app-key',
     TIKTOK_PARTNER_APP_SECRET: 'shop-app-secret',
@@ -181,6 +197,66 @@ test('custom app authorization code is exchanged using custom app credentials', 
   }, { appType: 'custom' });
   assert.equal(token.user_type, 0);
   assert.equal(token.access_token, 'custom-seller-token');
+});
+
+test('Vietnam app OAuth URL contains VN service id and verifiable partner_vn state', (t) => {
+  configure(t);
+  process.env.TIKTOK_PARTNER_VN_APP_KEY = 'vn-app-key';
+  process.env.TIKTOK_PARTNER_VN_APP_SECRET = 'vn-app-secret';
+  process.env.TIKTOK_PARTNER_VN_SERVICE_ID = 'vn-service-id';
+  const url = new URL(buildShopAuthorizationUrl('/shop/analytics', { appType: 'partner_vn' }));
+  assert.equal(url.searchParams.get('service_id'), 'vn-service-id');
+  const state = parseShopAuthorizationState(url.searchParams.get('state'));
+  assert.equal(state.oauthType, 'shop');
+  assert.equal(state.appType, 'partner_vn');
+  assert.equal(state.returnPath, '/shop/analytics');
+  assert.ok(state.expiresAt > Date.now());
+});
+
+test('Vietnam app authorization code is exchanged using VN app credentials', async (t) => {
+  configure(t);
+  process.env.TIKTOK_PARTNER_VN_APP_KEY = 'vn-app-key';
+  process.env.TIKTOK_PARTNER_VN_APP_SECRET = 'vn-app-secret';
+  const token = await exchangeShopAuthorizationCode('vn-auth-code', async (url) => {
+    assert.equal(url.searchParams.get('app_key'), 'vn-app-key');
+    assert.equal(url.searchParams.get('auth_code'), 'vn-auth-code');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { access_token: 'vn-seller-token', user_type: 0 } }),
+    };
+  }, { appType: 'partner_vn' });
+  assert.equal(token.user_type, 0);
+});
+
+test('United States app OAuth URL contains US service id and verifiable partner_us state', (t) => {
+  configure(t);
+  process.env.TIKTOK_PARTNER_US_APP_KEY = 'us-app-key';
+  process.env.TIKTOK_PARTNER_US_APP_SECRET = 'us-app-secret';
+  process.env.TIKTOK_PARTNER_US_SERVICE_ID = 'us-service-id';
+  const url = new URL(buildShopAuthorizationUrl('/shop/analytics', { appType: 'partner_us' }));
+  assert.equal(url.searchParams.get('service_id'), 'us-service-id');
+  const state = parseShopAuthorizationState(url.searchParams.get('state'));
+  assert.equal(state.oauthType, 'shop');
+  assert.equal(state.appType, 'partner_us');
+  assert.equal(state.returnPath, '/shop/analytics');
+  assert.ok(state.expiresAt > Date.now());
+});
+
+test('United States app authorization code is exchanged using US app credentials', async (t) => {
+  configure(t);
+  process.env.TIKTOK_PARTNER_US_APP_KEY = 'us-app-key';
+  process.env.TIKTOK_PARTNER_US_APP_SECRET = 'us-app-secret';
+  const token = await exchangeShopAuthorizationCode('us-auth-code', async (url) => {
+    assert.equal(url.searchParams.get('app_key'), 'us-app-key');
+    assert.equal(url.searchParams.get('auth_code'), 'us-auth-code');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ code: 0, data: { access_token: 'us-seller-token', user_type: 0 } }),
+    };
+  }, { appType: 'partner_us' });
+  assert.equal(token.user_type, 0);
 });
 
 test('signature follows TikTok Shop HMAC-SHA256 signing rules', (t) => {

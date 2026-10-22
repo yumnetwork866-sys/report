@@ -29,7 +29,7 @@ const ensureCompassExport = async (spec, {
   findExisting, saveExport, createTask, listTasks, db = sequelize, withLock = withCompassLock,
 }) => {
   const requestKey = hashKey([
-    String(process.env.TIKTOK_PARTNER_APP_KEY || '').trim(), spec.shopId,
+    String(process.env.TIKTOK_PARTNER_MY_APP_KEY || process.env.TIKTOK_PARTNER_APP_KEY || '').trim(), spec.shopId,
     spec.moduleType, spec.planType, spec.windowType, Number(spec.endDay),
   ]);
   const outcome = await withLock(db, requestKey, 81429, async (lockedDb) => {

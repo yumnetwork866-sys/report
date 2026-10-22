@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Link2 } from 'lucide-react';
+import { ArrowLeft, Link2 } from 'lucide-react';
 import AppLogo from './AppLogo';
 import {
   getTikTokOauthUrl,
@@ -71,6 +71,7 @@ const Header = () => {
   const session = useSession();
   const hasSession = Boolean(session);
   const [activeMenu, setActiveMenu] = useState(null);
+  const [connectSubmenu, setConnectSubmenu] = useState(null);
   const [connectingTarget, setConnectingTarget] = useState(null);
   const [connectionError, setConnectionError] = useState('');
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -134,6 +135,7 @@ const Header = () => {
 
   useEffect(() => {
     setActiveMenu(null);
+    setConnectSubmenu(null);
     setConnectionError('');
   }, [location.pathname]);
 
@@ -213,16 +215,18 @@ const Header = () => {
     items[nextIndex].focus();
   };
 
-  const startConnection = async (target) => {
+  const startConnection = async (target, options = {}) => {
     try {
-      setConnectingTarget(target);
+      const connectingKey = options.region ? `${target}_${options.region.toLowerCase()}` : target;
+      setConnectingTarget(connectingKey);
       setConnectionError('');
       let authorizeUrl;
       if (target === 'tiktok') authorizeUrl = await getTikTokOauthUrl();
-      if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth());
+      if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth(undefined, options.appType || 'partner', options.region));
       if (target === 'oms') ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom'));
       if (!authorizeUrl) throw new Error(t('header.connectionError'));
       setActiveMenu(null);
+      setConnectSubmenu(null);
       window.location.assign(authorizeUrl);
     } catch (error) {
       setConnectionError(error.message || t('header.connectionError'));
@@ -339,6 +343,7 @@ const Header = () => {
                   aria-expanded={activeMenu === 'connect'}
                   onClick={() => {
                     setConnectionError('');
+                    setConnectSubmenu(null);
                     setActiveMenu((current) => current === 'connect' ? null : 'connect');
                   }}
                   onKeyDown={handleConnectTriggerKeyDown}
@@ -356,27 +361,96 @@ const Header = () => {
                     aria-busy={Boolean(connectingTarget)}
                     onKeyDown={handleConnectMenuKeyDown}
                   >
-                    {connectionGroups.map((group) => (
-                      <div className="topbar__connect-group" key={group.id} role="presentation">
-                        {connectionOptions.filter((option) => option.group === group.id).map((option) => (
+                    {connectSubmenu === 'shop_regions' ? (
+                      <div className="topbar__connect-group" role="presentation">
+                        <div className="topbar__connect-submenu-header">
                           <button
-                            className="topbar__connect-item"
                             type="button"
-                            role="menuitem"
-                            key={option.id}
-                            disabled={Boolean(connectingTarget)}
-                            onClick={() => startConnection(option.id)}
+                            className="topbar__connect-back-button"
+                            onClick={() => {
+                              setConnectSubmenu(null);
+                              setConnectionError('');
+                            }}
+                            aria-label={t('header.back')}
                           >
-                            <ConnectionIcon type={option.id} />
-                            <span className="topbar__connect-copy">
-                              <strong>{option.label}</strong>
-                              <small>{connectingTarget === option.id ? t('header.connecting') : option.meta}</small>
-                            </span>
-                            <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                            <ArrowLeft size={14} aria-hidden="true" />
+                            <span>{t('header.back')}</span>
                           </button>
-                        ))}
+                          <span className="topbar__connect-submenu-title">{t('header.selectShopRegion')}</span>
+                        </div>
+                        <button
+                          className="topbar__connect-item"
+                          type="button"
+                          role="menuitem"
+                          disabled={Boolean(connectingTarget)}
+                          onClick={() => startConnection('shop', { region: 'MY', appType: 'partner' })}
+                        >
+                          <span className="topbar__connect-flag" aria-hidden="true">🇲🇾</span>
+                          <span className="topbar__connect-copy">
+                            <strong>{t('header.sellerRegionMy')} (MY)</strong>
+                            <small>{connectingTarget === 'shop_my' ? t('header.connecting') : t('header.sellerRegionMyMeta')}</small>
+                          </span>
+                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                          className="topbar__connect-item"
+                          type="button"
+                          role="menuitem"
+                          disabled={Boolean(connectingTarget)}
+                          onClick={() => startConnection('shop', { region: 'VN', appType: 'partner_vn' })}
+                        >
+                          <span className="topbar__connect-flag" aria-hidden="true">🇻🇳</span>
+                          <span className="topbar__connect-copy">
+                            <strong>{t('header.sellerRegionVn')} (VN)</strong>
+                            <small>{connectingTarget === 'shop_vn' ? t('header.connecting') : t('header.sellerRegionVnMeta')}</small>
+                          </span>
+                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                        </button>
+                        <button
+                          className="topbar__connect-item"
+                          type="button"
+                          role="menuitem"
+                          disabled={Boolean(connectingTarget)}
+                          onClick={() => startConnection('shop', { region: 'US', appType: 'partner_us' })}
+                        >
+                          <span className="topbar__connect-flag" aria-hidden="true">🇺🇸</span>
+                          <span className="topbar__connect-copy">
+                            <strong>{t('header.sellerRegionUs')} (US)</strong>
+                            <small>{connectingTarget === 'shop_us' ? t('header.connecting') : t('header.sellerRegionUsMeta')}</small>
+                          </span>
+                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                        </button>
                       </div>
-                    ))}
+                    ) : (
+                      connectionGroups.map((group) => (
+                        <div className="topbar__connect-group" key={group.id} role="presentation">
+                          {connectionOptions.filter((option) => option.group === group.id).map((option) => (
+                            <button
+                              className="topbar__connect-item"
+                              type="button"
+                              role="menuitem"
+                              key={option.id}
+                              disabled={Boolean(connectingTarget)}
+                              onClick={() => {
+                                if (option.id === 'shop') {
+                                  setConnectSubmenu('shop_regions');
+                                  setConnectionError('');
+                                } else {
+                                  startConnection(option.id);
+                                }
+                              }}
+                            >
+                              <ConnectionIcon type={option.id} />
+                              <span className="topbar__connect-copy">
+                                <strong>{option.label}</strong>
+                                <small>{connectingTarget === option.id ? t('header.connecting') : option.meta}</small>
+                              </span>
+                              <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))
+                    )}
                     {connectionError ? <p className="topbar__connect-error" role="alert">{connectionError}</p> : null}
                   </div>
                 ) : null}

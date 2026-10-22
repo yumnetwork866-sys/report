@@ -503,7 +503,17 @@ const oauthErrorMessage = (error) => {
 
 const startShopOauth = async (req, res) => {
   try {
-    const appType = req.query.app_type === 'custom' ? 'custom' : 'partner';
+    let appType = req.query.app_type;
+    const region = String(req.query.region || '').toUpperCase();
+    if (region === 'VN' || appType === 'partner_vn') {
+      appType = 'partner_vn';
+    } else if (region === 'US' || appType === 'partner_us') {
+      appType = 'partner_us';
+    } else if (appType === 'custom') {
+      appType = 'custom';
+    } else {
+      appType = 'partner';
+    }
     res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType }) });
   }
   catch (error) { res.status(error.message.includes('not configured') ? 503 : 500).json({ message: error.message }); }
@@ -515,7 +525,7 @@ const handleShopOauthCallback = async (req, res) => {
     const oauthState = parseShopAuthorizationState(req.query.state);
     returnPath = oauthState.returnPath;
     const isCustom = oauthState.oauthType === 'shop_custom' || oauthState.appType === 'custom';
-    const appType = isCustom ? 'custom' : 'partner';
+    const appType = oauthState.appType || (isCustom ? 'custom' : 'partner');
     const code = req.query.code || req.query.auth_code;
     if (!code) throw new Error(req.query.error || 'TikTok Shop authorization was denied.');
     const tokenData = await exchangeShopAuthorizationCode(code, { appType });

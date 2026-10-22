@@ -37,14 +37,26 @@ const COMPASS_CREATE_TASK_PATH = '/affiliate_seller/202603/compass/offline_task'
 const COMPASS_TASK_LIST_PATH = '/affiliate_seller/202603/compass/offline_tasks';
 
 const getConfig = () => ({
-  appKey: String(process.env.TIKTOK_PARTNER_APP_KEY || '').trim(),
-  appSecret: String(process.env.TIKTOK_PARTNER_APP_SECRET || '').trim(),
-  serviceId: String(process.env.TIKTOK_PARTNER_SERVICE_ID || process.env.TIKTOK_SHOP_SERVICE_ID || '').trim(),
+  appKey: String(process.env.TIKTOK_PARTNER_MY_APP_KEY || process.env.TIKTOK_PARTNER_APP_KEY || '').trim(),
+  appSecret: String(process.env.TIKTOK_PARTNER_MY_APP_SECRET || process.env.TIKTOK_PARTNER_APP_SECRET || '').trim(),
+  serviceId: String(process.env.TIKTOK_PARTNER_MY_SERVICE_ID || process.env.TIKTOK_PARTNER_SERVICE_ID || process.env.TIKTOK_SHOP_SERVICE_ID || '').trim(),
   redirectUri: String(process.env.TIKTOK_PARTNER_REDIRECT_URI || '').trim(),
   authorizeUrl: String(process.env.TIKTOK_SHOP_AUTHORIZE_URL || 'https://services.tiktokshop.com/open/authorize').trim(),
   tokenBaseUrl: String(process.env.TIKTOK_PARTNER_TOKEN_BASE_URL || 'https://auth.tiktok-shops.com/api/v2/token').trim().replace(/\/+$/, ''),
   apiBaseUrl: String(process.env.TIKTOK_PARTNER_API_BASE_URL || 'https://open-api.tiktokglobalshop.com').trim().replace(/\/+$/, ''),
   requestTimeoutMs: Math.max(1000, Number(process.env.TIKTOK_SHOP_REQUEST_TIMEOUT_MS || 15000) || 15000),
+
+  vnAppKey: String(process.env.TIKTOK_PARTNER_VN_APP_KEY || '').trim(),
+  vnAppSecret: String(process.env.TIKTOK_PARTNER_VN_APP_SECRET || '').trim(),
+  vnServiceId: String(process.env.TIKTOK_PARTNER_VN_SERVICE_ID || '').trim(),
+  vnRedirectUri: String(process.env.TIKTOK_PARTNER_VN_REDIRECT_URI || process.env.TIKTOK_PARTNER_REDIRECT_URI || '').trim(),
+  vnAuthorizeUrl: String(process.env.TIKTOK_SHOP_VN_AUTHORIZE_URL || process.env.TIKTOK_SHOP_AUTHORIZE_URL || 'https://services.tiktokshop.com/open/authorize').trim(),
+
+  usAppKey: String(process.env.TIKTOK_PARTNER_US_APP_KEY || '').trim(),
+  usAppSecret: String(process.env.TIKTOK_PARTNER_US_APP_SECRET || '').trim(),
+  usServiceId: String(process.env.TIKTOK_PARTNER_US_SERVICE_ID || '').trim(),
+  usRedirectUri: String(process.env.TIKTOK_PARTNER_US_REDIRECT_URI || process.env.TIKTOK_PARTNER_REDIRECT_URI || '').trim(),
+  usAuthorizeUrl: String(process.env.TIKTOK_SHOP_US_AUTHORIZE_URL || process.env.TIKTOK_SHOP_AUTHORIZE_URL || 'https://services.tiktokshop.com/open/authorize').trim(),
 
   customAppKey: String(process.env.TIKTOK_SHOP_CUSTOM_APP_KEY || '').trim(),
   customAppSecret: String(process.env.TIKTOK_SHOP_CUSTOM_APP_SECRET || '').trim(),
@@ -52,6 +64,43 @@ const getConfig = () => ({
   customRedirectUri: String(process.env.TIKTOK_SHOP_CUSTOM_REDIRECT_URI || process.env.TIKTOK_PARTNER_REDIRECT_URI || '').trim(),
   customAuthorizeUrl: String(process.env.TIKTOK_SHOP_CUSTOM_AUTHORIZE_URL || process.env.TIKTOK_SHOP_AUTHORIZE_URL || 'https://services.tiktokshop.com/open/authorize').trim(),
 });
+
+const resolveAppCredentials = (appType = 'partner', config = getConfig()) => {
+  if (appType === 'custom') {
+    return {
+      appKey: config.customAppKey,
+      appSecret: config.customAppSecret,
+      serviceId: config.customServiceId || config.customAppKey,
+      redirectUri: config.customRedirectUri,
+      authorizeUrl: config.customAuthorizeUrl,
+    };
+  }
+  if (appType === 'partner_vn') {
+    return {
+      appKey: config.vnAppKey,
+      appSecret: config.vnAppSecret,
+      serviceId: config.vnServiceId,
+      redirectUri: config.vnRedirectUri,
+      authorizeUrl: config.vnAuthorizeUrl,
+    };
+  }
+  if (appType === 'partner_us') {
+    return {
+      appKey: config.usAppKey,
+      appSecret: config.usAppSecret,
+      serviceId: config.usServiceId,
+      redirectUri: config.usRedirectUri,
+      authorizeUrl: config.usAuthorizeUrl,
+    };
+  }
+  return {
+    appKey: config.appKey,
+    appSecret: config.appSecret,
+    serviceId: config.serviceId,
+    redirectUri: config.redirectUri,
+    authorizeUrl: config.authorizeUrl,
+  };
+};
 
 const assertConfigured = (config, { oauth = false, appType = 'partner' } = {}) => {
   if (appType === 'custom') {
@@ -65,11 +114,33 @@ const assertConfigured = (config, { oauth = false, appType = 'partner' } = {}) =
     if (missing.length) throw new Error(`TikTok Custom Shop App is not configured. Set ${missing.join(', ')} in backend/.env.`);
     return;
   }
+  if (appType === 'partner_vn') {
+    const missing = [
+      ['TIKTOK_PARTNER_VN_APP_KEY', config.vnAppKey],
+      ['TIKTOK_PARTNER_VN_APP_SECRET', config.vnAppSecret],
+      ...(oauth ? [['TIKTOK_PARTNER_VN_REDIRECT_URI or TIKTOK_PARTNER_REDIRECT_URI', config.vnRedirectUri]] : []),
+      ...(oauth && !new URL(config.vnAuthorizeUrl).searchParams.get('service_id') && !config.vnServiceId
+        ? [['TIKTOK_PARTNER_VN_SERVICE_ID', config.vnServiceId]] : []),
+    ].filter(([, value]) => !value).map(([key]) => key);
+    if (missing.length) throw new Error(`TikTok Shop VN is not configured. Set ${missing.join(', ')} in backend/.env.`);
+    return;
+  }
+  if (appType === 'partner_us') {
+    const missing = [
+      ['TIKTOK_PARTNER_US_APP_KEY', config.usAppKey],
+      ['TIKTOK_PARTNER_US_APP_SECRET', config.usAppSecret],
+      ...(oauth ? [['TIKTOK_PARTNER_US_REDIRECT_URI or TIKTOK_PARTNER_REDIRECT_URI', config.usRedirectUri]] : []),
+      ...(oauth && !new URL(config.usAuthorizeUrl).searchParams.get('service_id') && !config.usServiceId
+        ? [['TIKTOK_PARTNER_US_SERVICE_ID', config.usServiceId]] : []),
+    ].filter(([, value]) => !value).map(([key]) => key);
+    if (missing.length) throw new Error(`TikTok Shop US is not configured. Set ${missing.join(', ')} in backend/.env.`);
+    return;
+  }
   const missing = [
-    ['TIKTOK_PARTNER_APP_KEY', config.appKey],
-    ['TIKTOK_PARTNER_APP_SECRET', config.appSecret],
+    ['TIKTOK_PARTNER_MY_APP_KEY or TIKTOK_PARTNER_APP_KEY', config.appKey],
+    ['TIKTOK_PARTNER_MY_APP_SECRET or TIKTOK_PARTNER_APP_SECRET', config.appSecret],
     ...(oauth ? [['TIKTOK_PARTNER_REDIRECT_URI', config.redirectUri]] : []),
-    ...(oauth && !new URL(config.authorizeUrl).searchParams.get('service_id') ? [['TIKTOK_PARTNER_SERVICE_ID', config.serviceId]] : []),
+    ...(oauth && !new URL(config.authorizeUrl).searchParams.get('service_id') ? [['TIKTOK_PARTNER_MY_SERVICE_ID or TIKTOK_PARTNER_SERVICE_ID', config.serviceId]] : []),
   ].filter(([, value]) => !value).map(([key]) => key);
   if (missing.length) throw new Error(`TikTok Shop is not configured. Set ${missing.join(', ')} in backend/.env.`);
 };
@@ -81,10 +152,11 @@ const buildShopAuthorizationUrl = (returnPath = '/shop/analytics', options = {})
   const isCustom = appType === 'custom';
   const config = getConfig();
   assertConfigured(config, { oauth: true, appType });
-  const secret = isCustom ? (config.customAppSecret || config.appSecret) : config.appSecret;
+  const credentials = resolveAppCredentials(appType, config);
+  const secret = credentials.appSecret;
   const payload = Buffer.from(JSON.stringify({
     oauthType: isCustom ? 'shop_custom' : 'shop',
-    appType: isCustom ? 'custom' : 'partner',
+    appType,
     returnPath: [
       '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
       '/shop/orders', '/manage/koc-performance',
@@ -94,9 +166,9 @@ const buildShopAuthorizationUrl = (returnPath = '/shop/analytics', options = {})
     expiresAt: Date.now() + STATE_TTL_MS,
   })).toString('base64url');
   const state = `${payload}.${signState(payload, secret)}`;
-  const baseUrl = isCustom ? config.customAuthorizeUrl : config.authorizeUrl;
+  const baseUrl = credentials.authorizeUrl;
   const url = new URL(baseUrl);
-  const serviceId = isCustom ? (config.customServiceId || config.customAppKey) : config.serviceId;
+  const serviceId = credentials.serviceId;
   if (serviceId && !url.searchParams.get('service_id') && !url.searchParams.get('app_key')) {
     url.searchParams.set('service_id', serviceId);
   }
@@ -116,15 +188,22 @@ const parseShopAuthorizationState = (state) => {
   } catch {
     throw new Error('TikTok Shop OAuth state payload is invalid.');
   }
-  const isCustom = data?.oauthType === 'shop_custom' || data?.appType === 'custom';
-  const primarySecret = isCustom ? (config.customAppSecret || config.appSecret) : config.appSecret;
-  const fallbackSecret = isCustom ? config.appSecret : config.customAppSecret;
-  const expected = primarySecret ? signState(payload, primarySecret) : '';
-  let valid = Boolean(expected && signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected)));
-  if (!valid && fallbackSecret) {
-    const altExpected = signState(payload, fallbackSecret);
-    if (signature.length === altExpected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(altExpected))) {
+  const appType = data?.appType || (data?.oauthType === 'shop_custom' ? 'custom' : 'partner');
+  const credentials = resolveAppCredentials(appType, config);
+  const candidateSecrets = [
+    credentials.appSecret,
+    config.appSecret,
+    config.vnAppSecret,
+    config.usAppSecret,
+    config.customAppSecret,
+  ].filter(Boolean);
+
+  let valid = false;
+  for (const secret of candidateSecrets) {
+    const expected = signState(payload, secret);
+    if (signature.length === expected.length && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
       valid = true;
+      break;
     }
   }
   if (!valid) {
@@ -138,10 +217,10 @@ const parseShopAuthorizationState = (state) => {
 const tokenRequest = async (path, params, fetchImpl = fetch, options = {}) => {
   const config = getConfig();
   const appType = options?.appType || 'partner';
-  const isCustom = appType === 'custom';
   assertConfigured(config, { appType });
-  const appKey = isCustom ? config.customAppKey : config.appKey;
-  const appSecret = isCustom ? config.customAppSecret : config.appSecret;
+  const credentials = resolveAppCredentials(appType, config);
+  const appKey = credentials.appKey;
+  const appSecret = credentials.appSecret;
   const url = new URL(`${config.tokenBaseUrl}/${path}`);
   Object.entries({ app_key: appKey, app_secret: appSecret, ...params }).forEach(([key, value]) => url.searchParams.set(key, value));
   const response = await monitoredFetch(url, {
@@ -205,10 +284,10 @@ const requestShopApi = async ({
   appType = 'partner', appKey: explicitAppKey, appSecret: explicitAppSecret,
 }) => {
   const config = getConfig();
-  const isCustom = appType === 'custom';
   assertConfigured(config, { appType });
-  const appKey = explicitAppKey || (isCustom ? config.customAppKey : config.appKey);
-  const appSecret = explicitAppSecret || (isCustom ? config.customAppSecret : config.appSecret);
+  const credentials = resolveAppCredentials(appType, config);
+  const appKey = explicitAppKey || credentials.appKey;
+  const appSecret = explicitAppSecret || credentials.appSecret;
   const signed = { ...query, app_key: appKey, timestamp: Math.floor(Date.now() / 1000) };
   const bodyString = body && Object.keys(body).length ? JSON.stringify(body) : '';
   signed.sign = signature({ path, query: signed, body: bodyString, appSecret });
@@ -1000,6 +1079,7 @@ const getShopPerformance = async ({ authorization, shopCipher, startDate, endDat
     accessToken,
     fetchImpl: fetchImpl || fetch,
     query: { shop_cipher: shopCipher, start_date_ge: startDate, end_date_lt: endDate, granularity: '1D', currency },
+    appType: authorization?.app_type || 'partner',
   });
   if (payload.data?.performance) payload.data.performance = normalizeShopPerformance(payload.data.performance);
   return payload;
@@ -1026,6 +1106,7 @@ const getShopVideoPerformance = async ({
     path: SHOP_VIDEO_PERFORMANCE_PATH,
     accessToken,
     fetchImpl: fetchImpl || fetch,
+    appType: authorization?.app_type || 'partner',
     query: {
       shop_cipher: shopCipher,
       start_date_ge: startDate,
@@ -1062,6 +1143,7 @@ const getShopVideoPerformanceDetails = async ({
     accessToken,
     fetchImpl: fetchImpl || fetch,
     signal,
+    appType: authorization?.app_type || 'partner',
     query: {
       shop_cipher: shopCipher,
       start_date_ge: startDate,

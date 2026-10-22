@@ -15,8 +15,9 @@ const CREATOR_SHOWCASE_SCOPE = 'creator.showcase.read';
 const CREATOR_COLLABORATION_SCOPE = 'creator.affiliate_collaboration.read';
 
 const getConfig = () => ({
-  appKey: String(process.env.TIKTOK_PARTNER_APP_KEY || '').trim(),
-  appSecret: String(process.env.TIKTOK_PARTNER_APP_SECRET || '').trim(),
+  appKey: String(process.env.TIKTOK_PARTNER_MY_APP_KEY || process.env.TIKTOK_PARTNER_APP_KEY || '').trim(),
+  appSecret: String(process.env.TIKTOK_PARTNER_MY_APP_SECRET || process.env.TIKTOK_PARTNER_APP_SECRET || '').trim(),
+  serviceId: String(process.env.TIKTOK_PARTNER_MY_SERVICE_ID || process.env.TIKTOK_PARTNER_SERVICE_ID || '').trim(),
   redirectUri: String(process.env.TIKTOK_PARTNER_REDIRECT_URI || '').trim(),
   apiBaseUrl: String(process.env.TIKTOK_PARTNER_API_BASE_URL || DEFAULT_API_BASE_URL).trim().replace(/\/+$/, ''),
   authorizeUrl: String(process.env.TIKTOK_PARTNER_AUTHORIZE_URL || DEFAULT_AUTHORIZE_URL).trim(),
@@ -26,8 +27,8 @@ const getConfig = () => ({
 
 const assertAppConfigured = (config, { requireRedirect = false } = {}) => {
   const values = [
-    ['TIKTOK_PARTNER_APP_KEY', config.appKey],
-    ['TIKTOK_PARTNER_APP_SECRET', config.appSecret],
+    ['TIKTOK_PARTNER_MY_APP_KEY or TIKTOK_PARTNER_APP_KEY', config.appKey],
+    ['TIKTOK_PARTNER_MY_APP_SECRET or TIKTOK_PARTNER_APP_SECRET', config.appSecret],
     ...(requireRedirect ? [['TIKTOK_PARTNER_REDIRECT_URI', config.redirectUri]] : []),
   ];
   const missing = values.filter(([, value]) => !value).map(([name]) => name);

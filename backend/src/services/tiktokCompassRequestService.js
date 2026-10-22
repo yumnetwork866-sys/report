@@ -8,7 +8,7 @@ const LIST_ENDPOINT = 'GET /affiliate_seller/202603/compass/offline_tasks';
 const DOWNLOAD_ENDPOINT = 'GET /affiliate_seller/202603/compass/offline_tasks/:task_id/file';
 const hashKey = (parts) => crypto.createHash('sha256').update(JSON.stringify(parts)).digest('hex');
 const compassBucketKey = (platformShopId, endpoint) => hashKey([
-  String(process.env.TIKTOK_PARTNER_APP_KEY || '').trim(), String(platformShopId), endpoint,
+  String(process.env.TIKTOK_PARTNER_MY_APP_KEY || process.env.TIKTOK_PARTNER_APP_KEY || '').trim(), String(platformShopId), endpoint,
 ]);
 const resolveCompassShopId = async (shopCipher) => {
   const shop = await TikTokShop.findOne({ where: { cipher: shopCipher }, attributes: ['platform_shop_id'] });

@@ -95,6 +95,8 @@ test('TikTok Shop API helpers preserve analytics filters, sync payload and abort
     };
 
     await startTikTokShopOauth();
+    await startTikTokShopOauth(undefined, 'partner', 'VN');
+    await startTikTokShopOauth(undefined, 'partner', 'US');
     await fetchTikTokShopAnalytics(7, { startDate: '2026-06-01', endDate: '2026-07-01', currency: 'LOCAL' });
     await fetchTikTokShopVideoAnalytics(7, {
       startDate: '2026-06-01', endDate: '2026-07-01', currency: 'LOCAL', accountType: 'ALL', sortField: 'gmv', sortOrder: 'DESC', pageSize: 100,
@@ -109,18 +111,20 @@ test('TikTok Shop API helpers preserve analytics filters, sync payload and abort
     await syncTikTokShopAnalytics(7, { start_date: '2026-06-01', end_date: '2026-07-01', currency: 'LOCAL' }, controller.signal);
 
     assert.equal(calls[0].url, '/api/tiktok-shop/oauth/start');
-    assert.equal(calls[1].url, '/api/tiktok-shop/shops/7/analytics?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL');
-    assert.equal(calls[2].url, '/api/tiktok-shop/shops/7/video-analytics?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL&account_type=ALL&sort_field=gmv&sort_order=DESC&page_size=100');
-    assert.equal(calls[3].url, '/api/tiktok-shop/shops/7/video-performance?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL&export_id=12&page=2&page_size=100');
-    assert.equal(calls[4].url, '/api/tiktok-shop/shops/7/video-performance/sync');
-    assert.equal(calls[4].options.method, 'POST');
-    assert.deepEqual(JSON.parse(calls[4].options.body), {
+    assert.equal(calls[1].url, '/api/tiktok-shop/oauth/start?app_type=partner_vn&region=VN');
+    assert.equal(calls[2].url, '/api/tiktok-shop/oauth/start?app_type=partner_us&region=US');
+    assert.equal(calls[3].url, '/api/tiktok-shop/shops/7/analytics?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL');
+    assert.equal(calls[4].url, '/api/tiktok-shop/shops/7/video-analytics?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL&account_type=ALL&sort_field=gmv&sort_order=DESC&page_size=100');
+    assert.equal(calls[5].url, '/api/tiktok-shop/shops/7/video-performance?start_date=2026-06-01&end_date=2026-07-01&currency=LOCAL&export_id=12&page=2&page_size=100');
+    assert.equal(calls[6].url, '/api/tiktok-shop/shops/7/video-performance/sync');
+    assert.equal(calls[6].options.method, 'POST');
+    assert.deepEqual(JSON.parse(calls[6].options.body), {
       start_date: '2026-06-01', end_date: '2026-07-01', currency: 'LOCAL',
     });
-    assert.equal(calls[5].url, '/api/tiktok-shop/shops/7/analytics/sync');
-    assert.equal(calls[5].options.method, 'POST');
-    assert.equal(calls[5].options.signal, controller.signal);
-    assert.deepEqual(JSON.parse(calls[5].options.body), {
+    assert.equal(calls[7].url, '/api/tiktok-shop/shops/7/analytics/sync');
+    assert.equal(calls[7].options.method, 'POST');
+    assert.equal(calls[7].options.signal, controller.signal);
+    assert.deepEqual(JSON.parse(calls[7].options.body), {
       start_date: '2026-06-01', end_date: '2026-07-01', currency: 'LOCAL',
     });
   });
