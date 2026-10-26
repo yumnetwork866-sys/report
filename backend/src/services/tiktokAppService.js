@@ -1,5 +1,5 @@
 const { TikTokApp } = require('../models');
-const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
+const { decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 
 let appCache = null;
 let candidateSecretsCache = [];

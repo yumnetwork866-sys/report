@@ -537,6 +537,7 @@ const handleShopOauthCallback = async (req, res) => {
       : null;
     const values = {
       ...shopTokenFields({ ...tokenData, granted_scopes: normalizedScopes }, existing || {}),
+      app_id: oauthState.appId || existing?.app_id || null,
       app_type: appType,
       connected_at: new Date(),
       last_sync_status: 'success',

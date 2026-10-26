@@ -73,6 +73,7 @@ const resolveAppCredentials = (appType = 'partner', config = getConfig(), option
   const dbCredentials = getAppCredentials(actualAppType, region);
   if (dbCredentials && dbCredentials.appKey && dbCredentials.appSecret) {
     return {
+      id: dbCredentials.id,
       appKey: dbCredentials.appKey,
       appSecret: dbCredentials.appSecret,
       serviceId: dbCredentials.serviceId || dbCredentials.appKey,

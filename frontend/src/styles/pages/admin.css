@@ -4012,6 +4012,27 @@
   border-top: 1px solid var(--color-border-subtle, var(--color-border));
 }
 
+.app-management__linked-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--color-primary, #0284c7) 28%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary, #0284c7) 8%, var(--color-surface));
+  color: var(--color-primary, #0284c7);
+  font-size: 0.8rem;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-management__linked-count:hover {
+  border-color: var(--color-primary, #0284c7);
+  background: color-mix(in srgb, var(--color-primary, #0284c7) 14%, var(--color-surface));
+}
+
 .app-management__modal {
   width: min(580px, calc(100vw - 32px));
   max-height: calc(100vh - 48px);

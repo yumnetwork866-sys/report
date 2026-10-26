@@ -29,6 +29,12 @@ const ChannelManagement = ({ heroTitle }) => {
   const oauthParams = new URLSearchParams(location.search);
   const oauthStatus = oauthParams.get('oauth_status');
   const oauthMessage = oauthParams.get('oauth_message');
+  const appIdFilter = oauthParams.get('app_id');
+  const visibleChannels = useMemo(() => (
+    appIdFilter
+      ? channels.filter((channel) => String(channel.app_id || '') === String(appIdFilter))
+      : channels
+  ), [appIdFilter, channels]);
 
   const loadChannels = async (signal) => {
     const loadedChannels = await fetchChannels(signal);
@@ -92,11 +98,11 @@ const ChannelManagement = ({ heroTitle }) => {
   }, []);
 
   const sourceCounts = useMemo(() => {
-    return channels.reduce((acc, channel) => {
+    return visibleChannels.reduce((acc, channel) => {
       acc[channel.sync_source] = (acc[channel.sync_source] || 0) + 1;
       return acc;
     }, {});
-  }, [channels]);
+  }, [visibleChannels]);
 
   const isFallbackUsername = (value) => {
     const text = String(value || '').trim();
@@ -214,7 +220,7 @@ const ChannelManagement = ({ heroTitle }) => {
         <div className="page__stats">
           <article className="stat-card">
             <p className="stat-card__label">{t('channel.channels')}</p>
-            <p className="stat-card__value">{channels.length}</p>
+            <p className="stat-card__value">{visibleChannels.length}</p>
           </article>
           <article className="stat-card">
             <p className="stat-card__label">{t('channel.oauth')}</p>
@@ -255,8 +261,8 @@ const ChannelManagement = ({ heroTitle }) => {
                     </div>
                   </td>
                 </tr>
-              ) : channels.length ? (
-                channels.map((channel) => (
+              ) : visibleChannels.length ? (
+                visibleChannels.map((channel) => (
                   <tr key={channel.id}>
                     <td>
                       {channel.profile_url ? (

@@ -408,6 +408,7 @@ const TikTokPartnerAuthorization = sequelize.define('TikTokPartnerAuthorization'
 
 const TikTokShopAuthorization = sequelize.define('TikTokShopAuthorization', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  app_id: { type: DataTypes.INTEGER, allowNull: true },
   open_id: { type: DataTypes.STRING, allowNull: true },
   user_type: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
   granted_scopes: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
@@ -892,6 +893,10 @@ const TikTokChannel = sequelize.define('TikTokChannel', {
     allowNull: true,
     unique: true,
   },
+  app_id: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+  },
   username: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -1214,6 +1219,10 @@ BookingVideo.hasMany(BookingVideoPerformanceSnapshot, { foreignKey: 'booking_vid
 BookingVideoPerformanceSnapshot.belongsTo(BookingVideo, { foreignKey: 'booking_video_id', as: 'booking_video' });
 User.hasOne(TikTokPartnerAuthorization, { foreignKey: 'creator_id', as: 'tiktok_partner_authorization' });
 TikTokPartnerAuthorization.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
+TikTokApp.hasMany(TikTokShopAuthorization, { foreignKey: 'app_id', as: 'shop_authorizations' });
+TikTokShopAuthorization.belongsTo(TikTokApp, { foreignKey: 'app_id', as: 'app' });
+TikTokApp.hasMany(TikTokChannel, { foreignKey: 'app_id', as: 'channels' });
+TikTokChannel.belongsTo(TikTokApp, { foreignKey: 'app_id', as: 'app' });
 TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'authorization_id', as: 'shops' });
 TikTokShop.belongsTo(TikTokShopAuthorization, { foreignKey: 'authorization_id', as: 'authorization' });
 TikTokShopAuthorization.hasMany(TikTokShop, { foreignKey: 'order_authorization_id', as: 'order_shops' });

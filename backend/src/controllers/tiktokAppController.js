@@ -1,8 +1,14 @@
-const { TikTokApp } = require('../models');
+const { Op } = require('sequelize');
+const {
+  TikTokApp,
+  TikTokChannel,
+  TikTokShop,
+  TikTokShopAuthorization,
+} = require('../models');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 const { invalidateAppCache } = require('../services/tiktokAppService');
 
-const serializeApp = (app) => {
+const serializeApp = (app, linkedCount = 0) => {
   const data = app.get ? app.get({ plain: true }) : app;
   return {
     id: data.id,
@@ -16,17 +22,48 @@ const serializeApp = (app) => {
     authorize_url: data.authorize_url || 'https://services.tiktokshop.com/open/authorize',
     redirect_uri: data.redirect_uri || null,
     is_active: Boolean(data.is_active),
+    linked_count: Number(linkedCount) || 0,
     created_at: data.created_at,
     updated_at: data.updated_at,
   };
 };
+
+const countLinkedAccounts = async (app) => {
+  if (app.app_type === 'channel') {
+    return TikTokChannel.count({
+      where: {
+        app_id: app.id,
+        access_token_encrypted: { [Op.ne]: null },
+      },
+    });
+  }
+
+  return TikTokShop.count({
+    distinct: true,
+    col: 'id',
+    include: [
+      { model: TikTokShopAuthorization, as: 'authorization', attributes: [], required: false },
+      { model: TikTokShopAuthorization, as: 'orderAuthorization', attributes: [], required: false },
+    ],
+    where: {
+      [Op.or]: [
+        { '$authorization.app_id$': app.id },
+        { '$orderAuthorization.app_id$': app.id },
+      ],
+    },
+  });
+};
+
+const serializeAppsWithCounts = (apps) => Promise.all(apps.map(async (app) => (
+  serializeApp(app, await countLinkedAccounts(app))
+)));
 
 const listApps = async (req, res) => {
   try {
     const apps = await TikTokApp.findAll({
       order: [['app_type', 'ASC'], ['region', 'ASC'], ['name', 'ASC']],
     });
-    res.json(apps.map(serializeApp));
+    res.json(await serializeAppsWithCounts(apps));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -38,7 +75,7 @@ const listActiveApps = async (req, res) => {
       where: { is_active: true },
       order: [['app_type', 'ASC'], ['region', 'ASC'], ['name', 'ASC']],
     });
-    res.json(apps.map(serializeApp));
+    res.json(await serializeAppsWithCounts(apps));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -208,7 +245,7 @@ const getAppSecret = async (req, res) => {
     if (app.app_secret_encrypted) {
       try {
         secret = decryptPartnerToken(app.app_secret_encrypted);
-      } catch (err) {
+      } catch {
         return res.status(500).json({ message: 'Không thể giải mã App Secret' });
       }
     }

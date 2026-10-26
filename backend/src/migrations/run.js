@@ -103,6 +103,7 @@ const migrations = [
   require('./093_add_app_manage_permission'),
   require('./094_update_oms_app_region_to_my'),
   require('./095_seed_tiktok_channel_app'),
+  require('./096_link_connections_to_tiktok_apps'),
 ];
 
 const createMigrationRunner = ({

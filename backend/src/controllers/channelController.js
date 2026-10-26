@@ -18,6 +18,7 @@ const DEFAULT_CHANNEL_SCOPES = 'user.info.basic,user.info.profile,user.info.stat
 
 const getChannelConfig = () => {
   const dbCreds = typeof getAppCredentials === 'function' ? getAppCredentials('channel', 'ALL') : null;
+  const appId = dbCreds?.id || null;
   const clientKey = String((dbCreds && dbCreds.appKey) || process.env.TIKTOK_CLIENT_KEY || '').trim();
   const clientSecret = String((dbCreds && dbCreds.appSecret) || process.env.TIKTOK_CLIENT_SECRET || '').trim();
   const redirectUri = String((dbCreds && dbCreds.redirectUri) || process.env.TIKTOK_REDIRECT_URI || '').trim();
@@ -27,7 +28,7 @@ const getChannelConfig = () => {
     .map((scope) => scope.trim())
     .filter(Boolean)
     .join(',');
-  return { clientKey, clientSecret, redirectUri, authorizeBaseUrl, scopes };
+  return { appId, clientKey, clientSecret, redirectUri, authorizeBaseUrl, scopes };
 };
 
 const TIKTOK_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
@@ -112,10 +113,10 @@ const expiresAtFromSeconds = (seconds) => {
 };
 
 const buildOauthState = () => {
-  const { clientSecret } = getChannelConfig();
+  const { appId, clientSecret } = getChannelConfig();
   const issuedAt = Date.now().toString();
   const nonce = crypto.randomBytes(16).toString('hex');
-  const payload = `${issuedAt}.${nonce}`;
+  const payload = `${issuedAt}.${nonce}.${appId || 0}`;
   const signature = crypto
     .createHmac('sha256', clientSecret)
     .update(payload)
@@ -124,23 +125,32 @@ const buildOauthState = () => {
   return `${payload}.${signature}`;
 };
 
-const isValidOauthState = (state) => {
-  const [issuedAt, nonce, signature] = String(state || '').split('.');
+const parseOauthState = (state) => {
+  const parts = String(state || '').split('.');
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const isLegacy = parts.length === 3;
+  const [issuedAt, nonce] = parts;
+  const appIdValue = isLegacy ? '0' : parts[2];
+  const signature = isLegacy ? parts[2] : parts[3];
   const timestamp = Number(issuedAt);
 
   if (!issuedAt || !nonce || !signature || !Number.isFinite(timestamp) || Date.now() - timestamp > OAUTH_STATE_MAX_AGE_MS) {
-    return false;
+    return null;
   }
 
   const { clientSecret } = getChannelConfig();
-  const payload = `${issuedAt}.${nonce}`;
+  const payload = isLegacy ? `${issuedAt}.${nonce}` : `${issuedAt}.${nonce}.${appIdValue}`;
   const expectedSignature = crypto
     .createHmac('sha256', clientSecret)
     .update(payload)
     .digest('base64url');
 
-  return signature.length === expectedSignature.length
+  const isValid = signature.length === expectedSignature.length
     && crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+  if (!isValid) return null;
+
+  const appId = Number(appIdValue);
+  return { appId: Number.isInteger(appId) && appId > 0 ? appId : null };
 };
 
 const buildTiktokOauthUrl = () => {
@@ -724,7 +734,8 @@ const handleTiktokOauthCallback = async (req, res) => {
       return res.redirect(buildFrontendRedirectUrl('error', errorDescription || error));
     }
 
-    if (!isValidOauthState(state)) {
+    const oauthState = parseOauthState(state);
+    if (!oauthState) {
       return res.redirect(buildFrontendRedirectUrl('error', 'TikTok OAuth callback state is invalid or expired'));
     }
 
@@ -771,6 +782,7 @@ const handleTiktokOauthCallback = async (req, res) => {
       where: lookup,
       defaults: {
         platform: 'tiktok',
+        app_id: oauthState.appId,
         tiktok_open_id: openId || null,
         username,
         display_name: displayName,
@@ -793,6 +805,7 @@ const handleTiktokOauthCallback = async (req, res) => {
 
     await channel.update({
       platform: 'tiktok',
+      app_id: oauthState.appId || channel.app_id || null,
       tiktok_open_id: openId || channel.tiktok_open_id,
       username,
       display_name: displayName,

@@ -10,7 +10,7 @@ const {
   normalizeAppKey,
   mapLegacyAppType,
 } = require('../src/services/tiktokAppService');
-const { encryptPartnerToken, decryptPartnerToken } = require('../src/lib/tiktokPartnerTokenEncryption');
+const { decryptPartnerToken } = require('../src/lib/tiktokPartnerTokenEncryption');
 
 test('tiktokAppService mappings and key normalization', () => {
   assert.equal(normalizeAppKey('partner', 'VN'), 'partner:VN');
@@ -80,6 +80,9 @@ test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
 
   const restoreModels = mockModule(modelsPath, {
     TikTokApp: MockTikTokApp,
+    TikTokChannel: { count: async () => 0 },
+    TikTokShop: { count: async () => 0 },
+    TikTokShopAuthorization: {},
   });
 
   t.after(() => {
@@ -162,6 +165,7 @@ test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
   const found = res3.jsonBody.find((a) => a.id === createdId);
   assert.ok(found);
   assert.equal(found.app_secret_masked, '••••••••');
+  assert.equal(found.linked_count, 0);
 
   // 4. Update App
   const updateReq = {

@@ -3,7 +3,7 @@ import AnalyticsIcon from './AnalyticsIcon';
 import { REQUIRED_SCOPE, scopesOf } from './shopAnalyticsUtils';
 
 const ConnectionsPanel = ({
-  channels = [],
+  appIdFilter = null,
   connecting,
   connections,
   disconnectingId,
@@ -11,12 +11,13 @@ const ConnectionsPanel = ({
   loading,
   onConnect,
   onConnectCustom,
-  onAvatarChannelChange,
   t,
   onDisconnect,
-  updatingAvatarShopId = null,
 }) => {
   const [expandedAuthIds, setExpandedAuthIds] = useState(() => new Set());
+  const visibleConnections = appIdFilter
+    ? connections.filter((authorization) => String(authorization.app_id || '') === String(appIdFilter))
+    : connections;
 
   const toggleExpand = (authId) => {
     setExpandedAuthIds((prev) => {
@@ -44,7 +45,7 @@ const ConnectionsPanel = ({
             <span className="loading-dot" />
             {t('shopAnalytics.loadingConnections')}
           </div>
-        ) : !connections.length ? (
+        ) : !visibleConnections.length ? (
           <div className="shop-analytics__connections-empty">
             <div className="shop-analytics__empty-icon" aria-hidden="true">
               <AnalyticsIcon name="connections" />
@@ -66,7 +67,7 @@ const ConnectionsPanel = ({
                 </tr>
               </thead>
               <tbody>
-                {connections.map((authorization) => {
+                {visibleConnections.map((authorization) => {
                   const scopes = scopesOf(authorization);
                   const isCustom = authorization.app_type === 'custom';
                   const requiredScope = isCustom ? 'seller.order.info' : REQUIRED_SCOPE;

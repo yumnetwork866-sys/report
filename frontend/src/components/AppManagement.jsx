@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Link } from 'react-router-dom';
 import {
   Edit2,
   Eye,
@@ -140,6 +141,28 @@ const AppManagement = () => {
       <span className="app-management__type-badge app-management__type-badge--partner">
         {t('appsManagement.partnerApp') || 'TikTok Shop'}
       </span>
+    );
+  };
+
+  const renderLinkedCount = (app) => {
+    const isChannel = app.app_type === 'channel';
+    const count = Number(app.linked_count || 0);
+    const target = isChannel
+      ? `/channels/manage?app_id=${encodeURIComponent(app.id)}`
+      : `/manage/shops?app_id=${encodeURIComponent(app.id)}`;
+    const unit = isChannel
+      ? (t('appsManagement.linkedChannels') || 'Kênh')
+      : (t('appsManagement.linkedShops') || 'Shop');
+
+    return (
+      <Link
+        className="app-management__linked-count"
+        to={target}
+        title={t('appsManagement.viewLinked') || 'Xem danh sách đang liên kết'}
+      >
+        <strong>{count}</strong>
+        <span>{unit}</span>
+      </Link>
     );
   };
 
@@ -323,6 +346,7 @@ const AppManagement = () => {
                     <th>{t('appsManagement.region') || 'Vùng'}</th>
                     <th>{t('appsManagement.appKey') || 'App Key'}</th>
                     <th>{t('appsManagement.serviceId') || 'Service ID'}</th>
+                    <th>{t('appsManagement.linkedAccounts') || 'Đang liên kết'}</th>
                     <th>{t('appsManagement.status') || 'Trạng thái'}</th>
                     <th style={{ textAlign: 'right' }}>{t('appsManagement.actions') || 'Thao tác'}</th>
                   </tr>
@@ -360,6 +384,7 @@ const AppManagement = () => {
                             <span style={{ color: 'var(--color-muted)' }}>—</span>
                           )}
                         </td>
+                        <td>{renderLinkedCount(app)}</td>
                         <td>
                           <label
                             className={`app-management__switch ${app.is_active ? 'is-active' : 'is-inactive'}`}
@@ -471,6 +496,10 @@ const AppManagement = () => {
                           </div>
                         </div>
                       ) : null}
+                      <div className="app-management__card-row">
+                        <span className="app-management__card-label">{t('appsManagement.linkedAccounts') || 'Đang liên kết'}:</span>
+                        <div className="app-management__card-value">{renderLinkedCount(app)}</div>
+                      </div>
                     </div>
 
                     <div className="app-management__card-footer">

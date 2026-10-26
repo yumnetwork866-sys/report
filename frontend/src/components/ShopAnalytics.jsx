@@ -54,6 +54,7 @@ const ShopAnalytics = ({
     ? combinedVideoView === 'library'
     : videoExportOnlyProp;
   const invalidRange = !startDate || !endDate || startDate >= endDate;
+  const appIdFilter = new URLSearchParams(window.location.search).get('app_id');
 
   const inventory = useShopInventory({
     allowAll: !managementOnly && !videoOnly,
@@ -61,9 +62,8 @@ const ShopAnalytics = ({
     t,
   });
   const {
-    attentionCount, changeSelectedShop, changeShopAvatarChannel, channels, connections, loadInventory, loading,
+    attentionCount, changeSelectedShop, connections, loadInventory, loading,
     missingAnalyticsScope, selectedShop, selectedShopId, shops, tokenExpired,
-    updatingAvatarShopId,
   } = inventory;
   const allShopsSelected = selectedShopId === 'all';
   const currency = allShopsSelected ? 'USD' : 'LOCAL';
@@ -514,7 +514,7 @@ const ShopAnalytics = ({
         </>
       ) : (
 <ConnectionsPanel
-          channels={channels}
+          appIdFilter={appIdFilter}
           connecting={connecting}
           connections={connections}
           disconnectingId={disconnectingId}
@@ -522,10 +522,8 @@ const ShopAnalytics = ({
           loading={loading}
           onConnect={startConnect}
           onConnectCustom={startConnectCustom}
-          onAvatarChannelChange={changeShopAvatarChannel}
           onDisconnect={disconnectShop}
           t={t}
-          updatingAvatarShopId={updatingAvatarShopId}
         />
       )}
     </div>
