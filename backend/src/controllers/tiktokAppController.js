@@ -32,12 +32,25 @@ const listApps = async (req, res) => {
   }
 };
 
+const listActiveApps = async (req, res) => {
+  try {
+    const apps = await TikTokApp.findAll({
+      where: { is_active: true },
+      order: [['app_type', 'ASC'], ['region', 'ASC'], ['name', 'ASC']],
+    });
+    res.json(apps.map(serializeApp));
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 const createApp = async (req, res) => {
   try {
     const serviceId = String(req.body.service_id || '').trim() || null;
     let appType = String(req.body.app_type || '').trim().toLowerCase();
-    if (!['partner', 'custom', 'channel'].includes(appType)) {
-      appType = serviceId ? 'partner' : 'custom';
+    if (appType === 'custom') appType = 'partner';
+    if (!['partner', 'channel'].includes(appType)) {
+      appType = 'partner';
     }
 
     let region = String(req.body.region || (appType === 'channel' ? 'ALL' : 'AUTO')).trim().toUpperCase();
@@ -47,10 +60,8 @@ const createApp = async (req, res) => {
     if (!name) {
       if (appType === 'channel') {
         name = 'TikTok Channel';
-      } else if (appType === 'partner') {
-        name = region === 'AUTO' ? 'TikTok Partner App' : `TikTok Partner ${region}`;
       } else {
-        name = region === 'AUTO' ? 'Custom App OMS' : `Custom App OMS ${region}`;
+        name = region === 'AUTO' ? 'TikTok Shop' : `TikTok Shop ${region}`;
       }
     }
 
@@ -108,7 +119,7 @@ const updateApp = async (req, res) => {
     const serviceId = req.body.service_id !== undefined ? (String(req.body.service_id || '').trim() || null) : app.service_id;
     let appType = req.body.app_type !== undefined ? String(req.body.app_type || '').trim().toLowerCase() : app.app_type;
     if (!['partner', 'custom', 'channel'].includes(appType)) {
-      appType = serviceId ? 'partner' : 'custom';
+      appType = 'partner';
     }
 
     let region = req.body.region !== undefined ? String(req.body.region || 'AUTO').trim().toUpperCase() : app.region;
@@ -209,6 +220,7 @@ const getAppSecret = async (req, res) => {
 
 module.exports = {
   listApps,
+  listActiveApps,
   createApp,
   updateApp,
   deleteApp,

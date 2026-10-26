@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Link2 } from 'lucide-react';
+import { Link2, LoaderCircle, Settings } from 'lucide-react';
 import AppLogo from './AppLogo';
 import {
+  fetchActiveTikTokApps,
   getTikTokOauthUrl,
   startTikTokShopOauth,
   updateUser,
@@ -13,26 +14,25 @@ import { useI18n } from '../lib/language';
 import { setStoredCurrency, useCurrency } from '../lib/currency';
 import { topNavItems } from '../routes/navigation';
 
-const TikTokGlyph = () => (
-  <svg viewBox="0 0 24 24" focusable="false">
-    <path fill="#25f4ee" d="M13.2 3.2v10.2a3.1 3.1 0 1 1-2.3-3V13a1.3 1.3 0 1 0 .5 1V3.2h1.8Zm0 0c.4 2.1 1.7 3.4 3.8 3.9v2.2a7 7 0 0 1-3.8-1.7V3.2Z" transform="translate(-.8 .7)" />
-    <path fill="#fe2c55" d="M13.2 3.2v10.2a3.1 3.1 0 1 1-2.3-3V13a1.3 1.3 0 1 0 .5 1V3.2h1.8Zm0 0c.4 2.1 1.7 3.4 3.8 3.9v2.2a7 7 0 0 1-3.8-1.7V3.2Z" transform="translate(.7 -.2)" />
-    <path fill="#111827" d="M13.2 3.2v10.2a3.1 3.1 0 1 1-2.3-3V13a1.3 1.3 0 1 0 .5 1V3.2h1.8Zm0 0c.4 2.1 1.7 3.4 3.8 3.9v2.2a7 7 0 0 1-3.8-1.7V3.2Z" />
-  </svg>
-);
+const REGION_DATA = [
+  { code: 'AUTO', name: 'Tự nhận diện', flag: '🌐' },
+  { code: 'ALL', name: 'Global', flag: '🌏' },
+  { code: 'VN', name: 'Việt Nam', flag: '🇻🇳' },
+  { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
+  { code: 'US', name: 'United States', flag: '🇺🇸' },
+  { code: 'TH', name: 'Thái Lan', flag: '🇹🇭' },
+  { code: 'PH', name: 'Philippines', flag: '🇵🇭' },
+  { code: 'ID', name: 'Indonesia', flag: '🇮🇩' },
+  { code: 'SG', name: 'Singapore', flag: '🇸🇬' },
+  { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+];
 
-const ConnectionIcon = ({ type }) => {
-  const isSpecial = type === 'shop' || type === 'oms';
-  return (
-    <span className={`topbar__connect-icon${isSpecial ? ' topbar__connect-icon--creator' : ''}`} aria-hidden="true">
-      <TikTokGlyph />
-      {isSpecial ? (
-        <span className="topbar__connect-creator-mark">
-          <span aria-hidden="true">▣</span>
-        </span>
-      ) : null}
-    </span>
-  );
+const getRegionDisplay = (regionCode) => {
+  const norm = String(regionCode || '').trim().toUpperCase();
+  if (norm === 'AUTO') return { flag: '🌐', label: 'Tự nhận diện' };
+  if (norm === 'ALL') return { flag: '🌏', label: 'Global' };
+  const found = REGION_DATA.find((r) => r.code === norm);
+  return { flag: found ? found.flag : '🌐', label: found ? found.name : norm };
 };
 
 const prepareAvatarImage = (file) => new Promise((resolve, reject) => {
@@ -71,7 +71,8 @@ const Header = () => {
   const session = useSession();
   const hasSession = Boolean(session);
   const [activeMenu, setActiveMenu] = useState(null);
-  const [connectSubmenu, setConnectSubmenu] = useState(null);
+  const [connectApps, setConnectApps] = useState([]);
+  const [loadingConnectApps, setLoadingConnectApps] = useState(false);
   const [connectingTarget, setConnectingTarget] = useState(null);
   const [connectionError, setConnectionError] = useState('');
   const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
@@ -135,9 +136,30 @@ const Header = () => {
 
   useEffect(() => {
     setActiveMenu(null);
-    setConnectSubmenu(null);
     setConnectionError('');
   }, [location.pathname]);
+
+  const loadConnectApps = useCallback(() => {
+    if (!hasSession) return;
+    setLoadingConnectApps(true);
+    fetchActiveTikTokApps()
+      .then((res) => {
+        const apps = Array.isArray(res) ? res : (Array.isArray(res?.data) ? res.data : []);
+        setConnectApps(apps);
+      })
+      .catch((err) => {
+        console.error('Failed to load active TikTok apps for connect menu:', err);
+      })
+      .finally(() => {
+        setLoadingConnectApps(false);
+      });
+  }, [hasSession]);
+
+  useEffect(() => {
+    if (hasSession) {
+      loadConnectApps();
+    }
+  }, [hasSession, loadConnectApps]);
 
   const handleSignOut = () => {
     clearStoredSession();
@@ -154,14 +176,22 @@ const Header = () => {
     '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
-  const connectionOptions = [
-    { id: 'tiktok', group: 'tiktok', label: t('header.connectTikTok'), meta: t('header.connectTikTokMeta') },
-    { id: 'shop', group: 'tiktok', label: t('header.connectTikTokShop'), meta: t('header.connectTikTokShopMeta') },
-    { id: 'oms', group: 'tiktok', label: t('header.connectTikTokOms'), meta: t('header.connectTikTokOmsMeta') },
-  ];
-  const connectionGroups = [
-    { id: 'tiktok', label: 'TikTok' },
-  ];
+  const canManageApps = hasPermission(session, 'app.manage') || hasPermission(session, 'admin.shops.manage');
+
+  const renderTypeBadge = (appType) => {
+    if (appType === 'channel') {
+      return (
+        <span className="topbar__connect-badge topbar__connect-badge--channel">
+          {t('appsManagement.channelApp') || 'TikTok Channel'}
+        </span>
+      );
+    }
+    return (
+      <span className="topbar__connect-badge topbar__connect-badge--partner">
+        {t('appsManagement.partnerApp') || 'TikTok Shop'}
+      </span>
+    );
+  };
   const canAccessTopNavItem = (item) => hasPermission(session, item.permission)
     || (item.alternatePermission && hasPermission(session, item.alternatePermission));
   const topNavTarget = (item) => hasPermission(session, item.permission)
@@ -216,18 +246,20 @@ const Header = () => {
     items[nextIndex].focus();
   };
 
-  const startConnection = async (target, options = {}) => {
+  const handleConnectApp = async (app) => {
     try {
-      const connectingKey = options.region ? `${target}_${options.region.toLowerCase()}` : target;
-      setConnectingTarget(connectingKey);
+      setConnectingTarget(app.id);
       setConnectionError('');
       let authorizeUrl;
-      if (target === 'tiktok') authorizeUrl = await getTikTokOauthUrl();
-      if (target === 'shop') ({ authorizeUrl } = await startTikTokShopOauth(undefined, options.appType || 'partner', options.region));
-      if (target === 'oms') ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom'));
+      if (app.app_type === 'channel') {
+        authorizeUrl = await getTikTokOauthUrl();
+      } else if (app.app_type === 'custom') {
+        ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom', app.region));
+      } else {
+        ({ authorizeUrl } = await startTikTokShopOauth(undefined, 'partner', app.region));
+      }
       if (!authorizeUrl) throw new Error(t('header.connectionError'));
       setActiveMenu(null);
-      setConnectSubmenu(null);
       window.location.assign(authorizeUrl);
     } catch (error) {
       setConnectionError(error.message || t('header.connectionError'));
@@ -344,8 +376,13 @@ const Header = () => {
                   aria-expanded={activeMenu === 'connect'}
                   onClick={() => {
                     setConnectionError('');
-                    setConnectSubmenu(null);
-                    setActiveMenu((current) => current === 'connect' ? null : 'connect');
+                    setActiveMenu((current) => {
+                      const next = current === 'connect' ? null : 'connect';
+                      if (next === 'connect') {
+                        loadConnectApps();
+                      }
+                      return next;
+                    });
                   }}
                   onKeyDown={handleConnectTriggerKeyDown}
                 >
@@ -362,96 +399,67 @@ const Header = () => {
                     aria-busy={Boolean(connectingTarget)}
                     onKeyDown={handleConnectMenuKeyDown}
                   >
-                    {connectSubmenu === 'shop_regions' ? (
-                      <div className="topbar__connect-group" role="presentation">
-                        <div className="topbar__connect-submenu-header">
-                          <button
-                            type="button"
-                            className="topbar__connect-back-button"
-                            onClick={() => {
-                              setConnectSubmenu(null);
-                              setConnectionError('');
-                            }}
-                            aria-label={t('header.back')}
-                          >
-                            <ArrowLeft size={14} aria-hidden="true" />
-                            <span>{t('header.back')}</span>
-                          </button>
-                          <span className="topbar__connect-submenu-title">{t('header.selectShopRegion')}</span>
+                    <div className="topbar__connect-group" role="presentation">
+                      {loadingConnectApps && connectApps.length === 0 ? (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px 8px', gap: '8px', color: 'var(--color-muted)' }}>
+                          <LoaderCircle className="animate-spin" size={16} />
+                          <span style={{ fontSize: '0.82rem' }}>{t('common.loading') || 'Đang tải...'}</span>
                         </div>
-                        <button
-                          className="topbar__connect-item"
-                          type="button"
-                          role="menuitem"
-                          disabled={Boolean(connectingTarget)}
-                          onClick={() => startConnection('shop', { region: 'MY', appType: 'partner' })}
-                        >
-                          <span className="topbar__connect-flag" aria-hidden="true">🇲🇾</span>
-                          <span className="topbar__connect-copy">
-                            <strong>{t('header.sellerRegionMy')} (MY)</strong>
-                            <small>{connectingTarget === 'shop_my' ? t('header.connecting') : t('header.sellerRegionMyMeta')}</small>
-                          </span>
-                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
-                        </button>
-                        <button
-                          className="topbar__connect-item"
-                          type="button"
-                          role="menuitem"
-                          disabled={Boolean(connectingTarget)}
-                          onClick={() => startConnection('shop', { region: 'VN', appType: 'partner_vn' })}
-                        >
-                          <span className="topbar__connect-flag" aria-hidden="true">🇻🇳</span>
-                          <span className="topbar__connect-copy">
-                            <strong>{t('header.sellerRegionVn')} (VN)</strong>
-                            <small>{connectingTarget === 'shop_vn' ? t('header.connecting') : t('header.sellerRegionVnMeta')}</small>
-                          </span>
-                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
-                        </button>
-                        <button
-                          className="topbar__connect-item"
-                          type="button"
-                          role="menuitem"
-                          disabled={Boolean(connectingTarget)}
-                          onClick={() => startConnection('shop', { region: 'US', appType: 'partner_us' })}
-                        >
-                          <span className="topbar__connect-flag" aria-hidden="true">🇺🇸</span>
-                          <span className="topbar__connect-copy">
-                            <strong>{t('header.sellerRegionUs')} (US)</strong>
-                            <small>{connectingTarget === 'shop_us' ? t('header.connecting') : t('header.sellerRegionUsMeta')}</small>
-                          </span>
-                          <span className="topbar__connect-arrow" aria-hidden="true">→</span>
-                        </button>
-                      </div>
-                    ) : (
-                      connectionGroups.map((group) => (
-                        <div className="topbar__connect-group" key={group.id} role="presentation">
-                          {connectionOptions.filter((option) => option.group === group.id).map((option) => (
+                      ) : connectApps.length === 0 ? (
+                        <div style={{ padding: '14px 10px', textAlign: 'center', color: 'var(--color-muted)', fontSize: '0.82rem' }}>
+                          {t('appsManagement.emptyState') || 'Chưa có App nào đang hoạt động.'}
+                        </div>
+                      ) : (
+                        connectApps.map((app) => {
+                          const regionDisplay = getRegionDisplay(app.region);
+                          const isConnecting = connectingTarget === app.id;
+                          return (
                             <button
+                              key={app.id}
                               className="topbar__connect-item"
                               type="button"
                               role="menuitem"
-                              key={option.id}
                               disabled={Boolean(connectingTarget)}
-                              onClick={() => {
-                                if (option.id === 'shop') {
-                                  setConnectSubmenu('shop_regions');
-                                  setConnectionError('');
-                                } else {
-                                  startConnection(option.id);
-                                }
-                              }}
+                              onClick={() => handleConnectApp(app)}
                             >
-                              <ConnectionIcon type={option.id} />
-                              <span className="topbar__connect-copy">
-                                <strong>{option.label}</strong>
-                                <small>{connectingTarget === option.id ? t('header.connecting') : option.meta}</small>
+                              <span className="topbar__connect-flag" aria-hidden="true">
+                                {regionDisplay.flag}
                               </span>
-                              <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                              <span className="topbar__connect-copy">
+                                <div className="topbar__connect-title-row">
+                                  <strong>{app.name}</strong>
+                                  {renderTypeBadge(app.app_type)}
+                                </div>
+                                <small>
+                                  {isConnecting
+                                    ? t('header.connecting')
+                                    : `${regionDisplay.label}${app.region && app.region !== 'ALL' && app.region !== 'AUTO' ? ` (${app.region})` : ''}`}
+                                </small>
+                              </span>
+                              {isConnecting ? (
+                                <LoaderCircle className="animate-spin" size={16} aria-hidden="true" />
+                              ) : (
+                                <span className="topbar__connect-arrow" aria-hidden="true">→</span>
+                              )}
                             </button>
-                          ))}
-                        </div>
-                      ))
-                    )}
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {canManageApps ? (
+                      <div className="topbar__connect-footer">
+                        <Link
+                          to="/manage/apps"
+                          className="topbar__connect-manage-link"
+                          onClick={() => setActiveMenu(null)}
+                        >
+                          <Settings size={13} aria-hidden="true" />
+                          <span>{t('appsManagement.heroTitle') || 'Quản lý TikTok App'}</span>
+                        </Link>
+                      </div>
+                    ) : null}
+
                     {connectionError ? <p className="topbar__connect-error" role="alert">{connectionError}</p> : null}
                   </div>
                 ) : null}

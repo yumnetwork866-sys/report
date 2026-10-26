@@ -168,15 +168,24 @@ export function startTikTokShopOauth(returnPath, appType = 'partner', region) {
   const params = new URLSearchParams();
   if (returnPath) params.set('return_path', returnPath);
   const normalizedRegion = String(region || '').toUpperCase();
-  const resolvedAppType = normalizedRegion === 'VN' || appType === 'partner_vn'
-    ? 'partner_vn'
-    : (normalizedRegion === 'US' || appType === 'partner_us'
-      ? 'partner_us'
-      : (normalizedRegion === 'MY' || appType === 'partner' ? 'partner' : appType));
+  let resolvedAppType = appType;
+  if (appType !== 'custom') {
+    if (normalizedRegion === 'VN' || appType === 'partner_vn') {
+      resolvedAppType = 'partner_vn';
+    } else if (normalizedRegion === 'US' || appType === 'partner_us') {
+      resolvedAppType = 'partner_us';
+    } else if (normalizedRegion === 'MY' || appType === 'partner') {
+      resolvedAppType = 'partner';
+    }
+  }
   if (resolvedAppType && resolvedAppType !== 'partner') params.set('app_type', resolvedAppType);
   if (region) params.set('region', region);
   const query = params.toString();
   return apiRequest(`/tiktok-shop/oauth/start${query ? `?${query}` : ''}`);
+}
+
+export function fetchActiveTikTokApps(signal) {
+  return apiRequest('/tiktok-apps/active', { signal });
 }
 
 export function fetchTikTokShopConnections(signal) {

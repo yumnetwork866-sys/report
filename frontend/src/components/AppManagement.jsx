@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  CheckCircle2,
   Edit2,
   Eye,
   EyeOff,
@@ -9,7 +8,6 @@ import {
   LoaderCircle,
   Plus,
   Trash2,
-  XCircle,
 } from 'lucide-react';
 import '../styles/pages/admin.css';
 import {
@@ -48,7 +46,10 @@ const getRegionDisplay = (regionCode) => {
   return { flag: info.flag, label: norm };
 };
 
-const DEFAULT_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/bookings/tiktok-partner/callback';
+const CHANNEL_AUTHORIZE_URL = 'https://www.tiktok.com/v2/auth/authorize/';
+const SHOP_AUTHORIZE_URL = 'https://services.tiktokshop.com/open/authorize';
+const CHANNEL_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/channels/oauth/tiktok/callback';
+const SHOP_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/bookings/tiktok-partner/callback';
 
 const INITIAL_FORM = {
   name: '',
@@ -57,7 +58,7 @@ const INITIAL_FORM = {
   app_key: '',
   app_secret: '',
   service_id: '',
-  authorize_url: 'https://services.tiktokshop.com/open/authorize',
+  authorize_url: SHOP_AUTHORIZE_URL,
   redirect_uri: '',
   is_active: true,
 };
@@ -66,7 +67,6 @@ const AppManagement = () => {
   const { t } = useI18n();
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [togglingId, setTogglingId] = useState(null);
@@ -110,18 +110,17 @@ const AppManagement = () => {
   const [deletingApp, setDeletingApp] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const loadApps = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  const loadApps = useCallback(async () => {
+    setLoading(true);
     setError('');
     try {
       const data = await fetchTikTokApps();
-      setApps(data || []);
+      const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+      setApps(list);
     } catch (err) {
       setError(err.message || 'Không thể tải danh sách ứng dụng TikTok');
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -137,16 +136,9 @@ const AppManagement = () => {
         </span>
       );
     }
-    if (appType === 'partner') {
-      return (
-        <span className="app-management__type-badge app-management__type-badge--partner">
-          {t('appsManagement.partnerApp') || 'Partner'}
-        </span>
-      );
-    }
     return (
-      <span className="app-management__type-badge app-management__type-badge--custom">
-        {t('appsManagement.customApp') || 'Custom / OMS'}
+      <span className="app-management__type-badge app-management__type-badge--partner">
+        {t('appsManagement.partnerApp') || 'TikTok Shop'}
       </span>
     );
   };
@@ -156,7 +148,7 @@ const AppManagement = () => {
     setForm({
       ...INITIAL_FORM,
       app_type: 'partner',
-      redirect_uri: DEFAULT_REDIRECT_URI,
+      redirect_uri: SHOP_REDIRECT_URI,
     });
     setShowSecret(false);
     setModalError('');
@@ -172,7 +164,7 @@ const AppManagement = () => {
       app_key: app.app_key || '',
       app_secret: app.app_secret_masked || '••••••••',
       service_id: app.service_id || '',
-      authorize_url: app.authorize_url || (app.app_type === 'channel' ? 'https://www.tiktok.com/v2/auth/authorize/' : 'https://services.tiktokshop.com/open/authorize'),
+      authorize_url: app.authorize_url || (app.app_type === 'channel' ? CHANNEL_AUTHORIZE_URL : SHOP_AUTHORIZE_URL),
       redirect_uri: app.redirect_uri || '',
       is_active: app.is_active ?? true,
     });
@@ -189,16 +181,13 @@ const AppManagement = () => {
 
   const handleAppTypeChange = (e) => {
     const nextType = e.target.value;
+    const isChannel = nextType === 'channel';
     setForm((prev) => ({
       ...prev,
       app_type: nextType,
-      region: nextType === 'channel' ? 'ALL' : (prev.region === 'ALL' ? 'AUTO' : prev.region),
-      authorize_url: nextType === 'channel'
-        ? 'https://www.tiktok.com/v2/auth/authorize/'
-        : 'https://services.tiktokshop.com/open/authorize',
-      redirect_uri: nextType === 'channel'
-        ? 'https://report-api.yumnetwork.vn/api/channels/oauth/tiktok/callback'
-        : DEFAULT_REDIRECT_URI,
+      region: isChannel ? 'ALL' : 'AUTO',
+      authorize_url: isChannel ? CHANNEL_AUTHORIZE_URL : SHOP_AUTHORIZE_URL,
+      redirect_uri: isChannel ? CHANNEL_REDIRECT_URI : SHOP_REDIRECT_URI,
     }));
   };
 
@@ -222,7 +211,7 @@ const AppManagement = () => {
       );
       const targetType = editingApp
         ? editingApp.app_type
-        : (form.app_type || (form.service_id?.trim() ? 'partner' : 'custom'));
+        : (form.app_type || 'partner');
       const targetRegion = editingApp
         ? editingApp.region
         : (targetType === 'channel' ? 'ALL' : (form.region || 'AUTO'));
@@ -281,9 +270,6 @@ const AppManagement = () => {
   return (
     <div className="page page--admin app-management">
       <div className="admin-page__hero app-management__hero">
-        <div>
-          <h1 className="page__title">{t('appsManagement.heroTitle') || 'Quản lý TikTok App'}</h1>
-        </div>
         <div className="app-management__hero-actions">
           <button
             type="button"
@@ -345,7 +331,6 @@ const AppManagement = () => {
                   {apps.map((app) => {
                     const regionDisplay = getRegionDisplay(app.region);
                     const regionFull = getRegionInfo(app.region);
-                    const isPartner = app.app_type === 'partner';
 
                     return (
                       <tr key={app.id}>
@@ -430,7 +415,6 @@ const AppManagement = () => {
               {apps.map((app) => {
                 const regionDisplay = getRegionDisplay(app.region);
                 const regionFull = getRegionInfo(app.region);
-                const isPartner = app.app_type === 'partner';
 
                 return (
                   <div className="app-management__card-item" key={`card-${app.id}`}>
@@ -563,7 +547,7 @@ const AppManagement = () => {
 
               <form onSubmit={handleFormSubmit}>
                 {!editingApp ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: form.app_type === 'channel' ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ marginBottom: '16px' }}>
                     <div className="field" style={{ marginBottom: 0 }}>
                       <label htmlFor="app-type">{t('appsManagement.appType') || 'Loại App'}</label>
                       <select
@@ -572,29 +556,10 @@ const AppManagement = () => {
                         value={form.app_type}
                         onChange={handleAppTypeChange}
                       >
-                        <option value="partner">TikTok Shop Partner</option>
-                        <option value="custom">Custom App / OMS</option>
-                        <option value="channel">TikTok Channel (Login Kit)</option>
+                        <option value="channel">TikTok Channel</option>
+                        <option value="partner">TikTok Shop</option>
                       </select>
                     </div>
-
-                    {form.app_type !== 'channel' ? (
-                      <div className="field" style={{ marginBottom: 0 }}>
-                        <label htmlFor="app-region">{t('appsManagement.region') || 'Vùng / Quốc gia'}</label>
-                        <select
-                          id="app-region"
-                          name="region"
-                          value={form.region}
-                          onChange={handleFormChange}
-                        >
-                          {REGION_DATA.map((r) => (
-                            <option key={r.code} value={r.code}>
-                              {r.flag} {r.name} ({r.code})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ) : null}
                   </div>
                 ) : null}
 

@@ -514,7 +514,7 @@ const startShopOauth = async (req, res) => {
     } else {
       appType = 'partner';
     }
-    res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType }) });
+    res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType, region }) });
   }
   catch (error) { res.status(error.message.includes('not configured') ? 503 : 500).json({ message: error.message }); }
 };

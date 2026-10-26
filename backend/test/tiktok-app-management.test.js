@@ -224,10 +224,9 @@ test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
   assert.equal(res7.statusCode, 201);
   assert.equal(res7.jsonBody.app_type, 'partner');
   assert.equal(res7.jsonBody.region, 'AUTO');
-  assert.equal(res7.jsonBody.name, 'TikTok Partner App');
+  assert.equal(res7.jsonBody.name, 'TikTok Shop');
 
   // 8. autoSyncAppFromConnection: Shop OAuth callback syncs region to MY
-  // Since scopes only contain 'seller.order.info' (order scope), app_type is also auto-detected as 'custom'
   const synced = await appService.autoSyncAppFromConnection({
     appKey: 'auto_key_123',
     detectedRegion: 'MY',
@@ -235,13 +234,13 @@ test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
   });
   assert.ok(synced);
   assert.equal(synced.region, 'MY');
-  assert.equal(synced.app_type, 'custom');
+  assert.equal(synced.app_type, 'partner');
 
   const inDbAfterSync = await MockTikTokApp.findByPk(res7.jsonBody.id);
   assert.equal(inDbAfterSync.region, 'MY');
-  assert.equal(inDbAfterSync.app_type, 'custom');
+  assert.equal(inDbAfterSync.app_type, 'partner');
 
-  // Verify getAppCredentials resolves for custom MY
+  // The Orders/custom OAuth flow reuses the shared TikTok Shop credentials.
   const credsMY = appService.getAppCredentials('custom', 'MY');
   assert.ok(credsMY);
   assert.equal(credsMY.appKey, 'auto_key_123');

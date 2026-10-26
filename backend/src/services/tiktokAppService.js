@@ -80,21 +80,23 @@ const getAppCredentials = (rawType = 'partner', rawRegion = '') => {
     return null;
   }
   const { appType, region } = mapLegacyAppType(rawType, rawRegion);
-  const key = normalizeAppKey(appType, region);
-  const exact = appCache.get(key);
-  if (exact) return exact;
+  const appTypes = appType === 'custom' ? ['partner', 'custom'] : [appType];
 
-  // Fallback to AUTO or ALL if exact match not found
-  const autoApp = appCache.get(normalizeAppKey(appType, 'AUTO'));
-  if (autoApp) return autoApp;
+  for (const candidateType of appTypes) {
+    const exact = appCache.get(normalizeAppKey(candidateType, region));
+    if (exact) return exact;
 
-  const allApp = appCache.get(normalizeAppKey(appType, 'ALL'));
-  if (allApp) return allApp;
+    const autoApp = appCache.get(normalizeAppKey(candidateType, 'AUTO'));
+    if (autoApp) return autoApp;
+
+    const allApp = appCache.get(normalizeAppKey(candidateType, 'ALL'));
+    if (allApp) return allApp;
+  }
 
   return null;
 };
 
-const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion, detectedScopes }) => {
+const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion }) => {
   try {
     const { TikTokApp } = require('../models');
     let app = null;
@@ -116,27 +118,6 @@ const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion, detect
       });
       if (!conflict || conflict.id === app.id) {
         updates.region = normDetectedRegion;
-      }
-    }
-
-    // 2. Auto-detect app_type based on scopes if needed
-    if (Array.isArray(detectedScopes) && detectedScopes.length) {
-      const hasOrderScope = detectedScopes.some((s) => s.startsWith('seller.order.') || s.startsWith('seller.finance.'));
-      const hasAffiliateScope = detectedScopes.some((s) => s.startsWith('seller.affiliate_') || s.startsWith('data.shop_analytics'));
-      if (hasOrderScope && !hasAffiliateScope && app.app_type !== 'custom') {
-        const conflict = await TikTokApp.findOne({
-          where: { app_type: 'custom', region: updates.region || app.region },
-        });
-        if (!conflict || conflict.id === app.id) {
-          updates.app_type = 'custom';
-        }
-      } else if (hasAffiliateScope && app.app_type !== 'partner') {
-        const conflict = await TikTokApp.findOne({
-          where: { app_type: 'partner', region: updates.region || app.region },
-        });
-        if (!conflict || conflict.id === app.id) {
-          updates.app_type = 'partner';
-        }
       }
     }
 

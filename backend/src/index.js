@@ -92,7 +92,7 @@ const createApp = () => {
   });
   app.use('/api/schedules', requireAdmin, requirePermission('admin.schedules.manage'), scheduleRoutes);
   app.use('/api/queues', requireAdmin, requirePermission('admin.queues.view'), queueRoutes);
-  app.use('/api/tiktok-apps', requireAdmin, requireAnyPermission(['app.manage', 'admin.shops.manage']), tiktokAppRoutes);
+  app.use('/api/tiktok-apps', requireAdmin, tiktokAppRoutes);
   app.use('/admin/queues', bullBoardAuth, serverAdapter.getRouter());
 
   return app;
