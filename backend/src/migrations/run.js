@@ -98,6 +98,8 @@ const migrations = [
   require('./088_add_booking_video_product_attribution'),
   require('./089_expand_tiktok_permissions'),
   require('./090_add_admin_users_view_permission'),
+  require('./091_create_tiktok_apps'),
+  require('./092_seed_initial_tiktok_apps'),
 ];
 
 const createMigrationRunner = ({

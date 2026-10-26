@@ -172,7 +172,8 @@ const Header = () => {
       return location.pathname.startsWith('/manage/users')
         || location.pathname.startsWith('/manage/shops')
         || location.pathname.startsWith('/manage/schedules')
-        || location.pathname.startsWith('/manage/queues');
+        || location.pathname.startsWith('/manage/queues')
+        || location.pathname.startsWith('/manage/apps');
     }
 
     if (to === '/shop/analytics') {

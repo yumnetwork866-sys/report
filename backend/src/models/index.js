@@ -426,6 +426,25 @@ const TikTokShopAuthorization = sequelize.define('TikTokShopAuthorization', {
   indexes: [{ unique: true, fields: ['open_id', 'app_type'] }],
 });
 
+const TikTokApp = sequelize.define('TikTokApp', {
+  id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
+  name: { type: DataTypes.STRING(120), allowNull: false },
+  app_type: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'partner' },
+  region: { type: DataTypes.STRING(16), allowNull: false },
+  app_key: { type: DataTypes.STRING(128), allowNull: false },
+  app_secret_encrypted: { type: DataTypes.TEXT, allowNull: false },
+  service_id: { type: DataTypes.STRING(128), allowNull: true },
+  authorize_url: { type: DataTypes.STRING(255), allowNull: true, defaultValue: 'https://services.tiktokshop.com/open/authorize' },
+  redirect_uri: { type: DataTypes.STRING(255), allowNull: true },
+  is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+}, {
+  tableName: 'tiktok_apps',
+  timestamps: false,
+  indexes: [{ unique: true, fields: ['app_type', 'region'] }],
+});
+
 const TikTokShop = sequelize.define('TikTokShop', {
   id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   authorization_id: { type: DataTypes.INTEGER, allowNull: false },
@@ -1305,6 +1324,7 @@ module.exports = {
   TikTokAffiliateOrderSyncDay,
   TikTokPartnerAuthorization,
   TikTokShopAuthorization,
+  TikTokApp,
   TikTokShop,
   TikTokShopProduct,
   OrderProductCategory,

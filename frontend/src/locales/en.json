@@ -246,6 +246,7 @@
     "manageShops": "Manage Shop",
     "schedule": "Schedule",
     "queues": "Job Queues (BullMQ)",
+    "apps": "TikTok Apps",
     "chatSettings": "LLM Model",
     "workspace": "Workspace",
     "expand": "Expand navigation",
@@ -1848,5 +1849,38 @@
         "description": ""
       }
     }
+  },
+  "appsManagement": {
+    "heroTitle": "TikTok App Management",
+    "addApp": "Add New App",
+    "editApp": "Edit App",
+    "deleteApp": "Delete App",
+    "confirmDelete": "Are you sure you want to delete app \"{{name}}\"? This action cannot be undone.",
+    "appName": "App Name",
+    "appType": "App Type",
+    "region": "Region / Country",
+    "appKey": "App Key",
+    "appSecret": "App Secret",
+    "serviceId": "Service ID",
+    "authorizeUrl": "Authorize URL",
+    "redirectUri": "Redirect URI",
+    "status": "Status",
+    "actions": "Actions",
+    "partnerApp": "Partner App",
+    "customApp": "Custom / OMS App",
+    "active": "Active",
+    "inactive": "Inactive",
+    "secretMasked": "Secret Saved",
+    "keepSecretHint": "Leave blank to keep current Secret",
+    "emptyState": "No TikTok apps configured yet.",
+    "save": "Save Changes",
+    "create": "Create App",
+    "cancel": "Cancel",
+    "deleting": "Deleting...",
+    "saving": "Saving...",
+    "refresh": "Refresh",
+    "successCreate": "App added successfully.",
+    "successUpdate": "App updated successfully.",
+    "successDelete": "App deleted successfully."
   }
 }

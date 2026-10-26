@@ -241,6 +241,7 @@
     "manageShops": "Quản lý Shop",
     "schedule": "Lịch đồng bộ",
     "queues": "Hàng đợi (BullMQ)",
+    "apps": "Quản lý App",
     "chatSettings": "Model LLM",
     "workspace": "Không gian làm việc",
     "expand": "Mở rộng thanh điều hướng",
@@ -1846,5 +1847,38 @@
         "description": ""
       }
     }
+  },
+  "appsManagement": {
+    "heroTitle": "Quản lý TikTok App",
+    "addApp": "Thêm App mới",
+    "editApp": "Chỉnh sửa App",
+    "deleteApp": "Xóa App",
+    "confirmDelete": "Bạn có chắc chắn muốn xóa App \"{{name}}\"? Hành động này không thể hoàn tác.",
+    "appName": "Tên App",
+    "appType": "Loại App",
+    "region": "Vùng / Quốc gia",
+    "appKey": "App Key",
+    "appSecret": "App Secret",
+    "serviceId": "Service ID",
+    "authorizeUrl": "Authorize URL",
+    "redirectUri": "Redirect URI",
+    "status": "Trạng thái",
+    "actions": "Thao tác",
+    "partnerApp": "Partner App",
+    "customApp": "Custom / OMS App",
+    "active": "Hoạt động",
+    "inactive": "Tạm dừng",
+    "secretMasked": "Đã lưu bí mật",
+    "keepSecretHint": "Để trống nếu không muốn thay đổi Secret",
+    "emptyState": "Chưa có App nào được cấu hình.",
+    "save": "Lưu thay đổi",
+    "create": "Thêm App",
+    "cancel": "Hủy",
+    "deleting": "Đang xóa...",
+    "saving": "Đang lưu...",
+    "refresh": "Làm mới",
+    "successCreate": "Đã thêm App thành công.",
+    "successUpdate": "Đã cập nhật App thành công.",
+    "successDelete": "Đã xóa App thành công."
   }
 }

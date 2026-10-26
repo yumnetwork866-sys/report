@@ -46,6 +46,7 @@ export const sidebarSections = [
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'admin.shops.manage' },
       { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin.schedules.manage' },
       { to: '/manage/queues', labelKey: 'navigation.queues', permission: 'admin.queues.view' },
+      { to: '/manage/apps', labelKey: 'navigation.apps', permission: 'admin.shops.manage' },
     ],
   },
 ];
@@ -88,6 +89,12 @@ export const protectedRouteCards = [
     path: '/manage/queues',
     component: 'QueueManagement',
     permission: 'admin.queues.view',
+    props: {},
+  },
+  {
+    path: '/manage/apps',
+    component: 'AppManagement',
+    permission: 'admin.shops.manage',
     props: {},
   },
   {

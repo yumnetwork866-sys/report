@@ -73,6 +73,12 @@ const sidebarIcons = {
     'M6 9v11h12V9',
     'M8.5 16.5 11 14l2 1.5 3-4',
   ],
+  apps: [
+    'M4 4h6v6H4z',
+    'M14 4h6v6h-6z',
+    'M4 14h6v6H4z',
+    'M14 14h6v6h-6z',
+  ],
 };
 
 const routeIconMap = {
@@ -83,6 +89,7 @@ const routeIconMap = {
   '/manage/shops': 'shop',
   '/manage/schedules': 'schedule',
   '/manage/queues': 'schedule',
+  '/manage/apps': 'apps',
   '/manage/koc-performance': 'koc',
   '/shop/analytics': 'shopAnalytics',
   '/shop/bookings': 'bookings',
@@ -128,7 +135,8 @@ const Sidebar = ({ id, isCollapsed = false, onToggle, isMobile = false, onNaviga
   const isAdminArea = location.pathname.startsWith('/manage/users')
     || location.pathname.startsWith('/manage/shops')
     || location.pathname.startsWith('/manage/schedules')
-    || location.pathname.startsWith('/manage/queues');
+    || location.pathname.startsWith('/manage/queues')
+    || location.pathname.startsWith('/manage/apps');
 
   const can = (permission) => hasPermission(session, permission);
   const activeSectionTitle = isAdminArea ? 'Admin' : 'TikTok';

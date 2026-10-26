@@ -23,6 +23,7 @@ export const OrderManagement = lazyWithReload(() => import('../components/OrderM
 export const ShopAnalytics = lazyWithReload(() => import('../components/ShopAnalytics'));
 export const ScheduleManagement = lazyWithReload(() => import('../components/ScheduleManagement'));
 export const QueueManagement = lazyWithReload(() => import('../components/QueueManagement'));
+export const AppManagement = lazyWithReload(() => import('../components/AppManagement'));
 export const HomePage = lazyWithReload(() => import('../components/HomePage'));
 export const Login = lazyWithReload(() => import('../components/Login'));
 export const TermsPage = lazyWithReload(() => import('../pages/legal/TermsPage'));

@@ -27,6 +27,7 @@ const authRoutes = require('./routes/authRoutes');
 
 const tiktokPartnerPublicRoutes = require('./routes/tiktokPartnerPublicRoutes');
 const tiktokShopRoutes = require('./routes/tiktokShopRoutes');
+const tiktokAppRoutes = require('./routes/tiktokAppRoutes');
 const scheduleRoutes = require('./routes/scheduleRoutes');
 const queueRoutes = require('./routes/queueRoutes');
 const { TikTokChannel, User } = require('./models');
@@ -34,6 +35,7 @@ const { encryptToken, isEncryptedToken } = require('./lib/tokenEncryption');
 const { requireAdmin, requirePermission, requireAnyPermission } = require('./lib/session');
 const { getAdminAccount } = require('./lib/adminAccount');
 const { startDatabaseScheduler } = require('./services/scheduledJobService');
+const { refreshAppCache } = require('./services/tiktokAppService');
 const { serverAdapter, bullBoardAuth } = require('./routes/bullBoardRoutes');
 const { getMyrExchangeRates, FALLBACK_EXCHANGE_RATES } = require('./services/exchangeRateService');
 
@@ -90,6 +92,7 @@ const createApp = () => {
   });
   app.use('/api/schedules', requireAdmin, requirePermission('admin.schedules.manage'), scheduleRoutes);
   app.use('/api/queues', requireAdmin, requirePermission('admin.queues.view'), queueRoutes);
+  app.use('/api/tiktok-apps', requireAdmin, requirePermission('admin.shops.manage'), tiktokAppRoutes);
   app.use('/admin/queues', bullBoardAuth, serverAdapter.getRouter());
 
   return app;
@@ -139,6 +142,10 @@ const startServer = async () => {
         email: adminAccount.email,
       });
     }
+
+    await refreshAppCache().catch((err) => {
+      console.warn('[TikTokApp] Could not initialize app cache on start:', err.message);
+    });
 
     const server = app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);

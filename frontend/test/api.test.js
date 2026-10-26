@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -443,5 +444,43 @@ test('fetchDashboardVideos helper formats query parameters correctly', async () 
       '/api/reports/dashboard/videos?channel_id=10&start_date=2026-08-01&end_date=2026-08-31&user_id=5&date=2026-08-15&page=3&page_size=25',
     );
     assert.equal(request.options.signal, controller.signal);
+  });
+});
+
+test('TikTok App API helpers dispatch correct paths, methods, and payloads', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('apps-admin'));
+    const requests = [];
+    globalThis.fetch = async (url, options) => {
+      requests.push({ url, options });
+      return new Response(JSON.stringify({ success: true, id: 10 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const controller = new AbortController();
+    await fetchTikTokApps(controller.signal);
+    assert.equal(requests[0].url, '/api/tiktok-apps');
+    assert.equal(requests[0].options.signal, controller.signal);
+
+    await createTikTokApp({ name: 'App 1', app_type: 'partner', region: 'VN' });
+    assert.equal(requests[1].url, '/api/tiktok-apps');
+    assert.equal(requests[1].options.method, 'POST');
+    assert.deepEqual(JSON.parse(requests[1].options.body), { name: 'App 1', app_type: 'partner', region: 'VN' });
+
+    await updateTikTokApp(10, { name: 'App 1 Updated' });
+    assert.equal(requests[2].url, '/api/tiktok-apps/10');
+    assert.equal(requests[2].options.method, 'PUT');
+    assert.deepEqual(JSON.parse(requests[2].options.body), { name: 'App 1 Updated' });
+
+    await toggleTikTokAppStatus(10, false);
+    assert.equal(requests[3].url, '/api/tiktok-apps/10/status');
+    assert.equal(requests[3].options.method, 'PATCH');
+    assert.deepEqual(JSON.parse(requests[3].options.body), { is_active: false });
+
+    await deleteTikTokApp(10);
+    assert.equal(requests[4].url, '/api/tiktok-apps/10');
+    assert.equal(requests[4].options.method, 'DELETE');
   });
 });

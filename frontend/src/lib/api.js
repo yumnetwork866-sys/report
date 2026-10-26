@@ -762,3 +762,34 @@ export function deleteQueueJob(queueName = 'tiktok-sync', jobId) {
     method: 'DELETE',
   });
 }
+
+export function fetchTikTokApps(signal) {
+  return apiRequest('/tiktok-apps', { signal });
+}
+
+export function createTikTokApp(data) {
+  return apiRequest('/tiktok-apps', {
+    method: 'POST',
+    body: data,
+  });
+}
+
+export function updateTikTokApp(id, data) {
+  return apiRequest(`/tiktok-apps/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: data,
+  });
+}
+
+export function deleteTikTokApp(id) {
+  return apiRequest(`/tiktok-apps/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function toggleTikTokAppStatus(id, isActive) {
+  return apiRequest(`/tiktok-apps/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: { is_active: isActive },
+  });
+}

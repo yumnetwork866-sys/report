@@ -544,6 +544,17 @@ const handleShopOauthCallback = async (req, res) => {
     };
     const shops = await getAuthorizedShops(tokenData.access_token, undefined, { appType });
     const validShops = shops.filter((item) => item?.id && item?.cipher);
+    try {
+      const { autoSyncAppFromConnection } = require('../tiktokAppService');
+      await autoSyncAppFromConnection({
+        appId: oauthState?.appId,
+        appKey: oauthState?.appKey,
+        detectedRegion: validShops[0]?.region,
+        detectedScopes: normalizedScopes,
+      });
+    } catch (err) {
+      console.warn('[TikTokShop] Could not auto-sync app credentials:', err.message);
+    }
     await tiktokShopRepository.transaction(async (transaction) => {
       const authorization = existing
         ? await existing.update(values, { transaction })

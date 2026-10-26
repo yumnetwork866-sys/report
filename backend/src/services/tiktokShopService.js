@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { monitoredFetch } = require('./scheduledRunMonitorService');
 const { runCompassApiRequest, CREATE_ENDPOINT, LIST_ENDPOINT, DOWNLOAD_ENDPOINT } = require('./tiktokCompassRequestService');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
+const { getAppCredentials, getCandidateSecrets } = require('./tiktokAppService');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const TOKEN_SKEW_MS = 5 * 60 * 1000;
@@ -65,8 +66,22 @@ const getConfig = () => ({
   customAuthorizeUrl: String(process.env.TIKTOK_SHOP_CUSTOM_AUTHORIZE_URL || process.env.TIKTOK_SHOP_AUTHORIZE_URL || 'https://services.tiktokshop.com/open/authorize').trim(),
 });
 
-const resolveAppCredentials = (appType = 'partner', config = getConfig()) => {
-  if (appType === 'custom') {
+const resolveAppCredentials = (appType = 'partner', config = getConfig(), options = {}) => {
+  const actualAppType = typeof appType === 'object' && appType !== null ? (appType.appType || 'partner') : appType;
+  const region = (typeof appType === 'object' && appType !== null ? appType.region : null) || options.region;
+
+  const dbCredentials = getAppCredentials(actualAppType, region);
+  if (dbCredentials && dbCredentials.appKey && dbCredentials.appSecret) {
+    return {
+      appKey: dbCredentials.appKey,
+      appSecret: dbCredentials.appSecret,
+      serviceId: dbCredentials.serviceId || dbCredentials.appKey,
+      redirectUri: dbCredentials.redirectUri || config.redirectUri,
+      authorizeUrl: dbCredentials.authorizeUrl || config.authorizeUrl,
+    };
+  }
+
+  if (actualAppType === 'custom') {
     return {
       appKey: config.customAppKey,
       appSecret: config.customAppSecret,
@@ -75,7 +90,7 @@ const resolveAppCredentials = (appType = 'partner', config = getConfig()) => {
       authorizeUrl: config.customAuthorizeUrl,
     };
   }
-  if (appType === 'partner_vn') {
+  if (actualAppType === 'partner_vn') {
     return {
       appKey: config.vnAppKey,
       appSecret: config.vnAppSecret,
@@ -84,7 +99,7 @@ const resolveAppCredentials = (appType = 'partner', config = getConfig()) => {
       authorizeUrl: config.vnAuthorizeUrl,
     };
   }
-  if (appType === 'partner_us') {
+  if (actualAppType === 'partner_us') {
     return {
       appKey: config.usAppKey,
       appSecret: config.usAppSecret,
@@ -102,8 +117,15 @@ const resolveAppCredentials = (appType = 'partner', config = getConfig()) => {
   };
 };
 
-const assertConfigured = (config, { oauth = false, appType = 'partner' } = {}) => {
-  if (appType === 'custom') {
+const assertConfigured = (config, { oauth = false, appType = 'partner', region } = {}) => {
+  const actualAppType = typeof appType === 'object' && appType !== null ? (appType.appType || 'partner') : appType;
+  const actualRegion = (typeof appType === 'object' && appType !== null ? appType.region : null) || region;
+  const dbCredentials = getAppCredentials(actualAppType, actualRegion);
+  if (dbCredentials && dbCredentials.appKey && dbCredentials.appSecret) {
+    return;
+  }
+
+  if (actualAppType === 'custom') {
     const missing = [
       ['TIKTOK_SHOP_CUSTOM_APP_KEY', config.customAppKey],
       ['TIKTOK_SHOP_CUSTOM_APP_SECRET', config.customAppSecret],
@@ -114,7 +136,7 @@ const assertConfigured = (config, { oauth = false, appType = 'partner' } = {}) =
     if (missing.length) throw new Error(`TikTok Custom Shop App is not configured. Set ${missing.join(', ')} in backend/.env.`);
     return;
   }
-  if (appType === 'partner_vn') {
+  if (actualAppType === 'partner_vn') {
     const missing = [
       ['TIKTOK_PARTNER_VN_APP_KEY', config.vnAppKey],
       ['TIKTOK_PARTNER_VN_APP_SECRET', config.vnAppSecret],
@@ -125,7 +147,7 @@ const assertConfigured = (config, { oauth = false, appType = 'partner' } = {}) =
     if (missing.length) throw new Error(`TikTok Shop VN is not configured. Set ${missing.join(', ')} in backend/.env.`);
     return;
   }
-  if (appType === 'partner_us') {
+  if (actualAppType === 'partner_us') {
     const missing = [
       ['TIKTOK_PARTNER_US_APP_KEY', config.usAppKey],
       ['TIKTOK_PARTNER_US_APP_SECRET', config.usAppSecret],
@@ -149,14 +171,18 @@ const signState = (payload, secret) => crypto.createHmac('sha256', secret).updat
 
 const buildShopAuthorizationUrl = (returnPath = '/shop/analytics', options = {}) => {
   const appType = typeof options === 'string' ? options : (options?.appType || 'partner');
+  const region = typeof options === 'object' ? options?.region : undefined;
   const isCustom = appType === 'custom';
   const config = getConfig();
-  assertConfigured(config, { oauth: true, appType });
-  const credentials = resolveAppCredentials(appType, config);
+  assertConfigured(config, { oauth: true, appType, region });
+  const credentials = resolveAppCredentials(appType, config, { region });
   const secret = credentials.appSecret;
   const payload = Buffer.from(JSON.stringify({
     oauthType: isCustom ? 'shop_custom' : 'shop',
     appType,
+    appId: credentials.id || null,
+    appKey: credentials.appKey || null,
+    ...(region ? { region } : {}),
     returnPath: [
       '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
       '/shop/orders', '/manage/koc-performance',
@@ -189,9 +215,11 @@ const parseShopAuthorizationState = (state) => {
     throw new Error('TikTok Shop OAuth state payload is invalid.');
   }
   const appType = data?.appType || (data?.oauthType === 'shop_custom' ? 'custom' : 'partner');
-  const credentials = resolveAppCredentials(appType, config);
+  const region = data?.region;
+  const credentials = resolveAppCredentials(appType, config, { region });
   const candidateSecrets = [
     credentials.appSecret,
+    ...getCandidateSecrets(),
     config.appSecret,
     config.vnAppSecret,
     config.usAppSecret,
@@ -217,8 +245,9 @@ const parseShopAuthorizationState = (state) => {
 const tokenRequest = async (path, params, fetchImpl = fetch, options = {}) => {
   const config = getConfig();
   const appType = options?.appType || 'partner';
-  assertConfigured(config, { appType });
-  const credentials = resolveAppCredentials(appType, config);
+  const region = options?.region;
+  assertConfigured(config, { appType, region });
+  const credentials = resolveAppCredentials(appType, config, { region });
   const appKey = credentials.appKey;
   const appSecret = credentials.appSecret;
   const url = new URL(`${config.tokenBaseUrl}/${path}`);
@@ -281,11 +310,11 @@ const parseRetryAfterMs = (value, now = Date.now()) => {
 
 const requestShopApi = async ({
   path, accessToken, method = 'GET', query = {}, body, contentType = 'application/json', fetchImpl = fetch, signal,
-  appType = 'partner', appKey: explicitAppKey, appSecret: explicitAppSecret,
+  appType = 'partner', region, appKey: explicitAppKey, appSecret: explicitAppSecret,
 }) => {
   const config = getConfig();
-  assertConfigured(config, { appType });
-  const credentials = resolveAppCredentials(appType, config);
+  assertConfigured(config, { appType, region });
+  const credentials = resolveAppCredentials(appType, config, { region });
   const appKey = explicitAppKey || credentials.appKey;
   const appSecret = explicitAppSecret || credentials.appSecret;
   const signed = { ...query, app_key: appKey, timestamp: Math.floor(Date.now() / 1000) };
