@@ -135,7 +135,8 @@ const updateApp = async (req, res) => {
       updated_at: new Date(),
     };
 
-    if (appSecret) {
+    const isMaskedSecret = appSecret === '••••••••' || /^[*•]{3,}$/.test(appSecret);
+    if (appSecret && !isMaskedSecret) {
       updates.app_secret_encrypted = encryptPartnerToken(appSecret);
     }
 

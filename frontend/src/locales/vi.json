@@ -1860,6 +1860,7 @@
     "appKey": "App Key",
     "appSecret": "App Secret",
     "serviceId": "Service ID",
+    "serviceIdLabel": "Service ID (không bắt buộc)",
     "authorizeUrl": "Authorize URL",
     "redirectUri": "Redirect URI",
     "status": "Trạng thái",

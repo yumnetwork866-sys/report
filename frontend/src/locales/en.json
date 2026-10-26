@@ -1862,6 +1862,7 @@
     "appKey": "App Key",
     "appSecret": "App Secret",
     "serviceId": "Service ID",
+    "serviceIdLabel": "Service ID (Optional)",
     "authorizeUrl": "Authorize URL",
     "redirectUri": "Redirect URI",
     "status": "Status",

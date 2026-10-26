@@ -116,7 +116,7 @@ const AppManagement = () => {
       app_type: app.app_type || 'partner',
       region: app.region || 'VN',
       app_key: app.app_key || '',
-      app_secret: '', // Keep empty unless changing
+      app_secret: app.app_secret_masked || '••••••••',
       service_id: app.service_id || '',
       authorize_url: app.authorize_url || 'https://services.tiktokshop.com/open/authorize',
       redirect_uri: app.redirect_uri || '',
@@ -147,8 +147,13 @@ const AppManagement = () => {
     setSaving(true);
 
     try {
+      const isSecretMasked = editingApp && (
+        form.app_secret === (editingApp.app_secret_masked || '••••••••') ||
+        /^[*•]{3,}$/.test(form.app_secret?.trim())
+      );
       const payload = {
         ...form,
+        app_secret: isSecretMasked ? '' : form.app_secret,
         app_type: editingApp
           ? editingApp.app_type
           : (form.service_id?.trim() ? 'partner' : 'custom'),
@@ -550,6 +555,11 @@ const AppManagement = () => {
                       type={showSecret ? 'text' : 'password'}
                       value={form.app_secret}
                       onChange={handleFormChange}
+                      onFocus={(e) => {
+                        if (editingApp && (form.app_secret === (editingApp.app_secret_masked || '••••••••') || /^[*•]{3,}$/.test(form.app_secret))) {
+                          e.target.select();
+                        }
+                      }}
                       required={!editingApp}
                       autoComplete="new-password"
                     />
@@ -562,15 +572,10 @@ const AppManagement = () => {
                       {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
-                  {editingApp ? (
-                    <p className="app-management__hint">
-                      {t('appsManagement.keepSecretHint') || 'Để trống nếu giữ nguyên App Secret hiện tại.'}
-                    </p>
-                  ) : null}
                 </div>
 
                 <div className="field">
-                  <label htmlFor="service-id">{t('appsManagement.serviceId') || 'Service ID'}</label>
+                  <label htmlFor="service-id">{t('appsManagement.serviceIdLabel') || 'Service ID (không bắt buộc)'}</label>
                   <input
                     id="service-id"
                     name="service_id"
