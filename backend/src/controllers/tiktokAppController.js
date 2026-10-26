@@ -1,5 +1,5 @@
 const { TikTokApp } = require('../models');
-const { encryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
+const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 const { invalidateAppCache } = require('../services/tiktokAppService');
 
 const serializeApp = (app) => {
@@ -177,10 +177,31 @@ const toggleAppStatus = async (req, res) => {
   }
 };
 
+const getAppSecret = async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const app = await TikTokApp.findByPk(id);
+    if (!app) return res.status(404).json({ message: 'Không tìm thấy App' });
+
+    let secret = '';
+    if (app.app_secret_encrypted) {
+      try {
+        secret = decryptPartnerToken(app.app_secret_encrypted);
+      } catch (err) {
+        return res.status(500).json({ message: 'Không thể giải mã App Secret' });
+      }
+    }
+    res.json({ app_secret: secret });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   listApps,
   createApp,
   updateApp,
   deleteApp,
   toggleAppStatus,
+  getAppSecret,
 };

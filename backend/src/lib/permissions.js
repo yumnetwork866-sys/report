@@ -39,6 +39,7 @@ const PERMISSION_GROUPS = [
       'admin.teams.manage',
       'admin.schedules.manage',
       'admin.queues.view',
+      'app.manage',
     ],
   },
 ];

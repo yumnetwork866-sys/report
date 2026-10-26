@@ -16,6 +16,7 @@ import '../styles/pages/admin.css';
 import {
   createTikTokApp,
   deleteTikTokApp,
+  fetchTikTokAppSecret,
   fetchTikTokApps,
   toggleTikTokAppStatus,
   updateTikTokApp,
@@ -75,8 +76,35 @@ const AppManagement = () => {
   const [editingApp, setEditingApp] = useState(null);
   const [form, setForm] = useState(INITIAL_FORM);
   const [showSecret, setShowSecret] = useState(false);
+  const [fetchingSecret, setFetchingSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState('');
+
+  const toggleShowSecret = async () => {
+    if (fetchingSecret) return;
+    if (!showSecret) {
+      const isMasked = editingApp && (
+        form.app_secret === (editingApp.app_secret_masked || '••••••••') ||
+        /^[*•]{3,}$/.test(form.app_secret?.trim())
+      );
+      if (isMasked && editingApp?.id) {
+        setFetchingSecret(true);
+        try {
+          const res = await fetchTikTokAppSecret(editingApp.id);
+          if (res?.app_secret) {
+            setForm((prev) => ({ ...prev, app_secret: res.app_secret }));
+          }
+        } catch (err) {
+          setModalError(err.message || 'Không thể xem App Secret');
+        } finally {
+          setFetchingSecret(false);
+        }
+      }
+      setShowSecret(true);
+    } else {
+      setShowSecret(false);
+    }
+  };
 
   // Delete confirm state
   const [deletingApp, setDeletingApp] = useState(null);
@@ -566,10 +594,17 @@ const AppManagement = () => {
                     <button
                       type="button"
                       className="app-management__secret-toggle"
-                      onClick={() => setShowSecret((prev) => !prev)}
+                      onClick={toggleShowSecret}
+                      disabled={fetchingSecret}
                       title={showSecret ? 'Ẩn bí mật' : 'Hiển thị bí mật'}
                     >
-                      {showSecret ? <EyeOff size={16} /> : <Eye size={16} />}
+                      {fetchingSecret ? (
+                        <LoaderCircle className="is-spinning" size={16} />
+                      ) : showSecret ? (
+                        <EyeOff size={16} />
+                      ) : (
+                        <Eye size={16} />
+                      )}
                     </button>
                   </div>
                 </div>

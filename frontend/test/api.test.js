@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
-  fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus,
+  fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -482,5 +482,8 @@ test('TikTok App API helpers dispatch correct paths, methods, and payloads', asy
     await deleteTikTokApp(10);
     assert.equal(requests[4].url, '/api/tiktok-apps/10');
     assert.equal(requests[4].options.method, 'DELETE');
+
+    await fetchTikTokAppSecret(10);
+    assert.equal(requests[5].url, '/api/tiktok-apps/10/secret');
   });
 });

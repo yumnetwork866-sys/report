@@ -180,6 +180,19 @@ test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
   const afterUpdate = await MockTikTokApp.findByPk(createdId);
   assert.equal(decryptPartnerToken(afterUpdate.app_secret_encrypted), 'super_secret_tiktok_value_123');
 
+  // 4b. Get Secret (reveal)
+  const resSecret = createMockRes();
+  await controller.getAppSecret({ params: { id: createdId } }, resSecret);
+  assert.equal(resSecret.statusCode, 200);
+  assert.equal(resSecret.jsonBody.app_secret, 'super_secret_tiktok_value_123');
+
+  // 4c. Update with masked secret '••••••••' preserves existing secret
+  const resMaskUpdate = createMockRes();
+  await controller.updateApp({ params: { id: createdId }, body: { app_secret: '••••••••' } }, resMaskUpdate);
+  assert.equal(resMaskUpdate.statusCode, 200);
+  const afterMaskUpdate = await MockTikTokApp.findByPk(createdId);
+  assert.equal(decryptPartnerToken(afterMaskUpdate.app_secret_encrypted), 'super_secret_tiktok_value_123');
+
   // 5. Toggle Status
   const res5 = createMockRes();
   await controller.toggleAppStatus({ params: { id: createdId }, body: { is_active: false } }, res5);

@@ -37,10 +37,10 @@ const login = async (req, res) => {
 
     const roleRecord = typeof Role?.findByPk === 'function' ? await Role.findByPk(user.role) : null;
     // Normalize so removed permissions (e.g. 'chatbots') are no longer served to existing roles.
-    const permissions = Array.isArray(roleRecord?.permissions)
-      ? normalizePermissions(roleRecord.permissions)
-      : user.role === 'admin'
-        ? ALL_PERMISSIONS
+    const permissions = user.role === 'admin'
+      ? ALL_PERMISSIONS
+      : Array.isArray(roleRecord?.permissions)
+        ? normalizePermissions(roleRecord.permissions)
         : DEFAULT_PERMISSIONS;
 
     const safeUser = user.get({ plain: true });

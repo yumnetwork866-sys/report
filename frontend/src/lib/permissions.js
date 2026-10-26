@@ -46,6 +46,7 @@ export const PERMISSION_GROUPS = [
       { key: 'teams', labelKey: 'rolePermissions.teams', permissions: [{ key: 'admin.teams.manage', labelKey: 'rolePermissions.manage' }] },
       { key: 'schedules', labelKey: 'rolePermissions.schedules', permissions: [{ key: 'admin.schedules.manage', labelKey: 'rolePermissions.manage' }] },
       { key: 'queues', labelKey: 'rolePermissions.queues', permissions: [{ key: 'admin.queues.view', labelKey: 'rolePermissions.view' }] },
+      { key: 'apps', labelKey: 'rolePermissions.apps', permissions: [{ key: 'app.manage', labelKey: 'rolePermissions.manage' }] },
     ],
   },
 ];

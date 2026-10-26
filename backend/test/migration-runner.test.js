@@ -99,6 +99,7 @@ const defaultMigrationNames = [
   '090_add_admin_users_view_permission',
   '091_create_tiktok_apps',
   '092_seed_initial_tiktok_apps',
+  '093_add_app_manage_permission',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

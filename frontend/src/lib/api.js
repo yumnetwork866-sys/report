@@ -793,3 +793,7 @@ export function toggleTikTokAppStatus(id, isActive) {
     body: { is_active: isActive },
   });
 }
+
+export function fetchTikTokAppSecret(id) {
+  return apiRequest(`/tiktok-apps/${encodeURIComponent(id)}/secret`);
+}

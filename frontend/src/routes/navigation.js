@@ -6,7 +6,7 @@ export const topNavItems = [
     alternatePermission: ['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view', 'channels.manage'],
     fallbackTo: '/channels/overview',
   },
-  { to: '/manage/users', label: 'Admin', permission: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage', 'admin.shops.manage', 'admin.schedules.manage', 'admin.queues.view'] },
+  { to: '/manage/users', label: 'Admin', permission: ['admin.users.view', 'admin.users.manage', 'admin.roles.manage', 'admin.teams.manage', 'admin.shops.manage', 'admin.schedules.manage', 'admin.queues.view', 'app.manage'] },
 ];
 
 export const sidebarSections = [
@@ -46,7 +46,7 @@ export const sidebarSections = [
       { to: '/manage/shops', labelKey: 'navigation.manageShops', permission: 'admin.shops.manage' },
       { to: '/manage/schedules', labelKey: 'navigation.schedule', permission: 'admin.schedules.manage' },
       { to: '/manage/queues', labelKey: 'navigation.queues', permission: 'admin.queues.view' },
-      { to: '/manage/apps', labelKey: 'navigation.apps', permission: 'admin.shops.manage' },
+      { to: '/manage/apps', labelKey: 'navigation.apps', permission: ['app.manage', 'admin.shops.manage'] },
     ],
   },
 ];
@@ -94,7 +94,7 @@ export const protectedRouteCards = [
   {
     path: '/manage/apps',
     component: 'AppManagement',
-    permission: 'admin.shops.manage',
+    permission: ['app.manage', 'admin.shops.manage'],
     props: {},
   },
   {

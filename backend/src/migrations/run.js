@@ -100,6 +100,7 @@ const migrations = [
   require('./090_add_admin_users_view_permission'),
   require('./091_create_tiktok_apps'),
   require('./092_seed_initial_tiktok_apps'),
+  require('./093_add_app_manage_permission'),
 ];
 
 const createMigrationRunner = ({

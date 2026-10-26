@@ -16,7 +16,7 @@ const authorizedLandingPages = [
   ['admin.shops.manage', '/manage/shops'],
   ['admin.schedules.manage', '/manage/schedules'],
   ['admin.queues.view', '/manage/queues'],
-  ['admin.shops.manage', '/manage/apps'],
+  [['app.manage', 'admin.shops.manage'], '/manage/apps'],
 ];
 
 const getAuthorizedLandingPage = (session) => (
