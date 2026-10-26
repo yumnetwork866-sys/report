@@ -36,24 +36,34 @@ const createApp = async (req, res) => {
   try {
     const serviceId = String(req.body.service_id || '').trim() || null;
     let appType = String(req.body.app_type || '').trim().toLowerCase();
-    if (!['partner', 'custom'].includes(appType)) {
+    if (!['partner', 'custom', 'channel'].includes(appType)) {
       appType = serviceId ? 'partner' : 'custom';
     }
 
-    let region = String(req.body.region || 'AUTO').trim().toUpperCase();
-    if (!region) region = 'AUTO';
+    let region = String(req.body.region || (appType === 'channel' ? 'ALL' : 'AUTO')).trim().toUpperCase();
+    if (!region) region = appType === 'channel' ? 'ALL' : 'AUTO';
 
     let name = String(req.body.name || '').trim();
     if (!name) {
-      name = appType === 'partner'
-        ? (region === 'AUTO' ? 'TikTok Partner App' : `TikTok Partner ${region}`)
-        : (region === 'AUTO' ? 'Custom App OMS' : `Custom App OMS ${region}`);
+      if (appType === 'channel') {
+        name = 'TikTok Channel';
+      } else if (appType === 'partner') {
+        name = region === 'AUTO' ? 'TikTok Partner App' : `TikTok Partner ${region}`;
+      } else {
+        name = region === 'AUTO' ? 'Custom App OMS' : `Custom App OMS ${region}`;
+      }
     }
 
     const appKey = String(req.body.app_key || '').trim();
     const appSecret = String(req.body.app_secret || '').trim();
-    const authorizeUrl = String(req.body.authorize_url || '').trim() || 'https://services.tiktokshop.com/open/authorize';
-    const redirectUri = String(req.body.redirect_uri || '').trim() || process.env.TIKTOK_PARTNER_REDIRECT_URI || null;
+    const defaultAuthUrl = appType === 'channel'
+      ? (process.env.TIKTOK_OAUTH_AUTHORIZE_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/')
+      : 'https://services.tiktokshop.com/open/authorize';
+    const authorizeUrl = String(req.body.authorize_url || '').trim() || defaultAuthUrl;
+    const defaultRedirectUri = appType === 'channel'
+      ? (process.env.TIKTOK_REDIRECT_URI || null)
+      : (process.env.TIKTOK_PARTNER_REDIRECT_URI || null);
+    const redirectUri = String(req.body.redirect_uri || '').trim() || defaultRedirectUri;
     const isActive = req.body.is_active !== undefined ? Boolean(req.body.is_active) : true;
 
     if (!appKey) return res.status(400).json({ message: 'App Key là bắt buộc' });
@@ -97,7 +107,7 @@ const updateApp = async (req, res) => {
 
     const serviceId = req.body.service_id !== undefined ? (String(req.body.service_id || '').trim() || null) : app.service_id;
     let appType = req.body.app_type !== undefined ? String(req.body.app_type || '').trim().toLowerCase() : app.app_type;
-    if (!['partner', 'custom'].includes(appType)) {
+    if (!['partner', 'custom', 'channel'].includes(appType)) {
       appType = serviceId ? 'partner' : 'custom';
     }
 

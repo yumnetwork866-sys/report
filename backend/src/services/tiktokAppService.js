@@ -14,6 +14,9 @@ const mapLegacyAppType = (rawType = 'partner', rawRegion = '') => {
   const type = String(rawType || 'partner').trim().toLowerCase();
   const region = String(rawRegion || '').trim().toUpperCase();
 
+  if (type === 'channel') {
+    return { appType: 'channel', region: region || 'ALL' };
+  }
   if (type === 'partner_vn' || (type === 'partner' && region === 'VN')) {
     return { appType: 'partner', region: 'VN' };
   }
@@ -21,7 +24,7 @@ const mapLegacyAppType = (rawType = 'partner', rawRegion = '') => {
     return { appType: 'partner', region: 'US' };
   }
   if (type === 'custom') {
-    return { appType: 'custom', region: region || 'VN' };
+    return { appType: 'custom', region: region || 'MY' };
   }
   return { appType: 'partner', region: region || 'MY' };
 };

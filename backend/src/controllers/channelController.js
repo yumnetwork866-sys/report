@@ -12,6 +12,23 @@ const {
   sequelize,
 } = require('../models');
 const { delByPattern } = require('../lib/redis');
+const { getAppCredentials } = require('../services/tiktokAppService');
+
+const DEFAULT_CHANNEL_SCOPES = 'user.info.basic,user.info.profile,user.info.stats,video.list';
+
+const getChannelConfig = () => {
+  const dbCreds = typeof getAppCredentials === 'function' ? getAppCredentials('channel', 'ALL') : null;
+  const clientKey = String((dbCreds && dbCreds.appKey) || process.env.TIKTOK_CLIENT_KEY || '').trim();
+  const clientSecret = String((dbCreds && dbCreds.appSecret) || process.env.TIKTOK_CLIENT_SECRET || '').trim();
+  const redirectUri = String((dbCreds && dbCreds.redirectUri) || process.env.TIKTOK_REDIRECT_URI || '').trim();
+  const authorizeBaseUrl = String((dbCreds && dbCreds.authorizeUrl) || process.env.TIKTOK_OAUTH_AUTHORIZE_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/').trim();
+  const scopes = (process.env.TIKTOK_SCOPES || DEFAULT_CHANNEL_SCOPES)
+    .split(',')
+    .map((scope) => scope.trim())
+    .filter(Boolean)
+    .join(',');
+  return { clientKey, clientSecret, redirectUri, authorizeBaseUrl, scopes };
+};
 
 const TIKTOK_TOKEN_URL = 'https://open.tiktokapis.com/v2/oauth/token/';
 const TIKTOK_REVOKE_URL = 'https://open.tiktokapis.com/v2/oauth/revoke/';
@@ -95,11 +112,12 @@ const expiresAtFromSeconds = (seconds) => {
 };
 
 const buildOauthState = () => {
+  const { clientSecret } = getChannelConfig();
   const issuedAt = Date.now().toString();
   const nonce = crypto.randomBytes(16).toString('hex');
   const payload = `${issuedAt}.${nonce}`;
   const signature = crypto
-    .createHmac('sha256', process.env.TIKTOK_CLIENT_SECRET || '')
+    .createHmac('sha256', clientSecret)
     .update(payload)
     .digest('base64url');
 
@@ -114,9 +132,10 @@ const isValidOauthState = (state) => {
     return false;
   }
 
+  const { clientSecret } = getChannelConfig();
   const payload = `${issuedAt}.${nonce}`;
   const expectedSignature = crypto
-    .createHmac('sha256', process.env.TIKTOK_CLIENT_SECRET || '')
+    .createHmac('sha256', clientSecret)
     .update(payload)
     .digest('base64url');
 
@@ -125,14 +144,7 @@ const isValidOauthState = (state) => {
 };
 
 const buildTiktokOauthUrl = () => {
-  const clientKey = process.env.TIKTOK_CLIENT_KEY;
-  const redirectUri = process.env.TIKTOK_REDIRECT_URI;
-  const scopes = (process.env.TIKTOK_SCOPES || 'user.info.basic')
-    .split(',')
-    .map((scope) => scope.trim())
-    .filter(Boolean)
-    .join(',');
-  const authorizeBaseUrl = process.env.TIKTOK_OAUTH_AUTHORIZE_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/';
+  const { clientKey, redirectUri, scopes, authorizeBaseUrl } = getChannelConfig();
 
   if (!clientKey || !redirectUri) {
     return null;
@@ -165,8 +177,7 @@ const handleTiktokWebhook = async (req, res) => {
 };
 
 const revokeTiktokAccessToken = async (accessToken) => {
-  const clientKey = process.env.TIKTOK_CLIENT_KEY;
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+  const { clientKey, clientSecret } = getChannelConfig();
 
   if (!clientKey || !clientSecret) {
     throw new Error('TikTok revoke is not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET.');
@@ -284,9 +295,7 @@ const buildFrontendRedirectUrl = (status, message) => {
 };
 
 const exchangeTiktokCodeForToken = async (code) => {
-  const clientKey = process.env.TIKTOK_CLIENT_KEY;
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
-  const redirectUri = process.env.TIKTOK_REDIRECT_URI;
+  const { clientKey, clientSecret, redirectUri } = getChannelConfig();
 
   if (!clientKey || !clientSecret || !redirectUri) {
     throw new Error('TikTok OAuth token exchange is not configured. Set TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET, and TIKTOK_REDIRECT_URI.');
@@ -328,8 +337,7 @@ const exchangeTiktokCodeForToken = async (code) => {
 };
 
 const refreshTiktokAccessToken = async (refreshToken) => {
-  const clientKey = process.env.TIKTOK_CLIENT_KEY;
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+  const { clientKey, clientSecret } = getChannelConfig();
 
   if (!clientKey || !clientSecret) {
     throw new Error('TikTok token refresh is not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET.');

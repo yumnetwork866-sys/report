@@ -8,7 +8,6 @@ import {
   Globe,
   LoaderCircle,
   Plus,
-  Power,
   Trash2,
   XCircle,
 } from 'lucide-react';
@@ -44,7 +43,7 @@ const getRegionInfo = (code) => {
 const getRegionDisplay = (regionCode) => {
   const norm = String(regionCode || '').trim().toUpperCase();
   if (norm === 'AUTO') return { flag: '🌐', label: 'Tự nhận diện' };
-  if (norm === 'ALL') return { flag: '🌏', label: 'Toàn cầu (Global)' };
+  if (norm === 'ALL') return { flag: '🌏', label: 'Global' };
   const info = getRegionInfo(norm);
   return { flag: info.flag, label: norm };
 };
@@ -53,7 +52,7 @@ const DEFAULT_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/bookings/tikt
 
 const INITIAL_FORM = {
   name: '',
-  app_type: 'auto',
+  app_type: 'partner',
   region: 'AUTO',
   app_key: '',
   app_secret: '',
@@ -70,6 +69,7 @@ const AppManagement = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [togglingId, setTogglingId] = useState(null);
 
   // Modal states
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -129,9 +129,35 @@ const AppManagement = () => {
     loadApps();
   }, [loadApps]);
 
+  const renderTypeBadge = (appType) => {
+    if (appType === 'channel') {
+      return (
+        <span className="app-management__type-badge app-management__type-badge--channel">
+          {t('appsManagement.channelApp') || 'TikTok Channel'}
+        </span>
+      );
+    }
+    if (appType === 'partner') {
+      return (
+        <span className="app-management__type-badge app-management__type-badge--partner">
+          {t('appsManagement.partnerApp') || 'Partner'}
+        </span>
+      );
+    }
+    return (
+      <span className="app-management__type-badge app-management__type-badge--custom">
+        {t('appsManagement.customApp') || 'Custom / OMS'}
+      </span>
+    );
+  };
+
   const openAddModal = () => {
     setEditingApp(null);
-    setForm(INITIAL_FORM);
+    setForm({
+      ...INITIAL_FORM,
+      app_type: 'partner',
+      redirect_uri: DEFAULT_REDIRECT_URI,
+    });
     setShowSecret(false);
     setModalError('');
     setIsModalOpen(true);
@@ -146,7 +172,7 @@ const AppManagement = () => {
       app_key: app.app_key || '',
       app_secret: app.app_secret_masked || '••••••••',
       service_id: app.service_id || '',
-      authorize_url: app.authorize_url || 'https://services.tiktokshop.com/open/authorize',
+      authorize_url: app.authorize_url || (app.app_type === 'channel' ? 'https://www.tiktok.com/v2/auth/authorize/' : 'https://services.tiktokshop.com/open/authorize'),
       redirect_uri: app.redirect_uri || '',
       is_active: app.is_active ?? true,
     });
@@ -159,6 +185,21 @@ const AppManagement = () => {
     if (saving) return;
     setIsModalOpen(false);
     setEditingApp(null);
+  };
+
+  const handleAppTypeChange = (e) => {
+    const nextType = e.target.value;
+    setForm((prev) => ({
+      ...prev,
+      app_type: nextType,
+      region: nextType === 'channel' ? 'ALL' : (prev.region === 'ALL' ? 'AUTO' : prev.region),
+      authorize_url: nextType === 'channel'
+        ? 'https://www.tiktok.com/v2/auth/authorize/'
+        : 'https://services.tiktokshop.com/open/authorize',
+      redirect_uri: nextType === 'channel'
+        ? 'https://report-api.yumnetwork.vn/api/channels/oauth/tiktok/callback'
+        : DEFAULT_REDIRECT_URI,
+    }));
   };
 
   const handleFormChange = (e) => {
@@ -179,13 +220,18 @@ const AppManagement = () => {
         form.app_secret === (editingApp.app_secret_masked || '••••••••') ||
         /^[*•]{3,}$/.test(form.app_secret?.trim())
       );
+      const targetType = editingApp
+        ? editingApp.app_type
+        : (form.app_type || (form.service_id?.trim() ? 'partner' : 'custom'));
+      const targetRegion = editingApp
+        ? editingApp.region
+        : (targetType === 'channel' ? 'ALL' : (form.region || 'AUTO'));
+
       const payload = {
         ...form,
         app_secret: isSecretMasked ? '' : form.app_secret,
-        app_type: editingApp
-          ? editingApp.app_type
-          : (form.service_id?.trim() ? 'partner' : 'custom'),
-        region: editingApp ? editingApp.region : 'AUTO',
+        app_type: targetType,
+        region: targetRegion,
       };
       if (editingApp) {
         await updateTikTokApp(editingApp.id, payload);
@@ -204,12 +250,16 @@ const AppManagement = () => {
   };
 
   const handleToggleStatus = async (app) => {
+    if (togglingId) return;
+    setTogglingId(app.id);
     try {
       const nextStatus = !app.is_active;
       await toggleTikTokAppStatus(app.id, nextStatus);
       setApps((prev) => prev.map((a) => (a.id === app.id ? { ...a, is_active: nextStatus } : a)));
     } catch (err) {
       setError(err.message || 'Không thể đổi trạng thái App');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -303,11 +353,7 @@ const AppManagement = () => {
                           <strong>{app.name}</strong>
                         </td>
                         <td>
-                          <span className={`app-management__type-badge ${isPartner ? 'app-management__type-badge--partner' : 'app-management__type-badge--custom'}`}>
-                            {isPartner
-                              ? (t('appsManagement.partnerApp') || 'Partner')
-                              : (t('appsManagement.customApp') || 'Custom / OMS')}
-                          </span>
+                          {renderTypeBadge(app.app_type)}
                         </td>
                         <td>
                           <div className="app-management__region-cell" title={regionFull.name}>
@@ -330,19 +376,25 @@ const AppManagement = () => {
                           )}
                         </td>
                         <td>
-                          <button
-                            type="button"
-                            className={`app-management__status-btn ${app.is_active ? 'is-active' : 'is-inactive'}`}
-                            onClick={() => handleToggleStatus(app)}
+                          <label
+                            className={`app-management__switch ${app.is_active ? 'is-active' : 'is-inactive'}`}
                             title="Bấm để bật / tắt trạng thái"
                           >
-                            <Power size={13} />
-                            <span>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(app.is_active)}
+                              disabled={togglingId === app.id}
+                              onChange={() => handleToggleStatus(app)}
+                            />
+                            <span className="app-management__switch-track" aria-hidden="true">
+                              <span className="app-management__switch-thumb" />
+                            </span>
+                            <span className="app-management__switch-label">
                               {app.is_active
                                 ? (t('appsManagement.active') || 'Hoạt động')
                                 : (t('appsManagement.inactive') || 'Tạm dừng')}
                             </span>
-                          </button>
+                          </label>
                         </td>
                         <td>
                           <div className="app-management__actions-cell" style={{ justifyContent: 'flex-end' }}>
@@ -386,11 +438,7 @@ const AppManagement = () => {
                       <div className="app-management__card-title-group">
                         <h3 className="app-management__card-title">{app.name}</h3>
                         <div className="app-management__card-meta">
-                          <span className={`app-management__type-badge ${isPartner ? 'app-management__type-badge--partner' : 'app-management__type-badge--custom'}`}>
-                            {isPartner
-                              ? (t('appsManagement.partnerApp') || 'Partner')
-                              : (t('appsManagement.customApp') || 'Custom / OMS')}
-                          </span>
+                          {renderTypeBadge(app.app_type)}
                           <div className="app-management__region-cell" title={regionFull.name}>
                             <span className="app-management__region-flag" aria-hidden="true">{regionDisplay.flag}</span>
                             <span>{regionDisplay.label}</span>
@@ -445,19 +493,25 @@ const AppManagement = () => {
                       <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)' }}>
                         {t('appsManagement.status') || 'Trạng thái'}:
                       </span>
-                      <button
-                        type="button"
-                        className={`app-management__status-btn ${app.is_active ? 'is-active' : 'is-inactive'}`}
-                        onClick={() => handleToggleStatus(app)}
+                      <label
+                        className={`app-management__switch ${app.is_active ? 'is-active' : 'is-inactive'}`}
                         title="Bấm để bật / tắt trạng thái"
                       >
-                        <Power size={13} />
-                        <span>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(app.is_active)}
+                          disabled={togglingId === app.id}
+                          onChange={() => handleToggleStatus(app)}
+                        />
+                        <span className="app-management__switch-track" aria-hidden="true">
+                          <span className="app-management__switch-thumb" />
+                        </span>
+                        <span className="app-management__switch-label">
                           {app.is_active
                             ? (t('appsManagement.active') || 'Hoạt động')
                             : (t('appsManagement.inactive') || 'Tạm dừng')}
                         </span>
-                      </button>
+                      </label>
                     </div>
                   </div>
                 );
@@ -508,6 +562,42 @@ const AppManagement = () => {
               ) : null}
 
               <form onSubmit={handleFormSubmit}>
+                {!editingApp ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: form.app_type === 'channel' ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                    <div className="field" style={{ marginBottom: 0 }}>
+                      <label htmlFor="app-type">{t('appsManagement.appType') || 'Loại App'}</label>
+                      <select
+                        id="app-type"
+                        name="app_type"
+                        value={form.app_type}
+                        onChange={handleAppTypeChange}
+                      >
+                        <option value="partner">TikTok Shop Partner</option>
+                        <option value="custom">Custom App / OMS</option>
+                        <option value="channel">TikTok Channel (Login Kit)</option>
+                      </select>
+                    </div>
+
+                    {form.app_type !== 'channel' ? (
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label htmlFor="app-region">{t('appsManagement.region') || 'Vùng / Quốc gia'}</label>
+                        <select
+                          id="app-region"
+                          name="region"
+                          value={form.region}
+                          onChange={handleFormChange}
+                        >
+                          {REGION_DATA.map((r) => (
+                            <option key={r.code} value={r.code}>
+                              {r.flag} {r.name} ({r.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <div className="field">
                   <label htmlFor="app-name">
                     {t('appsManagement.appName') || 'Tên App'}
@@ -538,11 +628,7 @@ const AppManagement = () => {
                       <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)', display: 'block', marginBottom: '4px' }}>
                         {t('appsManagement.appType') || 'Loại App'}
                       </span>
-                      <span className={`app-management__type-badge ${editingApp.app_type === 'partner' ? 'app-management__type-badge--partner' : 'app-management__type-badge--custom'}`}>
-                        {editingApp.app_type === 'partner'
-                          ? (t('appsManagement.partnerApp') || 'Partner')
-                          : (t('appsManagement.customApp') || 'Custom / OMS')}
-                      </span>
+                      {renderTypeBadge(editingApp.app_type)}
                     </div>
                     <div>
                       <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)', display: 'block', marginBottom: '4px' }}>
