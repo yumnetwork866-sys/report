@@ -1,5 +1,9 @@
-const { Op, fn, col } = require('sequelize');
-const { ScheduledJob, ScheduledJobRun, ScheduledJobRunEvent, TikTokShop } = require('../models');
+const {
+  Op, fn, col, QueryTypes,
+} = require('sequelize');
+const {
+  sequelize, ScheduledJob, ScheduledJobRun, ScheduledJobRunEvent, TikTokShop,
+} = require('../models');
 const {
   JOB_KEYS,
   normalizeRunTimes,
@@ -34,14 +38,74 @@ const compactRunSummary = (summary) => {
   return compacted;
 };
 
-const serializeJob = async (job) => {
-  const runs = await ScheduledJobRun.findAll({
-    where: { scheduled_job_id: job.id },
-    order: [['started_at', 'DESC']],
-    limit: 30,
+const RECENT_RUN_LIMIT = 30;
+const COMPACT_RUN_SUMMARY_SQL = `
+  CASE
+    WHEN run.summary IS NULL OR jsonb_typeof(run.summary) <> 'object' THEN run.summary
+    ELSE
+      (CASE WHEN run.summary ? 'total' THEN jsonb_build_object('total', run.summary->'total') ELSE '{}'::jsonb END)
+      || (CASE WHEN run.summary ? 'failed' THEN jsonb_build_object('failed', run.summary->'failed') ELSE '{}'::jsonb END)
+      || (CASE WHEN run.summary ? 'succeeded' THEN jsonb_build_object('succeeded', run.summary->'succeeded') ELSE '{}'::jsonb END)
+      || (CASE WHEN run.summary ? 'pending' THEN jsonb_build_object('pending', run.summary->'pending') ELSE '{}'::jsonb END)
+      || CASE
+        WHEN jsonb_typeof(run.summary->'results') = 'array' THEN COALESCE((
+          SELECT jsonb_build_object('results', jsonb_agg(projected.item ORDER BY projected.ordinality))
+          FROM (
+            SELECT
+              result.ordinality,
+              jsonb_strip_nulls(jsonb_build_object(
+                'status', result.value->'status',
+                'shop_id', result.value->'shop_id',
+                'shop_name', result.value->'shop_name',
+                'shop_code', result.value->'shop_code',
+                'error', result.value->'error'
+              )) AS item
+            FROM jsonb_array_elements(run.summary->'results') WITH ORDINALITY AS result(value, ordinality)
+            WHERE result.value ? 'shop_name'
+              OR result.value->>'status' = 'FAILED'
+              OR result.value ? 'error'
+            ORDER BY result.ordinality
+            LIMIT 30
+          ) AS projected
+        ), '{}'::jsonb)
+        ELSE '{}'::jsonb
+      END
+  END
+`;
+
+const findRecentRunsForJobs = async (jobIds, database = sequelize) => {
+  if (!jobIds.length) return [];
+  return database.query(`
+    SELECT
+      run.id,
+      run.scheduled_job_id,
+      run.trigger_type,
+      run.scheduled_key,
+      run.next_retry_at,
+      run.status,
+      run.started_at,
+      run.completed_at,
+      ${COMPACT_RUN_SUMMARY_SQL} AS summary,
+      run.error
+    FROM unnest(ARRAY[:jobIds]::integer[]) AS selected_job(id)
+    CROSS JOIN LATERAL (
+      SELECT candidate.*
+      FROM scheduled_job_runs AS candidate
+      WHERE candidate.scheduled_job_id = selected_job.id
+      ORDER BY candidate.started_at DESC
+      LIMIT ${RECENT_RUN_LIMIT}
+    ) AS run
+    ORDER BY run.scheduled_job_id ASC, run.started_at DESC
+  `, {
+    replacements: { jobIds },
+    type: QueryTypes.SELECT,
   });
+};
+
+const serializeJob = async (job, prefetchedRuns = null) => {
+  const runs = prefetchedRuns || await findRecentRunsForJobs([job.id]);
   const compactedRuns = runs.map((run) => {
-    const json = run.toJSON();
+    const json = run.toJSON ? run.toJSON() : run;
     return {
       ...json,
       summary: compactRunSummary(json.summary),
@@ -52,16 +116,25 @@ const serializeJob = async (job) => {
 
 const listSchedules = async (_req, res) => {
   try {
-    const jobs = await ScheduledJob.findAll({
-      where: { job_key: { [Op.in]: [...JOB_KEYS] } },
-      order: [['id', 'ASC']],
-    });
-    const shops = await TikTokShop.findAll({
-      attributes: ['id', 'name', 'code', 'region'],
-      order: [['id', 'ASC']],
-    });
+    const [jobs, shops] = await Promise.all([
+      ScheduledJob.findAll({
+        where: { job_key: { [Op.in]: [...JOB_KEYS] } },
+        order: [['id', 'ASC']],
+      }),
+      TikTokShop.findAll({
+        attributes: ['id', 'name', 'code', 'region'],
+        order: [['id', 'ASC']],
+      }),
+    ]);
+    const runs = await findRecentRunsForJobs(jobs.map((job) => job.id));
+    const runsByJobId = new Map();
+    for (const run of runs) {
+      const jobId = Number(run.scheduled_job_id);
+      if (!runsByJobId.has(jobId)) runsByJobId.set(jobId, []);
+      runsByJobId.get(jobId).push(run);
+    }
     res.json({
-      schedules: await Promise.all(jobs.map(serializeJob)),
+      schedules: await Promise.all(jobs.map((job) => serializeJob(job, runsByJobId.get(job.id) || []))),
       shops,
     });
   } catch (error) {
@@ -186,4 +259,13 @@ const getRunEvent = async (req, res) => {
   } catch (error) { return res.status(500).json({ message: error.message }); }
 };
 
-module.exports = { listSchedules, updateSchedule, runScheduleNow, stopScheduleNow, listRunEvents, getRunEvent, monitorWhere };
+module.exports = {
+  listSchedules,
+  updateSchedule,
+  runScheduleNow,
+  stopScheduleNow,
+  listRunEvents,
+  getRunEvent,
+  monitorWhere,
+  findRecentRunsForJobs,
+};

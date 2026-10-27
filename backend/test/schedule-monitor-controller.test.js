@@ -53,3 +53,31 @@ test('event detail is scoped to the requested run and invalid cursors are reject
   await controller.listRunEvents({ params: { runId: '91' }, query: { before_id: '-4' } }, invalid);
   assert.equal(invalid.code, 400);
 });
+
+test('recent schedule runs are loaded in one bounded query for all jobs', async (t) => {
+  const controller = loadController(t, { sequelize: {} });
+  let queryCount = 0;
+  let capturedSql;
+  let capturedOptions;
+  const expected = [{ id: '12', scheduled_job_id: 3, summary: { total: 4 } }];
+  const database = {
+    query: async (sql, options) => {
+      queryCount += 1;
+      capturedSql = sql;
+      capturedOptions = options;
+      return expected;
+    },
+  };
+
+  const rows = await controller.findRecentRunsForJobs([3, 7, 9], database);
+
+  assert.equal(queryCount, 1);
+  assert.equal(rows, expected);
+  assert.deepEqual(capturedOptions.replacements.jobIds, [3, 7, 9]);
+  assert.match(capturedSql, /CROSS JOIN LATERAL/);
+  assert.match(capturedSql, /LIMIT 30/);
+  assert.match(capturedSql, /jsonb_array_elements/);
+
+  assert.deepEqual(await controller.findRecentRunsForJobs([], database), []);
+  assert.equal(queryCount, 1);
+});
