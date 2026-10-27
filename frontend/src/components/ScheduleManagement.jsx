@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Activity,
   Calendar,
   CalendarClock,
   CheckCircle2,
@@ -213,9 +212,6 @@ const ScheduleManagement = () => {
     shops.map((shop) => [String(shop.id), shop.name || shop.code || `Shop ${shop.id}`])
   ), [shops]);
 
-  const enabledCount = schedules.filter((schedule) => schedule.enabled).length;
-  const runningCount = allRuns.filter(isActiveRun).length;
-  const failedCount = allRuns.filter((run) => run.status === 'FAILED').length;
   const scheduleGroups = useMemo(() => ([
     {
       key: 'shop',
@@ -320,13 +316,6 @@ const ScheduleManagement = () => {
 
   return (
     <div className="page schedule-page schedule-page--operations">
-      <section className="schedule-overview" aria-label={t('schedule.overview')}>
-        <article><CalendarClock aria-hidden="true" /><div><span>{t('schedule.totalJobs')}</span><strong>{schedules.length}</strong></div></article>
-        <article><CheckCircle2 aria-hidden="true" /><div><span>{t('schedule.activeJobs')}</span><strong>{enabledCount}</strong></div></article>
-        <article className={runningCount ? 'is-running' : ''}><Activity aria-hidden="true" /><div><span>{t('schedule.runningJobs')}</span><strong>{runningCount}</strong></div></article>
-        <article className={failedCount ? 'is-failed' : ''}><XCircle aria-hidden="true" /><div><span>{t('schedule.failedRuns')}</span><strong>{failedCount}</strong></div></article>
-      </section>
-
       {error ? <div className="schedule-alert schedule-alert--error" role="alert"><XCircle aria-hidden="true" />{error}</div> : null}
       {notice ? <div className="schedule-alert schedule-alert--success" role="status"><CheckCircle2 aria-hidden="true" />{notice}<button type="button" aria-label={t('common.close')} onClick={() => setNotice('')}>×</button></div> : null}
 

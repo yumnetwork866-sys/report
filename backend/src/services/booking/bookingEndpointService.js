@@ -802,7 +802,9 @@ const getBookings = async (req, res) => {
 
 const getBookingProductPerformance = async (req, res) => {
   try {
-    res.json(await bookingPerformanceService.getBookingProductPerformance(req.query));
+    res.json(await bookingPerformanceService.getBookingProductPerformance(req.query, {
+      videoIdsByBooking: req.body?.video_ids_by_booking || null,
+    }));
   } catch (error) {
     res.status(error.status || 500).json({ message: error.message });
   }

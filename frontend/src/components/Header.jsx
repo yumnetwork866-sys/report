@@ -575,7 +575,7 @@ const Header = () => {
               <h2 id="account-dialog-title">
                 {accountDialog === 'password' ? t('header.changePassword') : t('header.changeAvatar')}
               </h2>
-              <p>{accountDialog === 'password' ? t('header.changePasswordMeta') : t('header.changeAvatarMeta')}</p>
+              {accountDialog === 'password' ? <p>{t('header.changePasswordMeta')}</p> : null}
             </div>
             <button type="button" className="account-dialog__close" onClick={closeAccountDialog} aria-label={t('header.close')}>×</button>
           </div>

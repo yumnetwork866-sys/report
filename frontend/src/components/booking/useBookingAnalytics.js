@@ -11,6 +11,7 @@ import {
   bookingVideosOf,
   filterVideosByPeriod,
   finiteNumber,
+  isBookingInPeriod,
   isBookingVisibleInPeriod,
   orderRangeForPeriod,
   uniqueBookingVideosForBookings,
@@ -136,6 +137,14 @@ export default function useBookingAnalytics({
     ]));
   }, [bookingTab, bookings, customRange, productPerformanceByBooking, selectedMonth]);
 
+  const bookingCostInPeriodById = useMemo(() => {
+    const activeRange = orderRangeForPeriod(selectedMonth, customRange);
+    return new Map(bookings.map((booking) => [
+      String(booking.id),
+      isBookingInPeriod(booking, activeRange),
+    ]));
+  }, [bookings, customRange, selectedMonth]);
+
   const stats = useMemo(() => {
     const visibleBookings = bookings.filter((booking) => bookingInPeriodById.get(String(booking.id)));
     const result = visibleBookings.reduce((summary, booking) => {
@@ -149,7 +158,9 @@ export default function useBookingAnalytics({
       );
       const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
       summary.total += 1;
-      summary.totalCost += convertedCost;
+      if (bookingCostInPeriodById.get(String(booking.id))) {
+        summary.totalCost += convertedCost;
+      }
       if (bookingTab === 'product') {
         summary.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
       }
@@ -168,7 +179,7 @@ export default function useBookingAnalytics({
       result.videoCount = videoSummary.videoCount;
     }
     return result;
-  }, [bookingInPeriodById, bookingTab, bookings, convertAmount, productOrdersByShop, productPerformanceByBooking, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, convertAmount, productOrdersByShop, productPerformanceByBooking, videoPerformanceByBooking]);
 
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
@@ -210,7 +221,9 @@ export default function useBookingAnalytics({
       );
       const rawRevenue = finiteNumber(bookingTab === 'product' ? performance?.affiliate_gmv : performance?.gross_gmv);
       group.bookings.push(booking);
-      group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
+      if (bookingCostInPeriodById.get(String(booking.id))) {
+        group.totalCost += convertAmount(rawCost, booking.currency) ?? rawCost;
+      }
       if (bookingTab === 'product') {
         group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
       }
@@ -229,7 +242,7 @@ export default function useBookingAnalytics({
       return convertAmount(revenue, performance?.currency) ?? revenue;
     };
     const costOf = (booking) => {
-      if (!bookingInPeriodById.get(String(booking.id))) return 0;
+      if (!bookingCostInPeriodById.get(String(booking.id))) return 0;
       const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
       return convertAmount(raw, booking.currency) ?? raw;
     };
@@ -265,7 +278,7 @@ export default function useBookingAnalytics({
       if (right.key === 'unassigned') return -1;
       return collator.compare(left.manager.name, right.manager.name);
     });
-  }, [bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, productOrdersByShop, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, productOrdersByShop, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
 
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]
@@ -331,7 +344,7 @@ export default function useBookingAnalytics({
       return converted;
     };
     const costOf = (booking) => {
-      if (!bookingInPeriodById.get(String(booking.id))) return 0;
+      if (!bookingCostInPeriodById.get(String(booking.id))) return 0;
       const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
       const converted = convertAmount(raw, booking.currency) ?? raw;
       if (bookingTab === 'by_product') {
@@ -375,7 +388,7 @@ export default function useBookingAnalytics({
       }
       return Number(b.id || 0) - Number(a.id || 0);
     });
-  }, [bookingInPeriodById, bookingSort, bookingTab, collator, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingSort, bookingTab, collator, convertAmount, productPerformanceByBooking, videoPerformanceByBooking]);
 
   const productCostGroups = useMemo(() => {
     const accessibleBookings = canManageUsers
@@ -398,7 +411,9 @@ export default function useBookingAnalytics({
 
     for (const booking of targetBookings) {
       const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
-      const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
+      const convertedCost = bookingCostInPeriodById.get(String(booking.id))
+        ? (convertAmount(rawCost, booking.currency) ?? rawCost)
+        : 0;
       const performance = performanceForBooking(
         booking,
         bookingTab,
@@ -496,7 +511,7 @@ export default function useBookingAnalytics({
     }
 
     return [...groups.values()];
-  }, [bookingInPeriodById, bookingTab, bookings, canManageUsers, convertAmount, productPerformanceByBooking, selectedManagerKey, sessionUserId, t, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, canManageUsers, convertAmount, productPerformanceByBooking, selectedManagerKey, sessionUserId, t, videoPerformanceByBooking]);
 
   const sortedProductCostGroupsToRender = useMemo(() => {
     const list = [...productCostGroups];
@@ -539,5 +554,6 @@ export default function useBookingAnalytics({
     productPerformanceByBooking,
     videoPerformanceByBooking,
     bookingInPeriodById,
+    bookingCostInPeriodById,
   };
 }

@@ -341,6 +341,8 @@ const loadOrderMetricsForBookingProducts = async ({
   endDate = null,
   startTime = null,
   endTime = null,
+  videoIdsByBooking = null,
+  database = sequelize,
 } = {}) => {
   const bookingList = Array.isArray(bookings) ? bookings : [];
   const result = new Map();
@@ -374,7 +376,7 @@ const loadOrderMetricsForBookingProducts = async ({
     });
   }
 
-  if (!bookingList.length || !sequelize?.query) {
+  if (!bookingList.length || !database?.query) {
     return result;
   }
 
@@ -410,7 +412,7 @@ const loadOrderMetricsForBookingProducts = async ({
   const dateWhere = dateClauses.length ? `AND ${dateClauses.join(' AND ')}` : '';
 
   try {
-    const rows = await sequelize.query(`
+    const rows = await database.query(`
       SELECT
         s.shop_id,
         s.product_id,
@@ -442,6 +444,11 @@ const loadOrderMetricsForBookingProducts = async ({
       const selectedIds = new Set(perf.selected_products.map((p) => String(p.id)));
       const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
       const bookingShopId = Number(booking?.target_shop_id);
+      const hasVideoFilter = videoIdsByBooking
+        && Object.prototype.hasOwnProperty.call(videoIdsByBooking, bId);
+      const allowedVideoIds = hasVideoFilter
+        ? new Set((videoIdsByBooking[bId] || []).map((value) => String(value || '').trim()).filter(Boolean))
+        : null;
 
       const orderIds = new Set();
       const videoIds = new Set();
@@ -469,6 +476,13 @@ const loadOrderMetricsForBookingProducts = async ({
         if (!selectedIds.has(productId)) continue;
         const rowCreator = String(row.creator_username || '').trim();
         if (creatorUsername && rowCreator !== creatorUsername) continue;
+        const contentId = String(row.content_id || '').trim();
+        const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
+        if (allowedVideoIds && (
+          !contentId
+          || (contentType && !contentType.includes('VIDEO'))
+          || !allowedVideoIds.has(contentId)
+        )) continue;
 
         const quantity = Math.max(0, Number(row.quantity) || 0);
         const refundedQuantity = Math.min(quantity, Math.max(0, Number(row.refunded_quantity) || 0));
@@ -486,8 +500,6 @@ const loadOrderMetricsForBookingProducts = async ({
         estimatedCommission += price * (quantity - refundedQuantity) * commRate;
 
         if (row.order_id) orderIds.add(String(row.order_id));
-        const contentId = String(row.content_id || '').trim();
-        const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
         if (contentId && (!contentType || contentType.includes('VIDEO'))) videoIds.add(contentId);
 
         const breakdownItem = productBreakdown.get(productId);

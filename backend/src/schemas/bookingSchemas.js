@@ -30,9 +30,17 @@ const bookingBodySchema = z.object({
   deadline: optionalIsoDate('deadline'),
 }).passthrough();
 
+const bookingProductPerformanceFilterSchema = z.object({
+  video_ids_by_booking: z.record(
+    z.string().regex(/^\d+$/, 'Invalid booking ID'),
+    z.array(z.string().trim().min(1).max(64)).max(200),
+  ).refine((value) => Object.keys(value).length <= 500, 'Too many booking filters').optional(),
+});
+
 module.exports = {
   bookingBodySchema,
   bookingIdParamsSchema,
   bookingListQuerySchema,
+  bookingProductPerformanceFilterSchema,
   creatorIdParamsSchema,
 };

@@ -30,6 +30,8 @@ import {
   defaultCustomRange,
   targetKocKey,
   bookingProductsOf,
+  bookingVideoMatchesHashtags,
+  bookingVideosOf,
   orderRangeForPeriod,
   finiteNumber,
   optionalNumber,
@@ -432,6 +434,23 @@ const BookingManagement = ({
 
   const shopsById = useMemo(() => new Map(shops.map((s) => [String(s.id), s])), [shops]);
 
+  const hashtagVideoFilterSignature = useMemo(() => {
+    const hashtagsByUserId = new Map(users.map((user) => [
+      String(user.id),
+      Array.isArray(user.content_attribution?.hashtags) ? user.content_attribution.hashtags : [],
+    ]));
+    const videoIdsByBooking = Object.fromEntries(bookings.map((booking) => {
+      const staffId = String(booking.staff_id || booking.staff?.id || '');
+      const configuredHashtags = hashtagsByUserId.get(staffId) || [];
+      const matchingVideoIds = bookingVideosOf(booking)
+        .filter((video) => bookingVideoMatchesHashtags(video, configuredHashtags))
+        .map((video) => String(video.platform_video_id || video.id || '').trim())
+        .filter(Boolean);
+      return [String(booking.id), [...new Set(matchingVideoIds)]];
+    }));
+    return JSON.stringify(videoIdsByBooking);
+  }, [bookings, users]);
+
   useEffect(() => {
     if (selectedMonth === 'custom' && (!customRange.start || !customRange.end || customRange.start > customRange.end)) {
       setLoading(false);
@@ -472,6 +491,7 @@ const BookingManagement = ({
       endDate: range.endDate,
       startTime: range.startTime,
       endTime: range.endTime,
+      ...(hashtagFilterEnabled ? { videoIdsByBooking: JSON.parse(hashtagVideoFilterSignature) } : {}),
     })
       .then((payload) => {
         if (controller.signal.aborted) return;
@@ -491,7 +511,7 @@ const BookingManagement = ({
       });
 
     return () => controller.abort();
-  }, [bookingTab, customRange, loading, selectedMonth, t]);
+  }, [bookingTab, customRange, hashtagFilterEnabled, hashtagVideoFilterSignature, loading, selectedMonth, t]);
 
   useEffect(() => {
     if (loading) return;
@@ -685,7 +705,7 @@ const BookingManagement = ({
     sortedBookingsOfGroup,
     productPerformanceByBooking,
     videoPerformanceByBooking,
-    bookingInPeriodById,
+    bookingCostInPeriodById,
   } = useBookingAnalytics({
     bookings,
     users,
@@ -1007,7 +1027,7 @@ const BookingManagement = ({
                 bookingTab,
                 productPerformanceByBooking,
                 videoPerformanceByBooking,
-                bookingInPeriodById,
+                bookingCostInPeriodById,
                 productOrdersByShop,
                 selectedCurrency,
                 convertAmount,
@@ -1046,7 +1066,7 @@ const BookingManagement = ({
               bookingTab,
               productPerformanceByBooking,
               videoPerformanceByBooking,
-              bookingInPeriodById,
+              bookingCostInPeriodById,
               productOrdersByShop,
               selectedCurrency,
               convertAmount,

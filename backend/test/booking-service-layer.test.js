@@ -199,6 +199,7 @@ test('booking performance service resolves month range and formats the response'
     endDate: '2024-02-29',
     startTime: 10,
     endTime: 20,
+    videoIdsByBooking: null,
   });
 });
 

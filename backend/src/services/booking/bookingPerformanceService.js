@@ -42,7 +42,7 @@ const resolvePerformancePeriod = ({ month, start_date: startDate, end_date: endD
   return monthPeriod(month);
 };
 
-const getBookingProductPerformance = async (query = {}) => {
+const getBookingProductPerformance = async (query = {}, { videoIdsByBooking = null } = {}) => {
   const { startDate = null, endDate = null } = resolvePerformancePeriod(query);
   const startTime = query.start_time === undefined ? null : Number(query.start_time);
   const endTime = query.end_time === undefined ? null : Number(query.end_time);
@@ -53,6 +53,7 @@ const getBookingProductPerformance = async (query = {}) => {
     endDate,
     startTime: Number.isFinite(startTime) ? startTime : null,
     endTime: Number.isFinite(endTime) ? endTime : null,
+    videoIdsByBooking,
   });
   return { performance: Object.fromEntries(performance) };
 };

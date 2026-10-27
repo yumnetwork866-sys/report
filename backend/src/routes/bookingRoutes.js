@@ -1,7 +1,7 @@
 const express = require('express');
 const { validateBody, validateParams, validateQuery } = require('../middleware/validateRequest');
 const {
-  bookingBodySchema, bookingIdParamsSchema, bookingListQuerySchema, creatorIdParamsSchema,
+  bookingBodySchema, bookingIdParamsSchema, bookingListQuerySchema, bookingProductPerformanceFilterSchema, creatorIdParamsSchema,
 } = require('../schemas/bookingSchemas');
 const router = express.Router();
 const { requireAnyPermission, requirePermission } = require('../lib/session');
@@ -23,6 +23,7 @@ const {
 } = require('../controllers/bookingController');
 router.get('/', requireAnyPermission(['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view']), validateQuery(bookingListQuerySchema), getBookings);
 router.get('/product-performance', requirePermission('shop.bookings.product_performance.view'), validateQuery(bookingListQuerySchema), getBookingProductPerformance);
+router.post('/product-performance', requirePermission('shop.bookings.product_performance.view'), validateQuery(bookingListQuerySchema), validateBody(bookingProductPerformanceFilterSchema), getBookingProductPerformance);
 router.get('/target-kocs', getTargetKocs);
 router.get('/target-kocs/detail', getTargetKocDetail);
 router.get('/tiktok-partner/collaborations', getTikTokPartnerCollaborations);

@@ -83,7 +83,7 @@ const BookingEvaluationTable = ({
   bookingTab,
   productPerformanceByBooking,
   videoPerformanceByBooking,
-  bookingInPeriodById,
+  bookingCostInPeriodById,
   productOrdersByShop,
   selectedCurrency,
   convertAmount,
@@ -190,7 +190,7 @@ const BookingEvaluationTable = ({
               let splitProductCount = 1;
 
               for (const record of bookingRecords) {
-                if (!bookingInPeriodById.get(String(record.id))) continue;
+                if (!bookingCostInPeriodById.get(String(record.id))) continue;
                 const rawCost = finiteNumber(record.total_cost ?? record.booking_cost);
                 const converted = convertAmount(rawCost, record.currency) ?? rawCost;
                 originalCost += converted;
@@ -243,7 +243,7 @@ const BookingEvaluationTable = ({
                   bookingTab={bookingTab}
                   performance={performance}
                   videoData={videoData}
-                  showBookingCost={bookingRecords.some((record) => bookingInPeriodById.get(String(record.id)))}
+                  showBookingCost={bookingRecords.some((record) => bookingCostInPeriodById.get(String(record.id)))}
                   shopOrders={shopOrders}
                   onSelectProduct={onSelectProduct}
                   formatMoney={formatMoney}

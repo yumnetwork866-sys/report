@@ -113,7 +113,9 @@ export function fetchBookings(signal, {
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }
 
-export function fetchBookingProductPerformance(signal, { month, startDate, endDate, startTime, endTime } = {}) {
+export function fetchBookingProductPerformance(signal, {
+  month, startDate, endDate, startTime, endTime, videoIdsByBooking,
+} = {}) {
   const params = new URLSearchParams();
   if (month && month !== 'all') params.set('month', month);
   if (startDate) params.set('start_date', startDate);
@@ -121,7 +123,13 @@ export function fetchBookingProductPerformance(signal, { month, startDate, endDa
   if (startTime) params.set('start_time', String(startTime));
   if (endTime) params.set('end_time', String(endTime));
   const query = params.toString();
-  return apiRequest(`/bookings/product-performance${query ? `?${query}` : ''}`, { signal });
+  return apiRequest(`/bookings/product-performance${query ? `?${query}` : ''}`, {
+    signal,
+    ...(videoIdsByBooking ? {
+      method: 'POST',
+      body: { video_ids_by_booking: videoIdsByBooking },
+    } : {}),
+  });
 }
 
 export function fetchBookingTargetKocs({ keyword, page = 1, pageSize = 20, signal } = {}) {
