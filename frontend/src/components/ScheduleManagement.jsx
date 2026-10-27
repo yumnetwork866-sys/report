@@ -262,10 +262,9 @@ const ScheduleManagement = () => {
     try {
       setRunningKey(schedule.job_key);
       setError('');
+      setNotice('');
       setOpenRunMenu(null);
       await runScheduleNow(schedule.job_key, shopId ? { shop_id: shopId } : {});
-      const targetShopName = shopId ? (shopNames[shopId] || `Shop ${shopId}`) : null;
-      setNotice(targetShopName ? t('schedule.startedShop', { shop: targetShopName }) : t('schedule.started'));
       setActiveTab('logs');
       await load(undefined, true);
     } catch (err) {
@@ -435,9 +434,9 @@ const ScheduleManagement = () => {
           {monitorRun ? <ScheduleRunMonitor initialRun={monitorRun} shops={shops} onBack={() => setMonitorRun(null)} /> : <>
           <header className="schedule-logs__toolbar">
             <div className="schedule-logs__filters">
-              <label><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={handleJobFilterChange}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
-              <label><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={handleStatusFilterChange}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
-              <button className="button button--ghost schedule-logs__refresh" type="button" disabled={refreshing} onClick={() => load(undefined, true)}><RefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" />{t('schedule.refresh')}</button>
+              <label className="schedule-logs__filter-field"><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={handleJobFilterChange}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
+              <label className="schedule-logs__filter-field"><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={handleStatusFilterChange}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
+              <button className="button button--ghost schedule-logs__refresh" type="button" disabled={refreshing} onClick={() => load(undefined, true)} aria-label={t('schedule.refresh')} title={t('schedule.refresh')}><RefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" /><span className="schedule-logs__refresh-label">{t('schedule.refresh')}</span></button>
             </div>
           </header>
           {currentDayGroup ? (
