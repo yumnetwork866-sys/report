@@ -1,5 +1,6 @@
 const path = require('path');
 const { Sequelize } = require('sequelize');
+const { recordDatabaseQuery } = require('../lib/requestTelemetry');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 require('dotenv').config();
 
@@ -8,22 +9,30 @@ const parsePositiveInt = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const processRole = String(process.env.PROCESS_ROLE || 'api').toUpperCase();
+const roleSetting = (name, fallback) => process.env[`${name}_${processRole}`] ?? process.env[name] ?? fallback;
+
 const poolOptions = {
-  max: parsePositiveInt(process.env.DB_POOL_MAX, 20),
-  min: parsePositiveInt(process.env.DB_POOL_MIN, 2),
+  max: parsePositiveInt(roleSetting('DB_POOL_MAX', 10), 10),
+  min: parsePositiveInt(roleSetting('DB_POOL_MIN', 1), 1),
   acquire: parsePositiveInt(process.env.DB_POOL_ACQUIRE_MS, 30000),
   idle: parsePositiveInt(process.env.DB_POOL_IDLE_MS, 10000),
 };
 
-const statementTimeoutMs = parsePositiveInt(process.env.DB_STATEMENT_TIMEOUT_MS, 30000);
+const statementTimeoutMs = parsePositiveInt(roleSetting('DB_STATEMENT_TIMEOUT_MS', 30000), 30000);
+
+const sequelizeOptions = {
+  dialect: 'postgres',
+  benchmark: true,
+  logging: (sql, elapsedMs) => recordDatabaseQuery(elapsedMs, sql),
+  pool: poolOptions,
+  dialectOptions: { statement_timeout: statementTimeoutMs },
+};
 
 const createSequelize = () => {
   if (process.env.DATABASE_URL) {
     return new Sequelize(process.env.DATABASE_URL, {
-      dialect: 'postgres',
-      logging: false,
-      pool: poolOptions,
-      dialectOptions: { statement_timeout: statementTimeoutMs },
+      ...sequelizeOptions,
     });
   }
 
@@ -43,24 +52,11 @@ const createSequelize = () => {
     {
       host: process.env.DB_HOST,
       port: process.env.DB_PORT || 5432,
-      dialect: 'postgres',
-      logging: false,
-      pool: poolOptions,
-      dialectOptions: { statement_timeout: statementTimeoutMs },
+      ...sequelizeOptions,
     },
   );
 };
 
 const sequelize = createSequelize();
-
-if (process.env.NODE_ENV !== 'test') {
-  sequelize.authenticate()
-    .then(() => {
-      console.log('Database connection has been established successfully.');
-    })
-    .catch((error) => {
-      console.error('Unable to connect to the database:', error);
-    });
-}
 
 module.exports = sequelize;

@@ -4,8 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "start": "node src/run-processes.js start",
+    "start:api": "node src/api-server.js",
+    "start:worker": "node src/worker.js",
+    "dev": "node src/run-processes.js dev",
+    "dev:api": "nodemon src/api-server.js",
+    "dev:worker": "nodemon src/worker.js",
     "lint": "oxlint src test --deny-warnings --report-unused-disable-directives",
     "test": "node --require ./test/setup.js --test",
     "test:coverage": "node --require ./test/setup.js --test --experimental-test-coverage",
@@ -19,7 +23,7 @@
     "seed:demo:full": "node src/scripts/seedFullDemoData.js",
     "sync:tiktok": "node src/jobs/syncTiktokChannels.js",
     "backfill:creator-daily": "node src/scripts/backfillCreatorDailyPerformance.js",
-    "sync:tiktok:scheduler": "node src/jobs/scheduleTiktokSync.js",
+    "sync:tiktok:scheduler": "node src/worker.js",
     "cache:creator-avatars": "node src/scripts/backfillCreatorAvatarStorage.js"
   },
   "keywords": [],

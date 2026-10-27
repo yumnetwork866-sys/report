@@ -105,20 +105,28 @@ Also verify that the Login Kit redirect URI in the TikTok app exactly matches `T
 
 ## Automated data schedules
 
-Schedules are managed from **Admin → Schedule** and stored in PostgreSQL. The page controls whether each job is enabled, its timezone, its run times (up to six per day), manual runs, and recent run history. The backend server starts the database-driven scheduler automatically.
+Schedules are managed from **Admin → Schedule** and stored in PostgreSQL. The page controls whether each job is enabled, its timezone, its run times (up to six per day), manual runs, and recent run history. The HTTP API and scheduler/queue worker run as separate processes. Only the API listens on `PORT`; the worker does not expose a network port.
 
-The optional dedicated worker uses the same database configuration, so it does not create a second independent cron definition:
+For local development, `pnpm dev` starts both processes. They can also be run independently for deployment and scaling:
 
 ```bash
 cd backend
-pnpm run sync:tiktok:scheduler
+pnpm run start:api
+pnpm run start:worker
 ```
 
-Scheduled run records have a unique key, preventing the same job/time from running twice if both the API server and a dedicated worker are active. To run TikTok Channel sync once without the scheduler:
+Do not start more than one scheduler process unless leader election is configured. BullMQ jobs can be consumed by multiple workers, but each worker currently also owns a scheduler timer. To run TikTok Channel sync once without the scheduler:
 
 ```bash
 pnpm run sync:tiktok
 ```
+
+The API exposes unauthenticated operational probes:
+
+- `GET /health` checks only that the HTTP process is alive.
+- `GET /ready` checks PostgreSQL and Redis, returning `503` when either dependency is unavailable.
+
+Set `TRUST_PROXY` to the exact number of trusted reverse proxies in front of the API so login rate limiting uses the real client IP. Request logs include `X-Request-Id`, total duration, database query count/time, status, and response size; requests slower than `HTTP_SLOW_REQUEST_MS` are emitted as warnings.
 
 ## Database check
 

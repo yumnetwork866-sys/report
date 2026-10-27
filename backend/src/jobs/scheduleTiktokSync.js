@@ -1,15 +1,6 @@
-require('dotenv').config();
+const { startWorker } = require('../worker');
 
-const { sequelize } = require('../models');
-const { startDatabaseScheduler } = require('../services/scheduledJobService');
-
-const task = startDatabaseScheduler();
-
-const shutdown = async () => {
-  task.stop();
-  await sequelize.close();
-  process.exit(0);
-};
-
-process.once('SIGINT', shutdown);
-process.once('SIGTERM', shutdown);
+startWorker().catch((error) => {
+  console.error('[Worker] Failed to start:', error);
+  process.exitCode = 1;
+});
