@@ -1600,7 +1600,7 @@
 
 .schedule-card--compact .schedule-card__header {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
   padding: 15px 16px;
@@ -1915,7 +1915,7 @@
 
   .schedule-tabs button { justify-content: center; }
 
-  .schedule-card--compact .schedule-card__header { grid-template-columns: auto minmax(0, 1fr); }
+  .schedule-card--compact .schedule-card__header { grid-template-columns: minmax(0, 1fr) auto; }
 
   .schedule-switch { grid-column: 1 / -1; }
 

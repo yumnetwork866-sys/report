@@ -10,10 +10,8 @@ import {
   LoaderCircle,
   Plus,
   Play,
-  Radio,
   RefreshCw,
   Save,
-  ShoppingBag,
   Square,
   Trash2,
   XCircle,
@@ -276,25 +274,14 @@ const ScheduleManagement = () => {
       {loading ? <section className="section-card empty-state"><span className="loading-dot" />{t('schedule.loading')}</section> : null}
 
       {!loading && activeTab === 'schedules' ? (
-        <div className="schedule-groups" role="tabpanel">
-          {scheduleGroups.map((group) => (
-            <section className={`schedule-group schedule-group--${group.key}`} key={group.key}>
-              <header className="schedule-group__header">
-                <span aria-hidden="true">{group.key === 'shop' ? <ShoppingBag /> : <Radio />}</span>
-                <div>
-                  <h2>{t(`schedule.groups.${group.key}.name`)}</h2>
-                </div>
-                <strong>{group.schedules.length}</strong>
-              </header>
-              <div className="schedule-grid schedule-grid--compact">
-                {group.schedules.map((schedule) => {
+        <div className="schedule-grid schedule-grid--compact" role="tabpanel">
+          {schedules.map((schedule) => {
             const latest = schedule.runs?.[0];
             const isRunning = runningKey === schedule.job_key || isActiveRun(latest);
             const description = t(`schedule.jobs.${schedule.job_key}.description`);
             return (
               <article className="section-card schedule-card schedule-card--compact" key={schedule.job_key}>
                 <header className="schedule-card__header">
-                  <span className="schedule-card__icon" aria-hidden="true"><CalendarClock /></span>
                   <div className="schedule-card__heading">
                     <h2>{t(`schedule.jobs.${schedule.job_key}.name`)}</h2>
                     {description ? <p>{description}</p> : null}
@@ -382,10 +369,7 @@ const ScheduleManagement = () => {
                 </footer>
               </article>
             );
-                })}
-              </div>
-            </section>
-          ))}
+          })}
         </div>
       ) : null}
 
