@@ -414,6 +414,7 @@ const loadOrderMetricsForBookingProducts = async ({
   try {
     const rows = await database.query(`
       SELECT
+        s.id AS ledger_sku_id,
         s.shop_id,
         s.product_id,
         s.product_name,
@@ -425,7 +426,8 @@ const loadOrderMetricsForBookingProducts = async ({
         s.quantity,
         s.refunded_quantity,
         COALESCE(s.price, 0) AS price,
-        s.raw_data
+        s.raw_data,
+        o.create_time
       FROM tiktok_affiliate_order_skus s
       JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
       WHERE s.shop_id IN (:shopIds)
@@ -436,7 +438,14 @@ const loadOrderMetricsForBookingProducts = async ({
       type: QueryTypes.SELECT,
     });
 
-    for (const booking of bookingList) {
+    const claimedLedgerRows = new Set();
+    const bookingProcessingList = [...bookingList].sort((left, right) => {
+      const leftDate = dateOnly(left?.start_date || left?.booking_date || left?.created_at) || '';
+      const rightDate = dateOnly(right?.start_date || right?.booking_date || right?.created_at) || '';
+      return rightDate.localeCompare(leftDate) || Number(right?.id || 0) - Number(left?.id || 0);
+    });
+
+    for (const booking of bookingProcessingList) {
       const bId = String(booking?.id);
       const perf = result.get(bId);
       if (!perf || !perf.has_products) continue;
@@ -470,12 +479,15 @@ const loadOrderMetricsForBookingProducts = async ({
         },
       ]));
 
-      for (const row of rows || []) {
+      for (const [rowIndex, row] of (rows || []).entries()) {
         if (Number(row.shop_id) !== bookingShopId) continue;
         const productId = String(row.product_id || '').trim();
         if (!selectedIds.has(productId)) continue;
         const rowCreator = String(row.creator_username || '').trim();
         if (creatorUsername && rowCreator !== creatorUsername) continue;
+        const bookingDate = dateOnly(booking?.start_date || booking?.booking_date || booking?.created_at);
+        const orderDate = dateOnly(row.create_time);
+        if (bookingDate && orderDate && bookingDate > orderDate) continue;
         const contentId = String(row.content_id || '').trim();
         const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
         if (allowedVideoIds && (
@@ -483,6 +495,12 @@ const loadOrderMetricsForBookingProducts = async ({
           || (contentType && !contentType.includes('VIDEO'))
           || !allowedVideoIds.has(contentId)
         )) continue;
+
+        const ledgerRowKey = row.ledger_sku_id === undefined || row.ledger_sku_id === null
+          ? [row.shop_id, row.order_id, row.sku_id, productId, contentId, rowIndex].join(':')
+          : String(row.ledger_sku_id);
+        if (claimedLedgerRows.has(ledgerRowKey)) continue;
+        claimedLedgerRows.add(ledgerRowKey);
 
         const quantity = Math.max(0, Number(row.quantity) || 0);
         const refundedQuantity = Math.min(quantity, Math.max(0, Number(row.refunded_quantity) || 0));

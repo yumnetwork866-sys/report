@@ -53,6 +53,43 @@ test('booking product performance limits order SKUs to hashtag-matched video IDs
   assert.equal(result.breakdown[0].orderCount, 1);
 });
 
+test('booking product performance attributes an order SKU only to the latest eligible booking', async () => {
+  const rows = [{
+    ledger_sku_id: 901,
+    shop_id: 10,
+    product_id: 'prod-1',
+    creator_username: 'koc_test',
+    order_id: 'order-1',
+    sku_id: 'sku-1',
+    content_id: 'video-1',
+    content_type: 'VIDEO',
+    create_time: '2026-10-10T03:00:00.000Z',
+    currency: 'MYR',
+    quantity: 2,
+    refunded_quantity: 0,
+    price: 50,
+    raw_data: {},
+  }];
+  const booking = (id, startDate) => ({
+    id,
+    start_date: startDate,
+    target_shop_id: 10,
+    creator_username: 'koc_test',
+    currency: 'MYR',
+    evaluation_snapshot: { products: [{ id: 'prod-1', name: 'Serum' }] },
+  });
+
+  const performance = await loadOrderMetricsForBookingProducts({
+    bookings: [booking(1, '2026-08-01'), booking(2, '2026-09-01')],
+    database: { query: async () => rows },
+  });
+
+  assert.equal(performance.get('1').affiliate_orders, 0);
+  assert.equal(performance.get('1').affiliate_gmv, 0);
+  assert.equal(performance.get('2').affiliate_orders, 1);
+  assert.equal(performance.get('2').affiliate_gmv, 100);
+});
+
 test('booking maps the 30-day Affiliate Video snapshot metrics', () => {
   assert.equal(exportDurationDays({ start_date: '2026-07-06', end_date: '2026-08-05' }), 30);
   assert.equal(exportDurationDays({ start_date: '2026-07-29', end_date: '2026-08-05' }), 7);

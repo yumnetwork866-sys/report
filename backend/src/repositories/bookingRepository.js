@@ -95,7 +95,7 @@ const updateById = (bookingId, payload) => Booking.update(payload, {
 
 const findForProductPerformance = () => Booking.findAll({
   where: { evaluation_snapshot: { [Op.not]: null } },
-  attributes: ['id', 'target_shop_id', 'creator_username', 'currency', 'evaluation_snapshot'],
+  attributes: ['id', 'target_shop_id', 'creator_username', 'start_date', 'currency', 'evaluation_snapshot'],
 });
 
 const deleteById = (bookingId) => Booking.destroy({
