@@ -243,18 +243,6 @@ const ShopAnalytics = ({
 
   return (
     <div className={`page shop-analytics${managementOnly ? ' shop-analytics--management' : ''}`}>
-      {managementOnly ? (
-        <section className="page__hero shop-analytics__hero admin-page__hero">
-          <div className="shop-analytics__hero-row">
-            <div className="shop-analytics__hero-copy">
-              <h1 className="page__title">
-                {t('shopAnalytics.manageHeroTitle')}
-              </h1>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
       {videoOnly && combinedVideoTabs ? (
         <div className="shop-video-analytics__view-tabs" role="tablist" aria-label={t('navigation.videos')}>
           {canViewVideoLibrary ? <button

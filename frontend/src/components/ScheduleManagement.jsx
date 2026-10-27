@@ -254,12 +254,6 @@ const ScheduleManagement = () => {
 
   return (
     <div className="page schedule-page schedule-page--operations">
-      <section className="page__hero admin-page__hero schedule-page__hero">
-        <div>
-          <h1 className="page__title">{t('schedule.title')}</h1>
-        </div>
-      </section>
-
       <section className="schedule-overview" aria-label={t('schedule.overview')}>
         <article><CalendarClock aria-hidden="true" /><div><span>{t('schedule.totalJobs')}</span><strong>{schedules.length}</strong></div></article>
         <article><CheckCircle2 aria-hidden="true" /><div><span>{t('schedule.activeJobs')}</span><strong>{enabledCount}</strong></div></article>
