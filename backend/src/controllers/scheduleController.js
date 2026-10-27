@@ -8,13 +8,46 @@ const {
   stopScheduledJob,
 } = require('../services/scheduledJobService');
 
+const compactRunSummary = (summary) => {
+  if (!summary || typeof summary !== 'object') return summary;
+  const { total, failed, succeeded, pending, results } = summary;
+  const compacted = {};
+  if (total !== undefined) compacted.total = total;
+  if (failed !== undefined) compacted.failed = failed;
+  if (succeeded !== undefined) compacted.succeeded = succeeded;
+  if (pending !== undefined) compacted.pending = pending;
+
+  if (Array.isArray(results)) {
+    // Keep shop-level result items (with shop_name / shop_code / error) or failed items
+    // Strip massive internal debug arrays and hundreds of successful video items
+    const relevantResults = results.filter((r) => r && (r.shop_name || r.status === 'FAILED' || r.error));
+    if (relevantResults.length) {
+      compacted.results = relevantResults.slice(0, 30).map((r) => ({
+        status: r.status,
+        ...(r.shop_id ? { shop_id: r.shop_id } : {}),
+        ...(r.shop_name ? { shop_name: r.shop_name } : {}),
+        ...(r.shop_code ? { shop_code: r.shop_code } : {}),
+        ...(r.error ? { error: typeof r.error === 'string' ? r.error : String(r.error) } : {}),
+      }));
+    }
+  }
+  return compacted;
+};
+
 const serializeJob = async (job) => {
   const runs = await ScheduledJobRun.findAll({
     where: { scheduled_job_id: job.id },
     order: [['started_at', 'DESC']],
     limit: 30,
   });
-  return { ...job.toJSON(), run_count: job.run_times.length, runs };
+  const compactedRuns = runs.map((run) => {
+    const json = run.toJSON();
+    return {
+      ...json,
+      summary: compactRunSummary(json.summary),
+    };
+  });
+  return { ...job.toJSON(), run_count: job.run_times.length, runs: compactedRuns };
 };
 
 const listSchedules = async (_req, res) => {

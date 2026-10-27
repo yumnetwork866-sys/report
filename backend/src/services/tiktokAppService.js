@@ -80,7 +80,7 @@ const getAppCredentials = (rawType = 'partner', rawRegion = '') => {
     return null;
   }
   const { appType, region } = mapLegacyAppType(rawType, rawRegion);
-  const appTypes = appType === 'custom' ? ['partner', 'custom'] : [appType];
+  const appTypes = appType === 'custom' ? ['custom', 'partner'] : [appType];
 
   for (const candidateType of appTypes) {
     const exact = appCache.get(normalizeAppKey(candidateType, region));

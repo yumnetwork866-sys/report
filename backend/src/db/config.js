@@ -3,11 +3,27 @@ const { Sequelize } = require('sequelize');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 require('dotenv').config();
 
+const parsePositiveInt = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const poolOptions = {
+  max: parsePositiveInt(process.env.DB_POOL_MAX, 20),
+  min: parsePositiveInt(process.env.DB_POOL_MIN, 2),
+  acquire: parsePositiveInt(process.env.DB_POOL_ACQUIRE_MS, 30000),
+  idle: parsePositiveInt(process.env.DB_POOL_IDLE_MS, 10000),
+};
+
+const statementTimeoutMs = parsePositiveInt(process.env.DB_STATEMENT_TIMEOUT_MS, 30000);
+
 const createSequelize = () => {
   if (process.env.DATABASE_URL) {
     return new Sequelize(process.env.DATABASE_URL, {
       dialect: 'postgres',
       logging: false,
+      pool: poolOptions,
+      dialectOptions: { statement_timeout: statementTimeoutMs },
     });
   }
 
@@ -29,6 +45,8 @@ const createSequelize = () => {
       port: process.env.DB_PORT || 5432,
       dialect: 'postgres',
       logging: false,
+      pool: poolOptions,
+      dialectOptions: { statement_timeout: statementTimeoutMs },
     },
   );
 };

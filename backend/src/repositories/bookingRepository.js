@@ -49,6 +49,23 @@ const findVideoPerformanceExports = (options) => (
 const findVideoPerformanceSnapshots = (options) => (
   TikTokVideoPerformanceSnapshot?.findAll ? TikTokVideoPerformanceSnapshot.findAll(options) : Promise.resolve([])
 );
+
+const findLatestVideoPerformanceSnapshotsByVideoIds = async (videoIds) => {
+  if (!Array.isArray(videoIds) || videoIds.length === 0 || !sequelize?.query) return [];
+  const chunkSize = 1000;
+  const rows = [];
+  for (let index = 0; index < videoIds.length; index += chunkSize) {
+    const chunk = videoIds.slice(index, index + chunkSize);
+    const chunkRows = await sequelize.query(`
+      SELECT DISTINCT ON (video_id) *
+      FROM tiktok_video_performance_snapshots
+      WHERE video_id IN (:videoIds)
+      ORDER BY video_id, export_id DESC, id DESC
+    `, { replacements: { videoIds: chunk }, type: QueryTypes.SELECT });
+    rows.push(...chunkRows);
+  }
+  return rows;
+};
 const findCreatorPerformanceSnapshots = (options) => (
   TikTokCreatorPerformanceSnapshot?.findAll ? TikTokCreatorPerformanceSnapshot.findAll(options) : Promise.resolve([])
 );
@@ -229,6 +246,7 @@ module.exports = {
   findUserById,
   findVideoPerformanceExports,
   findVideoPerformanceSnapshots,
+  findLatestVideoPerformanceSnapshotsByVideoIds,
   createKoc,
   createPartnerAuthorization,
   destroyPartnerAuthorizations,

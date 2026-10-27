@@ -118,11 +118,8 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
     snapshot,
   ]));
 
-  const fallbackSnapshots = videoIds.length && typeof bookingRepository.findVideoPerformanceSnapshots === 'function'
-    ? await bookingRepository.findVideoPerformanceSnapshots({
-      where: { video_id: { [Op.in]: videoIds } },
-      order: [['export_id', 'DESC'], ['id', 'DESC']],
-    }).catch(() => [])
+  const fallbackSnapshots = videoIds.length && typeof bookingRepository.findLatestVideoPerformanceSnapshotsByVideoIds === 'function'
+    ? await bookingRepository.findLatestVideoPerformanceSnapshotsByVideoIds(videoIds).catch(() => [])
     : [];
   const latestSnapshotByVideoId = new Map();
   for (const snap of fallbackSnapshots) {
