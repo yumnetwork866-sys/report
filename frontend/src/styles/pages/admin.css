@@ -1831,7 +1831,7 @@
 
 .schedule-logs { display: grid; gap: 0; overflow: hidden; padding: 0; border-radius: 16px; }
 
-.schedule-logs__toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 15px 16px; border-bottom: 1px solid #e3eaf3; background: #f8fbff; }
+.schedule-logs__toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; padding: 12px 16px; border-bottom: 1px solid #e3eaf3; background: #f8fbff; }
 
 .schedule-logs__toolbar > div:first-child { display: grid; gap: 3px; }
 
@@ -1892,6 +1892,61 @@
 
 .schedule-log-error-empty { color: #8a98aa; }
 
+.schedule-logs__day-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e3eaf3;
+  background: #f1f6fd;
+  color: #1e3a8a;
+  font-size: 0.8rem;
+}
+
+.schedule-logs__day-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #1e40af;
+}
+
+.schedule-logs__day-title strong {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.schedule-logs__day-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1e40af;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.schedule-logs__pagination-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid #e3eaf3;
+  background: #fbfcfe;
+}
+
+.schedule-logs__pagination-wrap .pagination {
+  padding-top: 0;
+}
+
+.schedule-logs__page-info {
+  color: #64758c;
+  font-size: .75rem;
+  font-weight: 500;
+}
+
 .is-spinning { animation: schedule-spin 900ms linear infinite; }
 
 @keyframes schedule-spin { to { transform: rotate(360deg); } }
@@ -1924,6 +1979,8 @@
   .schedule-logs__filters { align-items: stretch; flex-direction: column; }
 
   .schedule-logs__filters select, .schedule-logs__refresh { width: 100%; }
+
+  .schedule-logs__pagination-wrap { flex-direction: column; align-items: center; gap: 8px; }
 }
 
 

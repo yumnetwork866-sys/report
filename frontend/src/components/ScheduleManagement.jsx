@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Activity,
+  Calendar,
   CalendarClock,
   CheckCircle2,
   ChevronDown,
@@ -26,10 +27,35 @@ import {
 import { useI18n } from '../lib/language';
 import { formatErrorDates, getRunErrorMessages } from '../lib/scheduleErrors';
 import ScheduleRunMonitor from './ScheduleRunMonitor';
+import Pagination from './Pagination';
 
 const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
 const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
 const isActiveRun = (run) => ['PROCESSING', 'RETRY_PENDING'].includes(run?.status);
+
+const getRunDateKey = (dateValue) => {
+  if (!dateValue) return '';
+  const d = new Date(dateValue);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDayHeading = (dateKey, locale = 'vi-VN') => {
+  if (!dateKey) return '—';
+  const parts = dateKey.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return dateKey;
+  const [year, month, day] = parts;
+  const targetDate = new Date(year, month - 1, day);
+
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'long',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(targetDate);
+};
 
 const resizeRunTimes = (current, count) => {
   const next = [...current].slice(0, count);
@@ -63,6 +89,7 @@ const ScheduleManagement = () => {
   const [activeTab, setActiveTab] = useState('schedules');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [jobFilter, setJobFilter] = useState('ALL');
+  const [logsPage, setLogsPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingKey, setSavingKey] = useState('');
@@ -139,6 +166,36 @@ const ScheduleManagement = () => {
     (statusFilter === 'ALL' || run.status === statusFilter)
     && (jobFilter === 'ALL' || run.job_key === jobFilter)
   )), [allRuns, jobFilter, statusFilter]);
+
+  const runsByDay = useMemo(() => {
+    const map = new Map();
+    for (const run of filteredRuns) {
+      const dateKey = getRunDateKey(run.started_at);
+      if (!map.has(dateKey)) {
+        map.set(dateKey, []);
+      }
+      map.get(dateKey).push(run);
+    }
+    return Array.from(map.entries()).map(([dateKey, runs]) => ({
+      dateKey,
+      runs,
+    }));
+  }, [filteredRuns]);
+
+  const totalLogsPages = Math.max(1, runsByDay.length);
+  const currentLogsPage = Math.min(logsPage, totalLogsPages);
+  const currentDayGroup = runsByDay[currentLogsPage - 1] || null;
+  const pagedRuns = currentDayGroup ? currentDayGroup.runs : [];
+
+  const handleJobFilterChange = (event) => {
+    setJobFilter(event.target.value);
+    setLogsPage(1);
+  };
+
+  const handleStatusFilterChange = (event) => {
+    setStatusFilter(event.target.value);
+    setLogsPage(1);
+  };
 
   const shopNames = useMemo(() => Object.fromEntries(
     shops.map((shop) => [String(shop.id), shop.name || shop.code || `Shop ${shop.id}`])
@@ -377,18 +434,28 @@ const ScheduleManagement = () => {
         <section className="section-card schedule-logs" role="tabpanel">
           {monitorRun ? <ScheduleRunMonitor initialRun={monitorRun} shops={shops} onBack={() => setMonitorRun(null)} /> : <>
           <header className="schedule-logs__toolbar">
-            <div><h2>{t('schedule.logsTitle')}</h2><span>{t('schedule.logsCount', { count: filteredRuns.length })}</span></div>
             <div className="schedule-logs__filters">
-              <label><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={(event) => setJobFilter(event.target.value)}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
-              <label><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
+              <label><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={handleJobFilterChange}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
+              <label><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={handleStatusFilterChange}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
               <button className="button button--ghost schedule-logs__refresh" type="button" disabled={refreshing} onClick={() => load(undefined, true)}><RefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" />{t('schedule.refresh')}</button>
             </div>
           </header>
+          {currentDayGroup ? (
+            <div className="schedule-logs__day-banner">
+              <div className="schedule-logs__day-title">
+                <Calendar aria-hidden="true" size={15} />
+                <strong>{formatDayHeading(currentDayGroup.dateKey, locale)}</strong>
+              </div>
+              <span className="schedule-logs__day-count">
+                {t('schedule.dayRunsCount', { count: pagedRuns.length }) || `${pagedRuns.length} lần chạy trong ngày`}
+              </span>
+            </div>
+          ) : null}
           <div className="table-wrap schedule-logs__table-wrap">
             <table className="data-table schedule-logs__table">
               <thead><tr><th>{t('schedule.startedAt')}</th><th>{t('schedule.job')}</th><th>{t('schedule.trigger')}</th><th>{t('schedule.status')}</th><th>{t('schedule.duration')}</th><th>{t('schedule.result')}</th><th>{t('schedule.error')}</th></tr></thead>
               <tbody>
-                {filteredRuns.map((run) => {
+                {pagedRuns.map((run) => {
                   const errorMessages = getRunErrorMessages(run, shopNames).map((message) => formatErrorDates(message));
                   const errorText = errorMessages.join('\n');
                   const errorExpanded = expandedErrorRuns.has(String(run.id));
@@ -439,6 +506,18 @@ const ScheduleManagement = () => {
               </tbody>
             </table>
           </div>
+          {totalLogsPages > 1 ? (
+            <div className="schedule-logs__pagination-wrap">
+              <Pagination
+                currentPage={currentLogsPage}
+                totalPages={totalLogsPages}
+                onPageChange={setLogsPage}
+                previousLabel={t('common.previous')}
+                nextLabel={t('common.next')}
+                ariaLabel={t('schedule.logsTitle')}
+              />
+            </div>
+          ) : null}
           </>}
         </section>
       ) : null}
