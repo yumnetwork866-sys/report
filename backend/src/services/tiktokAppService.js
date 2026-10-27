@@ -49,8 +49,7 @@ const refreshAppCache = async () => {
         secrets.push(decryptedSecret);
       }
 
-      const key = normalizeAppKey(data.app_type, data.region);
-      newCache.set(key, {
+      const entry = {
         id: data.id,
         name: data.name,
         appType: data.app_type,
@@ -61,7 +60,11 @@ const refreshAppCache = async () => {
         authorizeUrl: data.authorize_url || 'https://services.tiktokshop.com/open/authorize',
         redirectUri: data.redirect_uri || '',
         isActive: data.is_active,
-      });
+      };
+
+      const key = normalizeAppKey(data.app_type, data.region);
+      newCache.set(key, entry);
+      newCache.set(`id:${data.id}`, entry);
     }
 
     appCache = newCache;
@@ -74,11 +77,18 @@ const refreshAppCache = async () => {
   }
 };
 
-const getAppCredentials = (rawType = 'partner', rawRegion = '') => {
+const getAppCredentials = (rawType = 'partner', rawRegion = '', options = {}) => {
   if (!appCache) {
     // If cache not yet loaded, return null to fall back to .env
     return null;
   }
+  const explicitAppId = (typeof rawType === 'object' && rawType !== null ? rawType.appId : null)
+    || options?.appId;
+  if (explicitAppId) {
+    const byId = appCache.get(`id:${explicitAppId}`);
+    if (byId) return byId;
+  }
+
   const { appType, region } = mapLegacyAppType(rawType, rawRegion);
   const appTypes = appType === 'custom' ? ['custom', 'partner'] : [appType];
 

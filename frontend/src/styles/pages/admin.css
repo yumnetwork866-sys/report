@@ -1619,6 +1619,55 @@
 
 .schedule-card__heading p { display: -webkit-box; margin: 0; overflow: hidden; color: #687990; font-size: .73rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; }
 
+.schedule-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.schedule-app-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+}
+
+.schedule-app-tag--partner {
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
+}
+
+.schedule-app-tag--oms {
+  background: #faf5ff;
+  color: #7c3aed;
+  border: 1px solid #ddd6fe;
+}
+
+.schedule-app-tag--channel {
+  background: #fff7ed;
+  color: #ea580c;
+  border: 1px solid #fed7aa;
+}
+
+.schedule-app-tag--sm {
+  font-size: 0.64rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.schedule-log-job-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 
 .schedule-switch { display: inline-flex; align-items: center; gap: 7px; color: #53647c; font-size: .73rem; font-weight: 700; white-space: nowrap; }
 

@@ -69,8 +69,9 @@ const getConfig = () => ({
 const resolveAppCredentials = (appType = 'partner', config = getConfig(), options = {}) => {
   const actualAppType = typeof appType === 'object' && appType !== null ? (appType.appType || 'partner') : appType;
   const region = (typeof appType === 'object' && appType !== null ? appType.region : null) || options.region;
+  const appId = (typeof appType === 'object' && appType !== null ? appType.appId : null) || options.appId;
 
-  const dbCredentials = getAppCredentials(actualAppType, region);
+  const dbCredentials = getAppCredentials(actualAppType, region, { appId });
   if (dbCredentials && dbCredentials.appKey && dbCredentials.appSecret) {
     return {
       id: dbCredentials.id,
@@ -118,10 +119,11 @@ const resolveAppCredentials = (appType = 'partner', config = getConfig(), option
   };
 };
 
-const assertConfigured = (config, { oauth = false, appType = 'partner', region } = {}) => {
+const assertConfigured = (config, { oauth = false, appType = 'partner', region, appId } = {}) => {
   const actualAppType = typeof appType === 'object' && appType !== null ? (appType.appType || 'partner') : appType;
   const actualRegion = (typeof appType === 'object' && appType !== null ? appType.region : null) || region;
-  const dbCredentials = getAppCredentials(actualAppType, actualRegion);
+  const actualAppId = (typeof appType === 'object' && appType !== null ? appType.appId : null) || appId;
+  const dbCredentials = getAppCredentials(actualAppType, actualRegion, { appId: actualAppId });
   if (dbCredentials && dbCredentials.appKey && dbCredentials.appSecret) {
     return;
   }
@@ -311,11 +313,11 @@ const parseRetryAfterMs = (value, now = Date.now()) => {
 
 const requestShopApi = async ({
   path, accessToken, method = 'GET', query = {}, body, contentType = 'application/json', fetchImpl = fetch, signal,
-  appType = 'partner', region, appKey: explicitAppKey, appSecret: explicitAppSecret,
+  appType = 'partner', region, appId, appKey: explicitAppKey, appSecret: explicitAppSecret,
 }) => {
   const config = getConfig();
-  assertConfigured(config, { appType, region });
-  const credentials = resolveAppCredentials(appType, config, { region });
+  assertConfigured(config, { appType, region, appId });
+  const credentials = resolveAppCredentials(appType, config, { region, appId });
   const appKey = explicitAppKey || credentials.appKey;
   const appSecret = explicitAppSecret || credentials.appSecret;
   const signed = { ...query, app_key: appKey, timestamp: Math.floor(Date.now() / 1000) };
@@ -449,6 +451,7 @@ const sellerAffiliateRequest = async ({
     query: { shop_cipher: shopCipher, ...query },
     body,
     appType: authorization.app_type || 'partner',
+    appId: authorization.app_id || null,
   });
 };
 

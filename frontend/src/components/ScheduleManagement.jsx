@@ -33,6 +33,18 @@ const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
 const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
 const isActiveRun = (run) => ['PROCESSING', 'RETRY_PENDING'].includes(run?.status);
 
+const JOB_APP_TAGS = {
+  tiktok_affiliate_orders: { label: 'Partner + OMS', type: 'oms' },
+  tiktok_channel_metrics: { label: 'Channel', type: 'channel' },
+  tiktok_creator_performance: { label: 'Partner', type: 'partner' },
+  tiktok_shop_analytics: { label: 'Partner', type: 'partner' },
+  booking_video_performance: { label: 'Partner', type: 'partner' },
+  tiktok_shop_video_catalog: { label: 'Partner', type: 'partner' },
+  tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
+  tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
+  tiktok_booking_video_detail: { label: 'Partner', type: 'partner' },
+};
+
 const getRunDateKey = (dateValue) => {
   if (!dateValue) return '';
   const d = new Date(dateValue);
@@ -339,7 +351,14 @@ const ScheduleManagement = () => {
               <article className="section-card schedule-card schedule-card--compact" key={schedule.job_key}>
                 <header className="schedule-card__header">
                   <div className="schedule-card__heading">
-                    <h2>{t(`schedule.jobs.${schedule.job_key}.name`)}</h2>
+                    <div className="schedule-card__title-wrap">
+                      <h2>{t(`schedule.jobs.${schedule.job_key}.name`)}</h2>
+                      {JOB_APP_TAGS[schedule.job_key] ? (
+                        <span className={`schedule-app-tag schedule-app-tag--${JOB_APP_TAGS[schedule.job_key].type}`}>
+                          {JOB_APP_TAGS[schedule.job_key].label}
+                        </span>
+                      ) : null}
+                    </div>
                     {description ? <p>{description}</p> : null}
                   </div>
                   <label className="schedule-switch">
@@ -470,7 +489,14 @@ const ScheduleManagement = () => {
                         <span className="schedule-log-run-id">#{run.id}</span>
                       </td>
                       <td>
-                        <strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>
+                        <div className="schedule-log-job-title">
+                          <strong>{t(`schedule.jobs.${run.job_key}.name`)}</strong>
+                          {JOB_APP_TAGS[run.job_key] ? (
+                            <span className={`schedule-app-tag schedule-app-tag--${JOB_APP_TAGS[run.job_key].type} schedule-app-tag--sm`}>
+                              {JOB_APP_TAGS[run.job_key].label}
+                            </span>
+                          ) : null}
+                        </div>
                         {run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}
                       </td>
                       <td>{triggerLabel(run.trigger_type)}</td>
