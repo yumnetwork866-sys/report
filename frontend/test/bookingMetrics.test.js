@@ -22,11 +22,29 @@ import {
   currentBookingMonth,
   groupBookingRowsByCreator,
   mergeBookingProductBreakdowns,
+  bookingProductVideoSummary,
   bookingPerformanceSortValue,
   bookingVideoLinkCountForBookings,
   uniqueBookingVideosForBookings,
   bookingVideoOrderMetrics,
 } from '../src/lib/bookingMetrics.js';
+
+test('bookingProductVideoSummary deduplicates attributed video views across bookings', () => {
+  const summary = bookingProductVideoSummary([
+    {
+      affiliate_video_ids: ['video-1', 'video-2'],
+      affiliate_video_views: [{ id: 'video-1', views: 100 }, { id: 'video-2', views: 200 }],
+    },
+    {
+      affiliate_video_ids: ['video-1', 'video-3'],
+      affiliate_video_views: [{ id: 'video-1', views: 120 }, { id: 'video-3', views: 300 }],
+    },
+  ]);
+
+  assert.equal(summary.videoCount, 3);
+  assert.equal(summary.views, 620);
+  assert.deepEqual(summary.videoIds, ['video-1', 'video-2', 'video-3']);
+});
 
 test('countPaidBookingKocs only counts unique KOCs with positive cost in the selected period', () => {
   const bookings = [

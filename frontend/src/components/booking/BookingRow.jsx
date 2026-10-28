@@ -84,7 +84,7 @@ const BookingRow = memo(({
         </td>
         <td className="booking-creator-performance-column">{renderPerformance(performance)}</td>
         <td className="cell-number booking-views-column">
-          {creatorMetric(videoData?.performance || performance, 'views')}
+          {creatorMetric(bookingTab === 'product' ? performance : (videoData?.performance || performance), 'views')}
         </td>
         <td className="cell-number booking-total-cost-column">
           {showBookingCost ? (

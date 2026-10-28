@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import BookingRow from './BookingRow';
 import { HeaderTooltip, SortIcon } from './BookingIcons';
 import {
+  bookingProductVideoSummary,
   bookingProductsOf,
   bookingVideoPerformanceForVideos,
   finiteNumber,
@@ -22,6 +23,8 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     affiliate_orders: 0,
     affiliate_videos: 0,
     affiliate_video_ids: [],
+    affiliate_video_views: [],
+    views: 0,
     items_sold: 0,
     items_refunded: 0,
     refunded_gmv: 0,
@@ -29,7 +32,6 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     breakdown: mergeBookingProductBreakdowns(performances),
   };
   let hasCommission = false;
-  const videoIds = new Set();
   for (const performance of performances) {
     result.has_products = result.has_products || Boolean(performance.has_products);
     result.affiliate_gmv += convertAmount(performance.affiliate_gmv, performance.currency)
@@ -37,7 +39,6 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
     result.refunded_gmv += convertAmount(performance.refunded_gmv, performance.currency)
       ?? finiteNumber(performance.refunded_gmv);
     result.affiliate_orders += finiteNumber(performance.affiliate_orders);
-    for (const videoId of performance.affiliate_video_ids || []) videoIds.add(String(videoId));
     result.items_sold += finiteNumber(performance.items_sold);
     result.items_refunded += finiteNumber(performance.items_refunded);
     if (performance.estimated_commission !== null && performance.estimated_commission !== undefined) {
@@ -46,8 +47,11 @@ const aggregateProductPerformance = (bookingRecords, productPerformanceByBooking
       hasCommission = true;
     }
   }
-  result.affiliate_video_ids = [...videoIds].filter(Boolean);
-  result.affiliate_videos = result.affiliate_video_ids.length;
+  const videoSummary = bookingProductVideoSummary(performances);
+  result.affiliate_video_ids = videoSummary.videoIds;
+  result.affiliate_video_views = videoSummary.videos;
+  result.affiliate_videos = videoSummary.videoCount;
+  result.views = videoSummary.views;
   if (!hasCommission) result.estimated_commission = null;
   return result;
 };

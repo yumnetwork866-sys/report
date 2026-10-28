@@ -361,6 +361,8 @@ const loadOrderMetricsForBookingProducts = async ({
       affiliate_orders: 0,
       affiliate_videos: 0,
       affiliate_video_ids: [],
+      affiliate_video_views: [],
+      views: 0,
       items_sold: 0,
       items_refunded: 0,
       refunded_gmv: 0,
@@ -427,9 +429,20 @@ const loadOrderMetricsForBookingProducts = async ({
         s.refunded_quantity,
         COALESCE(s.price, 0) AS price,
         s.raw_data,
-        o.create_time
+        o.create_time,
+        COALESCE(video_snapshot.views, 0)::bigint AS video_views
       FROM tiktok_affiliate_order_skus s
       JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
+      LEFT JOIN shop_videos catalog_video
+        ON catalog_video.shop_id = s.shop_id
+       AND catalog_video.platform_video_id = s.content_id
+      LEFT JOIN LATERAL (
+        SELECT snapshot.views
+        FROM shop_video_performance_snapshots snapshot
+        WHERE snapshot.shop_video_id = catalog_video.id
+        ORDER BY snapshot.snapshot_date DESC, snapshot.synced_at DESC, snapshot.id DESC
+        LIMIT 1
+      ) video_snapshot ON TRUE
       WHERE s.shop_id IN (:shopIds)
         AND s.product_id IN (:productIds)
         ${dateWhere}
@@ -461,6 +474,7 @@ const loadOrderMetricsForBookingProducts = async ({
 
       const orderIds = new Set();
       const videoIds = new Set();
+      const videoViews = new Map();
       let affiliateGmv = 0;
       let refundedGmv = 0;
       let itemsSold = 0;
@@ -518,7 +532,13 @@ const loadOrderMetricsForBookingProducts = async ({
         estimatedCommission += price * (quantity - refundedQuantity) * commRate;
 
         if (row.order_id) orderIds.add(String(row.order_id));
-        if (contentId && (!contentType || contentType.includes('VIDEO'))) videoIds.add(contentId);
+        if (contentId && (!contentType || contentType.includes('VIDEO'))) {
+          videoIds.add(contentId);
+          videoViews.set(contentId, Math.max(
+            videoViews.get(contentId) || 0,
+            Math.max(0, Number(row.video_views) || 0),
+          ));
+        }
 
         const breakdownItem = productBreakdown.get(productId);
         if (breakdownItem) {
@@ -534,6 +554,10 @@ const loadOrderMetricsForBookingProducts = async ({
         ...item,
         orderCount: pOrderIds.size,
       })).sort((a, b) => b.orderCount - a.orderCount || b.quantity - a.quantity || a.name.localeCompare(b.name));
+      const affiliateVideoViews = [...videoIds].map((id) => ({
+        id,
+        views: videoViews.get(id) || 0,
+      }));
 
       result.set(bId, {
         source: 'AFFILIATE_ORDERS',
@@ -543,6 +567,8 @@ const loadOrderMetricsForBookingProducts = async ({
         affiliate_orders: orderIds.size,
         affiliate_videos: videoIds.size,
         affiliate_video_ids: [...videoIds],
+        affiliate_video_views: affiliateVideoViews,
+        views: affiliateVideoViews.reduce((sum, video) => sum + video.views, 0),
         items_sold: itemsSold,
         items_refunded: itemsRefunded,
         refunded_gmv: Math.round(refundedGmv * 100) / 100,

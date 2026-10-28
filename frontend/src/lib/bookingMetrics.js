@@ -238,6 +238,30 @@ export const mergeBookingProductBreakdowns = (performances = []) => {
   return [...products.values()];
 };
 
+export const bookingProductVideoSummary = (performances = []) => {
+  const viewsByVideoId = new Map();
+  for (const performance of Array.isArray(performances) ? performances : []) {
+    const detailedViews = new Map((Array.isArray(performance?.affiliate_video_views)
+      ? performance.affiliate_video_views
+      : []).map((video) => [String(video?.id || '').trim(), finiteNumber(video?.views)]));
+    for (const rawVideoId of performance?.affiliate_video_ids || []) {
+      const videoId = String(rawVideoId || '').trim();
+      if (!videoId) continue;
+      viewsByVideoId.set(videoId, Math.max(
+        viewsByVideoId.get(videoId) || 0,
+        detailedViews.get(videoId) || 0,
+      ));
+    }
+  }
+  const videos = [...viewsByVideoId].map(([id, views]) => ({ id, views }));
+  return {
+    videos,
+    videoIds: videos.map((video) => video.id),
+    videoCount: videos.length,
+    views: videos.reduce((sum, video) => sum + video.views, 0),
+  };
+};
+
 export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => new Set(
   (Array.isArray(bookings) ? bookings : [])
     .filter((booking) => (

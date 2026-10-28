@@ -18,7 +18,7 @@ test('booking product performance limits order SKUs to hashtag-matched video IDs
     {
       shop_id: 10, product_id: 'prod-1', creator_username: 'koc_test', order_id: 'order-match',
       content_id: 'video-match', content_type: 'VIDEO', currency: 'MYR', quantity: 2,
-      refunded_quantity: 0, price: 50, raw_data: { creator_commission_rate: 10 },
+      refunded_quantity: 0, price: 50, video_views: 1234, raw_data: { creator_commission_rate: 10 },
     },
     {
       shop_id: 10, product_id: 'prod-1', creator_username: 'koc_test', order_id: 'order-other',
@@ -47,6 +47,8 @@ test('booking product performance limits order SKUs to hashtag-matched video IDs
   assert.equal(result.affiliate_orders, 1);
   assert.equal(result.affiliate_videos, 1);
   assert.deepEqual(result.affiliate_video_ids, ['video-match']);
+  assert.deepEqual(result.affiliate_video_views, [{ id: 'video-match', views: 1234 }]);
+  assert.equal(result.views, 1234);
   assert.equal(result.items_sold, 2);
   assert.equal(result.affiliate_gmv, 100);
   assert.equal(result.estimated_commission, 10);
