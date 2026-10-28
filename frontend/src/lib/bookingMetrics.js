@@ -174,9 +174,17 @@ export const bookingVideoLinkCountForBookings = (bookings = [], videoPerformance
 
 export const bookingProductsOf = (booking) => {
   const snapshot = snapshotOf(booking);
-  const products = Array.isArray(snapshot.products) ? snapshot.products : [];
+  const products = [
+    ...(Array.isArray(snapshot?.products) ? snapshot.products : []),
+    ...(Array.isArray(booking?.products) ? booking.products : []),
+    ...(Array.isArray(booking?.selected_products) ? booking.selected_products : []),
+  ];
   const byId = new Map(products.map((product) => [String(product.id || product.product_id), product]));
-  for (const value of Array.isArray(snapshot.product_ids) ? snapshot.product_ids : []) {
+  const productIds = [
+    ...(Array.isArray(snapshot?.product_ids) ? snapshot.product_ids : []),
+    ...(Array.isArray(booking?.product_ids) ? booking.product_ids : []),
+  ];
+  for (const value of productIds) {
     const id = String(value || '').trim();
     if (id && !byId.has(id)) byId.set(id, { id, name: id, image_url: null });
   }
@@ -350,10 +358,11 @@ export const editableCurrencyAmount = (value, currency) => {
   return String(currency === 'VND' ? Math.round(amount) : Math.round(amount * 100) / 100);
 };
 
-export const bookingProductOrderPerformance = (booking, orders = [], periodRange = null) => {
+export const bookingProductOrderPerformance = (booking, orders = [], periodRange = null, options = {}) => {
   const selectedProducts = bookingProductsOf(booking);
   const selectedIds = new Set(selectedProducts.map((product) => String(product.id || product.product_id)));
   const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+  const bypassProductMatch = Boolean(options?.bypassProductMatch);
   const orderIds = new Set();
   const videoIds = new Set();
   let affiliateGmv = 0;
@@ -381,7 +390,7 @@ export const bookingProductOrderPerformance = (booking, orders = [], periodRange
     for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
       const productId = String(sku?.product_id || '').trim();
       const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
-      if (!selectedIds.has(productId) || (creatorUsername && skuCreator !== creatorUsername)) continue;
+      if ((!bypassProductMatch && !selectedIds.has(productId)) || (creatorUsername && skuCreator !== creatorUsername)) continue;
       const quantity = Math.max(0, finiteNumber(sku?.quantity));
       const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity)));
       const price = Math.max(0, finiteNumber(sku?.price?.amount ?? sku?.price_amount));
@@ -468,18 +477,65 @@ const normalizedHashtag = (value) => {
   return tag ? `#${tag}` : '';
 };
 
+export const fullTitleOfVideo = (video, snapshot = null) => {
+  const videoId = String(video?.platform_video_id || video?.id || '').trim();
+  const raw = snapshot?.raw_metrics || video?.raw_metrics || {};
+  const list = raw?.video?.list || raw?.list || raw?.video || raw;
+  const candidates = [
+    video?.title,
+    video?.caption,
+    video?.description,
+    snapshot?.title,
+    raw?.title,
+    list?.title,
+    video?.raw_data?.title,
+    video?.raw_data?.item_title,
+    video?.raw_data?.caption,
+  ]
+    .map((text) => String(text || '').trim())
+    .filter((text) => text && text !== videoId);
+
+  if (candidates.length) return candidates[0];
+  return video?.title || videoId || 'TikTok Video';
+};
+
+export const extractVideoHashtags = (video, fullTitle = '') => {
+  const raw = latestBookingVideoSnapshot(video)?.raw_metrics || {};
+  const list = raw?.video?.list || raw?.list || raw?.video || raw;
+  const text = [
+    fullTitle,
+    video?.title,
+    video?.caption,
+    video?.description,
+    video?.raw_data?.title,
+    video?.raw_data?.item_title,
+    video?.raw_data?.caption,
+    raw?.title,
+    list?.title,
+  ].filter(Boolean).join(' ');
+
+  const matches = (text.match(/#[^\s#]+/g) || []).map((t) => t.replace(/[.,;:!?]+$/, ''));
+  const seen = new Set();
+  const result = [];
+  for (const tag of matches) {
+    const clean = tag.trim();
+    const lower = clean.toLowerCase();
+    if (clean && !seen.has(lower)) {
+      seen.add(lower);
+      result.push(clean.startsWith('#') ? clean : `#${clean}`);
+    }
+  }
+  return result;
+};
+
 export const bookingVideoHashtags = (video) => {
   const raw = latestBookingVideoSnapshot(video)?.raw_metrics || {};
   const list = raw?.video?.list || raw?.list || raw?.video || raw;
   const provided = [
     video?.hashtags,
-    video?.hash_tags,
     video?.raw_data?.hashtags,
-    video?.raw_data?.hash_tags,
     raw?.hashtags,
-    raw?.hash_tags,
     list?.hashtags,
-    list?.hash_tags,
   ].flatMap((value) => Array.isArray(value) ? value : (value ? [value] : []));
   const text = [
     video?.title,
@@ -507,16 +563,61 @@ export const bookingVideoMatchesHashtags = (video, configuredHashtags = []) => {
     .map(normalizedHashtag)
     .filter(Boolean));
   if (!configured.size) return false;
-  return bookingVideoHashtags(video).some((hashtag) => configured.has(hashtag));
+  const videoTags = bookingVideoHashtags(video);
+  return videoTags.some((tag) => {
+    if (configured.has(tag)) return true;
+    const cleanTag = tag.replace(/^#+/, '');
+    for (const conf of configured) {
+      const cleanConf = conf.replace(/^#+/, '');
+      if (cleanConf && cleanTag.endsWith(cleanConf)) return true;
+    }
+    return false;
+  });
 };
 
-export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
+export const videoProductIdsOf = (video) => {
+  const latest = latestBookingVideoSnapshot(video);
+  const raw = latest?.raw_metrics || {};
+  const list = raw?.video?.list || raw?.list || raw?.video || raw;
+  const listProducts = Array.isArray(list?.products) ? list.products : [];
+  const rawProducts = Array.isArray(raw?.products) ? raw.products : [];
+  const videoProducts = Array.isArray(video?.products) ? video.products : [];
+  const rawDataProducts = Array.isArray(video?.raw_data?.products) ? video.raw_data.products : [];
+
+  const ids = [
+    ...(Array.isArray(video?.attributed_product_ids) ? video.attributed_product_ids : []),
+    ...(Array.isArray(raw?.selected_product_ids) ? raw.selected_product_ids : []),
+    ...(Array.isArray(raw?.order_metrics?.product_ids) ? raw.order_metrics.product_ids : []),
+    ...listProducts.map((p) => p?.id || p?.product_id),
+    ...rawProducts.map((p) => p?.id || p?.product_id),
+    ...videoProducts.map((p) => p?.id || p?.product_id),
+    ...rawDataProducts.map((p) => p?.id || p?.product_id),
+    video?.product_id,
+    raw?.product_id,
+  ].map((val) => String(val || '').trim()).filter(Boolean);
+  return new Set(ids);
+};
+
+export const bookingVideoMatchesProducts = (video, booking) => {
+  const selectedProducts = bookingProductsOf(booking);
+  if (!selectedProducts.length) return true;
+  const selectedIds = new Set(selectedProducts.map((p) => String(p.id || p.product_id)));
+  const videoProductIds = videoProductIdsOf(video);
+  if (!videoProductIds.size) return true;
+  for (const id of videoProductIds) {
+    if (selectedIds.has(id)) return true;
+  }
+  return false;
+};
+
+export const bookingVideoOrderMetrics = (video, booking, orders = [], options = {}) => {
   const normVideoId = String(video?.platform_video_id || '').trim();
   const normCreator = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
   const selectedProductIds = new Set((Array.isArray(video?.attributed_product_ids) ? video.attributed_product_ids : [])
     .map((value) => String(value || '').trim())
     .filter(Boolean));
   if (!normVideoId || !Array.isArray(orders) || !orders.length) return null;
+  const bypassProductMatch = Boolean(options?.bypassProductMatch);
 
   let gmv = 0;
   let itemsSold = 0;
@@ -533,7 +634,7 @@ export const bookingVideoOrderMetrics = (video, booking, orders = []) => {
     for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
       if (String(sku?.content_id || '').trim() !== normVideoId) continue;
       const productId = String(sku?.product_id || '').trim();
-      if (selectedProductIds.size && !selectedProductIds.has(productId)) continue;
+      if (!bypassProductMatch && selectedProductIds.size && !selectedProductIds.has(productId)) continue;
       const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
       if (normCreator && skuCreator && skuCreator !== normCreator) continue;
 
@@ -593,7 +694,7 @@ export const filterVideosByPeriod = (videos = [], periodRange = null) => {
   });
 };
 
-export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = null, shopOrders = []) => {
+export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = null, shopOrders = [], options = {}) => {
   if (!videos.length) {
     return {
       gross_gmv: 0,
@@ -626,7 +727,7 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
 
   for (const video of videos) {
     const latest = latestBookingVideoSnapshot(video);
-    const live = bookingVideoOrderMetrics(video, null, shopOrders);
+    const live = bookingVideoOrderMetrics(video, null, shopOrders, options);
     const videoGmv = live ? live.grossGmv : finiteNumber(latest?.gross_gmv ?? video?.gross_gmv ?? video?.gmv);
     const videoOrders = live ? live.orderCount : finiteNumber(latest?.orders ?? video?.orders);
     const videoItems = live ? live.itemsSold : finiteNumber(latest?.items_sold ?? video?.items_sold);

@@ -9,7 +9,10 @@ import {
   bookingProductOrderPerformance,
   bookingVideoHashtags,
   bookingVideoMatchesHashtags,
+  bookingVideoMatchesProducts,
   bookingVideoSocialMetrics,
+  extractVideoHashtags,
+  fullTitleOfVideo,
   filterVideosByPeriod,
   bookingVideoPerformanceForVideos,
   countPaidBookingKocs,
@@ -463,4 +466,113 @@ test('booking video social metrics distinguish unavailable data from real zeroes
   assert.equal(available.comments, 2);
   assert.equal(available.shares, 1);
   assert.equal(available.available, true);
+});
+
+test('bookingVideoMatchesProducts checks product intersection correctly', () => {
+  const booking = {
+    selected_products: [{ id: 'prod_follicas' }],
+  };
+  const matchingVideo = {
+    attributed_product_ids: ['prod_follicas'],
+  };
+  const mismatchingVideo = {
+    attributed_product_ids: ['prod_actiscar'],
+  };
+  const emptyBooking = {
+    selected_products: [],
+  };
+
+  assert.equal(bookingVideoMatchesProducts(matchingVideo, booking), true);
+  assert.equal(bookingVideoMatchesProducts(mismatchingVideo, booking), false);
+  assert.equal(bookingVideoMatchesProducts(mismatchingVideo, emptyBooking), true);
+});
+
+test('bookingVideoMatchesHashtags matches exact and attached hashtags from video text only', () => {
+  const videoDrHanif = {
+    title: 'Review parut #parutvh #kulit',
+    raw_metrics: {
+      hash_tags: ['wrong_tag'], // polluted TikTok API array should be ignored
+    },
+  };
+  const videoZahra = {
+    title: '#FollicasMalaysia #folliculitis #Follicas #mq',
+    raw_metrics: {
+      hash_tags: ['vh'], // polluted TikTok API array with vh should be ignored
+    },
+  };
+  const videoAiMoy = {
+    title: '#actiscar #keloid #keloidscar #scar',
+  };
+
+  assert.equal(bookingVideoMatchesHashtags(videoDrHanif, ['#vh']), true);
+  assert.equal(bookingVideoMatchesHashtags(videoZahra, ['#mq']), true);
+  assert.equal(bookingVideoMatchesHashtags(videoZahra, ['#vh']), false);
+  assert.equal(bookingVideoMatchesHashtags(videoAiMoy, ['#vh']), false);
+});
+
+test('bookingVideoOrderMetrics respects bypassProductMatch option', () => {
+  const video = {
+    platform_video_id: 'video-123',
+    attributed_product_ids: ['prod_follicas'],
+  };
+  const orders = [
+    {
+      order_id: 'order-1',
+      skus: [
+        {
+          content_id: 'video-123',
+          product_id: 'prod_actiscar', // not in attributed_product_ids
+          price: 100,
+          quantity: 1,
+        },
+      ],
+    },
+  ];
+
+  const standard = bookingVideoOrderMetrics(video, null, orders, { bypassProductMatch: false });
+  assert.equal(standard, null);
+
+  const bypassed = bookingVideoOrderMetrics(video, null, orders, { bypassProductMatch: true });
+  assert.ok(bypassed);
+  assert.equal(bypassed.orderCount, 1);
+  assert.equal(bypassed.grossGmv, 100);
+});
+
+test('fullTitleOfVideo resolves title from video or snapshot candidates and avoids video ID placeholder', () => {
+  const videoWithTitle = {
+    platform_video_id: '7696334556693073170',
+    title: '#FollicasMalaysia #folliculitis #Follicas #mq',
+  };
+  assert.equal(fullTitleOfVideo(videoWithTitle), '#FollicasMalaysia #folliculitis #Follicas #mq');
+
+  const videoWithIdTitle = {
+    platform_video_id: '7696334556693073170',
+    title: '7696334556693073170',
+    caption: 'Full caption text from TikTok #vh',
+  };
+  assert.equal(fullTitleOfVideo(videoWithIdTitle), 'Full caption text from TikTok #vh');
+
+  const videoOnlyId = {
+    platform_video_id: '7696334556693073170',
+  };
+  assert.equal(fullTitleOfVideo(videoOnlyId), '7696334556693073170');
+});
+
+test('extractVideoHashtags extracts hashtags with casing and cleans trailing punctuation', () => {
+  const video = {
+    title: 'Ada parut dưới 6 tháng thử ngay combo này #ActiscarMalaysia, #parut! #pth.',
+  };
+  const tags = extractVideoHashtags(video, video.title);
+  assert.deepEqual(tags, ['#ActiscarMalaysia', '#parut', '#pth']);
+
+  const videoZahra = {
+    title: '#FollicasMalaysia #folliculitis #Follicas #mq',
+  };
+  const tagsZahra = extractVideoHashtags(videoZahra, videoZahra.title);
+  assert.deepEqual(tagsZahra, ['#FollicasMalaysia', '#folliculitis', '#Follicas', '#mq']);
+
+  const noTags = {
+    title: 'Review kem trị sẹo hiệu quả',
+  };
+  assert.deepEqual(extractVideoHashtags(noTags, noTags.title), []);
 });

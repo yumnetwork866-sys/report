@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
-import { ChevronLeft, Eye } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import TargetKocAvatar from './TargetKocAvatar';
-import BookingVideoThumbnail from '../BookingVideoThumbnail';
+import BookingVideoTitle from './BookingVideoTitle';
 import BookingVideoProducts from './BookingVideoProducts';
 import BookingProductOrderExpansion from './BookingProductOrderExpansion';
 import { computeBookingTimeline } from '../../lib/bookingTimeline';
@@ -166,33 +166,16 @@ const BookingRow = memo(({
                       return (
                         <article className="booking-video-expansion__item" key={video.id || video.platform_video_id}>
                           <div className="booking-video-expansion__identity">
-                            <div className="booking-video-expansion__title">
-                              <BookingVideoThumbnail
-                                shopId={booking.target_shop_id}
-                                video={video}
-                                snapshot={latest}
-                                index={videoIndex}
-                                username={video.creator_username || booking.creator_username}
-                                shared={Boolean(video.is_shared_booking_video || Number(video.shared_booking_count) > 1)}
-                              />
-                              <div>
-                                {video.video_url ? (
-                                  <a href={video.video_url} target="_blank" rel="noreferrer">
-                                    <strong>{video.title || video.platform_video_id}</strong>
-                                    <span aria-hidden="true"> ↗</span>
-                                  </a>
-                                ) : (
-                                  <strong>{video.title || video.platform_video_id}</strong>
-                                )}
-                                <small>{formatDateOnly(video.posted_at, '—')}</small>
-                                <div className="video-engagement video-engagement--inline booking-video-expansion__stats-line">
-                                  <span title={t('videoLibrary.views', 'Lượt xem')} aria-label={`${t('videoLibrary.views', 'Lượt xem')}: ${formatNumber(displayViews ?? 0)}`}>
-                                    <Eye size={13} strokeWidth={1.8} aria-hidden="true" />
-                                    {formatNumber(displayViews ?? 0)}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+                            <BookingVideoTitle
+                              video={video}
+                              snapshot={latest}
+                              booking={booking}
+                              videoIndex={videoIndex}
+                              displayViews={displayViews}
+                              t={t}
+                              formatNumber={formatNumber}
+                              formatDateOnly={formatDateOnly}
+                            />
                           </div>
                           {latest || liveMetrics ? (
                             <div className="booking-video-expansion__metrics">

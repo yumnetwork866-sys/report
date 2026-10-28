@@ -6,6 +6,7 @@ const {
   applyBookingProductPerformance,
   loadOrderMetricsForBookingProducts,
   normalizeBookingProducts,
+  videoMatchesStaffHashtags,
   __test: {
     affiliateCandidateFromSnapshot, exportDurationDays, matchesBookingDateRange, matchesBookingProducts, metricOfAffiliateSnapshot,
     normalizeCachedVideoCandidate, productIdsOfVideo, attributedProductIdsForBooking,
@@ -533,4 +534,54 @@ test('applyBookingProductPerformance sets default product_performance when no db
   assert.equal(result[0].product_performance.breakdown.length, 1);
   assert.equal(result[0].product_performance.breakdown[0].id, 'p-1');
   assert.equal(result[1].product_performance.has_products, false);
+});
+
+test('videoMatchesStaffHashtags matches exact and suffix hashtags correctly', () => {
+  assert.equal(videoMatchesStaffHashtags('Review kem parut #parutvh', ['#vh']), true);
+  assert.equal(videoMatchesStaffHashtags('kem parut #vh', ['#vh']), true);
+  assert.equal(videoMatchesStaffHashtags('#FollicasMalaysia #folliculitis #Follicas #mq', ['#mq']), true);
+  assert.equal(videoMatchesStaffHashtags('#FollicasMalaysia #folliculitis #Follicas #mq', ['#vh']), false);
+  assert.equal(videoMatchesStaffHashtags('#actiscar #keloid #keloidscar #scar', ['#vh']), false);
+  assert.equal(videoMatchesStaffHashtags('#parut', ['#vh']), false);
+});
+
+test('loadOrderMetricsForBookingProducts bypasses product filter when hashtag video filter is active', async () => {
+  const rows = [
+    {
+      shop_id: 10,
+      product_id: 'prod-actiscar', // different from booking's configured product prod-follicas
+      product_name: 'Actiscar Cream',
+      creator_username: 'zahra.shop89',
+      order_id: 'order-1',
+      content_id: 'video-mq-1',
+      content_type: 'VIDEO',
+      currency: 'MYR',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 150,
+      video_views: 500,
+      raw_data: { creator_commission_rate: 10 },
+    },
+  ];
+
+  const performance = await loadOrderMetricsForBookingProducts({
+    bookings: [{
+      id: 362,
+      target_shop_id: 10,
+      creator_username: 'zahra.shop89',
+      currency: 'MYR',
+      evaluation_snapshot: { products: [{ id: 'prod-follicas', name: 'Follicas' }] },
+    }],
+    videoIdsByBooking: { 362: ['video-mq-1'] },
+    database: { query: async () => rows },
+  });
+
+  const result = performance.get('362');
+  assert.equal(result.affiliate_orders, 1);
+  assert.equal(result.affiliate_gmv, 150);
+  assert.equal(result.breakdown.length, 2);
+  const actiscarBreakdown = result.breakdown.find((b) => b.id === 'prod-actiscar');
+  assert.ok(actiscarBreakdown);
+  assert.equal(actiscarBreakdown.orderCount, 1);
+  assert.equal(actiscarBreakdown.quantity, 1);
 });

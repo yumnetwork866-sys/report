@@ -439,10 +439,27 @@ const BookingManagement = ({
       String(user.id),
       Array.isArray(user.content_attribution?.hashtags) ? user.content_attribution.hashtags : [],
     ]));
+    const creatorVideoPool = new Map();
+    for (const booking of bookings) {
+      const shopId = String(booking.target_shop_id || booking.target_shop?.id || 'no-shop');
+      const creator = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+      if (!creator) continue;
+      const key = `${shopId}:${creator}`;
+      if (!creatorVideoPool.has(key)) creatorVideoPool.set(key, new Map());
+      const pool = creatorVideoPool.get(key);
+      for (const video of bookingVideosOf(booking)) {
+        const vId = String(video.platform_video_id || video.id || '').trim();
+        if (vId && !pool.has(vId)) pool.set(vId, video);
+      }
+    }
     const videoIdsByBooking = Object.fromEntries(bookings.map((booking) => {
+      const shopId = String(booking.target_shop_id || booking.target_shop?.id || 'no-shop');
+      const creator = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+      const pooledMap = creator ? creatorVideoPool.get(`${shopId}:${creator}`) : null;
+      const candidateVideos = pooledMap ? [...pooledMap.values()] : bookingVideosOf(booking);
       const staffId = String(booking.staff_id || booking.staff?.id || '');
       const configuredHashtags = hashtagsByUserId.get(staffId) || [];
-      const matchingVideoIds = bookingVideosOf(booking)
+      const matchingVideoIds = candidateVideos
         .filter((video) => bookingVideoMatchesHashtags(video, configuredHashtags))
         .map((video) => String(video.platform_video_id || video.id || '').trim())
         .filter(Boolean);

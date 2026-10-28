@@ -10,6 +10,7 @@ const {
   TikTokShop,
   TikTokVideoDetailSnapshot,
   TikTokVideoPerformanceSnapshot,
+  UserContentAttribution,
 } = require('../models');
 
 const dateOnly = (value = new Date()) => new Date(value).toISOString().slice(0, 10);
@@ -87,6 +88,20 @@ const matchesBookingProducts = (booking, video) => {
   const selectedIds = selectedProductIdsOfBooking(booking);
   if (!selectedIds.size) return true;
   return [...selectedIds].some((id) => videoIds.has(id));
+};
+const extractHashtagsFromText = (text) => {
+  const matches = String(text || '').match(/#[^\s#]+/g) || [];
+  return [...new Set(matches.map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, '')).filter(Boolean))];
+};
+const videoMatchesStaffHashtags = (title, configuredHashtags = []) => {
+  const configured = (Array.isArray(configuredHashtags) ? configuredHashtags : [configuredHashtags])
+    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
+    .filter(Boolean);
+  if (!configured.length) return false;
+  const videoTags = extractHashtagsFromText(title);
+  return videoTags.some((tag) => (
+    configured.includes(tag) || configured.some((conf) => conf && tag.endsWith(conf))
+  ));
 };
 const matchesBookingDateRange = (booking, video, now = new Date()) => {
   if (!video) return false;
@@ -389,10 +404,16 @@ const loadOrderMetricsForBookingProducts = async ({
     return result;
   }
 
+  const allFilteredVideoIds = videoIdsByBooking
+    ? [...new Set(Object.values(videoIdsByBooking).flatMap((ids) => ids || []).map(String).filter(Boolean))]
+    : [];
+  const hasGlobalVideoFilter = allFilteredVideoIds.length > 0;
+
   const dateClauses = [];
   const replacements = {
     shopIds,
     productIds: allProductIds,
+    ...(hasGlobalVideoFilter ? { filteredVideoIds: allFilteredVideoIds } : {}),
   };
 
   if (startTime) {
@@ -444,7 +465,7 @@ const loadOrderMetricsForBookingProducts = async ({
         LIMIT 1
       ) video_snapshot ON TRUE
       WHERE s.shop_id IN (:shopIds)
-        AND s.product_id IN (:productIds)
+        ${hasGlobalVideoFilter ? 'AND (s.product_id IN (:productIds) OR s.content_id IN (:filteredVideoIds))' : 'AND s.product_id IN (:productIds)'}
         ${dateWhere}
     `, {
       replacements,
@@ -496,7 +517,7 @@ const loadOrderMetricsForBookingProducts = async ({
       for (const [rowIndex, row] of (rows || []).entries()) {
         if (Number(row.shop_id) !== bookingShopId) continue;
         const productId = String(row.product_id || '').trim();
-        if (!selectedIds.has(productId)) continue;
+        if (!hasVideoFilter && !selectedIds.has(productId)) continue;
         const rowCreator = String(row.creator_username || '').trim();
         if (creatorUsername && rowCreator !== creatorUsername) continue;
         const bookingDate = dateOnly(booking?.start_date || booking?.booking_date || booking?.created_at);
@@ -540,7 +561,17 @@ const loadOrderMetricsForBookingProducts = async ({
           ));
         }
 
-        const breakdownItem = productBreakdown.get(productId);
+        let breakdownItem = productBreakdown.get(productId);
+        if (!breakdownItem && hasVideoFilter) {
+          breakdownItem = {
+            id: productId,
+            name: row.product_name || productId,
+            thumbnailUrl: null,
+            orderIds: new Set(),
+            quantity: 0,
+          };
+          productBreakdown.set(productId, breakdownItem);
+        }
         if (breakdownItem) {
           if (row.product_name && breakdownItem.name === breakdownItem.id) {
             breakdownItem.name = row.product_name;
@@ -934,6 +965,13 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
   const username = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
   if (!username || !booking.target_shop_id) return { status: 'missing_identity' };
 
+  const userAttribution = booking.staff_id && UserContentAttribution
+    ? await UserContentAttribution.findOne({ where: { user_id: booking.staff_id } })
+    : null;
+  const staffHashtags = (Array.isArray(userAttribution?.hashtags) ? userAttribution.hashtags : [])
+    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
+    .filter(Boolean);
+
   const peerBookings = suppliedPeerBookings || await Booking.findAll({
     where: {
       target_shop_id: booking.target_shop_id,
@@ -971,7 +1009,14 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
       const catalogCandidates = cachedVideos.map((video) => {
         const videoData = orderMetricsMap.get(`${booking.target_shop_id}:${video.platform_video_id}`);
         const unscoped = normalizeCachedVideoCandidate(video, resolveOrderMetricsForVideo(videoData, new Set()));
-        const attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+        let attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+        const hasMatchingHashtag = videoMatchesStaffHashtags(video.title, staffHashtags);
+        if (!attributedProductIds.size && hasMatchingHashtag && matchesBookingDateRange(booking, unscoped, now)) {
+          attributedProductIds = productIdsOfVideo(unscoped);
+          if (!attributedProductIds.size) {
+            attributedProductIds = selectedProductIdsOfBooking(booking);
+          }
+        }
         if (!attributedProductIds.size) return null;
         return {
           ...normalizeCachedVideoCandidate(video, resolveOrderMetricsForVideo(videoData, attributedProductIds)),
@@ -1023,7 +1068,15 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
               new Set(),
               resolveOrderMetricsForVideo(videoData, new Set()),
             );
-            const attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+            let attributedProductIds = attributedProductIdsForBooking(booking, unscoped, peerBookings, now);
+            const title = snapshot.video_title || snapshot.raw_metrics?.list?.title || snapshot.video_id;
+            const hasMatchingHashtag = videoMatchesStaffHashtags(title, staffHashtags);
+            if (!attributedProductIds.size && hasMatchingHashtag && matchesBookingDateRange(booking, unscoped, now)) {
+              attributedProductIds = productIdsOfVideo(unscoped);
+              if (!attributedProductIds.size) {
+                attributedProductIds = selectedProductIdsOfBooking(booking);
+              }
+            }
             if (!attributedProductIds.size) return null;
             return {
               ...affiliateCandidateFromSnapshot(
@@ -1400,6 +1453,7 @@ module.exports = {
   loadOrderMetricsForBookingProducts,
   applyBookingProductPerformance,
   normalizeBookingProducts,
+  videoMatchesStaffHashtags,
   __test: {
     dateOnly,
     shiftDate,
@@ -1410,6 +1464,7 @@ module.exports = {
     normalizeCachedVideoCandidate,
     matchesBookingDateRange,
     matchesBookingProducts,
+    videoMatchesStaffHashtags,
     productIdsOfVideo,
     selectedProductIdsOfBooking,
     scopedMetricsOfSnapshot,

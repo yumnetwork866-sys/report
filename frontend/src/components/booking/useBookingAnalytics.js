@@ -7,6 +7,7 @@ import {
   bookingProductsOf,
   countPaidBookingKocs,
   bookingVideoMatchesHashtags,
+  bookingVideoMatchesProducts,
   bookingVideoPerformanceForVideos,
   bookingVideosByRevenue,
   bookingVideosOf,
@@ -37,7 +38,7 @@ const productVideoSummaryForBookings = (bookings, productPerformanceByBooking) =
   )).filter(Boolean))
 );
 
-const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersByShop, convertAmount) => {
+const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersByShop, convertAmount, options = {}) => {
   const videos = uniqueBookingVideosForBookings(bookings, videoPerformanceByBooking);
   const videosByShop = new Map();
   for (const video of videos) {
@@ -50,6 +51,7 @@ const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersBy
       shopVideos,
       null,
       productOrdersByShop[String(shopId)] || [],
+      options,
     );
     const rawRevenue = finiteNumber(performance.gross_gmv ?? performance.affiliate_gmv);
     summary.revenue += convertAmount(rawRevenue, performance.currency) ?? rawRevenue;
@@ -82,9 +84,14 @@ export default function useBookingAnalytics({
     return new Map(bookings.map((booking) => [
       String(booking.id),
       booking.product_performance
-      || bookingProductOrderPerformance(booking, productOrdersByShop[String(booking.target_shop_id)] || [], activeRange),
+      || bookingProductOrderPerformance(
+        booking,
+        productOrdersByShop[String(booking.target_shop_id)] || [],
+        activeRange,
+        { bypassProductMatch: hashtagFilterEnabled },
+      ),
     ]));
-  }, [bookings, customRange, productOrdersByShop, selectedMonth]);
+  }, [bookings, customRange, hashtagFilterEnabled, productOrdersByShop, selectedMonth]);
 
   const hashtagsByUserId = useMemo(() => new Map(users.map((user) => [
     String(user.id),
@@ -93,18 +100,36 @@ export default function useBookingAnalytics({
 
   const videoPerformanceByBooking = useMemo(() => {
     const activeRange = orderRangeForPeriod(selectedMonth, customRange);
+    const creatorVideoPool = new Map();
+    for (const booking of bookings) {
+      const shopId = String(booking.target_shop_id || booking.target_shop?.id || 'no-shop');
+      const creator = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+      if (!creator) continue;
+      const key = `${shopId}:${creator}`;
+      if (!creatorVideoPool.has(key)) creatorVideoPool.set(key, new Map());
+      const pool = creatorVideoPool.get(key);
+      for (const video of bookingVideosOf(booking)) {
+        const vId = String(video.platform_video_id || video.id || '').trim();
+        if (vId && !pool.has(vId)) pool.set(vId, video);
+      }
+    }
+
     return new Map(bookings.map((booking) => {
-      const allVideos = bookingVideosOf(booking);
-      const periodVideos = filterVideosByPeriod(allVideos, activeRange);
+      const shopId = String(booking.target_shop_id || booking.target_shop?.id || 'no-shop');
+      const creator = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
+      const pooledMap = creator ? creatorVideoPool.get(`${shopId}:${creator}`) : null;
+      const candidateVideos = pooledMap ? [...pooledMap.values()] : bookingVideosOf(booking);
+      const periodVideos = filterVideosByPeriod(candidateVideos, activeRange);
       const staffHashtags = hashtagsByUserId.get(String(booking.staff_id || booking.staff?.id || '')) || [];
       const filteredVideos = hashtagFilterEnabled
         ? periodVideos.filter((video) => bookingVideoMatchesHashtags(video, staffHashtags))
-        : periodVideos;
+        : periodVideos.filter((video) => bookingVideoMatchesProducts(video, booking));
+
       if (!activeRange.startDate && !activeRange.endDate && !hashtagFilterEnabled) {
         return [String(booking.id), {
-          videos: bookingVideosByRevenue(allVideos),
+          videos: bookingVideosByRevenue(filteredVideos),
           performance: booking.actual_performance,
-          videoCount: allVideos.length || Number(booking.actual_performance?.video_count || 0),
+          videoCount: filteredVideos.length || Number(booking.actual_performance?.video_count || 0),
         }];
       }
       return [String(booking.id), {
@@ -113,6 +138,7 @@ export default function useBookingAnalytics({
           filteredVideos,
           booking.actual_performance,
           productOrdersByShop[String(booking.target_shop_id)] || [],
+          { bypassProductMatch: hashtagFilterEnabled },
         ),
         videoCount: filteredVideos.length,
       }];
@@ -169,12 +195,13 @@ export default function useBookingAnalytics({
         videoPerformanceByBooking,
         productOrdersByShop,
         convertAmount,
+        { bypassProductMatch: hashtagFilterEnabled },
       );
       result.totalRevenue = videoSummary.revenue;
       result.videoCount = videoSummary.videoCount;
     }
     return result;
-  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, convertAmount, productOrdersByShop, productPerformanceByBooking, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, convertAmount, hashtagFilterEnabled, productOrdersByShop, productPerformanceByBooking, videoPerformanceByBooking]);
 
   const bookingGroups = useMemo(() => {
     const usersById = new Map(users.map((user) => [String(user.id), user]));
@@ -248,6 +275,7 @@ export default function useBookingAnalytics({
           videoPerformanceByBooking,
           productOrdersByShop,
           convertAmount,
+          { bypassProductMatch: hashtagFilterEnabled },
         );
         group.totalRevenue = videoSummary.revenue;
         group.videoCount = videoSummary.videoCount;
@@ -275,7 +303,7 @@ export default function useBookingAnalytics({
       if (right.key === 'unassigned') return -1;
       return collator.compare(left.manager.name, right.manager.name);
     });
-  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, productOrdersByShop, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
+  }, [bookingCostInPeriodById, bookingInPeriodById, bookingTab, bookings, canManageUsers, collator, convertAmount, hashtagFilterEnabled, productOrdersByShop, productPerformanceByBooking, sessionUserId, t, users, videoPerformanceByBooking]);
 
   const activeBookingGroup = bookingGroups.find((group) => group.key === selectedManagerKey)
     || bookingGroups[0]

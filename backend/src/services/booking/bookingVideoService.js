@@ -1,4 +1,5 @@
 const bookingRepository = require('../../repositories/bookingRepository');
+const { UserContentAttribution } = require('../../models');
 const { getShopVideoPerformance } = require('../tiktokShopService');
 const {
   attributedProductIdsForBooking,
@@ -7,6 +8,8 @@ const {
   matchesBookingProducts,
   productIdsOfVideo,
   recordBookingVideoMatch,
+  selectedProductIdsOfBooking,
+  videoMatchesStaffHashtags,
 } = require('../bookingVideoPerformanceService');
 const {
   isDemoAuthorization,
@@ -138,6 +141,13 @@ const findBookingVideoCandidates = async (booking) => {
   }
 
   const range = bookingVideoDateRange(booking);
+  const userAttribution = booking.staff_id && UserContentAttribution
+    ? await UserContentAttribution.findOne({ where: { user_id: booking.staff_id } })
+    : null;
+  const staffHashtags = (Array.isArray(userAttribution?.hashtags) ? userAttribution.hashtags : [])
+    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
+    .filter(Boolean);
+
   const cached = await bookingRepository.findCachedShopVideos({
     shopId: booking.target_shop_id,
     username,
@@ -145,7 +155,7 @@ const findBookingVideoCandidates = async (booking) => {
   if (cached.length) {
       const normalized = cached.map(normalizeCachedVideoCandidate);
       const candidates = normalized.filter((candidate) => (
-        matchesBookingProducts(booking, candidate)
+        (matchesBookingProducts(booking, candidate) || videoMatchesStaffHashtags(candidate.title, staffHashtags))
         && matchesBookingDateRange(booking, candidate)
       ));
       const productDataComplete = normalized.every((candidate) => productIdsOfVideo(candidate).size > 0);
@@ -195,7 +205,10 @@ const findBookingVideoCandidates = async (booking) => {
   videos
     .filter((video) => videoUsername(video) === username)
     .map((video) => normalizeVideoCandidate(video, shop.region))
-    .filter((video) => matchesBookingProducts(booking, video) && matchesBookingDateRange(booking, video))
+    .filter((video) => (
+      (matchesBookingProducts(booking, video) || videoMatchesStaffHashtags(video.title, staffHashtags))
+      && matchesBookingDateRange(booking, video)
+    ))
     .filter((video) => video.id)
     .forEach((video) => candidatesById.set(video.id, video));
   return {
@@ -210,12 +223,26 @@ const findBookingVideoCandidates = async (booking) => {
 const autoLinkCreatedBooking = async (booking) => {
   const linkResult = await autoLinkBookingVideos(booking);
   if (linkResult?.status === 'matched') return;
+  const userAttribution = booking.staff_id && UserContentAttribution
+    ? await UserContentAttribution.findOne({ where: { user_id: booking.staff_id } })
+    : null;
+  const staffHashtags = (Array.isArray(userAttribution?.hashtags) ? userAttribution.hashtags : [])
+    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
+    .filter(Boolean);
+
   const { candidates } = await findBookingVideoCandidates(booking);
   const peerBookings = await bookingRepository.findBookings({
     where: { target_shop_id: booking.target_shop_id },
   });
   const attributedCandidates = candidates.map((candidate) => {
-    const attributedProductIds = attributedProductIdsForBooking(booking, candidate, peerBookings);
+    let attributedProductIds = attributedProductIdsForBooking(booking, candidate, peerBookings);
+    const hasMatchingHashtag = videoMatchesStaffHashtags(candidate.title, staffHashtags);
+    if (!attributedProductIds.size && hasMatchingHashtag && matchesBookingDateRange(booking, candidate)) {
+      attributedProductIds = productIdsOfVideo(candidate);
+      if (!attributedProductIds.size) {
+        attributedProductIds = selectedProductIdsOfBooking(booking);
+      }
+    }
     return attributedProductIds.size
       ? { ...candidate, attributed_product_ids: [...attributedProductIds] }
       : null;
