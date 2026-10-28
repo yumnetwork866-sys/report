@@ -25,7 +25,7 @@ const BookingVideoTitle = ({
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const width = Math.min(380, window.innerWidth - 24);
-    const estimatedHeight = 180;
+    const estimatedHeight = 140;
     const showAbove = rect.bottom + estimatedHeight > window.innerHeight && rect.top > estimatedHeight;
     setTooltip({
       left: Math.min(window.innerWidth - width - 12, Math.max(12, rect.left)),
@@ -79,37 +79,22 @@ const BookingVideoTitle = ({
           role="tooltip"
           style={{ left: tooltip.left, top: tooltip.top, width: tooltip.width }}
         >
-          {(video.platform_video_id || video.posted_at) ? (
-            <div className="booking-video-tooltip__header">
-              {video.platform_video_id ? (
-                <span className="booking-video-tooltip__id">ID: {video.platform_video_id}</span>
-              ) : <span />}
-              {video.posted_at ? (
-                <span className="booking-video-tooltip__date">
-                  {formatDateOnly(video.posted_at, '—')}
-                </span>
-              ) : null}
-            </div>
-          ) : null}
-          <div className="booking-video-tooltip__body">
+          <div className="booking-video-tooltip__row">
             <span className="booking-video-tooltip__label">Tiêu đề:</span>
             <p className="booking-video-tooltip__title">{fullTitle}</p>
           </div>
-          {hashtags.length > 0 ? (
-            <div className="booking-video-tooltip__hashtags">
-              <span className="booking-video-tooltip__label">Hashtag ({hashtags.length}):</span>
+          <div className="booking-video-tooltip__row">
+            <span className="booking-video-tooltip__label">Hashtag:</span>
+            {hashtags.length > 0 ? (
               <div className="booking-video-tooltip__tags">
                 {hashtags.map((tag) => (
                   <span key={tag} className="booking-video-tooltip__tag">{tag}</span>
                 ))}
               </div>
-            </div>
-          ) : (
-            <div className="booking-video-tooltip__no-hashtags">
-              <span className="booking-video-tooltip__label">Hashtag:</span>
+            ) : (
               <span className="booking-video-tooltip__empty-hint">Không có hashtag</span>
-            </div>
-          )}
+            )}
+          </div>
         </div>,
         document.body,
       ) : null}
