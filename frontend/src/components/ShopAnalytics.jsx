@@ -62,7 +62,7 @@ const ShopAnalytics = ({
     t,
   });
   const {
-    attentionCount, changeSelectedShop, connections, loadInventory, loading,
+    changeSelectedShop, connections, loadInventory, loading,
     missingAnalyticsScope, selectedShop, selectedShopId, shops, tokenExpired,
   } = inventory;
   const allShopsSelected = selectedShopId === 'all';
@@ -282,38 +282,6 @@ const ShopAnalytics = ({
         </div>
       ) : null}
       {error ? <section className="section-card shop-analytics__error" role="alert">{error}</section> : null}
-
-      {managementOnly ? (
-        <section className="shop-management__stats" aria-label={t('shopAnalytics.manageSummary')}>
-          <article className="shop-management__stat">
-            <span className="shop-management__stat-icon" aria-hidden="true">
-              <AnalyticsIcon name="connections" />
-            </span>
-            <div>
-              <span>{t('shopAnalytics.sellerAccounts')}</span>
-              <strong>{loading ? '—' : formatNumber(connections.length)}</strong>
-            </div>
-          </article>
-          <article className="shop-management__stat">
-            <span className="shop-management__stat-icon" aria-hidden="true">
-              <AnalyticsIcon name="shop" />
-            </span>
-            <div>
-              <span>{t('shopAnalytics.connectedShops')}</span>
-              <strong>{loading ? '—' : formatNumber(shops.length)}</strong>
-            </div>
-          </article>
-          <article className={`shop-management__stat${attentionCount ? ' is-warning' : ''}`}>
-            <span className="shop-management__stat-icon" aria-hidden="true">
-              <AnalyticsIcon name="sync" />
-            </span>
-            <div>
-              <span>{t('shopAnalytics.needsAttention')}</span>
-              <strong>{loading ? '—' : formatNumber(attentionCount)}</strong>
-            </div>
-          </article>
-        </section>
-      ) : null}
 
       {!managementOnly ? (
         <>
