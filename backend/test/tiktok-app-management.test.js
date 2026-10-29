@@ -21,6 +21,16 @@ test('tiktokAppService mappings and key normalization', () => {
 });
 
 test('tiktokAppController CRUD lifecycle with mocked models', async (t) => {
+  const originalKey = process.env.TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY;
+  process.env.TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY = originalKey || 'test_tiktok_partner_token_encryption_key_32_chars';
+  t.after(() => {
+    if (originalKey === undefined) {
+      delete process.env.TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY;
+    } else {
+      process.env.TIKTOK_PARTNER_TOKEN_ENCRYPTION_KEY = originalKey;
+    }
+  });
+
   let apps = [];
   let nextId = 1;
 
