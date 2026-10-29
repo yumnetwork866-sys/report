@@ -10,6 +10,14 @@ const RATE_LIMIT_COOLDOWN_MS = Math.max(
   15 * 60 * 1000,
   Number(process.env.TIKTOK_TARGET_SYNC_COOLDOWN_MS) || 15 * 60 * 1000,
 );
+const DEFAULT_DETAIL_PACING_MS = Math.max(
+  0,
+  Number(process.env.TIKTOK_TARGET_SYNC_PACING_MS) || 400,
+);
+const DEFAULT_MAX_TIMEOUT_RETRIES = Math.max(
+  0,
+  Number(process.env.TIKTOK_TARGET_DETAIL_TIMEOUT_RETRIES ?? 2),
+);
 const REQUEST_GATE_NAMESPACE = 'target_collaboration_full_sync';
 const LEGACY_REQUEST_INTERVAL_REASON = 'Target Collaboration full-sync request interval.';
 const delay = (milliseconds, signal) => new Promise((resolve, reject) => {
@@ -33,6 +41,17 @@ const throwIfAborted = (signal) => {
   const error = new Error('Target Collaboration sync was stopped.');
   error.name = 'AbortError';
   throw error;
+};
+
+const isTimeoutError = (error, signal) => {
+  if (signal?.aborted) return false;
+  if (!error) return false;
+  if (error.name === 'TimeoutError') return true;
+  if (error.name === 'AbortError') return true;
+  const message = String(error.message || '').toLowerCase();
+  if (message.includes('timeout') || message.includes('timed out') || message.includes('aborted')) return true;
+  if (['ETIMEDOUT', 'ESOCKETTIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT'].includes(error.code)) return true;
+  return false;
 };
 
 const createTargetRequestRunner = ({
@@ -79,6 +98,9 @@ const createTargetCollaborationSyncService = ({
   saveSnapshots = saveTargetCollaborationSnapshots,
   runRequest = createTargetRequestRunner(),
   statuses = TARGET_STATUSES,
+  detailPacingMs = DEFAULT_DETAIL_PACING_MS,
+  maxTimeoutRetries = DEFAULT_MAX_TIMEOUT_RETRIES,
+  sleep = delay,
   logger = console,
 } = {}) => {
   const activeRuns = new Map();
@@ -94,6 +116,7 @@ const createTargetCollaborationSyncService = ({
       statuses: statuses.length,
       pageSize: TARGET_PAGE_SIZE,
     });
+    let hasRunDetailRequest = false;
     for (const status of statuses) {
       throwIfAborted(signal);
       let pageToken = null;
@@ -112,11 +135,42 @@ const createTargetCollaborationSyncService = ({
         statusSummary.pages += 1;
         for (const row of rows) {
           throwIfAborted(signal);
-          const detail = await runRequest(shop.id, () => getDetail({
-            authorization: shop.authorization,
-            shopCipher: shop.cipher,
-            collaborationId: row.id,
-          }), { signal });
+          if (hasRunDetailRequest && detailPacingMs > 0) {
+            await sleep(detailPacingMs, signal);
+          }
+          throwIfAborted(signal);
+
+          let detail = null;
+          let timeoutAttempts = 0;
+          while (true) {
+            throwIfAborted(signal);
+            try {
+              detail = await runRequest(shop.id, () => getDetail({
+                authorization: shop.authorization,
+                shopCipher: shop.cipher,
+                collaborationId: row.id,
+              }), { signal });
+              break;
+            } catch (error) {
+              if (isTimeoutError(error, signal) && timeoutAttempts < maxTimeoutRetries) {
+                timeoutAttempts += 1;
+                const warnFn = typeof logger?.warn === 'function' ? logger.warn.bind(logger) : logger?.info?.bind(logger);
+                warnFn?.('[Target Collaboration Sync] Detail request timed out; retrying', {
+                  shopId: shop.id,
+                  collaborationId: row.id,
+                  attempt: timeoutAttempts,
+                  maxRetries: maxTimeoutRetries,
+                  message: error.message,
+                });
+                const retryDelay = Math.max(detailPacingMs, 1000 * timeoutAttempts);
+                await sleep(retryDelay, signal);
+                continue;
+              }
+              throw error;
+            }
+          }
+          hasRunDetailRequest = true;
+
           const detailed = { ...row, ...detail.data?.target_collaboration, status, collaboration_status: status };
           const [hydrated] = await hydrate(shop.id, [detailed], {
             logger: { info() {} },
@@ -175,6 +229,9 @@ const targetCollaborationSyncService = createTargetCollaborationSyncService();
 module.exports = {
   TARGET_STATUSES,
   TARGET_PAGE_SIZE,
+  DEFAULT_DETAIL_PACING_MS,
+  DEFAULT_MAX_TIMEOUT_RETRIES,
+  isTimeoutError,
   createTargetRequestRunner,
   createTargetCollaborationSyncService,
   targetCollaborationSyncService,

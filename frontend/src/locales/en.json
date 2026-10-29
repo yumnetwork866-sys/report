@@ -1669,7 +1669,7 @@
     "failedRuns": "Failed runs",
     "tabsLabel": "Schedule management sections",
     "scheduleTab": "Schedules",
-    "logsTab": "Run logs",
+    "logsTab": "Logs",
     "logsTitle": "Execution logs",
     "logsCount": "{{count}} runs",
     "logsPageInfo": "Showing {{from}} – {{to}} of {{total}} runs",

@@ -1668,7 +1668,7 @@
     "failedRuns": "Lần chạy lỗi",
     "tabsLabel": "Các mục quản lý lịch chạy",
     "scheduleTab": "Lịch chạy",
-    "logsTab": "Nhật ký chạy",
+    "logsTab": "Logs",
     "logsTitle": "Nhật ký thực thi",
     "logsCount": "{{count}} lần chạy",
     "logsPageInfo": "Hiển thị {{from}} – {{to}} trong số {{total}} lần chạy",
