@@ -238,6 +238,7 @@
     "reports": "Báo cáo",
     "chat": "Hội thoại",
     "users": "Người dùng",
+    "connections": "Quản lý kết nối",
     "manageShops": "Quản lý Shop",
     "schedule": "Lịch đồng bộ",
     "queues": "Hàng đợi (BullMQ)",
@@ -246,6 +247,14 @@
     "workspace": "Không gian làm việc",
     "expand": "Mở rộng thanh điều hướng",
     "collapse": "Thu gọn thanh điều hướng"
+  },
+  "connections": {
+    "title": "Quản lý kết nối TikTok",
+    "tabs": {
+      "shops": "Shop",
+      "channels": "Kênh",
+      "apps": "App"
+    }
   },
   "videoLibrary": {
     "heroTitle": "Thư viện video",

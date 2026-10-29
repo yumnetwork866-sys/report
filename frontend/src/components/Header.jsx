@@ -200,6 +200,7 @@ const Header = () => {
   const isTopNavActive = (to) => {
     if (to === '/manage/users') {
       return location.pathname.startsWith('/manage/users')
+        || location.pathname.startsWith('/manage/connections')
         || location.pathname.startsWith('/manage/shops')
         || location.pathname.startsWith('/manage/schedules')
         || location.pathname.startsWith('/manage/queues')
@@ -450,7 +451,7 @@ const Header = () => {
                     {canManageApps ? (
                       <div className="topbar__connect-footer">
                         <Link
-                          to="/manage/apps"
+                          to="/manage/connections?tab=apps"
                           className="topbar__connect-manage-link"
                           onClick={() => setActiveMenu(null)}
                         >

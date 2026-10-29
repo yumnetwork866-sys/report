@@ -64,7 +64,7 @@ const INITIAL_FORM = {
   is_active: true,
 };
 
-const AppManagement = () => {
+const AppManagement = ({ embedded = false, onCountChange }) => {
   const { t } = useI18n();
   const [apps, setApps] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -129,6 +129,12 @@ const AppManagement = () => {
     loadApps();
   }, [loadApps]);
 
+  useEffect(() => {
+    if (onCountChange && Array.isArray(apps)) {
+      onCountChange(apps.length);
+    }
+  }, [apps, onCountChange]);
+
   const renderTypeBadge = (appType) => {
     if (appType === 'channel') {
       return (
@@ -148,8 +154,8 @@ const AppManagement = () => {
     const isChannel = app.app_type === 'channel';
     const count = Number(app.linked_count || 0);
     const target = isChannel
-      ? `/channels/manage?app_id=${encodeURIComponent(app.id)}`
-      : `/manage/shops?app_id=${encodeURIComponent(app.id)}`;
+      ? `/manage/connections?tab=channels&app_id=${encodeURIComponent(app.id)}`
+      : `/manage/connections?tab=shops&app_id=${encodeURIComponent(app.id)}`;
     const unit = isChannel
       ? (t('appsManagement.linkedChannels') || 'Kênh')
       : (t('appsManagement.linkedShops') || 'Shop');
@@ -291,7 +297,7 @@ const AppManagement = () => {
   };
 
   return (
-    <div className="page page--admin app-management">
+    <div className={embedded ? 'app-management app-management--embedded' : 'page page--admin app-management'}>
       <div className="admin-page__hero app-management__hero">
         <div className="app-management__hero-actions">
           <button

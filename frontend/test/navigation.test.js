@@ -30,6 +30,37 @@ test('shop and channel pages use consistent route namespaces', () => {
     protectedRouteCards
       .map((route) => route.path)
       .filter((path) => path.startsWith('/channels/')),
-    ['/channels/overview', '/channels/reports', '/channels/manage'],
+    ['/channels/overview', '/channels/reports'],
+  );
+});
+
+test('shop, channel and app management are consolidated into connections page with legacy redirects', () => {
+  const adminItems = sidebarSections
+    .find((section) => section.title === 'Admin')?.items || [];
+  assert.equal(adminItems.some((item) => item.to === '/manage/connections'), true);
+  assert.equal(adminItems.some((item) => item.to === '/manage/shops'), false);
+  assert.equal(adminItems.some((item) => item.to === '/manage/apps'), false);
+
+  assert.equal(protectedRouteCards.some((route) => route.path === '/manage/connections'), true);
+  assert.equal(protectedRouteCards.some((route) => route.path === '/manage/shops'), false);
+  assert.equal(protectedRouteCards.some((route) => route.path === '/manage/apps'), false);
+  assert.equal(protectedRouteCards.some((route) => route.path === '/channels/manage'), false);
+
+  const channelItems = sidebarSections
+    .flatMap((section) => section.items || [])
+    .find((item) => item.id === 'tiktok-channel')?.children || [];
+  assert.equal(channelItems.some((item) => item.to.includes('channels') && item.labelKey === 'navigation.channels'), false);
+
+  assert.deepEqual(
+    redirectRoutes.find((route) => route.path === '/manage/shops'),
+    { path: '/manage/shops', to: '/manage/connections?tab=shops' },
+  );
+  assert.deepEqual(
+    redirectRoutes.find((route) => route.path === '/manage/apps'),
+    { path: '/manage/apps', to: '/manage/connections?tab=apps' },
+  );
+  assert.deepEqual(
+    redirectRoutes.find((route) => route.path === '/channels/manage'),
+    { path: '/channels/manage', to: '/manage/connections?tab=channels' },
   );
 });

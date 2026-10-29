@@ -13,6 +13,7 @@ const ConnectionsPanel = ({
   onConnectCustom,
   t,
   onDisconnect,
+  hideTitle = true,
 }) => {
   const [expandedAuthIds, setExpandedAuthIds] = useState(() => new Set());
   const visibleConnections = appIdFilter
@@ -34,12 +35,17 @@ const ConnectionsPanel = ({
 
   return (
     <div id="shop-connections-panel" className="shop-analytics__tab-panel">
-      <section className="section-card shop-analytics__connections-card" aria-labelledby="shop-connections-title">
-        <div className="section-card__header">
-          <div>
-            <h2 className="section-card__title" id="shop-connections-title">{t('shopAnalytics.connections')}</h2>
+      <section
+        className="section-card shop-analytics__connections-card"
+        {...(hideTitle ? { 'aria-label': t('shopAnalytics.connections') } : { 'aria-labelledby': 'shop-connections-title' })}
+      >
+        {!hideTitle ? (
+          <div className="section-card__header">
+            <div>
+              <h2 className="section-card__title" id="shop-connections-title">{t('shopAnalytics.connections')}</h2>
+            </div>
           </div>
-        </div>
+        ) : null}
         {loading ? (
           <div className="empty-state">
             <span className="loading-dot" />

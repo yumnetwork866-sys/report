@@ -86,6 +86,7 @@ const routeIconMap = {
   '/channels/reports': 'reports',
   '/shop/affiliate': 'koc',
   '/manage/users': 'users',
+  '/manage/connections': 'shop',
   '/manage/shops': 'shop',
   '/manage/schedules': 'schedule',
   '/manage/queues': 'schedule',
@@ -133,6 +134,7 @@ const Sidebar = ({ id, isCollapsed = false, onToggle, isMobile = false, onNaviga
   const location = useLocation();
   const session = useSession();
   const isAdminArea = location.pathname.startsWith('/manage/users')
+    || location.pathname.startsWith('/manage/connections')
     || location.pathname.startsWith('/manage/shops')
     || location.pathname.startsWith('/manage/schedules')
     || location.pathname.startsWith('/manage/queues')

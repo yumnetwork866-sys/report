@@ -243,6 +243,7 @@
     "chat": "Chat",
     "orders": "Orders",
     "users": "Users",
+    "connections": "Connections",
     "manageShops": "Manage Shop",
     "schedule": "Schedule",
     "queues": "Job Queues (BullMQ)",
@@ -251,6 +252,14 @@
     "workspace": "Workspace",
     "expand": "Expand navigation",
     "collapse": "Collapse navigation"
+  },
+  "connections": {
+    "title": "TikTok Connections",
+    "tabs": {
+      "shops": "Shops",
+      "channels": "Channels",
+      "apps": "Apps"
+    }
   },
   "videoLibrary": {
     "heroTitle": "Video library",

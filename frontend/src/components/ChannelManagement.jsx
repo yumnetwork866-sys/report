@@ -9,7 +9,12 @@ import {
 import { useI18n } from '../lib/language';
 import AppAvatar from './AppAvatar';
 
-const ChannelManagement = ({ heroTitle }) => {
+const ChannelManagement = ({
+  heroTitle,
+  embedded = false,
+  hideTitle = true,
+  onCountChange,
+}) => {
   const { t } = useI18n();
   const location = useLocation();
   const navigate = useNavigate();
@@ -35,6 +40,12 @@ const ChannelManagement = ({ heroTitle }) => {
       ? channels.filter((channel) => String(channel.app_id || '') === String(appIdFilter))
       : channels
   ), [appIdFilter, channels]);
+
+  useEffect(() => {
+    if (onCountChange && Array.isArray(channels)) {
+      onCountChange(channels.length);
+    }
+  }, [channels, onCountChange]);
 
   const loadChannels = async (signal) => {
     const loadedChannels = await fetchChannels(signal);
@@ -81,10 +92,14 @@ const ChannelManagement = ({ heroTitle }) => {
       setToast(null);
     }, 4000);
 
-    navigate({ pathname: location.pathname, search: '' }, { replace: true });
+    const nextParams = new URLSearchParams(location.search);
+    nextParams.delete('oauth_status');
+    nextParams.delete('oauth_message');
+    const nextSearch = nextParams.toString() ? `?${nextParams.toString()}` : '';
+    navigate({ pathname: location.pathname, search: nextSearch }, { replace: true });
 
     return () => window.clearTimeout(timeoutId);
-  }, [oauthStatus, oauthMessage, navigate, location.pathname, t]);
+  }, [oauthStatus, oauthMessage, navigate, location.pathname, location.search, t]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -208,39 +223,43 @@ const ChannelManagement = ({ heroTitle }) => {
   };
 
   return (
-    <div className="page">
+    <div className={embedded ? 'channel-management-tab-pane' : 'page'}>
       {toast ? (
         <div className={`toast ${toast.status === 'success' ? 'toast--success' : 'toast--error'}`} role="status" aria-live="polite">
           {toast.message}
         </div>
       ) : null}
 
-      <section className="page__hero">
-        <h1 className="page__title">{t('channel.heroTitle') || heroTitle}</h1>
-        <div className="page__stats">
-          <article className="stat-card">
-            <p className="stat-card__label">{t('channel.channels')}</p>
-            <p className="stat-card__value">{visibleChannels.length}</p>
-          </article>
-          <article className="stat-card">
-            <p className="stat-card__label">{t('channel.oauth')}</p>
-            <p className="stat-card__value">{sourceCounts.oauth || 0}</p>
-          </article>
-          <article className="stat-card">
-            <p className="stat-card__label">{t('channel.importCrawl')}</p>
-            <p className="stat-card__value">{(sourceCounts.import || 0) + (sourceCounts.crawler || 0)}</p>
-          </article>
-        </div>
-      </section>
+      {!embedded ? (
+        <section className="page__hero">
+          <h1 className="page__title">{t('channel.heroTitle') || heroTitle}</h1>
+          <div className="page__stats">
+            <article className="stat-card">
+              <p className="stat-card__label">{t('channel.channels')}</p>
+              <p className="stat-card__value">{visibleChannels.length}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-card__label">{t('channel.oauth')}</p>
+              <p className="stat-card__value">{sourceCounts.oauth || 0}</p>
+            </article>
+            <article className="stat-card">
+              <p className="stat-card__label">{t('channel.importCrawl')}</p>
+              <p className="stat-card__value">{(sourceCounts.import || 0) + (sourceCounts.crawler || 0)}</p>
+            </article>
+          </div>
+        </section>
+      ) : null}
 
       {error ? <section className="section-card empty-state empty-state--compact">{error}</section> : null}
 
-      <section className="section-card">
-        <div className="section-card__header">
-          <div>
-            <h2 className="section-card__title">{t('channel.list')}</h2>
+      <section className="section-card" aria-label={t('channel.list')}>
+        {!hideTitle ? (
+          <div className="section-card__header">
+            <div>
+              <h2 className="section-card__title">{t('channel.list')}</h2>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <div className="table-wrap">
           <table className="data-table">

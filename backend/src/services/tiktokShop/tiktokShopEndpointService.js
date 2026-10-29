@@ -416,7 +416,7 @@ const attachOrderFinance = async (shop, orders = [], { concurrency = 4 } = {}) =
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:3005';
 const redirectUrl = (status, message, returnPath = '/shop/analytics') => {
   const safeReturnPath = [
-    '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
+    '/manage/connections', '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
     '/manage/koc-performance',
     '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/affiliate',
   ].includes(returnPath) ? returnPath : '/shop/analytics';

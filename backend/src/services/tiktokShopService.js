@@ -187,7 +187,7 @@ const buildShopAuthorizationUrl = (returnPath = '/shop/analytics', options = {})
     appKey: credentials.appKey || null,
     ...(region ? { region } : {}),
     returnPath: [
-      '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
+      '/manage/connections', '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',
       '/shop/orders', '/manage/koc-performance',
       '/manage/shop-analytics', '/manage/video-analytics', '/videos', '/manage/affiliate',
     ].includes(returnPath) ? returnPath : (isCustom ? '/shop/orders' : '/shop/analytics'),

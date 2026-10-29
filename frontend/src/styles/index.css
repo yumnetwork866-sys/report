@@ -10,6 +10,7 @@
 @import './components/tables.css';
 @import './components/feedback.css';
 @import './pages/shop-analytics.css';
+@import './pages/connection-management.css';
 @import './pages/auth-public.css';
 @import './pages/tiktok.css';
 @import './pages/other.css';

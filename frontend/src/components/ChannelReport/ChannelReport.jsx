@@ -101,60 +101,50 @@ const ChannelReport = () => {
   );
   return (
     <div className="page channel-report-page">
-      <section className="page__hero koc-hero channel-report-hero">
-        <div>
-          <h1 className="page__title">Báo cáo</h1>
-        </div>
-        <div className="koc-tabs channel-report-tabs" role="tablist" aria-label="Chế độ xem báo cáo">
-          {visibleReportTabs.includes('teams') ? <button
-            id="channel-report-teams-tab"
-            type="button"
-            role="tab"
-            aria-selected={activeReportTab === 'teams'}
-            aria-controls="channel-report-teams-panel"
-            tabIndex={activeReportTab === 'teams' ? 0 : -1}
-            className={activeReportTab === 'teams' ? 'is-active' : ''}
-            onClick={() => setActiveReportTab('teams')}
-          >
-            Video
-          </button> : null}
-          {visibleReportTabs.includes('revenue') ? <button
-            id="channel-report-revenue-tab"
-            type="button"
-            role="tab"
-            aria-selected={activeReportTab === 'revenue'}
-            aria-controls="channel-report-revenue-panel"
-            tabIndex={activeReportTab === 'revenue' ? 0 : -1}
-            className={activeReportTab === 'revenue' ? 'is-active' : ''}
-            onClick={() => setActiveReportTab('revenue')}
-          >
-            Doanh thu
-          </button> : null}
-          {visibleReportTabs.includes('comparison') ? <button
-            id="channel-report-comparison-tab"
-            type="button"
-            role="tab"
-            aria-selected={activeReportTab === 'comparison'}
-            aria-controls="channel-report-comparison-panel"
-            tabIndex={activeReportTab === 'comparison' ? 0 : -1}
-            className={activeReportTab === 'comparison' ? 'is-active' : ''}
-            onClick={() => setActiveReportTab('comparison')}
-          >
-            Thống kê
-          </button> : null}
-        </div>
-      </section>
-
       {error ? <section className="section-card empty-state empty-state--compact">{error}</section> : null}
 
       <section className="section-card content-performance">
         <div className="section-card__header">
-          <div>
-            <h2 className="section-card__title">
-              {activeReportTab === 'comparison' ? 'Thống kê' : activeReportTab === 'revenue' ? 'Doanh thu' : 'Video'}
-            </h2>
-
-          </div>
+          {visibleReportTabs.length ? (
+            <div className="koc-tabs channel-report-tabs" role="tablist" aria-label="Chế độ xem báo cáo">
+              {visibleReportTabs.includes('teams') ? <button
+                id="channel-report-teams-tab"
+                type="button"
+                role="tab"
+                aria-selected={activeReportTab === 'teams'}
+                aria-controls="channel-report-teams-panel"
+                tabIndex={activeReportTab === 'teams' ? 0 : -1}
+                className={activeReportTab === 'teams' ? 'is-active' : ''}
+                onClick={() => setActiveReportTab('teams')}
+              >
+                Video
+              </button> : null}
+              {visibleReportTabs.includes('revenue') ? <button
+                id="channel-report-revenue-tab"
+                type="button"
+                role="tab"
+                aria-selected={activeReportTab === 'revenue'}
+                aria-controls="channel-report-revenue-panel"
+                tabIndex={activeReportTab === 'revenue' ? 0 : -1}
+                className={activeReportTab === 'revenue' ? 'is-active' : ''}
+                onClick={() => setActiveReportTab('revenue')}
+              >
+                Doanh thu
+              </button> : null}
+              {visibleReportTabs.includes('comparison') ? <button
+                id="channel-report-comparison-tab"
+                type="button"
+                role="tab"
+                aria-selected={activeReportTab === 'comparison'}
+                aria-controls="channel-report-comparison-panel"
+                tabIndex={activeReportTab === 'comparison' ? 0 : -1}
+                className={activeReportTab === 'comparison' ? 'is-active' : ''}
+                onClick={() => setActiveReportTab('comparison')}
+              >
+                Thống kê
+              </button> : null}
+            </div>
+          ) : <div />}
           <div className="channel-report-filters">
             {activeReportTab !== 'comparison' ? <div className="field channel-report-team">
               <label htmlFor="channel-report-team">Team</label>

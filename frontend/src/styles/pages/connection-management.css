@@ -1,0 +1,87 @@
+.connection-management-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.connection-tabs {
+  display: inline-flex;
+  width: fit-content;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--color-border, #dce5f1);
+  border-radius: 14px;
+  background: var(--color-bg-subtle, #f3f7fc);
+}
+
+.connection-tabs button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--color-text-soft, #5b6d86);
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connection-tabs button > svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.connection-tabs button > span.connection-tab__badge {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: var(--color-border, #e3eaf4);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.connection-tabs button[aria-selected='true'] {
+  background: #fff;
+  color: #2859b7;
+  box-shadow: 0 3px 10px rgba(45, 70, 110, 0.1);
+}
+
+.connection-tabs button:focus-visible {
+  outline: 3px solid rgba(79, 124, 255, 0.25);
+  outline-offset: 2px;
+}
+
+.connection-tab-content {
+  width: 100%;
+}
+
+.connection-tab-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .connection-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .connection-tabs button {
+    flex: 1;
+    justify-content: center;
+    padding: 7px 8px;
+    font-size: 0.8rem;
+    gap: 6px;
+  }
+}
+
