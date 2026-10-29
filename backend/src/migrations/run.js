@@ -104,6 +104,7 @@ const migrations = [
   require('./094_update_oms_app_region_to_my'),
   require('./095_seed_tiktok_channel_app'),
   require('./096_link_connections_to_tiktok_apps'),
+  require('./097_optimize_booking_list_queries'),
 ];
 
 const createMigrationRunner = ({

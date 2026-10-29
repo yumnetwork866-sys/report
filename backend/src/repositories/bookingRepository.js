@@ -18,10 +18,19 @@ const {
   sequelize,
 } = require('../models');
 
-const bookingInclude = [
+const bookingRelationInclude = [
   { model: User, as: 'staff' },
   { model: User, as: 'creator' },
   { model: TikTokShop, as: 'target_shop', attributes: ['id', 'name', 'code', 'region'] },
+  {
+    model: BookingVideo,
+    as: 'booking_videos',
+    required: false,
+  },
+];
+
+const bookingInclude = [
+  ...bookingRelationInclude.slice(0, 3),
   {
     model: BookingVideo,
     as: 'booking_videos',
@@ -41,7 +50,39 @@ const findByIdWithRelations = (bookingId) => Booking.findByPk(bookingId, {
 const findById = (bookingId) => Booking.findByPk(bookingId);
 const updateInstance = (booking, payload) => booking.update(payload);
 const query = (...args) => sequelize.query(...args);
-const findBookings = (options = {}) => Booking.findAll({ ...options, include: bookingInclude });
+const findBookings = async (options = {}) => {
+  const bookings = await Booking.findAll({ ...options, include: bookingRelationInclude });
+  if (!sequelize?.query || !bookings.length) return bookings;
+  const videos = bookings.flatMap((booking) => {
+    const rows = booking.booking_videos || booking.get?.('booking_videos') || [];
+    return Array.isArray(rows) ? rows : [];
+  });
+  const videoIds = [...new Set(videos.map((video) => Number(video.id)).filter(Number.isInteger))];
+  if (!videoIds.length) return bookings;
+  const snapshots = await sequelize.query(`
+    SELECT DISTINCT ON (booking_video_id)
+      id, booking_video_id, snapshot_date, gross_gmv, refunded_gmv, net_gmv,
+      orders, items_sold, items_refunded, estimated_commission, views, ctr,
+      currency, raw_metrics, synced_at
+    FROM booking_video_performance_snapshots
+    WHERE booking_video_id IN (:videoIds)
+    ORDER BY booking_video_id, snapshot_date DESC, synced_at DESC NULLS LAST, id DESC
+  `, {
+    replacements: { videoIds },
+    type: QueryTypes.SELECT,
+  });
+  const snapshotByVideoId = new Map(snapshots.map((snapshot) => [
+    String(snapshot.booking_video_id),
+    snapshot,
+  ]));
+  for (const video of videos) {
+    const snapshot = snapshotByVideoId.get(String(video.id));
+    const value = snapshot ? [snapshot] : [];
+    if (typeof video.setDataValue === 'function') video.setDataValue('performance_snapshots', value);
+    else video.performance_snapshots = value;
+  }
+  return bookings;
+};
 const findSellerShop = () => TikTokShop.findOne({ order: [['id', 'ASC']] });
 const findVideoPerformanceExports = (options) => (
   TikTokCreatorPerformanceExport?.findAll ? TikTokCreatorPerformanceExport.findAll(options) : Promise.resolve([])
@@ -65,6 +106,23 @@ const findLatestVideoPerformanceSnapshotsByVideoIds = async (videoIds) => {
     rows.push(...chunkRows);
   }
   return rows;
+};
+
+const findLatestAffiliateVideoSnapshots = async ({ shopIds = [], videoIds = [] } = {}) => {
+  const normalizedShopIds = [...new Set(shopIds.map(Number).filter(Number.isInteger))];
+  const normalizedVideoIds = [...new Set(videoIds.map((value) => String(value || '').trim()).filter(Boolean))];
+  if (!normalizedShopIds.length || !normalizedVideoIds.length || !sequelize?.query) return [];
+  return sequelize.query(`
+    SELECT DISTINCT ON (shop_id, video_id)
+      shop_id, video_id, product_id, raw_metrics
+    FROM tiktok_video_performance_snapshots
+    WHERE shop_id IN (:shopIds)
+      AND video_id IN (:videoIds)
+    ORDER BY shop_id, video_id, id DESC
+  `, {
+    replacements: { shopIds: normalizedShopIds, videoIds: normalizedVideoIds },
+    type: QueryTypes.SELECT,
+  });
 };
 const findCreatorPerformanceSnapshots = (options) => (
   TikTokCreatorPerformanceSnapshot?.findAll ? TikTokCreatorPerformanceSnapshot.findAll(options) : Promise.resolve([])
@@ -271,6 +329,7 @@ module.exports = {
   findVideoPerformanceExports,
   findVideoPerformanceSnapshots,
   findLatestVideoPerformanceSnapshotsByVideoIds,
+  findLatestAffiliateVideoSnapshots,
   createKoc,
   createPartnerAuthorization,
   destroyPartnerAuthorizations,

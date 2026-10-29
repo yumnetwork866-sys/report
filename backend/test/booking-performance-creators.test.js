@@ -146,6 +146,71 @@ test('booking list can skip product performance enrichment for the video view', 
   assert.equal(productPerformanceCalls, 0);
 });
 
+test('booking list returns compact DTOs without raw snapshots or evaluation payloads', async (t) => {
+  const booking = {
+    id: 20,
+    staff_id: 7,
+    staff: { id: 7, name: 'Manager', email: 'manager@example.test', avatar_url: `data:image/png;base64,${'a'.repeat(1000)}` },
+    target_shop_id: 4,
+    creator_username: 'summary.creator',
+    evaluation_snapshot: {
+      product_ids: ['product-1'],
+      products: [{ id: 'product-1', name: 'Serum', main_image_url: 'product.webp' }],
+      performance: { raw: 'must-not-leak' },
+    },
+    booking_videos: [{
+      id: 201,
+      platform_video_id: 'video-201',
+      title: 'Review #Campaign',
+      attributed_product_ids: ['product-1'],
+      performance_snapshots: [{
+        id: 2002,
+        snapshot_date: '2026-10-28',
+        gross_gmv: 125,
+        views: 5000,
+        ctr: 0.12,
+        raw_metrics: {
+          video: { list: { cover_image_url: 'cover.webp', hashtags: ['Campaign'] } },
+          retention: Array.from({ length: 100 }, (_, index) => index),
+        },
+      }, {
+        id: 2001,
+        snapshot_date: '2026-10-27',
+        gross_gmv: 100,
+        raw_metrics: { historical: true },
+      }],
+    }],
+    actual_performance: { gross_gmv: 125, video_count: 1 },
+    toJSON: () => booking,
+  };
+  const { getBookings } = loadController(t, {
+    Booking: { findAll: async () => [booking] },
+  });
+  let response;
+
+  await getBookings(
+    { query: { include_product_performance: 'false' } },
+    {
+      json: (value) => { response = value; },
+      status: () => ({ json: () => {} }),
+    },
+  );
+
+  const summary = response[0];
+  const video = summary.booking_videos[0];
+  assert.equal(summary.evaluation_snapshot, undefined);
+  assert.deepEqual(summary.staff, { id: 7, name: 'Manager', email: 'manager@example.test' });
+  assert.deepEqual(summary.product_ids, ['product-1']);
+  assert.deepEqual(summary.products, [{ id: 'product-1', name: 'Serum', image_url: 'product.webp' }]);
+  assert.equal(video.thumbnail_url, 'cover.webp');
+  assert.deepEqual(video.hashtags, ['campaign']);
+  assert.equal(video.latest_performance.gross_gmv, 125);
+  assert.equal(video.latest_performance.raw_metrics, undefined);
+  assert.equal(video.performance_snapshots, undefined);
+  assert.equal(JSON.stringify(summary).includes('must-not-leak'), false);
+  assert.equal(JSON.stringify(summary).includes('retention'), false);
+});
+
 test('booking list scopes creator history to the requested staff member', async (t) => {
   let findOptions;
   const { getBookings } = loadController(
@@ -210,7 +275,7 @@ test('booking list uses the requested Creator Performance period as its table re
   assert.equal(performanceQuery.where.window_type, 'PAST_30_DAYS');
   assert.equal(response[0].reference_performance.window_type, 'PAST_30_DAYS');
   assert.equal(response[0].reference_performance.affiliate_gmv, '300');
-  assert.equal(response[0].evaluation_snapshot.performance.window_type, 'PAST_180_DAYS');
+  assert.equal(response[0].evaluation_snapshot, undefined);
 });
 
 test('booking list aggregates intermediate periods from completed 30-day exports', async (t) => {
@@ -758,10 +823,13 @@ test('getBookings applies video performance for CUSTOM range and multi-month win
   );
   assert.equal(orderQueryArgs.startDate, '2026-06-01');
   assert.equal(orderQueryArgs.endDate, '2026-08-31');
-  assert.equal(result[0].booking_videos[0].performance_snapshots[0].gross_gmv, 500);
-  assert.equal(result[0].booking_videos[0].performance_snapshots[0].orders, 10);
-  assert.equal(result[0].booking_videos[0].performance_snapshots[0].items_refunded, 2);
-  assert.equal(result[0].booking_videos[0].performance_snapshots[0].estimated_commission, 25);
+  assert.equal(result[0].booking_videos[0].latest_performance.gross_gmv, 500);
+  assert.equal(result[0].booking_videos[0].latest_performance.orders, 10);
+  assert.equal(result[0].booking_videos[0].latest_performance.items_refunded, 2);
+  assert.equal(result[0].booking_videos[0].latest_performance.estimated_commission, 25);
+  assert.equal(result[0].booking_videos[0].performance_snapshots, undefined);
+  assert.equal(result[0].booking_videos[0].latest_performance.raw_metrics, undefined);
+  assert.equal(result[0].evaluation_snapshot, undefined);
   assert.equal(result[0].actual_performance.gross_gmv, 500);
   assert.equal(result[0].actual_performance.orders, 10);
   assert.equal(result[0].actual_performance.start_date, '2026-06-01');

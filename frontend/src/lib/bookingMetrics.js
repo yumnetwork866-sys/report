@@ -466,7 +466,7 @@ export const bookingProductOrderBreakdown = (booking, orders = []) => {
     .sort((left, right) => right.orderCount - left.orderCount || right.quantity - left.quantity || left.name.localeCompare(right.name));
 };
 
-export const latestBookingVideoSnapshot = (video) => [...(video?.performance_snapshots || [])]
+export const latestBookingVideoSnapshot = (video) => video?.latest_performance || [...(video?.performance_snapshots || [])]
   .sort((left, right) => (
     String(right.snapshot_date || '').localeCompare(String(left.snapshot_date || ''))
     || new Date(right.synced_at || 0) - new Date(left.synced_at || 0)
@@ -775,6 +775,18 @@ export const bookingVideoPerformanceForVideos = (videos = [], basePerformance = 
 };
 
 export const bookingVideoSocialMetrics = (snapshot) => {
+  if (snapshot?.social_metrics) {
+    const shared = snapshot.social_metrics;
+    return {
+      views: optionalNumber(shared.views) ?? optionalNumber(snapshot?.views),
+      likes: shared.available === false ? null : optionalNumber(shared.likes),
+      comments: shared.available === false ? null : optionalNumber(shared.comments),
+      shares: shared.available === false ? null : optionalNumber(shared.shares),
+      available: Boolean(shared.available),
+      metricWindow: shared.metric_window || null,
+      syncedAt: shared.synced_at || snapshot?.synced_at || null,
+    };
+  }
   const rawVideo = snapshot?.raw_metrics?.video || snapshot?.raw_metrics || {};
   const listVideo = rawVideo?.list || rawVideo;
   const traffic = rawVideo?.detail?.performance?.intervals?.[0]?.traffic || {};
@@ -1069,6 +1081,8 @@ export const productsOfBookingVideo = (video, snapshot) => {
 };
 
 export const productCtrOfBookingVideo = (snapshot) => {
+  const directCtr = optionalNumber(snapshot?.ctr);
+  if (directCtr !== null) return directCtr;
   const raw = snapshot?.raw_metrics || {};
   const rawVideo = raw?.video || raw;
   const listVideo = rawVideo?.list || rawVideo;

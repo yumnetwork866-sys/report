@@ -30,6 +30,8 @@ import {
   bookingVideoLinkCountForBookings,
   uniqueBookingVideosForBookings,
   bookingVideoOrderMetrics,
+  latestBookingVideoSnapshot,
+  productCtrOfBookingVideo,
 } from '../src/lib/bookingMetrics.js';
 
 test('bookingProductVideoSummary deduplicates attributed video views across bookings', () => {
@@ -466,6 +468,33 @@ test('booking video social metrics distinguish unavailable data from real zeroes
   assert.equal(available.comments, 2);
   assert.equal(available.shares, 1);
   assert.equal(available.available, true);
+});
+
+test('compact booking video metrics use the flattened latest performance fields', () => {
+  const latest = {
+    ctr: 0.18,
+    views: 900,
+    social_metrics: {
+      available: true,
+      likes: 12,
+      comments: 3,
+      shares: 1,
+      metric_window: 'PAST_30_DAYS',
+    },
+  };
+  const video = { latest_performance: latest };
+
+  assert.equal(latestBookingVideoSnapshot(video), latest);
+  assert.equal(productCtrOfBookingVideo(latest), 0.18);
+  assert.deepEqual(bookingVideoSocialMetrics(latest), {
+    views: 900,
+    likes: 12,
+    comments: 3,
+    shares: 1,
+    available: true,
+    metricWindow: 'PAST_30_DAYS',
+    syncedAt: null,
+  });
 });
 
 test('bookingVideoMatchesProducts checks product intersection correctly', () => {

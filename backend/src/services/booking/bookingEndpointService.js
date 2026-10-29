@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { Op, QueryTypes } = require('sequelize');
+const { Op, QueryTypes, literal } = require('sequelize');
 const bookingRepository = require('../../repositories/bookingRepository');
 const { getOrSetCache } = require('../../lib/redis');
 const {
@@ -24,7 +24,10 @@ const {
   applyBookingProductPerformance,
 } = require('../bookingVideoPerformanceService');
 const { handleShopOauthCallback } = require('../tiktokShop/tiktokShopEndpointService');
-const { serializeBookings: serializeBookingsWithFreshCreatorAvatars } = require('../../presenters/bookingPresenter');
+const {
+  serializeBookingSummaries,
+  serializeBookings: serializeBookingsWithFreshCreatorAvatars,
+} = require('../../presenters/bookingPresenter');
 const bookingQueryService = require('./bookingQueryService');
 const bookingCommandService = require('./bookingCommandService');
 const bookingPerformanceService = require('./bookingPerformanceService');
@@ -81,6 +84,17 @@ const shiftDateString = (dateStr, days) => {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 };
+
+const creatorVideoActivityInRange = (startDate, endDate) => literal(`EXISTS (
+  SELECT 1
+  FROM booking_videos scoped_video
+  JOIN bookings scoped_booking ON scoped_booking.id = scoped_video.booking_id
+  WHERE scoped_booking.target_shop_id = "Booking"."target_shop_id"
+    AND LOWER(TRIM(LEADING '@' FROM COALESCE(scoped_booking.creator_username, '')))
+      = LOWER(TRIM(LEADING '@' FROM COALESCE("Booking"."creator_username", '')))
+    AND scoped_video.posted_at >= '${startDate}'::date
+    AND scoped_video.posted_at < '${shiftDateString(endDate, 1)}'::date
+)`);
 
 const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, customRange = {}) => {
   const days = Number(String(performanceWindow || '').match(/^PAST_(\d+)_DAYS$/)?.[1]);
@@ -724,6 +738,7 @@ const getBookings = async (req, res) => {
               { created_at: { [Op.between]: [`${rangeStart}T00:00:00.000Z`, `${rangeEnd}T23:59:59.999Z`] } },
             ],
           },
+          creatorVideoActivityInRange(rangeStart, rangeEnd),
         ],
       };
     } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
@@ -749,11 +764,12 @@ const getBookings = async (req, res) => {
               { created_at: { [Op.between]: [`${monthStart}T00:00:00.000Z`, `${monthEnd}T23:59:59.999Z`] } },
             ],
           },
+          creatorVideoActivityInRange(monthStart, monthEnd),
         ],
       };
     }
 
-    const cacheKey = `bookings:list:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
+    const cacheKey = `bookings:list:v4:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await bookingRepository.findBookings({
         where: {
@@ -788,7 +804,9 @@ const getBookings = async (req, res) => {
           endDate: periodEndDate,
         })
         : serialized;
-      return addReferencePerformance(withProductPerf, requestedWindow, customRange);
+      return serializeBookingSummaries(
+        await addReferencePerformance(withProductPerf, requestedWindow, customRange),
+      );
     });
 
     if (hit) {

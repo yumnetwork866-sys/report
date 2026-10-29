@@ -482,7 +482,7 @@ const BookingManagement = ({
       windowType: range.windowType,
       ...(range.startDate ? { startDate: range.startDate, endDate: range.endDate } : {}),
       ...(range.startTime ? { startTime: range.startTime, endTime: range.endTime } : {}),
-      month: 'all',
+      month: selectedMonth,
       includeProductPerformance: false,
     })
       .then((loadedBookings) => setBookings(loadedBookings))
@@ -782,7 +782,7 @@ const BookingManagement = ({
           startDate: currentRange.startDate,
           endDate: currentRange.endDate,
         } : {}),
-        month: 'all',
+        month: selectedMonth,
         includeProductPerformance: false,
       }).then(setBookings).catch(() => {});
       setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
