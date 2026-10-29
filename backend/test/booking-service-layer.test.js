@@ -203,6 +203,38 @@ test('booking performance service resolves month range and formats the response'
   });
 });
 
+test('booking performance hashtag mode discovers creator videos independently of product-linked booking videos', async (t) => {
+  const calls = [];
+  const service = loadWithMocks(t, '../src/services/booking/bookingPerformanceService', {
+    '../src/repositories/bookingRepository': {
+      findForProductPerformance: async () => [{ id: 42, staff_id: 18 }],
+      findHashtagVideoCandidatesForBookings: async (bookingIds) => {
+        assert.deepEqual(bookingIds, [42]);
+        return [
+          { booking_id: 42, platform_video_id: 'product-linked-video', title: '#mq', hashtags: ['#vh'] },
+          { booking_id: 42, platform_video_id: 'catalog-vh-video', title: 'Review #vh', hashtags: ['#vh'] },
+          { booking_id: 42, platform_video_id: 'catalog-vh-video', title: 'Review #vh', hashtags: ['#vh'] },
+        ];
+      },
+    },
+    '../src/services/bookingVideoPerformanceService': {
+      videoMatchesStaffHashtags: (title, hashtags) => title.includes('#vh') && hashtags.includes('#vh'),
+      loadOrderMetricsForBookingProducts: async (options) => {
+        calls.push(options);
+        return new Map();
+      },
+    },
+  });
+
+  await service.getBookingProductPerformance({}, {
+    videoIdsByBooking: { 42: ['product-linked-video'] },
+  });
+
+  assert.deepEqual(calls[0].videoIdsByBooking, {
+    42: ['product-linked-video', 'catalog-vh-video'],
+  });
+});
+
 test('findTargetCreator resolves cross-shop creator when target shop has no synced records', async (t) => {
   const targetService = loadWithMocks(t, '../src/services/booking/bookingTargetService', {
     '../src/repositories/bookingRepository': {

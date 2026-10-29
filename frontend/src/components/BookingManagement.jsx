@@ -741,18 +741,6 @@ const BookingManagement = ({
     t,
   });
 
-  const creatorBookingStats = useMemo(() => creatorBookings.reduce((result, booking) => {
-    const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
-    const convertedCost = convertAmount(rawCost, booking.currency);
-    const performance = booking.actual_performance || {};
-    const rawGmv = finiteNumber(performance.gross_gmv || performance.affiliate_gmv);
-    const convertedGmv = convertAmount(rawGmv, performance.currency || booking.currency);
-    result.totalCost += convertedCost ?? rawCost;
-    result.totalGmv += convertedGmv ?? rawGmv;
-    result.itemsSold += finiteNumber(performance.items_sold);
-    return result;
-  }, { totalCost: 0, totalGmv: 0, itemsSold: 0 }), [creatorBookings, convertAmount]);
-
   useEffect(() => {
     if (!canViewUsers && bookingGroups.length === 1) {
       setExpandedGroupKeys(new Set([bookingGroups[0].key]));
@@ -1125,7 +1113,6 @@ const BookingManagement = ({
         creatorBookings={creatorBookings}
         deletingId={deletingId}
         onRequestDeleteCreator={() => setCreatorDeleteConfirmOpen(true)}
-        creatorBookingStats={creatorBookingStats}
         selectedCurrency={selectedCurrency}
         currencyLabel={currencyLabel}
         convertAmount={convertAmount}

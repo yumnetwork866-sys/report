@@ -585,3 +585,35 @@ test('loadOrderMetricsForBookingProducts bypasses product filter when hashtag vi
   assert.equal(actiscarBreakdown.orderCount, 1);
   assert.equal(actiscarBreakdown.quantity, 1);
 });
+
+test('hashtag video filter does not require a configured booking product', async () => {
+  const performance = await loadOrderMetricsForBookingProducts({
+    bookings: [{
+      id: 501,
+      target_shop_id: 10,
+      creator_username: 'creator.vh',
+      currency: 'MYR',
+      evaluation_snapshot: {},
+    }],
+    videoIdsByBooking: { 501: ['video-vh'] },
+    database: { query: async () => [{
+      shop_id: 10,
+      product_id: 'any-product',
+      product_name: 'Any Product',
+      creator_username: 'creator.vh',
+      order_id: 'order-vh',
+      content_id: 'video-vh',
+      content_type: 'VIDEO',
+      currency: 'MYR',
+      quantity: 2,
+      refunded_quantity: 0,
+      price: 25,
+      raw_data: {},
+    }] },
+  });
+
+  const result = performance.get('501');
+  assert.equal(result.affiliate_orders, 1);
+  assert.equal(result.affiliate_gmv, 50);
+  assert.equal(result.breakdown[0].id, 'any-product');
+});

@@ -1,10 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Play } from 'lucide-react';
 import { fetchTikTokShopVideoThumbnail } from '../../lib/api';
+import { extractTikTokVideoId, extractTikTokUsername } from '../../lib/bookingMetrics';
 import AppAvatar from '../AppAvatar';
 
-export const VideoThumbnail = ({ shopId, video, href }) => {
-  const videoId = video?.video_id || video?.id;
+export const VideoThumbnail = ({ shopId, video, href, onPlay }) => {
+  const containerRef = useRef(null);
+  const videoId = extractTikTokVideoId(video);
   const sourceVideo = video?.raw_metrics?.list || {};
   const directThumbnail = video?.thumbnail_url
     || sourceVideo.thumbnail_url
@@ -13,10 +16,9 @@ export const VideoThumbnail = ({ shopId, video, href }) => {
     || null;
   const [thumbnail, setThumbnail] = useState(directThumbnail);
   const [failed, setFailed] = useState(false);
-  const username = video?.creator?.user_name
-    || video?.username
-    || sourceVideo?.creator?.user_name
-    || sourceVideo?.username;
+  const [isVisible, setIsVisible] = useState(typeof IntersectionObserver === 'undefined');
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const username = extractTikTokUsername(video);
   const title = video?.video_title || video?.title || '';
 
   useEffect(() => {
@@ -25,15 +27,82 @@ export const VideoThumbnail = ({ shopId, video, href }) => {
     if (directThumbnail || !shopId || !videoId || !username) return undefined;
     const controller = new AbortController();
     fetchTikTokShopVideoThumbnail(shopId, videoId, username, controller.signal)
-      .then((payload) => setThumbnail(payload?.thumbnail_url || null))
+      .then((payload) => { if (payload?.thumbnail_url) setThumbnail(payload.thumbnail_url); })
       .catch((error) => { if (error.name !== 'AbortError') setFailed(true); });
     return () => controller.abort();
   }, [directThumbnail, shopId, username, videoId]);
 
-  const content = thumbnail && !failed
-    ? <img src={thumbnail} alt={title} loading="lazy" onError={() => setFailed(true)} />
-    : <span className="shop-video-analytics__thumbnail-placeholder" aria-hidden="true">▶</span>;
-  return <span className="shop-video-analytics__thumbnail">{href ? <a href={href} target="_blank" rel="noreferrer">{content}</a> : content}</span>;
+  useEffect(() => {
+    if (isVisible || !containerRef.current || typeof IntersectionObserver === 'undefined') return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry?.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '250px' }
+    );
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [isVisible]);
+
+  const thumbnailIframeSrc = videoId
+    ? `https://www.tiktok.com/player/v1/${videoId}?embed_from=oembed&autoplay=0&muted=1&music_info=0&description=0`
+    : null;
+
+  const handleClick = (e) => {
+    e.stopPropagation();
+    if (onPlay) {
+      onPlay(video);
+    } else if (href) {
+      window.open(href, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <button
+      ref={containerRef}
+      type="button"
+      className="shop-video-analytics__thumbnail"
+      onClick={handleClick}
+      aria-label={title || (videoId ? `Xem video ${videoId}` : 'Xem video TikTok')}
+    >
+      <span className="shop-video-analytics__thumbnail-placeholder" aria-hidden="true">▶</span>
+
+      {thumbnail && !failed ? (
+        <img
+          src={thumbnail}
+          alt={title}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : thumbnailIframeSrc && isVisible ? (
+        <div className="shop-video-analytics__thumbnail-iframe-viewport">
+          <iframe
+            src={thumbnailIframeSrc}
+            className={`shop-video-analytics__thumbnail-iframe${iframeLoaded ? ' shop-video-analytics__thumbnail-iframe--loaded' : ''}`}
+            title={title || 'TikTok thumbnail'}
+            loading="lazy"
+            scrolling="no"
+            tabIndex={-1}
+            aria-hidden="true"
+            onLoad={() => setIframeLoaded(true)}
+            allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          />
+        </div>
+      ) : null}
+
+      <div className="shop-video-analytics__thumbnail-overlay" aria-hidden="true">
+        <span className="shop-video-analytics__thumbnail-play-badge">
+          <Play size={16} fill="currentColor" />
+        </span>
+      </div>
+    </button>
+  );
 };
 
 export const CreatorAvatar = ({ src, name }) => <AppAvatar src={src} name={name || 'Creator'} />;

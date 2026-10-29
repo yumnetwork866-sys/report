@@ -320,6 +320,151 @@
   box-shadow: none;
 }
 
+/* Global TikTok Player Modal */
+.booking-video-modal-backdrop,
+.tiktok-video-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, .72);
+  backdrop-filter: blur(8px);
+  animation: booking-modal-fade-in 140ms ease;
+}
+
+@keyframes booking-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.booking-video-modal,
+.tiktok-video-modal {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 360px;
+  background: #0f172a;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, .12);
+  box-shadow: 0 24px 48px -8px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .08);
+  overflow: hidden;
+  color: #f8fafc;
+  animation: booking-modal-scale-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes booking-modal-scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.booking-video-modal__header,
+.tiktok-video-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.booking-video-modal__info,
+.tiktok-video-modal__info {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.booking-video-modal__creator,
+.tiktok-video-modal__creator {
+  font-size: .74rem;
+  font-weight: 700;
+  color: #60a5fa;
+}
+
+.booking-video-modal__title,
+.tiktok-video-modal__title {
+  margin: 0;
+  font-size: .82rem;
+  font-weight: 500;
+  color: #f1f5f9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.booking-video-modal__actions,
+.tiktok-video-modal__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.booking-video-modal__link,
+.tiktok-video-modal__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .08);
+  color: #cbd5e1;
+  font-size: .72rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.booking-video-modal__link:hover,
+.tiktok-video-modal__link:hover {
+  background: rgba(255, 255, 255, .16);
+  color: #fff;
+}
+
+.booking-video-modal__close,
+.tiktok-video-modal__close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.booking-video-modal__close:hover,
+.tiktok-video-modal__close:hover {
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+}
+
+.booking-video-modal__player-wrap,
+.tiktok-video-modal__player-wrap {
+  position: relative;
+  width: 100%;
+  height: min(578px, calc(100vh - 160px));
+  max-height: 578px;
+  background: #000;
+  display: grid;
+  place-items: center;
+}
+
+.booking-video-modal__iframe,
+.tiktok-video-modal__iframe {
+  width: 100%;
+  max-width: 325px;
+  height: 100%;
+  border: 0;
+}
 
 @media (prefers-reduced-motion: reduce) {
 }

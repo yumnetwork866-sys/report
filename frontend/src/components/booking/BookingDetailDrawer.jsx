@@ -10,7 +10,6 @@ const BookingDetailDrawer = ({
   creatorBookings,
   deletingId,
   onRequestDeleteCreator,
-  creatorBookingStats,
   selectedCurrency,
   currencyLabel,
   convertAmount,
@@ -85,27 +84,15 @@ const BookingDetailDrawer = ({
           </div>
         </div>
         <div className="koc-drawer__body">
-          <div className="booking-detail-summary">
-            <article className="booking-detail-summary__card">
-              <span>{t('booking.totalCost')}</span>
-              <strong>{formatMoney(creatorBookingStats.totalCost, selectedCurrency)}</strong>
-            </article>
-            <article className="booking-detail-summary__card">
-              <span>{t('booking.totalGmv')}</span>
-              <strong>{formatMoney(creatorBookingStats.totalGmv, selectedCurrency)}</strong>
-            </article>
-            <article className="booking-detail-summary__card">
-              <span>{t('booking.totalCostRevenueRatio')}</span>
-              <strong>
-                {formatRatio(creatorBookingStats.totalGmv > 0 ? creatorBookingStats.totalCost / creatorBookingStats.totalGmv : null)}
-              </strong>
-            </article>
-            <article className="booking-detail-summary__card">
-              <span>{t('booking.totalItemsSold')}</span>
-              <strong>{formatNumber(creatorBookingStats.itemsSold)}</strong>
-            </article>
-          </div>
           <div className="booking-cards-list">
+            <button
+              className="booking-cards-list__add"
+              type="button"
+              onClick={openCreateBookingFromDrawer}
+              aria-label={t('booking.addBooking')}
+            >
+              <Plus size={20} aria-hidden="true" />
+            </button>
             {creatorBookings.map((b) => (
               <BookingMonthCard
                 key={b.id}
@@ -128,14 +115,6 @@ const BookingDetailDrawer = ({
                 t={t}
               />
             ))}
-            <button
-              className="booking-cards-list__add"
-              type="button"
-              onClick={openCreateBookingFromDrawer}
-              aria-label={t('booking.addBooking')}
-            >
-              <Plus size={20} aria-hidden="true" />
-            </button>
           </div>
         </div>
       </aside>

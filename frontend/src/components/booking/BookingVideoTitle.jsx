@@ -2,7 +2,7 @@ import React, { useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Eye } from 'lucide-react';
 import BookingVideoThumbnail from '../BookingVideoThumbnail';
-import { extractVideoHashtags, fullTitleOfVideo } from '../../lib/bookingMetrics';
+import { extractTikTokVideoId, extractVideoHashtags, fullTitleOfVideo } from '../../lib/bookingMetrics';
 
 const BookingVideoTitle = ({
   video,
@@ -17,11 +17,14 @@ const BookingVideoTitle = ({
   const tooltipId = useId();
   const triggerRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
+  const [isPlayerModalOpen, setIsPlayerModalOpen] = useState(false);
 
   const fullTitle = fullTitleOfVideo(video, snapshot);
   const hashtags = extractVideoHashtags(video, fullTitle);
+  const videoId = extractTikTokVideoId(video);
 
   const showTooltip = () => {
+    if (isPlayerModalOpen) return;
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const width = Math.min(380, window.innerWidth - 24);
@@ -36,6 +39,21 @@ const BookingVideoTitle = ({
   };
 
   const hideTooltip = () => setTooltip(null);
+
+  const handleModalChange = (open) => {
+    setIsPlayerModalOpen(open);
+    if (open) setTooltip(null);
+  };
+
+  const handleTitleClick = (e) => {
+    e.stopPropagation();
+    setTooltip(null);
+    if (videoId) {
+      setIsPlayerModalOpen(true);
+    } else if (video?.video_url) {
+      window.open(video.video_url, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   return (
     <div
@@ -54,16 +72,18 @@ const BookingVideoTitle = ({
         index={videoIndex}
         username={video.creator_username || booking.creator_username}
         shared={Boolean(video.is_shared_booking_video || Number(video.shared_booking_count) > 1)}
+        isModalOpen={isPlayerModalOpen}
+        onModalChange={handleModalChange}
       />
       <div>
-        {video.video_url ? (
-          <a href={video.video_url} target="_blank" rel="noreferrer">
-            <strong>{video.title || video.platform_video_id}</strong>
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        ) : (
+        <button
+          type="button"
+          className="booking-video-expansion__title-btn"
+          onClick={handleTitleClick}
+          aria-label={video?.title || (videoId ? `Xem video ${videoId}` : 'Xem video TikTok')}
+        >
           <strong>{video.title || video.platform_video_id}</strong>
-        )}
+        </button>
         <small>{formatDateOnly(video.posted_at, '—')}</small>
         <div className="video-engagement video-engagement--inline booking-video-expansion__stats-line">
           <span title={t('videoLibrary.views', 'Lượt xem')} aria-label={`${t('videoLibrary.views', 'Lượt xem')}: ${formatNumber(displayViews ?? 0)}`}>

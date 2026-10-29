@@ -1092,3 +1092,24 @@ export const productCtrOfBookingVideo = (snapshot) => {
   }, { clicks: 0, impressions: 0 });
   return totals.impressions > 0 ? totals.clicks / totals.impressions : null;
 };
+
+export const extractTikTokVideoId = (video) => {
+  const directId = String(video?.video_id || video?.platform_video_id || video?.id || '').trim();
+  if (/^\d{10,25}$/.test(directId)) return directId;
+  if (video?.video_url) {
+    const match = String(video.video_url).match(/\/video\/(\d{10,25})/);
+    if (match) return match[1];
+  }
+  return null;
+};
+
+export const extractTikTokUsername = (video, explicitUsername) => {
+  const raw = explicitUsername || video?.creator_username || video?.creator?.user_name || video?.username || '';
+  const cleaned = String(raw).trim().replace(/^@+/, '');
+  if (cleaned) return cleaned;
+  if (video?.video_url) {
+    const match = String(video.video_url).match(/@([^/?#]+)/);
+    if (match) return match[1];
+  }
+  return '';
+};

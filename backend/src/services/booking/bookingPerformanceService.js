@@ -1,6 +1,7 @@
 const bookingRepository = require('../../repositories/bookingRepository');
 const {
   loadOrderMetricsForBookingProducts,
+  videoMatchesStaffHashtags,
 } = require('../bookingVideoPerformanceService');
 
 const enrichPerformanceViews = async (performance) => {
@@ -42,18 +43,43 @@ const resolvePerformancePeriod = ({ month, start_date: startDate, end_date: endD
   return monthPeriod(month);
 };
 
+const resolveHashtagVideoIdsByBooking = async (bookings, fallbackVideoIdsByBooking) => {
+  if (fallbackVideoIdsByBooking === null || fallbackVideoIdsByBooking === undefined) return null;
+  if (!bookingRepository.findHashtagVideoCandidatesForBookings) return fallbackVideoIdsByBooking;
+
+  const bookingIds = bookings.map((booking) => Number(booking?.id)).filter(Number.isInteger);
+  const candidates = await bookingRepository.findHashtagVideoCandidatesForBookings(bookingIds);
+  const matches = new Map(bookingIds.map((bookingId) => {
+    const bookingIdKey = String(bookingId);
+    const existingMatches = fallbackVideoIdsByBooking?.[bookingIdKey] || [];
+    return [bookingIdKey, new Set(existingMatches.map(String).filter(Boolean))];
+  }));
+
+  for (const candidate of candidates || []) {
+    const bookingId = String(candidate?.booking_id || '');
+    const videoId = String(candidate?.platform_video_id || '').trim();
+    if (!matches.has(bookingId) || !videoId) continue;
+    if (videoMatchesStaffHashtags(candidate.title, candidate.hashtags)) {
+      matches.get(bookingId).add(videoId);
+    }
+  }
+
+  return Object.fromEntries([...matches].map(([bookingId, videoIds]) => [bookingId, [...videoIds]]));
+};
+
 const getBookingProductPerformance = async (query = {}, { videoIdsByBooking = null } = {}) => {
   const { startDate = null, endDate = null } = resolvePerformancePeriod(query);
   const startTime = query.start_time === undefined ? null : Number(query.start_time);
   const endTime = query.end_time === undefined ? null : Number(query.end_time);
   const bookings = await bookingRepository.findForProductPerformance();
+  const resolvedVideoIdsByBooking = await resolveHashtagVideoIdsByBooking(bookings, videoIdsByBooking);
   const performance = await loadOrderMetricsForBookingProducts({
     bookings,
     startDate,
     endDate,
     startTime: Number.isFinite(startTime) ? startTime : null,
     endTime: Number.isFinite(endTime) ? endTime : null,
-    videoIdsByBooking,
+    videoIdsByBooking: resolvedVideoIdsByBooking,
   });
   return { performance: Object.fromEntries(performance) };
 };
@@ -61,5 +87,6 @@ const getBookingProductPerformance = async (query = {}, { videoIdsByBooking = nu
 module.exports = {
   enrichPerformanceViews,
   getBookingProductPerformance,
+  resolveHashtagVideoIdsByBooking,
   resolvePerformancePeriod,
 };

@@ -399,15 +399,14 @@ const loadOrderMetricsForBookingProducts = async ({
 
   const shopIds = [...new Set(bookingList.map((b) => Number(b.target_shop_id)).filter(Number.isInteger))];
   const allProductIds = [...new Set(bookingList.flatMap((b) => [...selectedProductIdsOfBooking(b)]).filter(Boolean))];
-
-  if (!shopIds.length || !allProductIds.length) {
-    return result;
-  }
-
   const allFilteredVideoIds = videoIdsByBooking
     ? [...new Set(Object.values(videoIdsByBooking).flatMap((ids) => ids || []).map(String).filter(Boolean))]
     : [];
   const hasGlobalVideoFilter = allFilteredVideoIds.length > 0;
+
+  if (!shopIds.length || (!allProductIds.length && !hasGlobalVideoFilter)) {
+    return result;
+  }
 
   const dateClauses = [];
   const replacements = {
@@ -465,7 +464,11 @@ const loadOrderMetricsForBookingProducts = async ({
         LIMIT 1
       ) video_snapshot ON TRUE
       WHERE s.shop_id IN (:shopIds)
-        ${hasGlobalVideoFilter ? 'AND (s.product_id IN (:productIds) OR s.content_id IN (:filteredVideoIds))' : 'AND s.product_id IN (:productIds)'}
+        ${hasGlobalVideoFilter
+    ? (allProductIds.length
+      ? 'AND (s.product_id IN (:productIds) OR s.content_id IN (:filteredVideoIds))'
+      : 'AND s.content_id IN (:filteredVideoIds)')
+    : 'AND s.product_id IN (:productIds)'}
         ${dateWhere}
     `, {
       replacements,
@@ -482,13 +485,13 @@ const loadOrderMetricsForBookingProducts = async ({
     for (const booking of bookingProcessingList) {
       const bId = String(booking?.id);
       const perf = result.get(bId);
-      if (!perf || !perf.has_products) continue;
+      const hasVideoFilter = videoIdsByBooking
+        && Object.prototype.hasOwnProperty.call(videoIdsByBooking, bId);
+      if (!perf || (!perf.has_products && !hasVideoFilter)) continue;
 
       const selectedIds = new Set(perf.selected_products.map((p) => String(p.id)));
       const creatorUsername = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
       const bookingShopId = Number(booking?.target_shop_id);
-      const hasVideoFilter = videoIdsByBooking
-        && Object.prototype.hasOwnProperty.call(videoIdsByBooking, bId);
       const allowedVideoIds = hasVideoFilter
         ? new Set((videoIdsByBooking[bId] || []).map((value) => String(value || '').trim()).filter(Boolean))
         : null;

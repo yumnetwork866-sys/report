@@ -95,8 +95,31 @@ const updateById = (bookingId, payload) => Booking.update(payload, {
 
 const findForProductPerformance = () => Booking.findAll({
   where: { evaluation_snapshot: { [Op.not]: null } },
-  attributes: ['id', 'target_shop_id', 'creator_username', 'start_date', 'currency', 'evaluation_snapshot'],
+  attributes: ['id', 'staff_id', 'target_shop_id', 'creator_username', 'start_date', 'currency', 'evaluation_snapshot'],
 });
+
+const findHashtagVideoCandidatesForBookings = async (bookingIds = []) => {
+  const ids = [...new Set(bookingIds.map(Number).filter(Number.isInteger))];
+  if (!ids.length) return [];
+  return sequelize.query(`
+    SELECT DISTINCT
+      booking.id AS booking_id,
+      shop_video.platform_video_id,
+      shop_video.title,
+      attribution.hashtags
+    FROM bookings booking
+    JOIN user_content_attributions attribution
+      ON attribution.user_id = booking.staff_id
+    JOIN shop_videos shop_video
+      ON shop_video.shop_id = booking.target_shop_id
+     AND LOWER(TRIM(LEADING '@' FROM COALESCE(shop_video.creator_username, '')))
+       = LOWER(TRIM(LEADING '@' FROM COALESCE(booking.creator_username, '')))
+    WHERE booking.id IN (:bookingIds)
+  `, {
+    replacements: { bookingIds: ids },
+    type: QueryTypes.SELECT,
+  });
+};
 
 const deleteById = (bookingId) => Booking.destroy({
   where: { id: bookingId },
@@ -236,6 +259,7 @@ module.exports = {
   findCreatorProfile,
   findCreatorVideoMetrics,
   findForProductPerformance,
+  findHashtagVideoCandidatesForBookings,
   findKoc,
   findKocs,
   findPartnerAuthorization,

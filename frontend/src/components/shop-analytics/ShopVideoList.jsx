@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import Pagination from '../Pagination';
+import TikTokVideoModal from '../TikTokVideoModal';
 import AnalyticsIcon from './AnalyticsIcon';
 import { CreatorAvatar, VideoProduct, VideoThumbnail } from './VideoCells';
 import { formatVideoPostDate, productsForVideo } from './shopAnalyticsUtils';
+import { extractTikTokVideoId, extractTikTokUsername } from '../../lib/bookingMetrics';
 
 const ShopVideoList = ({
   filteredVideoRows,
@@ -21,28 +24,40 @@ const ShopVideoList = ({
   videoRows,
   videoSearch,
   videoUrl,
-}) => (
-  <>
-    {videoExportOnly ? (
-      <section className="section-card shop-video-analytics__table-card">
-      <div className="section-card__header">
-        <div>
-          <h2 className="section-card__title">{t('shopAnalytics.videoExportTableTitle')}</h2>
-          <p className="section-card__meta">{t('shopAnalytics.videoExportTableMeta', { count: filteredVideoRows.length })}</p>
+}) => {
+  const [activeVideoModal, setActiveVideoModal] = useState(null);
+
+  const handlePlayVideo = (video, url) => {
+    const videoId = extractTikTokVideoId(video);
+    if (videoId) {
+      setActiveVideoModal(video);
+    } else if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  return (
+    <>
+      {videoExportOnly ? (
+        <section className="section-card shop-video-analytics__table-card">
+        <div className="section-card__header">
+          <div>
+            <h2 className="section-card__title">{t('shopAnalytics.videoExportTableTitle')}</h2>
+            <p className="section-card__meta">{t('shopAnalytics.videoExportTableMeta', { count: filteredVideoRows.length })}</p>
+          </div>
+          <label className="video-export-search">
+            <span className="sr-only">{t('common.search')}</span>
+            <input
+              type="search"
+              value={videoSearch}
+              placeholder={t('shopAnalytics.videoSearchPlaceholder')}
+              onChange={(event) => {
+                setVideoSearch(event.target.value);
+                setVideoPage(1);
+              }}
+            />
+          </label>
         </div>
-        <label className="video-export-search">
-          <span className="sr-only">{t('common.search')}</span>
-          <input
-            type="search"
-            value={videoSearch}
-            placeholder={t('shopAnalytics.videoSearchPlaceholder')}
-            onChange={(event) => {
-              setVideoSearch(event.target.value);
-              setVideoPage(1);
-            }}
-          />
-        </label>
-      </div>
       <div className="table-wrap shop-analytics__table-wrap video-export-table-wrap">
         <table className="data-table shop-analytics__table shop-video-analytics__table video-export-table">
           <thead>
@@ -72,13 +87,21 @@ const ShopVideoList = ({
                 <tr key={video.id || index}>
                   <td>
                     <div className="shop-video-analytics__video">
-                      <VideoThumbnail shopId={selectedShopId} video={video} href={url} />
+                      <VideoThumbnail
+                        shopId={selectedShopId}
+                        video={video}
+                        href={url}
+                        onPlay={() => handlePlayVideo(video, url)}
+                      />
                       <span>
-                        {url ? (
-                          <a className="shop-video-analytics__title-link" href={url} target="_blank" rel="noreferrer" title={title}>
-                            <strong>{title}</strong>
-                          </a>
-                        ) : <strong title={title}>{title}</strong>}
+                        <button
+                          type="button"
+                          className="shop-video-analytics__title-btn"
+                          onClick={() => handlePlayVideo(video, url)}
+                          aria-label={title}
+                        >
+                          <strong>{title}</strong>
+                        </button>
                         <span className="shop-video-analytics__creator video-export-table__video-id">ID: {video.video_id || '—'}</span>
                         <span className="video-export-table__engagement">
                           <span title={`${t('shopAnalytics.videoViews')}: ${formatNumber(video.video_views ?? video.views)}`}>
@@ -193,9 +216,21 @@ const ShopVideoList = ({
                   <tr key={video.id || index}>
                     <td>
                       <div className="shop-video-analytics__video">
-                        <VideoThumbnail shopId={selectedShopId} video={video} href={url} />
+                        <VideoThumbnail
+                          shopId={selectedShopId}
+                          video={video}
+                          href={url}
+                          onPlay={() => handlePlayVideo(video, url)}
+                        />
                         <span>
-                          <strong>{video.title || video.id || t('common.unknown')}</strong>
+                          <button
+                            type="button"
+                            className="shop-video-analytics__title-btn"
+                            onClick={() => handlePlayVideo(video, url)}
+                            aria-label={video.title || video.id}
+                          >
+                            <strong>{video.title || video.id || t('common.unknown')}</strong>
+                          </button>
                           <span className="shop-video-analytics__creator" title={video.creator?.nick_name || video.creator?.user_name || video.username || ''}>
                             {video.creator?.nick_name || video.creator?.user_name || video.username || '—'}
                           </span>
@@ -220,7 +255,19 @@ const ShopVideoList = ({
         </div>
       </section>
     )}
-  </>
-);
+
+    {activeVideoModal ? (
+      <TikTokVideoModal
+        isOpen={Boolean(activeVideoModal)}
+        onClose={() => setActiveVideoModal(null)}
+        videoId={extractTikTokVideoId(activeVideoModal)}
+        title={activeVideoModal?.video_title || activeVideoModal?.title}
+        username={extractTikTokUsername(activeVideoModal)}
+        videoUrl={videoUrl(activeVideoModal)}
+      />
+    ) : null}
+    </>
+  );
+};
 
 export default ShopVideoList;
