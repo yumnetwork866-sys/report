@@ -115,6 +115,7 @@ const migrations = [
   require('./105_optimize_high_traffic_indexes'),
   require('./106_denormalize_latest_shop_video_performance'),
   require('./107_add_normalized_shop_video_creator_index'),
+  require('./108_add_scheduled_run_events_started_at_index'),
 ];
 
 const createMigrationRunner = ({

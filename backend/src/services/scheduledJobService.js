@@ -992,6 +992,21 @@ const dispatchPendingCompassRetries = async (now = new Date(), {
   }
 };
 
+const DEFAULT_RUN_EVENTS_RETENTION_DAYS = 14;
+
+const cleanupOldScheduledRunEvents = async (
+  retentionDays = DEFAULT_RUN_EVENTS_RETENTION_DAYS,
+  { sequelizeInstance = sequelize } = {},
+) => {
+  const configured = Number(process.env.SCHEDULED_EVENTS_RETENTION_DAYS || retentionDays);
+  const safeDays = Number.isFinite(configured) && configured >= 1 ? configured : DEFAULT_RUN_EVENTS_RETENTION_DAYS;
+  const [, metadata] = await sequelizeInstance.query(`
+    DELETE FROM scheduled_job_run_events
+    WHERE started_at < NOW() - INTERVAL '${safeDays} days';
+  `);
+  return metadata?.rowCount ?? 0;
+};
+
 const startDatabaseScheduler = () => {
   startTiktokSyncWorker({
     ...jobHandlers,
@@ -1007,6 +1022,20 @@ const startDatabaseScheduler = () => {
   const task = cron.schedule('0 * * * * *', () => tickScheduledJobs().catch((error) => {
     console.error('[Schedule Manager] Tick failed', { message: error.message });
   }), { name: 'database-schedule-manager', noOverlap: true });
+  const retentionTask = cron.schedule('0 0 3 * * *', () => {
+    cleanupOldScheduledRunEvents().then((deleted) => {
+      if (deleted > 0) {
+        console.info('[Schedule Manager] Cleaned old scheduled_job_run_events', { deleted });
+      }
+    }).catch((error) => {
+      console.error('[Schedule Manager] Run events retention cleanup failed', { message: error.message });
+    });
+  }, { name: 'scheduled-run-events-retention', noOverlap: true });
+  const originalStop = typeof task?.stop === 'function' ? task.stop.bind(task) : () => {};
+  task.stop = () => {
+    retentionTask.stop();
+    originalStop();
+  };
   console.info('[Schedule Manager] Started');
   const catchUpEnabled = String(process.env.SCHEDULE_STARTUP_CATCH_UP_ENABLED ?? 'true').toLowerCase() !== 'false';
   if (catchUpEnabled) {
@@ -1047,4 +1076,6 @@ module.exports = {
   unregisterActiveRunController,
   abortActiveRun,
   resolveCreatorPerformanceEndDayOffset,
+  cleanupOldScheduledRunEvents,
+  DEFAULT_RUN_EVENTS_RETENTION_DAYS,
 };

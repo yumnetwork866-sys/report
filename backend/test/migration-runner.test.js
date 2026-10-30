@@ -114,6 +114,7 @@ const defaultMigrationNames = [
   '105_optimize_high_traffic_indexes',
   '106_denormalize_latest_shop_video_performance',
   '107_add_normalized_shop_video_creator_index',
+  '108_add_scheduled_run_events_started_at_index',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

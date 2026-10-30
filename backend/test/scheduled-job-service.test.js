@@ -344,3 +344,18 @@ test('resolveCreatorPerformanceEndDayOffset handles manual and automated trigger
     -2,
   );
 });
+
+test('cleanupOldScheduledRunEvents deletes records older than retention period', async () => {
+  let executedSql = '';
+  const mockSequelize = {
+    query: async (sql) => {
+      executedSql = sql;
+      return [null, { rowCount: 42 }];
+    },
+  };
+  const { cleanupOldScheduledRunEvents } = require('../src/services/scheduledJobService');
+  const deletedCount = await cleanupOldScheduledRunEvents(14, { sequelizeInstance: mockSequelize });
+  assert.equal(deletedCount, 42);
+  assert.match(executedSql, /DELETE FROM scheduled_job_run_events/);
+  assert.match(executedSql, /14 days/);
+});
