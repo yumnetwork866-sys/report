@@ -1,4 +1,4 @@
-const { Product, TikTokChannel, Video } = require('../models');
+const { TikTokChannel, Video } = require('../models');
 
 const normalizeUsername = (username) => String(username || '').replace(/^@/, '').trim();
 
@@ -90,19 +90,6 @@ const importPlatformData = async (req, res) => {
           content_type: item.content_type ?? video.content_type,
           last_synced_at: new Date(),
         });
-      }
-
-      if (Array.isArray(item.products)) {
-        const productRows = [];
-        for (const productName of item.products) {
-          const name = String(productName || '').trim();
-          if (!name) {
-            continue;
-          }
-          const [product] = await Product.findOrCreate({ where: { name } });
-          productRows.push(product);
-        }
-        await video.setProducts(productRows);
       }
 
       results[created ? 'created' : 'updated'] += 1;

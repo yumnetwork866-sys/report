@@ -17,8 +17,6 @@ const bookingRoutes = require('./routes/bookingRoutes');
 const videoRoutes = require('./routes/videoRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const channelRoutes = require('./routes/channelRoutes');
-const productRoutes = require('./routes/productRoutes');
-const assignmentRoutes = require('./routes/assignmentRoutes');
 const importRoutes = require('./routes/importRoutes');
 const authRoutes = require('./routes/authRoutes');
 
@@ -84,8 +82,6 @@ const createApp = () => {
   app.use('/api/videos', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.videos.performance.view', 'shop.bookings.video.view', 'shop.bookings.manage']), videoRoutes);
   app.use('/api/reports', requireAdmin, requireAnyPermission(['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view', 'shop.affiliate.performance.view']), reportRoutes);
   app.use('/api/channels', channelRoutes);
-  app.use('/api/products', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.bookings.manage']), productRoutes);
-  app.use('/api/assignments', requireAdmin, requireAnyPermission(['shop.videos.library.view', 'shop.bookings.manage']), assignmentRoutes);
   app.use('/api/auth/login', loginRateLimit);
   app.use('/api/auth', authRoutes);
   app.use('/api/tiktok-shop', requireAdmin, requireAnyPermission(['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage', 'shop.affiliate.invite', 'shop.affiliate.message', 'admin.shops.manage']), tiktokShopRoutes.adminRouter);

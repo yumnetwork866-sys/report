@@ -5,23 +5,14 @@ const {
   QueryTypes,
 } = require('sequelize');
 const {
-  Product,
   TikTokChannel,
-  User,
   Video,
-  VideoAssignment,
   sequelize,
 } = require('../models');
 const { getOrSetCache, delByPattern } = require('../lib/redis');
 
 const videoDetailInclude = [
   { model: TikTokChannel, as: 'channel' },
-  { model: Product, as: 'products', through: { attributes: [] } },
-  {
-    model: VideoAssignment,
-    as: 'assignments',
-    include: [{ model: User, as: 'user' }],
-  },
 ];
 const VIDEO_LIST_ATTRIBUTES = [
   'id',
@@ -72,15 +63,6 @@ const videoListOptions = (query = {}) => {
   }
 
   return { page, pageSize, where };
-};
-
-const syncVideoProducts = async (video, productIds) => {
-  if (!Array.isArray(productIds)) {
-    return;
-  }
-
-  const products = await Product.findAll({ where: { id: productIds } });
-  await video.setProducts(products);
 };
 
 const addLatestShopPerformance = async (videos) => {
@@ -202,13 +184,13 @@ const getVideoById = async (req, res) => {
 
 const createVideo = async (req, res) => {
   try {
-    const { product_ids, ...payload } = req.body;
+    const payload = { ...req.body };
+    delete payload.product_ids;
     const video = await Video.create({
       ...payload,
       last_synced_at: payload.last_synced_at || new Date(),
     });
 
-    await syncVideoProducts(video, product_ids);
     await Promise.all([
       delByPattern('videos:*'),
       delByPattern('dashboard:*'),
@@ -224,7 +206,8 @@ const createVideo = async (req, res) => {
 
 const updateVideo = async (req, res) => {
   try {
-    const { product_ids, ...payload } = req.body;
+    const payload = { ...req.body };
+    delete payload.product_ids;
     const video = await Video.findByPk(req.params.id);
 
     if (!video) {
@@ -235,7 +218,6 @@ const updateVideo = async (req, res) => {
       ...payload,
       last_synced_at: payload.last_synced_at || new Date(),
     });
-    await syncVideoProducts(video, product_ids);
     await Promise.all([
       delByPattern('videos:*'),
       delByPattern('dashboard:*'),

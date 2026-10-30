@@ -106,6 +106,9 @@ const defaultMigrationNames = [
   '097_optimize_booking_list_queries',
   '098_optimize_dashboard_video_sales_lookup',
   '099_add_booking_video_product_attribution_verification',
+  '100_remove_unused_facebook_chatbot_weekly_reports',
+  '101_remove_legacy_video_products',
+  '102_remove_legacy_video_assignments',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

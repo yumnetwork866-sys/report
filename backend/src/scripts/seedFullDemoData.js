@@ -2,7 +2,6 @@ require('dotenv').config();
 
 const {
   Booking,
-  Product,
   TikTokChannel,
   TikTokPartnerAuthorization,
   TikTokShop,
@@ -10,7 +9,6 @@ const {
   TikTokShopAuthorization,
   User,
   Video,
-  VideoAssignment,
   VideoDailyStats,
   sequelize,
 } = require('../models');
@@ -40,15 +38,6 @@ const demoUsers = [
   ['demo.koc.thao@yumnetwork.vn', 'Phương Thảo', 'koc'],
   ['demo.koc.chi@yumnetwork.vn', 'Mai Chi', 'koc'],
   ['demo.koc.ngan@yumnetwork.vn', 'Kim Ngân', 'koc'],
-];
-
-const productNames = [
-  'Demo Lumilab Glow Serum',
-  'Demo Follicas Hair Tonic',
-  'Demo Acne Recovery Gel',
-  'Demo Stretch Mark Body Oil',
-  'Demo Scar Repair Cream',
-  'Demo Daily Sunscreen',
 ];
 
 const channelSeeds = [
@@ -122,13 +111,6 @@ const seed = async () => {
     const staff = users.slice(0, 4);
     const kocs = users.slice(4);
     summary.users = users.length;
-
-    const products = [];
-    for (const name of productNames) {
-      const [product] = await Product.findOrCreate({ where: { name }, defaults: { name }, transaction });
-      products.push(product);
-    }
-    summary.products = products.length;
 
     const channels = [];
     const videos = [];
@@ -208,17 +190,6 @@ const seed = async () => {
           content_type: contentType,
           last_synced_at: now,
         }, { transaction });
-        await video.setProducts([
-          products[(channelIndex + videoIndex) % products.length],
-          products[(channelIndex + videoIndex + 2) % products.length],
-        ], { transaction });
-        await VideoAssignment.destroy({ where: { video_id: video.id }, transaction });
-        await VideoAssignment.bulkCreate([
-          { video_id: video.id, user_id: staff[1].id, assignment_role: 'script' },
-          { video_id: video.id, user_id: staff[2].id, assignment_role: 'editor' },
-          { video_id: video.id, user_id: kocs[channelIndex].id, assignment_role: 'creator' },
-        ], { transaction });
-
         await VideoDailyStats.destroy({ where: { video_id: video.id }, transaction });
         const dailyStats = [];
         for (let day = 29; day >= 0; day -= 1) {

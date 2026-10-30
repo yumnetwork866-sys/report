@@ -906,8 +906,6 @@ const getChannelReportMemberDetail = async (req, res) => {
                     WHEN (
                       SELECT COUNT(DISTINCT sub_p.product_id)
                       FROM (
-                        SELECT product.id::text AS product_id FROM video_products relation JOIN products product ON product.id = relation.product_id WHERE relation.video_id = video.id
-                        UNION
                         SELECT NULLIF(sp.value ->> 'id', '') AS product_id FROM shop_videos sv CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(sv.raw_data -> 'products') = 'array' THEN sv.raw_data -> 'products' ELSE '[]'::jsonb END) sp(value) WHERE sv.platform_video_id = video.platform_video_id AND NULLIF(sp.value ->> 'id', '') IS NOT NULL
                         UNION
                         SELECT NULLIF(dp.value ->> 'id', '') AS product_id FROM channel_report_video_revenue_daily dr CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(dr.raw_metrics -> 'products') = 'array' THEN dr.raw_metrics -> 'products' ELSE '[]'::jsonb END) dp(value) WHERE dr.platform_video_id = video.platform_video_id AND NULLIF(dp.value ->> 'id', '') IS NOT NULL
@@ -941,15 +939,6 @@ const getChannelReportMemberDetail = async (req, res) => {
                   0
                 )::bigint AS quantity
               FROM (
-                SELECT
-                  product.id::text AS product_id,
-                  product.name,
-                  tsp.image_url
-                FROM video_products relation
-                JOIN products product ON product.id = relation.product_id
-                LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = product.id::text
-                WHERE relation.video_id = video.id
-                UNION ALL
                 SELECT
                   NULLIF(shop_product.value ->> 'id', '') AS product_id,
                   COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), tsp.title, shop_product.value ->> 'id') AS name,
@@ -1035,15 +1024,6 @@ const getChannelReportMemberDetail = async (req, res) => {
             mapped.image_url
           FROM filtered_videos video
           LEFT JOIN LATERAL (
-            SELECT
-              product.id::text AS product_id,
-              product.name,
-              tsp.image_url
-            FROM video_products relation
-            JOIN products product ON product.id = relation.product_id
-            LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = product.id::text
-            WHERE relation.video_id = video.id
-            UNION
             SELECT
               NULLIF(shop_product.value ->> 'id', '') AS product_id,
               COALESCE(NULLIF(shop_product.value ->> 'name', ''), NULLIF(shop_product.value ->> 'title', ''), tsp.title, shop_product.value ->> 'id') AS name,
@@ -1227,17 +1207,40 @@ const getKpis = async (req, res) => {
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`
         WITH user_videos AS (
-          SELECT DISTINCT user_id, video_id
-          FROM video_assignments
-          UNION
           SELECT tc.creator_id AS user_id, v.id AS video_id
           FROM tiktok_channels tc
           JOIN videos v ON v.channel_id = tc.id
           WHERE tc.creator_id IS NOT NULL
         ),
+        video_product_ids AS (
+          SELECT video.id AS video_id, NULLIF(product.value ->> 'id', '') AS product_id
+          FROM videos video
+          JOIN shop_videos shop_video ON shop_video.platform_video_id = video.platform_video_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(shop_video.raw_data -> 'products') = 'array'
+              THEN shop_video.raw_data -> 'products' ELSE '[]'::jsonb END
+          ) product(value)
+          WHERE NULLIF(product.value ->> 'id', '') IS NOT NULL
+          UNION
+          SELECT video.id, NULLIF(product.value ->> 'id', '')
+          FROM videos video
+          JOIN channel_report_video_revenue_daily daily
+            ON daily.platform_video_id = video.platform_video_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(daily.raw_metrics -> 'products') = 'array'
+              THEN daily.raw_metrics -> 'products' ELSE '[]'::jsonb END
+          ) product(value)
+          WHERE NULLIF(product.value ->> 'id', '') IS NOT NULL
+          UNION
+          SELECT video.id, sku.product_id
+          FROM videos video
+          JOIN tiktok_affiliate_order_skus sku ON sku.content_id = video.platform_video_id
+          WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+            AND NULLIF(sku.product_id, '') IS NOT NULL
+        ),
         video_product_counts AS (
           SELECT video_id, COUNT(*)::int AS product_count
-          FROM video_products
+          FROM video_product_ids
           GROUP BY video_id
         ),
         period_bounds AS (
@@ -1293,26 +1296,63 @@ const getKpis = async (req, res) => {
         ORDER BY u.id ASC
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`
+        WITH raw_video_products AS (
+          SELECT
+            video.id AS video_id,
+            NULLIF(product.value ->> 'id', '') AS product_id,
+            COALESCE(NULLIF(product.value ->> 'name', ''), NULLIF(product.value ->> 'title', '')) AS product_name
+          FROM videos video
+          JOIN shop_videos shop_video ON shop_video.platform_video_id = video.platform_video_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(shop_video.raw_data -> 'products') = 'array'
+              THEN shop_video.raw_data -> 'products' ELSE '[]'::jsonb END
+          ) product(value)
+          WHERE NULLIF(product.value ->> 'id', '') IS NOT NULL
+          UNION
+          SELECT
+            video.id,
+            NULLIF(product.value ->> 'id', ''),
+            COALESCE(NULLIF(product.value ->> 'name', ''), NULLIF(product.value ->> 'title', ''))
+          FROM videos video
+          JOIN channel_report_video_revenue_daily daily
+            ON daily.platform_video_id = video.platform_video_id
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof(daily.raw_metrics -> 'products') = 'array'
+              THEN daily.raw_metrics -> 'products' ELSE '[]'::jsonb END
+          ) product(value)
+          WHERE NULLIF(product.value ->> 'id', '') IS NOT NULL
+          UNION
+          SELECT video.id, sku.product_id, NULLIF(sku.product_name, '')
+          FROM videos video
+          JOIN tiktok_affiliate_order_skus sku ON sku.content_id = video.platform_video_id
+          WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
+            AND NULLIF(sku.product_id, '') IS NOT NULL
+        ),
+        product_video_links AS (
+          SELECT video_id, product_id, MAX(product_name) AS product_name
+          FROM raw_video_products
+          GROUP BY video_id, product_id
+        ),
+        product_catalog AS (
+          SELECT product_id, MAX(title) AS title
+          FROM tiktok_shop_products
+          GROUP BY product_id
+        )
         SELECT
-          p.id,
-          p.name,
-          COUNT(vp.video_id)::int AS "totalVideos",
+          vp.product_id AS id,
+          COALESCE(MAX(vp.product_name), MAX(catalog.title), vp.product_id) AS name,
+          COUNT(DISTINCT vp.video_id)::int AS "totalVideos",
           COALESCE(SUM(v.views), 0)::bigint AS "totalViews",
           COALESCE(ROUND(AVG(v.views)), 0)::bigint AS "avgViewsPerVideo"
-        FROM products p
-        LEFT JOIN video_products vp ON vp.product_id = p.id
-        LEFT JOIN videos v ON v.id = vp.video_id
-        GROUP BY p.id, p.name
-        ORDER BY p.id ASC
+        FROM product_video_links vp
+        JOIN videos v ON v.id = vp.video_id
+        LEFT JOIN product_catalog catalog ON catalog.product_id = vp.product_id
+        GROUP BY vp.product_id
+        ORDER BY name ASC, vp.product_id ASC
       `, { type: QueryTypes.SELECT }),
         reportRepository.query(`
         WITH koc_videos AS (
-          SELECT DISTINCT va.video_id
-          FROM video_assignments va
-          JOIN users u ON u.id = va.user_id
-          WHERE u.role = 'koc'
-          UNION
-          SELECT v.id
+          SELECT v.id AS video_id
           FROM tiktok_channels tc
           JOIN users u ON u.id = tc.creator_id AND u.role = 'koc'
           JOIN videos v ON v.channel_id = tc.id
@@ -1333,12 +1373,7 @@ const getKpis = async (req, res) => {
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`
         WITH koc_videos AS (
-          SELECT DISTINCT va.video_id
-          FROM video_assignments va
-          JOIN users u ON u.id = va.user_id
-          WHERE u.role = 'koc'
-          UNION
-          SELECT v.id
+          SELECT v.id AS video_id
           FROM tiktok_channels tc
           JOIN users u ON u.id = tc.creator_id AND u.role = 'koc'
           JOIN videos v ON v.channel_id = tc.id
@@ -1350,8 +1385,7 @@ const getKpis = async (req, res) => {
         FROM koc_videos kv
         JOIN videos v ON v.id = kv.video_id${videoDateSql}
         LEFT JOIN tiktok_channels tc ON tc.id = v.channel_id
-        LEFT JOIN video_assignments va ON va.video_id = v.id
-        LEFT JOIN users u ON u.id = va.user_id AND u.role = 'koc'
+        LEFT JOIN users u ON u.id = tc.creator_id AND u.role = 'koc'
         GROUP BY v.id, tc.username
         ORDER BY v.views DESC, v.id DESC
         LIMIT 10
@@ -1408,9 +1442,7 @@ const getKocDetail = async (req, res) => {
       const [dailyViews, videos, bookings, syncHistory] = await Promise.all([
         reportRepository.query(`
         WITH creator_videos AS (
-          SELECT DISTINCT video_id FROM video_assignments WHERE user_id = :creatorId
-          UNION
-          SELECT v.id
+          SELECT v.id AS video_id
           FROM tiktok_channels tc
           JOIN videos v ON v.channel_id = tc.id
           WHERE tc.creator_id = :creatorId
@@ -1423,9 +1455,7 @@ const getKocDetail = async (req, res) => {
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`
         WITH creator_videos AS (
-          SELECT DISTINCT video_id FROM video_assignments WHERE user_id = :creatorId
-          UNION
-          SELECT v.id
+          SELECT v.id AS video_id
           FROM tiktok_channels tc
           JOIN videos v ON v.channel_id = tc.id
           WHERE tc.creator_id = :creatorId

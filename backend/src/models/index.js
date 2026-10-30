@@ -1076,71 +1076,6 @@ const Video = sequelize.define('Video', {
   ],
 });
 
-const VideoAssignment = sequelize.define('VideoAssignment', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  video_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  user_id: {
-    type: DataTypes.INTEGER,
-    allowNull: false,
-  },
-  assignment_role: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    validate: {
-      isIn: [['script', 'editor', 'uploader', 'actor', 'ai_creator']],
-    },
-  },
-}, {
-  tableName: 'video_assignments',
-  timestamps: false,
-  indexes: [
-    {
-      unique: true,
-      fields: ['video_id', 'user_id', 'assignment_role'],
-    },
-    {
-      fields: ['user_id', 'video_id'],
-    },
-  ],
-});
-
-const Product = sequelize.define('Product', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  name: {
-    type: DataTypes.STRING,
-    allowNull: false,
-    unique: true,
-  },
-}, {
-  tableName: 'products',
-  timestamps: false,
-});
-
-const VideoProduct = sequelize.define('VideoProduct', {
-  video_id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-  },
-  product_id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-  },
-}, {
-  tableName: 'video_products',
-  timestamps: false,
-});
-
 const VideoDailyStats = sequelize.define('VideoDailyStats', {
   id: {
     type: DataTypes.INTEGER,
@@ -1178,35 +1113,6 @@ const VideoDailyStats = sequelize.define('VideoDailyStats', {
     { fields: ['video_id', 'date'], unique: true },
     { fields: ['date'] },
   ],
-});
-
-// Kept only because historical migration 002 imports this model while seeding a fresh database.
-const WeeklyReport = sequelize.define('WeeklyReport', {
-  id: {
-    type: DataTypes.INTEGER,
-    primaryKey: true,
-    autoIncrement: true,
-  },
-  week_start: {
-    type: DataTypes.DATEONLY,
-    allowNull: false,
-  },
-  week_end: {
-    type: DataTypes.DATEONLY,
-    allowNull: false,
-  },
-  generated_content: {
-    type: DataTypes.TEXT,
-    allowNull: false,
-  },
-  public_share_token: {
-    type: DataTypes.STRING(64),
-    allowNull: true,
-    unique: true,
-  },
-}, {
-  tableName: 'weekly_reports',
-  timestamps: false,
 });
 
 User.hasMany(Booking, { foreignKey: 'staff_id', as: 'staff_bookings' });
@@ -1293,27 +1199,10 @@ Video.belongsTo(TikTokChannel, { foreignKey: 'channel_id', as: 'channel' });
 User.hasOne(TikTokChannel, { foreignKey: 'creator_id', as: 'tiktok_channel' });
 TikTokChannel.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
 
-Video.hasMany(VideoAssignment, { foreignKey: 'video_id', as: 'assignments' });
-VideoAssignment.belongsTo(Video, { foreignKey: 'video_id', as: 'video' });
-User.hasMany(VideoAssignment, { foreignKey: 'user_id', as: 'assignments' });
-VideoAssignment.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 User.hasOne(UserContentAttribution, { foreignKey: 'user_id', as: 'content_attribution' });
 UserContentAttribution.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 ContentTeam.hasMany(UserContentAttribution, { foreignKey: 'team_id', as: 'user_attributions' });
 UserContentAttribution.belongsTo(ContentTeam, { foreignKey: 'team_id', as: 'team' });
-
-Video.belongsToMany(Product, {
-  through: VideoProduct,
-  foreignKey: 'video_id',
-  otherKey: 'product_id',
-  as: 'products',
-});
-Product.belongsToMany(Video, {
-  through: VideoProduct,
-  foreignKey: 'product_id',
-  otherKey: 'video_id',
-  as: 'videos',
-});
 
 Video.hasMany(VideoDailyStats, { foreignKey: 'video_id', as: 'daily_stats' });
 VideoDailyStats.belongsTo(Video, { foreignKey: 'video_id', as: 'video' });
@@ -1360,10 +1249,6 @@ module.exports = {
   ScheduledJobRunEvent,
   TikTokChannel,
   Video,
-  VideoAssignment,
-  Product,
-  VideoProduct,
   VideoDailyStats,
-  WeeklyReport,
   sequelize,
 };

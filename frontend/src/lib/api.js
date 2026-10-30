@@ -625,14 +625,6 @@ export function revokeChannelAuthorization(channelId) {
   });
 }
 
-export function fetchProducts(signal) {
-  return apiRequest('/products', { signal });
-}
-
-export function fetchAssignments(signal) {
-  return apiRequest('/assignments', { signal });
-}
-
 export function createUser(payload) {
   return apiRequest('/users', {
     method: 'POST',
@@ -731,13 +723,6 @@ export function updateChannel(channelId, payload) {
 
 export function createVideo(payload) {
   return apiRequest('/videos', {
-    method: 'POST',
-    body: payload,
-  });
-}
-
-export function createAssignment(payload) {
-  return apiRequest('/assignments', {
     method: 'POST',
     body: payload,
   });

@@ -168,8 +168,9 @@ const getDashboard = async (req, res) => {
         AND (
           :userId::int IS NULL
           OR EXISTS (
-            SELECT 1 FROM video_assignments va
-            WHERE va.video_id = v.id AND va.user_id = :userId
+            SELECT 1 FROM tiktok_channels creator_channel
+            WHERE creator_channel.id = v.channel_id
+              AND creator_channel.creator_id = :userId
           )
           OR EXISTS (
             SELECT 1
@@ -228,8 +229,8 @@ const getDashboard = async (req, res) => {
           (jsonb_typeof(attribution.hashtags) = 'array' AND jsonb_array_length(attribution.hashtags) > 0)
           OR EXISTS (
             SELECT 1
-            FROM video_assignments va
-            WHERE va.user_id = app_user.id
+            FROM tiktok_channels creator_channel
+            WHERE creator_channel.creator_id = app_user.id
           )
         )
         AND (
@@ -249,10 +250,9 @@ const getDashboard = async (req, res) => {
           )
           OR EXISTS (
             SELECT 1
-            FROM video_assignments va
-            JOIN videos v ON v.id = va.video_id
-            WHERE va.user_id = app_user.id
-              AND v.channel_id = :channelId
+            FROM tiktok_channels creator_channel
+            WHERE creator_channel.creator_id = app_user.id
+              AND creator_channel.id = :channelId
           )
         )
         ORDER BY LOWER(COALESCE(app_user.name, app_user.email, '')), app_user.id
@@ -567,8 +567,9 @@ const getDashboardVideos = async (req, res) => {
           AND (
             :userId::int IS NULL
             OR EXISTS (
-              SELECT 1 FROM video_assignments va
-              WHERE va.video_id = v.id AND va.user_id = :userId
+              SELECT 1 FROM tiktok_channels creator_channel
+              WHERE creator_channel.id = v.channel_id
+                AND creator_channel.creator_id = :userId
             )
             OR EXISTS (
               SELECT 1

@@ -107,6 +107,9 @@ const migrations = [
   require('./097_optimize_booking_list_queries'),
   require('./098_optimize_dashboard_video_sales_lookup'),
   require('./099_add_booking_video_product_attribution_verification'),
+  require('./100_remove_unused_facebook_chatbot_weekly_reports'),
+  require('./101_remove_legacy_video_products'),
+  require('./102_remove_legacy_video_assignments'),
 ];
 
 const createMigrationRunner = ({

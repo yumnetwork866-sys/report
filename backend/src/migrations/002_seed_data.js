@@ -1,15 +1,10 @@
 const {
   Booking,
-  Product,
   TikTokChannel,
   User,
   Video,
-  VideoAssignment,
-  WeeklyReport,
 } = require('../models');
 const { getAdminAccount } = require('../lib/adminAccount');
-
-const products = ['Sẹo', 'Rạn', 'Follicas', 'Lumilab', 'Mụn'];
 
 const ensureUserRole = async (user, role) => {
   if (user.role !== role) {
@@ -90,12 +85,6 @@ const seedDatabase = async () => {
     });
     await ensureUserRole(kocTwo, 'koc');
 
-    const productRows = [];
-    for (const name of products) {
-      const [product] = await Product.findOrCreate({ where: { name } });
-      productRows.push(product);
-    }
-
     const [channel] = await TikTokChannel.findOrCreate({
       where: { username: 'brandclinic.vn' },
       defaults: {
@@ -119,12 +108,6 @@ const seedDatabase = async () => {
         shares: 320,
         content_type: 'education',
         campaign: 'Q2 Skin Recovery',
-        products: ['Sẹo', 'Mụn'],
-        assignments: [
-          [scriptWriter.id, 'script'],
-          [editor.id, 'editor'],
-          [leader.id, 'uploader'],
-        ],
       },
       {
         platform_video_id: 'tt_002',
@@ -135,11 +118,6 @@ const seedDatabase = async () => {
         shares: 140,
         content_type: 'review',
         campaign: 'Follicas Always On',
-        products: ['Follicas'],
-        assignments: [
-          [aiCreator.id, 'ai_creator'],
-          [leader.id, 'uploader'],
-        ],
       },
       {
         platform_video_id: 'tt_003',
@@ -150,11 +128,6 @@ const seedDatabase = async () => {
         shares: 73,
         content_type: 'explain',
         campaign: 'Body Care',
-        products: ['Rạn'],
-        assignments: [
-          [scriptWriter.id, 'script'],
-          [editor.id, 'actor'],
-        ],
       },
       {
         platform_video_id: 'tt_004',
@@ -165,11 +138,6 @@ const seedDatabase = async () => {
         shares: 88,
         content_type: 'tips',
         campaign: 'Lumilab Glow',
-        products: ['Lumilab'],
-        assignments: [
-          [aiCreator.id, 'ai_creator'],
-          [editor.id, 'editor'],
-        ],
       },
       {
         platform_video_id: 'tt_005',
@@ -180,11 +148,6 @@ const seedDatabase = async () => {
         shares: 102,
         content_type: 'routine',
         campaign: 'Morning Care',
-        products: ['Mụn'],
-        assignments: [
-          [scriptWriter.id, 'script'],
-          [leader.id, 'uploader'],
-        ],
       },
       {
         platform_video_id: 'tt_006',
@@ -195,11 +158,6 @@ const seedDatabase = async () => {
         shares: 55,
         content_type: 'tips',
         campaign: 'Skin Check',
-        products: ['Sẹo', 'Lumilab'],
-        assignments: [
-          [aiCreator.id, 'ai_creator'],
-          [editor.id, 'editor'],
-        ],
       },
     ];
 
@@ -207,7 +165,7 @@ const seedDatabase = async () => {
       const publishedAt = new Date();
       publishedAt.setDate(publishedAt.getDate() - index);
 
-      const [video] = await Video.findOrCreate({
+      await Video.findOrCreate({
         where: { platform_video_id: sample.platform_video_id },
         defaults: {
           platform: 'tiktok',
@@ -228,23 +186,6 @@ const seedDatabase = async () => {
         },
       });
 
-      const linkedProducts = productRows.filter((product) => sample.products.includes(product.name));
-      await video.setProducts(linkedProducts);
-
-      for (const [userId, assignmentRole] of sample.assignments) {
-        await VideoAssignment.findOrCreate({
-          where: {
-            video_id: video.id,
-            user_id: userId,
-            assignment_role: assignmentRole,
-          },
-          defaults: {
-            video_id: video.id,
-            user_id: userId,
-            assignment_role: assignmentRole,
-          },
-        });
-      }
     }
 
     await Booking.findOrCreate({
@@ -323,19 +264,6 @@ const seedDatabase = async () => {
       },
     });
 
-    await WeeklyReport.findOrCreate({
-      where: {
-        week_start: '2026-06-22',
-        week_end: '2026-06-28',
-      },
-      defaults: {
-        week_start: '2026-06-22',
-        week_end: '2026-06-28',
-        generated_content:
-          'Báo cáo tuần 2026-06-22 - 2026-06-28\n\nTổng quan: nhóm Content MKT đang dẫn về view nhờ các video Sẹo và Mụn. Follicas có hiệu suất ổn định, cần thêm biến thể hook để tăng tỷ lệ video vượt 10k view.',
-      },
-    });
-
     console.log('TikTok performance seed data created');
     void admin;
   } catch (error) {
@@ -348,12 +276,9 @@ module.exports = {
   up: seedDatabase,
   down: async () => {
     try {
-      await WeeklyReport.destroy({ where: {} });
-      await VideoAssignment.destroy({ where: {} });
       await Video.destroy({ where: {} });
       await Booking.destroy({ where: {} });
       await TikTokChannel.destroy({ where: {} });
-      await Product.destroy({ where: {} });
       await User.destroy({ where: {} });
       console.log('Database cleared');
     } catch (error) {

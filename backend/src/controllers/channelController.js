@@ -6,8 +6,6 @@ const {
   TikTokChannel,
   User,
   Video,
-  VideoAssignment,
-  VideoProduct,
   VideoDailyStats,
   sequelize,
 } = require('../models');
@@ -1057,14 +1055,6 @@ const deleteChannel = async (req, res) => {
       const videoIds = videos.map((video) => video.id);
 
       if (videoIds.length) {
-        await VideoAssignment.destroy({
-          where: { video_id: { [Op.in]: videoIds } },
-          transaction,
-        });
-        await VideoProduct.destroy({
-          where: { video_id: { [Op.in]: videoIds } },
-          transaction,
-        });
         await VideoDailyStats.destroy({
           where: { video_id: { [Op.in]: videoIds } },
           transaction,

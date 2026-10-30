@@ -9,6 +9,13 @@ const parsePositiveInt = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseBoolean = (value, fallback) => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return fallback;
+};
+
 const processRole = String(process.env.PROCESS_ROLE || 'api').toUpperCase();
 const roleSetting = (name, fallback) => process.env[`${name}_${processRole}`] ?? process.env[name] ?? fallback;
 
@@ -20,13 +27,17 @@ const poolOptions = {
 };
 
 const statementTimeoutMs = parsePositiveInt(roleSetting('DB_STATEMENT_TIMEOUT_MS', 30000), 30000);
+const jitEnabled = parseBoolean(roleSetting('DB_JIT', processRole === 'WORKER'), processRole === 'WORKER');
 
 const sequelizeOptions = {
   dialect: 'postgres',
   benchmark: true,
   logging: (sql, elapsedMs) => recordDatabaseQuery(elapsedMs, sql),
   pool: poolOptions,
-  dialectOptions: { statement_timeout: statementTimeoutMs },
+  dialectOptions: {
+    statement_timeout: statementTimeoutMs,
+    options: `-c jit=${jitEnabled ? 'on' : 'off'}`,
+  },
 };
 
 const createSequelize = () => {
