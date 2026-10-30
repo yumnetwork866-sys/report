@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchActiveTikTokApps, fetchBookingById, fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
   fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
@@ -207,11 +207,11 @@ test('Channel report helper supports month presets and custom date ranges', asyn
       });
     };
 
-    await fetchChannelReport({ month: '2026-07', teamId: '4', userId: '9', channelId: '3' });
+    await fetchChannelReport({ month: '2026-07', teamId: '4', userId: '9', channelId: '3', view: 'comparison' });
     await fetchChannelReport({ startDate: '2026-07-05', endDate: '2026-07-12' });
     await fetchChannelReportMemberDetail(9, { month: '2026-07', teamId: '4', channelId: '3', page: 2, pageSize: 10 });
 
-    assert.equal(calls[0], '/api/reports/channel?page=1&page_size=20&month=2026-07&team_id=4&user_id=9&channel_ids=3');
+    assert.equal(calls[0], '/api/reports/channel?page=1&page_size=20&month=2026-07&team_id=4&user_id=9&channel_ids=3&view=comparison');
     assert.equal(calls[1], '/api/reports/channel?page=1&page_size=20&start_date=2026-07-05&end_date=2026-07-12');
     assert.equal(calls[2], '/api/reports/channel/members/9?page=2&page_size=10&month=2026-07&team_id=4&channel_ids=3');
   });
@@ -253,6 +253,24 @@ test('Booking list helper sends the table reference period', async () => {
     await fetchBookings(undefined, { windowType: 'PAST_7_DAYS' });
 
     assert.equal(requestUrl, '/api/bookings?window_type=PAST_7_DAYS');
+  });
+});
+
+test('Booking detail helper loads one booking lazily', async () => {
+  await withBrowser(async () => {
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify({ id: 42 }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const booking = await fetchBookingById(42);
+
+    assert.equal(requestUrl, '/api/bookings/42');
+    assert.equal(booking.id, 42);
   });
 });
 
@@ -372,6 +390,55 @@ test('Video thumbnail helper encodes the TikTok identity and preserves abort sig
     await fetchTikTokShopVideoThumbnail(7, '7657874522896436487', 'creator.name', controller.signal);
     assert.equal(request.url, '/api/tiktok-shop/shops/7/video-thumbnails/7657874522896436487?username=creator.name');
     assert.equal(request.options.signal, controller.signal);
+  });
+});
+
+test('Video thumbnail helper can skip the unused post-date lookup', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('thumbnail-summary-admin'));
+    let requestUrl;
+    globalThis.fetch = async (url) => {
+      requestUrl = url;
+      return new Response(JSON.stringify({ thumbnail_url: null }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    await fetchTikTokShopVideoThumbnail(
+      7,
+      '7657874522896436487',
+      'creator.name',
+      undefined,
+      { includePostDate: false },
+    );
+    assert.equal(
+      requestUrl,
+      '/api/tiktok-shop/shops/7/video-thumbnails/7657874522896436487?username=creator.name&include_post_date=false',
+    );
+  });
+});
+
+test('Active TikTok app helper deduplicates concurrent header requests', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('active-app-admin'));
+    let calls = 0;
+    let resolveFetch;
+    globalThis.fetch = async () => {
+      calls += 1;
+      await new Promise((resolve) => { resolveFetch = resolve; });
+      return new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    const first = fetchActiveTikTokApps();
+    const second = fetchActiveTikTokApps();
+    assert.equal(calls, 1);
+    resolveFetch();
+    await Promise.all([first, second]);
+    assert.equal(calls, 1);
   });
 });
 

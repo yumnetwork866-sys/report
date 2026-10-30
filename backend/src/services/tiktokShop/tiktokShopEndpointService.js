@@ -916,7 +916,8 @@ const getShopVideoThumbnail = async (req, res) => {
       });
       return thumbValue;
     });
-    const localVideo = typeof tiktokShopRepository.findShopVideo === 'function'
+    const includePostDate = String(req.query.include_post_date || '').toLowerCase() !== 'false';
+    const localVideo = includePostDate && typeof tiktokShopRepository.findShopVideo === 'function'
       ? await tiktokShopRepository.findShopVideo({
           where: { shop_id: shopId, platform_video_id: videoId },
           attributes: ['posted_at', 'raw_data'],

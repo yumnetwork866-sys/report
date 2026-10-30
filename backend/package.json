@@ -24,7 +24,8 @@
     "sync:tiktok": "node src/jobs/syncTiktokChannels.js",
     "backfill:creator-daily": "node src/scripts/backfillCreatorDailyPerformance.js",
     "sync:tiktok:scheduler": "node src/worker.js",
-    "cache:creator-avatars": "node src/scripts/backfillCreatorAvatarStorage.js"
+    "cache:creator-avatars": "node src/scripts/backfillCreatorAvatarStorage.js",
+    "optimize:creator-avatars": "node src/scripts/optimizeCreatorAvatarStorage.js"
   },
   "keywords": [],
   "author": "",

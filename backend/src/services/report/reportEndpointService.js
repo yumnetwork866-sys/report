@@ -101,6 +101,7 @@ const channelReportOptions = (query = {}) => {
     throw error;
   }
   const metric = query.metric === 'revenue' ? 'revenue' : 'content';
+  const view = ['comparison', 'standard', 'products'].includes(query.view) ? query.view : 'full';
   const rawChannelIds = String(query.channel_ids || '').trim();
   let channelIds = null;
   if (rawChannelIds && rawChannelIds !== 'all') {
@@ -125,6 +126,7 @@ const channelReportOptions = (query = {}) => {
     userId,
     channelIds,
     metric,
+    view,
     page: positiveInteger(query.page, 1),
     pageSize: positiveInteger(query.page_size, 20, 100),
   };
@@ -328,13 +330,14 @@ const getChannelReport = async (req, res) => {
       userId,
       channelIds,
       metric,
+      view,
       page,
       pageSize,
     } = options;
 
     const teamKey = teamIds ? [...teamIds].sort().join(',') : 'all';
     const channelKey = channelIds ? [...channelIds].sort().join(',') : 'all';
-    const cacheKey = `report:channel:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamKey}:${userId || 'all'}:${channelKey}:${metric}:${page}:${pageSize}`;
+    const cacheKey = `report:channel:v2:${mode}:${month || 'custom'}:${startDate}:${endDate}:${teamKey}:${userId || 'all'}:${channelKey}:${metric}:${view}:${page}:${pageSize}`;
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
       const monthlyRevenue = await loadMonthlyShopVideoRevenue({
@@ -358,8 +361,16 @@ const getChannelReport = async (req, res) => {
       }))),
     };
     replacements.metric = metric;
-    const [aggregateRows, teamRows, videoRows, productRows] = await Promise.all([
-      reportRepository.query(`${channelReportBaseSql}
+    const [aggregateRows, teamRows, videoRows, productRows] = await reportRepository.transaction(async (transaction) => {
+      await reportRepository.query(`
+        CREATE TEMP TABLE channel_report_filtered_videos ON COMMIT DROP AS
+        ${channelReportBaseSql}
+        /* channel-report-base */
+        SELECT * FROM filtered_videos
+      `, { replacements, transaction });
+
+      const queryOptions = { replacements, type: QueryTypes.SELECT, transaction };
+      const aggregateRows = view === 'comparison' ? [] : await reportRepository.query(`
         /* channel-report-summary */
         SELECT
           'summary' AS row_type,
@@ -378,7 +389,7 @@ const getChannelReport = async (req, res) => {
           COUNT(revenue) > 0 AS revenue_available,
           MIN(currency) AS currency,
           COALESCE(SUM(orders), 0)::bigint AS orders
-        FROM filtered_videos
+        FROM channel_report_filtered_videos
         UNION ALL
         SELECT
           'chart' AS row_type,
@@ -397,7 +408,7 @@ const getChannelReport = async (req, res) => {
           COUNT(revenue) > 0 AS revenue_available,
           MIN(currency) AS currency,
           COALESCE(SUM(orders), 0)::bigint AS orders
-        FROM filtered_videos
+        FROM channel_report_filtered_videos
         GROUP BY (published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
         UNION ALL
         SELECT
@@ -417,7 +428,7 @@ const getChannelReport = async (req, res) => {
           COUNT(revenue) > 0 AS revenue_available,
           MIN(currency) AS currency,
           COALESCE(SUM(orders), 0)::bigint AS orders
-        FROM filtered_videos
+        FROM channel_report_filtered_videos
         GROUP BY channel_id
         UNION ALL
         SELECT
@@ -439,10 +450,10 @@ const getChannelReport = async (req, res) => {
           0::bigint AS orders
         FROM tiktok_channels channel
         ORDER BY row_type, bucket
-      `, { replacements, type: QueryTypes.SELECT }),
-      reportRepository.query(`${channelReportBaseSql}
+      `, queryOptions);
+      const teamRows = await reportRepository.query(`
         /* channel-report-teams */
-        , member_metrics AS (
+        WITH member_metrics AS (
           SELECT
             team.id AS team_id,
             team.name AS team_name,
@@ -458,19 +469,21 @@ const getChannelReport = async (req, res) => {
           FROM content_teams team
           LEFT JOIN user_content_attributions attribution ON attribution.team_id = team.id
           LEFT JOIN users app_user ON app_user.id = attribution.user_id
-          LEFT JOIN filtered_videos video ON EXISTS (
+          LEFT JOIN channel_report_filtered_videos video ON EXISTS (
             SELECT 1
-            FROM video_attributions attribution_match
-            WHERE attribution_match.video_id = video.id
-              AND attribution_match.user_id = app_user.id
+            FROM jsonb_array_elements(video.attributions) attribution_match(value)
+            WHERE (attribution_match.value ->> 'user_id')::integer = app_user.id
               AND (
                 CAST(:filterTeams AS boolean) = false
-                OR attribution_match.team_id IN (
+                OR (attribution_match.value ->> 'team_id')::integer IN (
                   SELECT value::integer
                   FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
                 )
               )
-              AND (CAST(:userId AS integer) IS NULL OR attribution_match.user_id = CAST(:userId AS integer))
+              AND (
+                CAST(:userId AS integer) IS NULL
+                OR (attribution_match.value ->> 'user_id')::integer = CAST(:userId AS integer)
+              )
           )
           GROUP BY team.id, team.name, app_user.id, app_user.name
         )
@@ -494,8 +507,8 @@ const getChannelReport = async (req, res) => {
           SUM(orders) OVER (PARTITION BY team_id)::bigint AS team_orders
         FROM member_metrics
         ORDER BY team_name ASC, views DESC, member_name ASC
-      `, { replacements, type: QueryTypes.SELECT }),
-      reportRepository.query(`${channelReportBaseSql}
+      `, queryOptions);
+      const videoRows = view === 'full' ? await reportRepository.query(`
         /* channel-report-videos */
         SELECT
           id,
@@ -517,7 +530,7 @@ const getChannelReport = async (req, res) => {
           revenue,
           currency,
           orders
-        FROM filtered_videos
+        FROM channel_report_filtered_videos
         ORDER BY published_at DESC, id DESC
         LIMIT :limit OFFSET :offset
       `, {
@@ -527,14 +540,15 @@ const getChannelReport = async (req, res) => {
           offset: (page - 1) * pageSize,
         },
         type: QueryTypes.SELECT,
-      }),
-      reportRepository.query(`${channelReportBaseSql}
+        transaction,
+      }) : [];
+      const productRows = ['full', 'products'].includes(view) ? await reportRepository.query(`
         /* channel-report-team-products */
-        , attributed_video_teams AS (
+        WITH attributed_video_teams AS (
           SELECT DISTINCT
             video.platform_video_id,
             (attr.value ->> 'team_id')::int AS team_id
-          FROM filtered_videos video
+          FROM channel_report_filtered_videos video
           CROSS JOIN LATERAL jsonb_array_elements(video.attributions) attr(value)
           WHERE NULLIF(attr.value ->> 'team_id', '') IS NOT NULL
             AND (
@@ -610,8 +624,9 @@ const getChannelReport = async (req, res) => {
         JOIN content_teams t ON t.id = r.team_id
         GROUP BY r.team_id, t.name, r.product_id
         ORDER BY r.team_id, orders DESC, revenue DESC
-      `, { replacements, type: QueryTypes.SELECT }),
-    ]);
+      `, queryOptions) : [];
+      return [aggregateRows, teamRows, videoRows, productRows];
+    });
 
     const summary = aggregateRows.find((row) => row.row_type === 'summary') || {};
     const aggregateMetrics = (row) => ({

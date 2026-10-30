@@ -113,6 +113,10 @@ export function fetchBookings(signal, {
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }
 
+export function fetchBookingById(bookingId, signal) {
+  return apiRequest(`/bookings/${encodeURIComponent(bookingId)}`, { signal });
+}
+
 export function fetchBookingProductPerformance(signal, {
   month, startDate, endDate, startTime, endTime, videoIdsByBooking,
 } = {}) {
@@ -192,8 +196,16 @@ export function startTikTokShopOauth(returnPath, appType = 'partner', region) {
   return apiRequest(`/tiktok-shop/oauth/start${query ? `?${query}` : ''}`);
 }
 
+let activeTikTokAppsRequest = null;
+
 export function fetchActiveTikTokApps(signal) {
-  return apiRequest('/tiktok-apps/active', { signal });
+  if (!signal && activeTikTokAppsRequest) return activeTikTokAppsRequest;
+  const request = apiRequest('/tiktok-apps/active', { signal });
+  if (signal) return request;
+  activeTikTokAppsRequest = request.finally(() => {
+    activeTikTokAppsRequest = null;
+  });
+  return activeTikTokAppsRequest;
 }
 
 export function fetchTikTokShopConnections(signal) {
@@ -282,8 +294,9 @@ export function fetchTikTokShopVideoExport(shopId, filters = {}) {
   });
 }
 
-export function fetchTikTokShopVideoThumbnail(shopId, videoId, username, signal) {
+export function fetchTikTokShopVideoThumbnail(shopId, videoId, username, signal, options = {}) {
   const params = new URLSearchParams({ username });
+  if (options.includePostDate === false) params.set('include_post_date', 'false');
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/video-thumbnails/${encodeURIComponent(videoId)}?${params.toString()}`, {
     signal,
   });
@@ -456,7 +469,7 @@ export async function fetchVideos(signalOrFilters) {
 }
 
 export function fetchChannelReport({
-  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, page = 1, pageSize = 20, signal,
+  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, view, page = 1, pageSize = 20, signal,
 } = {}) {
   const params = new URLSearchParams({
     page: String(page),
@@ -476,6 +489,7 @@ export function fetchChannelReport({
   if (userId && userId !== 'all') params.set('user_id', userId);
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
   if (metric) params.set('metric', metric);
+  if (view) params.set('view', view);
   return apiRequest(`/reports/channel?${params.toString()}`, { signal });
 }
 

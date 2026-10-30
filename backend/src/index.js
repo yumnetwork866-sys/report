@@ -68,7 +68,8 @@ const createApp = () => {
   app.use(CREATOR_AVATAR_PUBLIC_PREFIX, express.static(CREATOR_AVATAR_STORAGE_ROOT, {
     dotfiles: 'deny',
     fallthrough: false,
-    maxAge: '7d',
+    maxAge: '1y',
+    immutable: true,
   }));
   app.use('/api/bookings/tiktok-partner', tiktokPartnerPublicRoutes);
 

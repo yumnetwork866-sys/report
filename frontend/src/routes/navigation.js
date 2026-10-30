@@ -126,10 +126,7 @@ export const protectedRouteCards = [
     path: '/shop/bookings',
     component: 'BookingManagement',
     permission: ['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
-    props: {
-      heroTitle: 'Booking',
-      heroSubtitle: '',
-    },
+    props: {},
   },
   {
     path: '/shop/orders',

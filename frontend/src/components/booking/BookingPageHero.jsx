@@ -1,7 +1,6 @@
 import React from 'react';
 
 const BookingPageHero = ({
-  heroTitle,
   stats,
   selectedCurrency,
   formatNumber,
@@ -11,9 +10,6 @@ const BookingPageHero = ({
   t,
 }) => (
   <section className="page__hero booking-page-hero">
-    <div className="booking-page-hero__title-row">
-      <h1 className="page__title">{t('booking.heroTitle') || heroTitle}</h1>
-    </div>
     <div className="page__stats booking-stats booking-stats--evaluation">
       <article className="stat-card"><p className="stat-card__label">{t('booking.evaluations')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : stats.total}</p></article>
       <article className="stat-card"><p className="stat-card__label">{t('booking.matchedVideo')}</p><p className="stat-card__value">{loading ? <span className="booking-skeleton booking-skeleton--kpi" /> : formatNumber(stats.videoCount)}</p></article>

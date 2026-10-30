@@ -82,6 +82,8 @@ const BookingEvaluationTable = ({
   bookingSort,
   onSort,
   expandedBookingId,
+  bookingDetailLoadingIds,
+  bookingDetailErrors,
   onToggleRow,
   onSelectBooking,
   bookingTab,
@@ -242,7 +244,9 @@ const BookingEvaluationTable = ({
                   key={booking.id}
                   booking={displayBooking}
                   expanded={expanded}
-                  onToggleRow={onToggleRow}
+                  detailLoading={bookingDetailLoadingIds?.has(String(booking.id))}
+                  detailError={bookingDetailErrors?.[String(booking.id)] || ''}
+                  onToggleRow={(event) => onToggleRow(event, bookingRecords)}
                   onSelectBooking={onSelectBooking}
                   bookingTab={bookingTab}
                   performance={performance}

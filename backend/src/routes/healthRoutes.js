@@ -24,13 +24,12 @@ const withTimeout = (promise, timeoutMs, dependency) => new Promise((resolve) =>
 
 const createHealthRouter = ({ database = sequelize, redisHealth = checkRedisHealth } = {}) => {
   const router = express.Router();
-
-  router.use((_req, res, next) => {
+  const noStore = (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     next();
-  });
+  };
 
-  router.get('/health', (_req, res) => {
+  router.get('/health', noStore, (_req, res) => {
     res.json({
       status: 'ok',
       service: 'api',
@@ -39,7 +38,7 @@ const createHealthRouter = ({ database = sequelize, redisHealth = checkRedisHeal
     });
   });
 
-  router.get('/ready', async (_req, res) => {
+  router.get('/ready', noStore, async (_req, res) => {
     const timeoutMs = positiveNumber(process.env.READINESS_TIMEOUT_MS, 2000);
     const checks = await Promise.all([
       withTimeout(database.query('SELECT 1', { type: QueryTypes.SELECT }), timeoutMs, 'postgres'),

@@ -171,7 +171,7 @@ test('channel report aggregates server-side and returns only one video page', as
     startDate: '2026-07-01',
     endDate: '2026-08-01',
   });
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   calls.forEach((call) => {
     assert.equal(call.replacements.startDate, '2026-07-01');
     assert.equal(call.replacements.endDateExclusive, '2026-08-01');
@@ -236,19 +236,18 @@ test('channel report attributes adjacent and multiple hashtags without duplicati
   await getChannelReport({ query: { month: '2026-07' } }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 4);
-  for (const sql of calls) {
-    assert.ok(sql.includes('regexp_matches('));
-    assert.ok(sql.includes("'(#[[:alnum:]_]+)'"));
-    assert.ok(sql.includes("'gi'"));
-    assert.match(sql, /video_attributions AS MATERIALIZED/);
-    assert.doesNotMatch(sql, /ORDER BY rule\.user_id ASC\s+LIMIT 1/);
-  }
+  assert.equal(calls.length, 5);
+  const baseSql = calls.find((sql) => sql.includes('channel-report-base'));
+  assert.ok(baseSql.includes('regexp_matches('));
+  assert.ok(baseSql.includes("'(#[[:alnum:]_]+)'"));
+  assert.ok(baseSql.includes("'gi'"));
+  assert.match(baseSql, /video_attributions AS MATERIALIZED/);
+  assert.doesNotMatch(baseSql, /ORDER BY rule\.user_id ASC\s+LIMIT 1/);
   const summarySql = calls.find((sql) => sql.includes('channel-report-summary'));
-  assert.match(summarySql, /FROM filtered_videos/);
+  assert.match(summarySql, /FROM channel_report_filtered_videos/);
   assert.match(summarySql, /jsonb_array_length\(attributions\) > 0/);
   const teamSql = calls.find((sql) => sql.includes('channel-report-teams'));
-  assert.match(teamSql, /attribution_match\.user_id = app_user\.id/);
+  assert.match(teamSql, /jsonb_array_elements\(video\.attributions\)/);
 });
 
 test('channel revenue report falls back to connected channel catalog videos with revenue in the selected dates', async (t) => {
@@ -267,16 +266,15 @@ test('channel revenue report falls back to connected channel catalog videos with
   }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 4);
-  for (const sql of calls) {
-    assert.match(sql, /revenue_catalog_videos AS MATERIALIZED/);
-    assert.match(sql, /FROM shop_videos shop_video/);
-    assert.match(sql, /shop_video\.account_type IN \('OFFICIAL_ACCOUNTS', 'MARKETING_ACCOUNTS'\)/);
-    assert.match(sql, /LOWER\(LTRIM\(BTRIM\(channel\.username\), '@'\)\)/);
-    assert.match(sql, /NOT EXISTS \(\s*SELECT 1\s*FROM videos stored_video/);
-    assert.match(sql, /WHERE \(:metric = 'revenue' AND revenue\.revenue > 0\)/);
-    assert.match(sql, /UNION ALL\s*SELECT \*\s*FROM revenue_catalog_videos/);
-  }
+  assert.equal(calls.length, 5);
+  const baseSql = calls.find((sql) => sql.includes('channel-report-base'));
+  assert.match(baseSql, /revenue_catalog_videos AS MATERIALIZED/);
+  assert.match(baseSql, /FROM shop_videos shop_video/);
+  assert.match(baseSql, /shop_video\.account_type IN \('OFFICIAL_ACCOUNTS', 'MARKETING_ACCOUNTS'\)/);
+  assert.match(baseSql, /LOWER\(LTRIM\(BTRIM\(channel\.username\), '@'\)\)/);
+  assert.match(baseSql, /NOT EXISTS \(\s*SELECT 1\s*FROM videos stored_video/);
+  assert.match(baseSql, /WHERE \(:metric = 'revenue' AND revenue\.revenue > 0\)/);
+  assert.match(baseSql, /UNION ALL\s*SELECT \*\s*FROM revenue_catalog_videos/);
 });
 
 test('channel report rejects an invalid month before querying', async (t) => {
@@ -368,7 +366,7 @@ test('channel report accepts an inclusive custom date range', async (t) => {
   }, response);
 
   assert.equal(response.statusCode, 200);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 5);
   calls.forEach((call) => {
     assert.equal(call.replacements.startDate, '2026-07-05');
     assert.equal(call.replacements.endDateExclusive, '2026-07-13');
@@ -376,6 +374,60 @@ test('channel report accepts an inclusive custom date range', async (t) => {
   assert.deepEqual(response.body.period, {
     mode: 'custom', month: null, start: '2026-07-05', end: '2026-07-12',
   });
+});
+
+test('channel report trims comparison and standard views without rebuilding details', async (t) => {
+  const calls = [];
+  const { getChannelReport } = loadController(t, async (sql) => {
+    calls.push(sql);
+    if (sql.includes('channel-report-teams')) {
+      return [{
+        team_id: 4,
+        team_name: 'Content',
+        user_id: 9,
+        member_name: 'An',
+        videos: '3',
+        views: '300',
+        revenue: '0',
+        revenue_available: false,
+        currency: null,
+        orders: '0',
+        team_videos: '3',
+        team_views: '300',
+        team_revenue: '0',
+        team_revenue_available: false,
+        team_currency: null,
+        team_orders: '0',
+      }];
+    }
+    if (sql.includes('channel-report-summary')) {
+      return [{ row_type: 'summary', videos: '3', views: '300' }];
+    }
+    return [];
+  }, async () => ({ rows: [], errors: [] }));
+
+  const comparisonResponse = makeResponse();
+  await getChannelReport({
+    query: { month: '2026-07', metric: 'content', view: 'comparison' },
+  }, comparisonResponse);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.some((sql) => sql.includes('channel-report-base')));
+  assert.ok(calls.some((sql) => sql.includes('channel-report-teams')));
+  assert.equal(calls.some((sql) => sql.includes('channel-report-summary')), false);
+  assert.equal(comparisonResponse.body.videos.items.length, 0);
+  assert.equal(comparisonResponse.body.revenue.products.length, 0);
+  assert.equal(comparisonResponse.body.revenue.teams[0].views, 300);
+
+  calls.length = 0;
+  const standardResponse = makeResponse();
+  await getChannelReport({
+    query: { month: '2026-07', metric: 'content', view: 'standard' },
+  }, standardResponse);
+  assert.equal(calls.length, 3);
+  assert.ok(calls.some((sql) => sql.includes('channel-report-summary')));
+  assert.equal(calls.some((sql) => sql.includes('channel-report-videos')), false);
+  assert.equal(calls.some((sql) => sql.includes('channel-report-team-products')), false);
+  assert.equal(standardResponse.body.kpis.videos, 3);
 });
 
 test('channel report returns daily revenue for one video in the selected range', async (t) => {

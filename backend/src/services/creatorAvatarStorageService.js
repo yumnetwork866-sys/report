@@ -1,6 +1,10 @@
 const crypto = require('crypto');
+const { execFile } = require('child_process');
 const fs = require('fs/promises');
 const path = require('path');
+const { promisify } = require('util');
+
+const execFileAsync = promisify(execFile);
 
 const CREATOR_AVATAR_STORAGE_ROOT = path.resolve(
   process.env.CREATOR_AVATAR_STORAGE_DIR
@@ -14,6 +18,10 @@ const DEFAULT_MAX_BYTES = Math.max(
 const DEFAULT_TIMEOUT_MS = Math.max(
   1000,
   Number(process.env.CREATOR_AVATAR_DOWNLOAD_TIMEOUT_MS) || 10_000,
+);
+const DEFAULT_AVATAR_SIZE = Math.max(
+  64,
+  Math.min(512, Number(process.env.CREATOR_AVATAR_SIZE) || 192),
 );
 
 const CONTENT_TYPE_EXTENSIONS = new Map([
@@ -87,12 +95,31 @@ const readResponseBody = async (response, maxBytes) => {
   return Buffer.concat(chunks, total);
 };
 
+const optimizeCreatorAvatarFile = async (source, destination, {
+  execFileImpl = execFileAsync,
+  size = DEFAULT_AVATAR_SIZE,
+} = {}) => {
+  await execFileImpl(process.env.FFMPEG_PATH || 'ffmpeg', [
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-i', source,
+    '-vf', `scale=${size}:${size}:force_original_aspect_ratio=decrease`,
+    '-c:v', 'libwebp',
+    '-quality', '78',
+    '-compression_level', '6',
+    '-frames:v', '1',
+    '-y', destination,
+  ], { timeout: 15_000, maxBuffer: 256 * 1024 });
+  return destination;
+};
+
 const cacheCreatorAvatar = async (shopId, creator = {}, {
   fetchImpl = fetch,
   fsModule = fs,
   storageRoot = CREATOR_AVATAR_STORAGE_ROOT,
   maxBytes = DEFAULT_MAX_BYTES,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  optimizeImage = optimizeCreatorAvatarFile,
 } = {}) => {
   const remoteUrl = creator.avatar_url || creator.avatar?.url || null;
   if (!remoteUrl || isLocalCreatorAvatarUrl(remoteUrl)) return remoteUrl;
@@ -133,11 +160,32 @@ const cacheCreatorAvatar = async (shopId, creator = {}, {
   const image = await readResponseBody(response, maxBytes);
   if (!image.length) throw new Error('Creator avatar download returned an empty file.');
 
-  const filename = `${key}${extension}`;
+  const temporaryId = crypto.randomUUID();
+  const downloaded = path.join(directory, `.${key}.${temporaryId}${extension}`);
+  const optimized = path.join(directory, `.${key}.${temporaryId}.optimized.webp`);
+  let storedFile = downloaded;
+  let storedExtension = extension;
+  await fsModule.writeFile(downloaded, image, { flag: 'wx' });
+  try {
+    await optimizeImage(downloaded, optimized);
+    const optimizedStat = await fsModule.stat(optimized);
+    if (optimizedStat.size > 0 && optimizedStat.size < image.length) {
+      storedFile = optimized;
+      storedExtension = '.webp';
+    }
+  } catch {
+    // Keep the downloaded image if ffmpeg is unavailable or rejects the source.
+  }
+  const filename = `${key}${storedExtension}`;
   const destination = path.join(directory, filename);
-  const temporary = path.join(directory, `.${filename}.${crypto.randomUUID()}.tmp`);
-  await fsModule.writeFile(temporary, image, { flag: 'wx' });
-  await fsModule.rename(temporary, destination);
+  try {
+    await fsModule.rename(storedFile, destination);
+  } finally {
+    await Promise.all([
+      storedFile === downloaded ? null : fsModule.unlink(downloaded).catch(() => {}),
+      storedFile === optimized ? null : fsModule.unlink(optimized).catch(() => {}),
+    ]);
+  }
   return publicAvatarUrl(shopId, filename);
 };
 
@@ -185,9 +233,11 @@ module.exports = {
   CREATOR_AVATAR_PUBLIC_PREFIX,
   DEFAULT_MAX_BYTES,
   DEFAULT_TIMEOUT_MS,
+  DEFAULT_AVATAR_SIZE,
   isLocalCreatorAvatarUrl,
   isAllowedAvatarHost,
   creatorStorageKey,
+  optimizeCreatorAvatarFile,
   cacheCreatorAvatar,
   cacheCreatorAvatars,
 };

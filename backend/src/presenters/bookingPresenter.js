@@ -29,42 +29,17 @@ const listVideoOfSnapshot = (snapshot = {}) => {
   return rawVideo.list || rawVideo;
 };
 
-const compactSocialMetrics = (snapshot = {}) => {
-  const rawVideo = rawVideoOfSnapshot(snapshot);
-  const listVideo = listVideoOfSnapshot(snapshot);
-  const shared = snapshot.raw_metrics?.social_metrics;
-  const traffic = rawVideo.detail?.performance?.intervals?.[0]?.traffic || {};
-  const source = shared || traffic;
-  const social = {
-    views: source.views ?? snapshot.views ?? listVideo.views ?? null,
-    likes: source.likes ?? snapshot.likes ?? listVideo.likes ?? null,
-    comments: source.comments ?? snapshot.comments ?? listVideo.comments ?? null,
-    shares: source.shares ?? snapshot.shares ?? listVideo.shares ?? null,
-    available: shared?.available ?? ['likes', 'comments', 'shares']
-      .some((key) => source[key] !== null && source[key] !== undefined),
-    metric_window: shared?.metric_window || null,
-    synced_at: shared?.synced_at || snapshot.synced_at || null,
-  };
-  return Object.values(social).some((value) => value !== null && value !== false) ? social : null;
-};
-
 const compactSnapshot = (snapshot) => {
   if (!snapshot) return null;
   return {
-    id: snapshot.id,
-    snapshot_date: snapshot.snapshot_date,
     gross_gmv: snapshot.gross_gmv,
     refunded_gmv: snapshot.refunded_gmv,
-    net_gmv: snapshot.net_gmv,
     orders: snapshot.orders,
     items_sold: snapshot.items_sold,
     items_refunded: snapshot.items_refunded,
     estimated_commission: snapshot.estimated_commission,
     views: snapshot.views,
-    ctr: snapshot.ctr,
     currency: snapshot.currency,
-    social_metrics: compactSocialMetrics(snapshot),
-    synced_at: snapshot.synced_at,
   };
 };
 
@@ -89,19 +64,6 @@ const hashtagsOfVideo = (video, snapshot) => {
   return [...new Set(normalized.map((value) => value.toLowerCase()))];
 };
 
-const thumbnailOfVideo = (video, snapshot) => {
-  const rawVideo = rawVideoOfSnapshot(snapshot || {});
-  const listVideo = listVideoOfSnapshot(snapshot || {});
-  return video.thumbnail_url
-    || listVideo.thumbnail_url
-    || listVideo.cover_image_url
-    || listVideo.cover_url
-    || rawVideo.thumbnail_url
-    || rawVideo.cover_image_url
-    || rawVideo.cover_url
-    || null;
-};
-
 const compactBookingVideo = (video = {}) => {
   const latest = latestPerformanceSnapshot(video);
   const performance = compactSnapshot(latest);
@@ -109,20 +71,10 @@ const compactBookingVideo = (video = {}) => {
     id: video.id,
     booking_id: video.booking_id,
     platform_video_id: video.platform_video_id,
-    video_url: video.video_url,
-    creator_username: video.creator_username,
-    title: video.title || listVideoOfSnapshot(latest || {}).title || null,
-    thumbnail_url: thumbnailOfVideo(video, latest),
     hashtags: hashtagsOfVideo(video, latest),
     posted_at: video.posted_at,
-    attribution_start: video.attribution_start,
-    attribution_end: video.attribution_end,
     attributed_product_ids: video.attributed_product_ids || [],
-    affiliate_products: video.affiliate_products || [],
-    mapping_source: video.mapping_source,
     status: video.status,
-    last_synced_at: video.last_synced_at,
-    last_sync_error: video.last_sync_error,
     shared_booking_count: video.shared_booking_count,
     is_shared_booking_video: video.is_shared_booking_video,
     latest_performance: performance,

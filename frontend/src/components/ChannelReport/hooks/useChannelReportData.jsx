@@ -84,11 +84,14 @@ export const useChannelReportData = () => {
           page: 1,
           pageSize: 20,
         };
+        const needsContent = canLoadContent && activeReportTab !== 'revenue';
+        const needsRevenue = canLoadRevenue && activeReportTab !== 'teams';
+        const contentView = activeReportTab === 'comparison' ? 'products' : 'standard';
         const [contentPayload, revenuePayload, previousContentPayload, previousRevenuePayload] = await Promise.all([
-          canLoadContent ? fetchChannelReport({ ...period, ...requestOptions, metric: 'content', signal: controller.signal }) : Promise.resolve(null),
-          canLoadRevenue ? fetchChannelReport({ ...period, ...requestOptions, metric: 'revenue', signal: controller.signal }) : Promise.resolve(null),
-          canLoadContent ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'content', signal: controller.signal }) : Promise.resolve(null),
-          canLoadRevenue ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'revenue', signal: controller.signal }) : Promise.resolve(null),
+          needsContent ? fetchChannelReport({ ...period, ...requestOptions, metric: 'content', view: contentView, signal: controller.signal }) : Promise.resolve(null),
+          needsRevenue ? fetchChannelReport({ ...period, ...requestOptions, metric: 'revenue', view: 'standard', signal: controller.signal }) : Promise.resolve(null),
+          needsContent ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'content', view: 'comparison', signal: controller.signal }) : Promise.resolve(null),
+          needsRevenue ? fetchChannelReport({ ...previousPeriod, ...requestOptions, metric: 'revenue', view: 'comparison', signal: controller.signal }) : Promise.resolve(null),
         ]);
         setReport(contentPayload);
         setRevenueReport(revenuePayload);
@@ -105,8 +108,9 @@ export const useChannelReportData = () => {
   }, [activeReportTab, canLoadContent, canLoadRevenue, endDate, periodMode, selectedChannelId, selectedMonth, selectedTeamIds, startDate]);
   
   useEffect(() => {
-    if (!report) return;
-    const availableTeams = report.filters?.teams || [];
+    const filterReport = activeReportTab === 'revenue' ? revenueReport : report;
+    if (!filterReport) return;
+    const availableTeams = filterReport.filters?.teams || [];
     if (!availableTeams.length || selectedTeamIds === 'all') return;
     if (Array.isArray(selectedTeamIds)) {
       const valid = selectedTeamIds.filter((id) => availableTeams.some((team) => String(team.id) === String(id)));
@@ -114,15 +118,16 @@ export const useChannelReportData = () => {
         setSelectedTeamIds(valid.length ? valid : 'all');
       }
     }
-  }, [report, selectedTeamIds]);
+  }, [activeReportTab, report, revenueReport, selectedTeamIds]);
   
   useEffect(() => {
+    const filterReport = activeReportTab === 'revenue' ? revenueReport : report;
     if (selectedChannelId !== 'all'
-      && report
-      && !report.filters?.channels?.some((channel) => String(channel.id) === selectedChannelId)) {
+      && filterReport
+      && !filterReport.filters?.channels?.some((channel) => String(channel.id) === selectedChannelId)) {
       setSelectedChannelId('all');
     }
-  }, [report, selectedChannelId]);
+  }, [activeReportTab, report, revenueReport, selectedChannelId]);
   
   useEffect(() => {
     memberRequestRef.current.forEach((controller) => controller.abort());
@@ -167,8 +172,9 @@ export const useChannelReportData = () => {
     });
   }, [selectedMonth]);
   
-  const teams = useMemo(() => report?.filters?.teams || [], [report?.filters?.teams]);
-  const channels = report?.filters?.channels || [];
+  const filterReport = activeReportTab === 'revenue' ? revenueReport : (report || revenueReport);
+  const teams = useMemo(() => filterReport?.filters?.teams || [], [filterReport?.filters?.teams]);
+  const channels = filterReport?.filters?.channels || [];
   const groups = report?.revenue?.teams || [];
   const revenueGroups = revenueReport?.revenue?.teams || [];
   const isAllTeams = selectedTeamIds === 'all' || !Array.isArray(selectedTeamIds);

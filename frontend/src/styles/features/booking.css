@@ -200,6 +200,15 @@
   box-shadow: var(--shadow-xs);
 }
 
+.app-shell__content .booking-page-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell__content .booking-page-hero > .booking-stats--evaluation {
+  grid-column: 1;
+  width: 100%;
+}
+
 @media (min-width: 1101px) {
   .app-shell__content .booking-page-hero { grid-template-columns: minmax(0, 1fr); }
 

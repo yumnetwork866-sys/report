@@ -769,7 +769,7 @@ const getBookings = async (req, res) => {
       };
     }
 
-    const cacheKey = `bookings:list:v4:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
+    const cacheKey = `bookings:list:v5:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await bookingRepository.findBookings({
         where: {

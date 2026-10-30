@@ -36,7 +36,11 @@ test('creator avatar storage downloads once and returns a stable local URL', asy
     });
   };
 
-  const first = await cacheCreatorAvatar(7, creator, { storageRoot, fetchImpl });
+  const first = await cacheCreatorAvatar(7, creator, {
+    storageRoot,
+    fetchImpl,
+    optimizeImage: async () => { throw new Error('invalid fixture image'); },
+  });
   const second = await cacheCreatorAvatar(7, creator, {
     storageRoot,
     fetchImpl: async () => { throw new Error('must not download an existing avatar'); },
@@ -49,6 +53,30 @@ test('creator avatar storage downloads once and returns a stable local URL', asy
     await fs.readFile(path.join(storageRoot, '7', `${creatorStorageKey(creator)}.webp`), 'utf8'),
     'fake-webp-image',
   );
+});
+
+test('creator avatar storage keeps the smaller optimized WebP', async (t) => {
+  const storageRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'creator-avatar-optimized-test-'));
+  t.after(() => fs.rm(storageRoot, { recursive: true, force: true }));
+  const creator = {
+    creator_open_id: 'large-creator-open-id',
+    avatar_url: 'https://p16-common-sign.tiktokcdn.com/large-avatar.webp',
+  };
+  const original = Buffer.alloc(32 * 1024, 1);
+  const avatarUrl = await cacheCreatorAvatar(7, creator, {
+    storageRoot,
+    fetchImpl: async () => new Response(original, {
+      status: 200,
+      headers: { 'content-type': 'image/webp' },
+    }),
+    optimizeImage: async (_source, destination) => {
+      await fs.writeFile(destination, Buffer.alloc(2048, 2));
+    },
+  });
+
+  assert.equal(avatarUrl.endsWith('.webp'), true);
+  const stored = await fs.readFile(path.join(storageRoot, '7', `${creatorStorageKey(creator)}.webp`));
+  assert.equal(stored.length, 2048);
 });
 
 test('creator avatar batch preserves the remote URL when a download is invalid', async () => {

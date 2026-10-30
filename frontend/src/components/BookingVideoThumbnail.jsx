@@ -39,16 +39,16 @@ const BookingVideoThumbnail = ({
   useEffect(() => {
     setThumbnail(directThumbnail);
     setFailed(false);
-    if (directThumbnail || !shopId || !videoId || !username) return undefined;
+    if (directThumbnail || !isVisible || !shopId || !videoId || !username) return undefined;
     let active = true;
     const cacheKey = `${shopId}:${videoId}:${username.toLowerCase()}`;
     cachedThumbnail(cacheKey, () => (
-      fetchTikTokShopVideoThumbnail(shopId, videoId, username)
+      fetchTikTokShopVideoThumbnail(shopId, videoId, username, undefined, { includePostDate: false })
     ))
       .then((payload) => { if (active && payload?.thumbnail_url) setThumbnail(payload.thumbnail_url); })
       .catch(() => { if (active) setFailed(true); });
     return () => { active = false; };
-  }, [directThumbnail, shopId, username, videoId]);
+  }, [directThumbnail, isVisible, shopId, username, videoId]);
 
   useEffect(() => {
     if (isVisible || !containerRef.current || typeof IntersectionObserver === 'undefined') return undefined;

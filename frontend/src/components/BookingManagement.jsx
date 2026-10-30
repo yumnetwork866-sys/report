@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import {
   createBooking,
   deleteBooking,
+  fetchBookingById,
   fetchBookingTargetKocDetail,
   fetchBookingTargetKocs,
   fetchBookingProductPerformance,
@@ -34,6 +35,7 @@ import {
   bookingVideosOf,
   orderRangeForPeriod,
   finiteNumber,
+  latestBookingVideoSnapshot,
   optionalNumber,
   editableCurrencyAmount,
   defaultBookingSortForTab,
@@ -55,6 +57,31 @@ import '../styles/features/booking.css';
 
 const initialForm = defaultBookingForm();
 const emptyProductOrdersByShop = Object.freeze({});
+
+const mergeBookingDetail = (summary, detail) => {
+  if (!summary || !detail) return summary;
+  const detailVideosById = new Map((detail.booking_videos || []).map((video) => [
+    String(video.platform_video_id || video.id),
+    video,
+  ]));
+  return {
+    ...summary,
+    booking_videos: (summary.booking_videos || []).map((video) => {
+      const detailed = detailVideosById.get(String(video.platform_video_id || video.id));
+      if (!detailed) return video;
+      const detailedPerformance = latestBookingVideoSnapshot(detailed);
+      return {
+        ...detailed,
+        ...video,
+        latest_performance: {
+          ...(detailedPerformance || {}),
+          ...(video.latest_performance || {}),
+        },
+      };
+    }),
+    _detail_loaded: true,
+  };
+};
 
 const BookingManagement = ({
   heroTitle,
@@ -126,7 +153,10 @@ const BookingManagement = ({
   const [updatingId, setUpdatingId] = useState(null);
   const [matchingVideoId, setMatchingVideoId] = useState(null);
   const [videoMatchDialog, setVideoMatchDialog] = useState(null);
-  const [expandedBookingId, setExpandedBookingId] = useState(() => bookingUiSession().expandedBookingId ?? null);
+  const [expandedBookingId, setExpandedBookingId] = useState(null);
+  const [bookingDetailLoadingIds, setBookingDetailLoadingIds] = useState(() => new Set());
+  const [bookingDetailErrors, setBookingDetailErrors] = useState({});
+  const bookingDetailRequestsRef = useRef(new Map());
   const [manualVideoUrl, setManualVideoUrl] = useState('');
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [productOrderDetailModal, setProductOrderDetailModal] = useState(null);
@@ -190,10 +220,57 @@ const BookingManagement = ({
     setIsCreateBookingOpen(true);
   };
 
-  const toggleBookingRow = useCallback((event, bookingId) => {
+  const toggleBookingRow = useCallback((event, bookingRecords) => {
     if (event.target.closest('button, a, input, select, textarea, label')) return;
-    setExpandedBookingId((current) => String(current) === String(bookingId) ? null : bookingId);
-  }, []);
+    const records = Array.isArray(bookingRecords) ? bookingRecords : [];
+    const bookingId = records[0]?.id;
+    if (!bookingId) return;
+    if (String(expandedBookingId) === String(bookingId)) {
+      setExpandedBookingId(null);
+      return;
+    }
+    setExpandedBookingId(bookingId);
+    if (bookingTab !== 'video') return;
+    const missing = records.filter((booking) => !booking._detail_loaded);
+    if (!missing.length) return;
+    const rowKey = String(bookingId);
+    setBookingDetailLoadingIds((current) => new Set(current).add(rowKey));
+    setBookingDetailErrors((current) => ({ ...current, [rowKey]: '' }));
+    const requests = missing.map((booking) => {
+      const key = String(booking.id);
+      if (!bookingDetailRequestsRef.current.has(key)) {
+        bookingDetailRequestsRef.current.set(key, fetchBookingById(booking.id)
+          .finally(() => bookingDetailRequestsRef.current.delete(key)));
+      }
+      return bookingDetailRequestsRef.current.get(key);
+    });
+    Promise.all(requests).then((details) => {
+      const detailsById = new Map(details.map((detail) => [String(detail.id), detail]));
+      const merge = (items) => items.map((item) => (
+        detailsById.has(String(item.id))
+          ? mergeBookingDetail(item, detailsById.get(String(item.id)))
+          : item
+      ));
+      setBookings(merge);
+      setCreatorBookings(merge);
+      setSelectedBooking((current) => (
+        current && detailsById.has(String(current.id))
+          ? mergeBookingDetail(current, detailsById.get(String(current.id)))
+          : current
+      ));
+    }).catch((err) => {
+      setBookingDetailErrors((current) => ({
+        ...current,
+        [rowKey]: err.message || t('booking.errorLoad'),
+      }));
+    }).finally(() => {
+      setBookingDetailLoadingIds((current) => {
+        const next = new Set(current);
+        next.delete(rowKey);
+        return next;
+      });
+    });
+  }, [bookingTab, expandedBookingId, t]);
 
   const toggleGroup = useCallback((groupKey) => {
     setExpandedGroupKeys((current) => {
@@ -1027,6 +1104,8 @@ const BookingManagement = ({
                 bookingSort,
                 onSort: handleBookingSort,
                 expandedBookingId,
+                bookingDetailLoadingIds,
+                bookingDetailErrors,
                 onToggleRow: toggleBookingRow,
                 onSelectBooking: setSelectedBooking,
                 bookingTab,
@@ -1066,6 +1145,8 @@ const BookingManagement = ({
               bookingSort,
               onSort: handleBookingSort,
               expandedBookingId,
+              bookingDetailLoadingIds,
+              bookingDetailErrors,
               onToggleRow: toggleBookingRow,
               onSelectBooking: setSelectedBooking,
               bookingTab,

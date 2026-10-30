@@ -28,10 +28,15 @@ test('health is live-only and readiness reports dependency state', async (t) => 
     database: { query: async () => { databaseChecks += 1; return [{ '?column?': 1 }]; } },
     redisHealth: async () => true,
   }));
+  app.get('/asset', (_req, res) => {
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send('asset');
+  });
   const baseUrl = await listen(app, t);
 
   const health = await fetch(`${baseUrl}/health`);
   assert.equal(health.status, 200);
+  assert.equal(health.headers.get('cache-control'), 'no-store');
   assert.equal((await health.json()).status, 'ok');
   assert.equal(databaseChecks, 0);
 
@@ -42,6 +47,9 @@ test('health is live-only and readiness reports dependency state', async (t) => 
   assert.equal(payload.checks.postgres.ok, true);
   assert.equal(payload.checks.redis.ok, true);
   assert.equal(databaseChecks, 1);
+
+  const asset = await fetch(`${baseUrl}/asset`);
+  assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
 });
 
 test('readiness returns 503 without exposing dependency errors', async (t) => {

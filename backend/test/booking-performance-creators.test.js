@@ -202,9 +202,13 @@ test('booking list returns compact DTOs without raw snapshots or evaluation payl
   assert.deepEqual(summary.staff, { id: 7, name: 'Manager', email: 'manager@example.test' });
   assert.deepEqual(summary.product_ids, ['product-1']);
   assert.deepEqual(summary.products, [{ id: 'product-1', name: 'Serum', image_url: 'product.webp' }]);
-  assert.equal(video.thumbnail_url, 'cover.webp');
+  assert.equal(video.thumbnail_url, undefined);
+  assert.equal(video.title, undefined);
+  assert.equal(video.affiliate_products, undefined);
   assert.deepEqual(video.hashtags, ['campaign']);
   assert.equal(video.latest_performance.gross_gmv, 125);
+  assert.equal(video.latest_performance.ctr, undefined);
+  assert.equal(video.latest_performance.social_metrics, undefined);
   assert.equal(video.latest_performance.raw_metrics, undefined);
   assert.equal(video.performance_snapshots, undefined);
   assert.equal(JSON.stringify(summary).includes('must-not-leak'), false);

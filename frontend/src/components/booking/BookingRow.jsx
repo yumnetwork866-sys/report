@@ -18,6 +18,8 @@ import {
 const BookingRow = memo(({
   booking,
   expanded,
+  detailLoading,
+  detailError,
   onToggleRow,
   onSelectBooking,
   bookingTab,
@@ -56,7 +58,7 @@ const BookingRow = memo(({
     <>
       <tr
         className={expanded ? 'booking-row booking-row--expanded' : 'booking-row'}
-        onClick={(event) => onToggleRow(event, booking.id)}
+        onClick={onToggleRow}
       >
         <td className="booking-koc-column">
           <div className="booking-koc-identity">
@@ -143,7 +145,11 @@ const BookingRow = memo(({
       {expanded ? (
         <tr className="booking-video-detail-row">
           <td colSpan={10}>
-            {bookingTab === 'product' ? (
+            {detailLoading ? (
+              <div className="booking-video-expansion__pending"><span className="loading-dot" /><span>{t('booking.loading')}</span></div>
+            ) : detailError ? (
+              <div className="booking-video-expansion__empty"><p>{detailError}</p></div>
+            ) : bookingTab === 'product' ? (
               <BookingProductOrderExpansion
                 booking={booking}
                 performance={performance}
