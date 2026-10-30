@@ -169,7 +169,7 @@ export default function useBookingAnalytics({
   const stats = useMemo(() => {
     const visibleBookings = bookings.filter((booking) => bookingInPeriodById.get(String(booking.id)));
     const result = visibleBookings.reduce((summary, booking) => {
-      const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const rawCost = finiteNumber(booking.total_cost);
       const convertedCost = convertAmount(rawCost, booking.currency) ?? rawCost;
       const performance = performanceForBooking(
         booking,
@@ -234,7 +234,7 @@ export default function useBookingAnalytics({
         });
       }
       const group = groups.get(key);
-      const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const rawCost = finiteNumber(booking.total_cost);
       const performance = performanceForBooking(
         booking,
         bookingTab,
@@ -265,7 +265,7 @@ export default function useBookingAnalytics({
     };
     const costOf = (booking) => {
       if (!bookingCostInPeriodById.get(String(booking.id))) return 0;
-      const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const raw = finiteNumber(booking.total_cost);
       return convertAmount(raw, booking.currency) ?? raw;
     };
     for (const group of groups.values()) {
@@ -370,7 +370,7 @@ export default function useBookingAnalytics({
     };
     const costOf = (booking) => {
       if (!bookingCostInPeriodById.get(String(booking.id))) return 0;
-      const raw = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const raw = finiteNumber(booking.total_cost);
       const converted = convertAmount(raw, booking.currency) ?? raw;
       if (bookingTab === 'by_product') {
         const productCount = bookingProductsOf(booking).length;
@@ -436,7 +436,7 @@ export default function useBookingAnalytics({
     const groups = new Map();
 
     for (const booking of targetBookings) {
-      const rawCost = finiteNumber(booking.total_cost ?? booking.booking_cost);
+      const rawCost = finiteNumber(booking.total_cost);
       const convertedCost = bookingCostInPeriodById.get(String(booking.id))
         ? (convertAmount(rawCost, booking.currency) ?? rawCost)
         : 0;

@@ -20,7 +20,6 @@ const {
 
 const bookingRelationInclude = [
   { model: User, as: 'staff' },
-  { model: User, as: 'creator' },
   { model: TikTokShop, as: 'target_shop', attributes: ['id', 'name', 'code', 'region'] },
   {
     model: BookingVideo,
@@ -30,7 +29,7 @@ const bookingRelationInclude = [
 ];
 
 const bookingInclude = [
-  ...bookingRelationInclude.slice(0, 3),
+  ...bookingRelationInclude.slice(0, 2),
   {
     model: BookingVideo,
     as: 'booking_videos',

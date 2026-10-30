@@ -109,6 +109,8 @@ const defaultMigrationNames = [
   '100_remove_unused_facebook_chatbot_weekly_reports',
   '101_remove_legacy_video_products',
   '102_remove_legacy_video_assignments',
+  '103_cleanup_legacy_booking_columns',
+  '104_move_booking_videos_to_child_table',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

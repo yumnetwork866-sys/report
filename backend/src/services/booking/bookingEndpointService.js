@@ -726,20 +726,9 @@ const getBookings = async (req, res) => {
       monthWhere = {
         [Op.or]: [
           { start_date: { [Op.between]: [rangeStart, rangeEnd] } },
-          { end_date: { [Op.between]: [rangeStart, rangeEnd] } },
-          { deadline: { [Op.between]: [rangeStart, rangeEnd] } },
-          {
-            [Op.and]: [
-              { start_date: { [Op.lte]: rangeEnd } },
-              { end_date: { [Op.gte]: rangeStart } },
-            ],
-          },
           {
             start_date: null,
-            [Op.or]: [
-              { deadline: { [Op.between]: [rangeStart, rangeEnd] } },
-              { created_at: { [Op.between]: [`${rangeStart}T00:00:00.000Z`, `${rangeEnd}T23:59:59.999Z`] } },
-            ],
+            created_at: { [Op.between]: [`${rangeStart}T00:00:00.000Z`, `${rangeEnd}T23:59:59.999Z`] },
           },
           creatorVideoActivityInRange(rangeStart, rangeEnd),
         ],
@@ -752,20 +741,9 @@ const getBookings = async (req, res) => {
       monthWhere = {
         [Op.or]: [
           { start_date: { [Op.between]: [monthStart, monthEnd] } },
-          { end_date: { [Op.between]: [monthStart, monthEnd] } },
-          { deadline: { [Op.between]: [monthStart, monthEnd] } },
-          {
-            [Op.and]: [
-              { start_date: { [Op.lte]: monthEnd } },
-              { end_date: { [Op.gte]: monthStart } },
-            ],
-          },
           {
             start_date: null,
-            [Op.or]: [
-              { deadline: { [Op.between]: [monthStart, monthEnd] } },
-              { created_at: { [Op.between]: [`${monthStart}T00:00:00.000Z`, `${monthEnd}T23:59:59.999Z`] } },
-            ],
+            created_at: { [Op.between]: [`${monthStart}T00:00:00.000Z`, `${monthEnd}T23:59:59.999Z`] },
           },
           creatorVideoActivityInRange(monthStart, monthEnd),
         ],
@@ -874,7 +852,7 @@ const matchBookingVideo = async (req, res) => {
     const { candidates, range } = manualVideoId
       ? { candidates: [], range: bookingVideoDateRange(booking) }
       : await findBookingVideoCandidates(booking);
-    const requestedVideoId = String(req.body?.video_id || manualVideoId || booking.video_platform_id || '').trim();
+    const requestedVideoId = String(req.body?.video_id || manualVideoId || '').trim();
     let selected = requestedVideoId
       ? candidates.find((candidate) => candidate.id === requestedVideoId)
       : candidates.length === 1 ? candidates[0] : null;
@@ -914,9 +892,6 @@ const matchBookingVideo = async (req, res) => {
       },
     };
     await bookingRepository.updateInstance(booking, {
-      video_platform_id: selected.id,
-      video_url: selected.video_url,
-      posted_at: selected.posted_at,
       evaluation_snapshot: evaluationSnapshot,
       updated_at: new Date(),
     });

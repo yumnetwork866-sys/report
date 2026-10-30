@@ -22,12 +22,9 @@ const bookingListQuerySchema = withDateRange(z.object({
 
 const bookingBodySchema = z.object({
   total_cost: z.coerce.number().nonnegative().optional(),
-  booking_cost: z.coerce.number().nonnegative().optional(),
   currency: currency.optional(),
   status: z.enum(['draft', 'booked', 'waiting_video', 'video_posted', 'done', 'cancelled']).optional(),
   start_date: optionalIsoDate('start_date'),
-  end_date: optionalIsoDate('end_date'),
-  deadline: optionalIsoDate('deadline'),
 }).passthrough();
 
 const bookingProductPerformanceFilterSchema = z.object({

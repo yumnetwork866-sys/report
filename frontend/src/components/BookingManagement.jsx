@@ -981,7 +981,7 @@ const BookingManagement = ({
         setManualVideoUrl('');
         return;
       }
-      if (booking.video_platform_id) {
+      if ((booking.booking_videos || []).length > 0) {
         setError(t('booking.videoRefreshNone'));
       } else {
         setVideoMatchDialog({ booking, candidates: [], range: result.range });

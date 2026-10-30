@@ -37,7 +37,7 @@ const BookingRow = memo(({
 }) => {
   const bookingVideos = videoData?.videos || bookingVideosByRevenue(bookingVideosOf(booking));
   const postedVideos = bookingVideos.filter((v) => v.posted_at).sort((a, b) => new Date(a.posted_at) - new Date(b.posted_at));
-  const firstPostedDate = postedVideos[0]?.posted_at || booking.posted_at;
+  const firstPostedDate = postedVideos[0]?.posted_at || null;
   const startDate = booking.created_at;
   const deadlineDate = null;
   const videoCount = bookingTab === 'product'
@@ -91,7 +91,7 @@ const BookingRow = memo(({
         <td className="cell-number booking-total-cost-column">
           {showBookingCost ? (
             <div className="booking-cost-cell">
-              <strong>{formatMoney(booking.total_cost ?? booking.booking_cost, booking.currency)}</strong>
+              <strong>{formatMoney(booking.total_cost, booking.currency)}</strong>
               {booking.isAllocated ? (
                 <div
                   className="booking-cost-split-badge"

@@ -128,10 +128,6 @@ const Booking = sequelize.define('Booking', {
     allowNull: true,
   },
   staff_name: DataTypes.STRING,
-  creator_id: {
-    type: DataTypes.INTEGER,
-    allowNull: true,
-  },
   creator_open_id: DataTypes.STRING,
   creator_username: DataTypes.STRING,
   creator_name: DataTypes.STRING,
@@ -139,18 +135,10 @@ const Booking = sequelize.define('Booking', {
   target_shop_id: DataTypes.INTEGER,
   target_collaboration_id: DataTypes.STRING,
   evaluation_snapshot: DataTypes.JSONB,
-  booking_cost: {
-    type: DataTypes.DECIMAL(12, 2),
-    allowNull: false,
-    defaultValue: 0,
-  },
   total_cost: {
     type: DataTypes.DECIMAL(14, 2),
-    allowNull: true,
-  },
-  cost_note: {
-    type: DataTypes.TEXT,
-    allowNull: true,
+    allowNull: false,
+    defaultValue: 0,
   },
   currency: {
     type: DataTypes.STRING,
@@ -169,28 +157,8 @@ const Booking = sequelize.define('Booking', {
     type: DataTypes.DATEONLY,
     allowNull: true,
   },
-  end_date: {
-    type: DataTypes.DATEONLY,
-    allowNull: true,
-  },
-  deadline: {
-    type: DataTypes.DATEONLY,
-    allowNull: true,
-  },
   note: {
     type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  video_platform_id: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  video_url: {
-    type: DataTypes.TEXT,
-    allowNull: true,
-  },
-  posted_at: {
-    type: DataTypes.DATE,
     allowNull: true,
   },
   created_at: DataTypes.DATE,
@@ -200,11 +168,8 @@ const Booking = sequelize.define('Booking', {
   timestamps: false,
   indexes: [
     { fields: ['staff_id'] },
-    { fields: ['creator_id'] },
     { fields: ['status'] },
-    { fields: ['deadline'] },
     { fields: ['start_date'] },
-    { fields: ['end_date'] },
   ],
 });
 
@@ -1117,8 +1082,6 @@ const VideoDailyStats = sequelize.define('VideoDailyStats', {
 
 User.hasMany(Booking, { foreignKey: 'staff_id', as: 'staff_bookings' });
 Booking.belongsTo(User, { foreignKey: 'staff_id', as: 'staff' });
-User.hasMany(Booking, { foreignKey: 'creator_id', as: 'creator_bookings' });
-Booking.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
 TikTokShop.hasMany(Booking, { foreignKey: 'target_shop_id', as: 'bookings' });
 Booking.belongsTo(TikTokShop, { foreignKey: 'target_shop_id', as: 'target_shop' });
 Booking.hasMany(BookingVideo, { foreignKey: 'booking_id', as: 'booking_videos' });

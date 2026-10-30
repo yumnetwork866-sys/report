@@ -56,7 +56,7 @@ test('countPaidBookingKocs only counts unique KOCs with positive cost in the sel
     { id: 1, creator_open_id: 'creator-a', total_cost: 100 },
     { id: 2, creator_open_id: 'creator-a', total_cost: 50 },
     { id: 3, creator_username: 'free-creator', total_cost: 0 },
-    { id: 4, creator_username: 'paid-creator', booking_cost: 25 },
+    { id: 4, creator_username: 'paid-creator', total_cost: 25 },
     { id: 5, creator_username: 'outside-period', total_cost: 40 },
   ];
 

@@ -124,10 +124,10 @@ test('defaultBookingSortForTab returns cost for video tab and revenue for produc
 
 test('sorting bookings by cost prioritizes higher cost in period', () => {
   const bookings = [
-    { id: 1, total_cost: 2000000, booking_cost: 2000000 },
-    { id: 2, total_cost: 5000000, booking_cost: 5000000 },
-    { id: 3, total_cost: 0, booking_cost: 0 },
-    { id: 4, total_cost: 1000000, booking_cost: 1000000 },
+    { id: 1, total_cost: 2000000 },
+    { id: 2, total_cost: 5000000 },
+    { id: 3, total_cost: 0 },
+    { id: 4, total_cost: 1000000 },
   ];
 
   const sorted = [...bookings].sort((a, b) => (Number(b.total_cost) - Number(a.total_cost)));

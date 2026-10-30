@@ -25,8 +25,6 @@ const endOfMonth = (value) => {
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 };
 const bookingAttributionEndDate = (booking) => {
-  if (booking?.end_date) return dateOnly(booking.end_date);
-  if (booking?.deadline) return dateOnly(booking.deadline);
   return booking?.start_date ? endOfMonth(booking.start_date) : null;
 };
 const numberOrZero = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -1121,9 +1119,6 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
 
   const selected = candidates[0];
   const updatePayload = {
-    video_platform_id: selected.id,
-    video_url: selected.video_url,
-    posted_at: selected.posted_at,
     evaluation_snapshot: {
       ...booking.evaluation_snapshot,
       video_match: {
@@ -1390,7 +1385,7 @@ const latestSnapshot = (video) => [...(video.performance_snapshots || [])]
 const calculateActualPerformance = (booking) => {
   const videos = booking.booking_videos || [];
   const latest = videos.map(latestSnapshot).filter(Boolean);
-  const bookingCost = numberOrZero(booking.total_cost ?? booking.booking_cost);
+  const bookingCost = numberOrZero(booking.total_cost);
   const grossGmv = latest.reduce((sum, row) => sum + numberOrZero(row.gross_gmv), 0);
   const hasAnyRefunds = latest.some((row) => row.refunded_gmv !== null && row.refunded_gmv !== undefined);
   const hasCompleteRefunds = latest.length > 0 && latest.every((row) => row.refunded_gmv !== null && row.refunded_gmv !== undefined);

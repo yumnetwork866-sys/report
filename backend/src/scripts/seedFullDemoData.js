@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const {
   Booking,
+  BookingVideo,
   TikTokChannel,
   TikTokPartnerAuthorization,
   TikTokShop,
@@ -211,24 +212,36 @@ const seed = async () => {
     summary.videos = videos.length;
     summary.dailyStats = videos.length * 30;
 
-    await Booking.destroy({ where: { creator_id: kocs.map((koc) => koc.id) }, transaction });
+    await Booking.destroy({ where: { creator_username: channels.map((channel) => channel.username) }, transaction });
     const bookingStatuses = ['booked', 'waiting_video', 'video_posted'];
     const bookingRows = Array.from({ length: 16 }, (_, index) => ({
       staff_id: staff[index % staff.length].id,
-      creator_id: kocs[index % kocs.length].id,
-      booking_cost: 900000 + (index % 6) * 350000,
+      creator_open_id: channels[index % channels.length].tiktok_open_id,
+      creator_username: channels[index % channels.length].username,
+      creator_name: channels[index % channels.length].display_name,
+      total_cost: 900000 + (index % 6) * 350000,
       status: bookingStatuses[index % bookingStatuses.length],
-      deadline: dateOnly(addDays(now, index - 5)),
+      start_date: dateOnly(addDays(now, index - 5)),
       note: `[DEMO] Booking campaign ${['Summer Glow', 'Hair Growth', 'Acne Recovery'][index % 3]}.`,
-      video_platform_id: index % 3 === 2 ? videos[index % videos.length].platform_video_id : null,
-      video_url: index % 3 === 2 ? JSON.stringify([{
-        title: videos[index % videos.length].title,
-        platform_video_id: videos[index % videos.length].platform_video_id,
-        video_url: videos[index % videos.length].video_url,
-      }]) : null,
-      posted_at: index % 3 === 2 ? addDays(now, -index) : null,
     }));
-    await Booking.bulkCreate(bookingRows, { transaction });
+    const createdBookings = await Booking.bulkCreate(bookingRows, { transaction, returning: true });
+    for (const [index, booking] of createdBookings.entries()) {
+      if (index % 3 !== 2) continue;
+      const video = videos[index % videos.length];
+      const attributionStart = addDays(now, -index);
+      await BookingVideo.create({
+        booking_id: booking.id,
+        platform_video_id: video.platform_video_id,
+        video_url: video.video_url,
+        creator_username: channels[index % channels.length].username,
+        title: video.title,
+        posted_at: attributionStart,
+        attribution_start: dateOnly(attributionStart),
+        attribution_end: dateOnly(addDays(attributionStart, 30)),
+        mapping_source: 'SEED',
+        status: 'FINALIZED',
+      }, { transaction });
+    }
     summary.bookings = bookingRows.length;
 
     for (const [index, koc] of kocs.slice(0, 3).entries()) {

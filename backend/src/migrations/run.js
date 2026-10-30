@@ -110,6 +110,8 @@ const migrations = [
   require('./100_remove_unused_facebook_chatbot_weekly_reports'),
   require('./101_remove_legacy_video_products'),
   require('./102_remove_legacy_video_assignments'),
+  require('./103_cleanup_legacy_booking_columns'),
+  require('./104_move_booking_videos_to_child_table'),
 ];
 
 const createMigrationRunner = ({

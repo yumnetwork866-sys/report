@@ -28,7 +28,7 @@ const BookingMonthCard = ({
   t,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const rawCost = booking.total_cost ?? booking.booking_cost;
+  const rawCost = booking.total_cost;
   const [cost, setCost] = useState(editableCurrencyAmount(convertAmount(rawCost, booking.currency) ?? rawCost, selectedCurrency));
   const [bookingDate, setBookingDate] = useState(bookingDateOf(booking));
   const [productIds, setProductIds] = useState(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
@@ -48,7 +48,7 @@ const BookingMonthCard = ({
   }, [productPickerOpen]);
 
   useEffect(() => {
-    const rCost = booking.total_cost ?? booking.booking_cost;
+    const rCost = booking.total_cost;
     setCost(editableCurrencyAmount(convertAmount(rCost, booking.currency) ?? rCost, selectedCurrency));
     setBookingDate(bookingDateOf(booking));
     setProductIds(bookingProductsOf(booking).map((p) => String(p.id || p.product_id)));
@@ -59,8 +59,6 @@ const BookingMonthCard = ({
     await onSave(booking.id, {
       total_cost: Number(cost),
       start_date: bookingDate || null,
-      end_date: null,
-      deadline: null,
       currency: selectedCurrency,
       product_ids: productIds,
       products: (allShopProducts || []).filter((p) => productIds.includes(p.id)),
@@ -71,7 +69,7 @@ const BookingMonthCard = ({
   const videoCount = cardVideos.length || Number(booking.actual_performance?.video_count || 0);
   const actualGmv = Number(booking.actual_performance?.gross_gmv || booking.actual_performance?.affiliate_gmv || 0);
   const performanceCurrency = booking.actual_performance?.currency || booking.currency;
-  const numCost = Number(booking.total_cost ?? booking.booking_cost ?? 0);
+  const numCost = Number(booking.total_cost ?? 0);
   const convertedCost = convertAmount(numCost, booking.currency);
   const convertedGmv = convertAmount(actualGmv, performanceCurrency);
   const ratio = (convertedGmv > 0 && convertedCost !== null) ? (convertedCost / convertedGmv) : null;

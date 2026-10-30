@@ -197,7 +197,7 @@ const BookingEvaluationTable = ({
 
               for (const record of bookingRecords) {
                 if (!bookingCostInPeriodById.get(String(record.id))) continue;
-                const rawCost = finiteNumber(record.total_cost ?? record.booking_cost);
+                const rawCost = finiteNumber(record.total_cost);
                 const converted = convertAmount(rawCost, record.currency) ?? rawCost;
                 originalCost += converted;
 
@@ -220,7 +220,6 @@ const BookingEvaluationTable = ({
               const displayBooking = {
                 ...booking,
                 total_cost: totalCost,
-                booking_cost: totalCost,
                 currency: selectedCurrency,
                 isAllocated: hasMultiProductSplit,
                 originalTotalCost: originalCost,

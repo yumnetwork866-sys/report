@@ -19,8 +19,6 @@ const { parseTikTokShopDateTime } = require('../../lib/tiktokShopDateTime');
 
 const dateOnly = (value) => new Date(value).toISOString().slice(0, 10);
 const bookingQueryEndDate = (booking) => {
-  if (booking?.end_date) return dateOnly(booking.end_date);
-  if (booking?.deadline) return dateOnly(booking.deadline);
   if (!booking?.start_date) return null;
   const [year, month] = dateOnly(booking.start_date).split('-').map(Number);
   return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
@@ -253,9 +251,6 @@ const autoLinkCreatedBooking = async (booking) => {
     ? 'SHOP_VIDEO_CATALOG'
     : 'TIKTOK_SHOP_VIDEO_PERFORMANCE';
   await booking.update({
-    video_platform_id: selected.id,
-    video_url: selected.video_url,
-    posted_at: selected.posted_at,
     evaluation_snapshot: {
       ...booking.evaluation_snapshot,
       video_match: {

@@ -33,13 +33,6 @@ const normalizeBookingProducts = (products, productIds = []) => {
   return [...byId.values()];
 };
 
-const normalizeBookingVideoUrl = (value) => {
-  if (value === null || value === undefined || value === '') return null;
-  if (Array.isArray(value)) return value.length ? JSON.stringify(value) : null;
-  if (typeof value === 'object') return JSON.stringify(value);
-  return String(value);
-};
-
 const canManageUsers = (session) => !session
   || session.role === 'admin'
   || expandLegacyPermissions(session.permissions).includes('admin.users.manage');
@@ -51,7 +44,7 @@ const clearBookingCaches = () => Promise.all([
 ]).catch(() => {});
 
 const createBooking = async ({ body, session }) => {
-  const cost = Number(body.total_cost ?? body.booking_cost);
+  const cost = Number(body.total_cost);
   if (!Number.isFinite(cost) || cost < 0) {
     throw requestError('Total cost must be zero or greater.');
   }
@@ -103,11 +96,9 @@ const createBooking = async ({ body, session }) => {
     performance,
   };
   const targetStartDate = body.start_date || null;
-  const targetEndDate = body.end_date || body.deadline || null;
   const payload = compactPayload({
     staff_id: staff?.id || null,
     staff_name: staff?.name || null,
-    creator_id: null,
     creator_open_id: profile.creator_open_id,
     creator_username: profile.username,
     creator_name: profile.nickname,
@@ -115,14 +106,10 @@ const createBooking = async ({ body, session }) => {
     target_shop_id: shopId,
     target_collaboration_id: collaboration?.collaboration_id || null,
     evaluation_snapshot: evaluationSnapshot,
-    booking_cost: cost,
     total_cost: cost,
-    cost_note: String(body.cost_note || '').trim() || null,
     currency: String(body.currency || performance?.currency || 'MYR').trim().toUpperCase(),
     status: 'draft',
     start_date: targetStartDate,
-    end_date: targetEndDate,
-    deadline: targetEndDate,
     note: body.note || null,
     updated_at: new Date(),
   });
@@ -141,13 +128,12 @@ const createBooking = async ({ body, session }) => {
 
 const updateBooking = async (bookingId, { body, session }) => {
   const normalizedBody = { ...body };
-  if (body.total_cost !== undefined || body.booking_cost !== undefined) {
-    const cost = Number(body.total_cost ?? body.booking_cost);
+  if (body.total_cost !== undefined) {
+    const cost = Number(body.total_cost);
     if (!Number.isFinite(cost) || cost < 0) {
       throw requestError('Total cost must be zero or greater.');
     }
     normalizedBody.total_cost = cost;
-    normalizedBody.booking_cost = cost;
   }
   if (body.status && !ALLOWED_STATUSES.has(body.status)) {
     throw requestError('Invalid booking status');
@@ -184,25 +170,14 @@ const updateBooking = async (bookingId, { body, session }) => {
     }
   }
 
-  const targetEndDate = body.end_date !== undefined
-    ? body.end_date
-    : body.deadline !== undefined ? body.deadline : undefined;
   const targetStartDate = body.start_date;
   const payload = compactPayload({
     ...staffUpdate,
-    creator_id: body.creator_id,
-    booking_cost: normalizedBody.booking_cost,
     total_cost: normalizedBody.total_cost,
-    cost_note: body.cost_note === undefined ? undefined : String(body.cost_note || '').trim() || null,
     currency: body.currency === undefined ? undefined : String(body.currency || 'MYR').trim().toUpperCase(),
     status: body.status,
     start_date: targetStartDate,
-    end_date: targetEndDate,
-    deadline: targetEndDate !== undefined ? targetEndDate : body.deadline,
     note: body.note,
-    video_platform_id: body.video_platform_id,
-    video_url: normalizeBookingVideoUrl(body.video_url),
-    posted_at: body.posted_at,
     evaluation_snapshot: updatedEvaluationSnapshot,
     updated_at: new Date(),
   });

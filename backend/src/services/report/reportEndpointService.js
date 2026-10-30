@@ -1468,12 +1468,22 @@ const getKocDetail = async (req, res) => {
         LIMIT 20
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`
-        SELECT id, COALESCE(total_cost, booking_cost) AS "bookingCost", cost_note AS "costNote",
-          currency, status, deadline, note, video_url AS "videoUrl", posted_at AS "postedAt",
-          created_at AS "createdAt"
-        FROM bookings
-        WHERE creator_id = :creatorId
-        ORDER BY created_at DESC, id DESC
+        SELECT booking.id, booking.total_cost AS "bookingCost",
+          booking.currency, booking.status, booking.note,
+          video.video_url AS "videoUrl", video.posted_at AS "postedAt",
+          booking.created_at AS "createdAt"
+        FROM bookings booking
+        JOIN tiktok_partner_authorizations authorization
+          ON authorization.creator_id = :creatorId
+         AND authorization.open_id = booking.creator_open_id
+        LEFT JOIN LATERAL (
+          SELECT booking_video.video_url, booking_video.posted_at
+          FROM booking_videos booking_video
+          WHERE booking_video.booking_id = booking.id
+          ORDER BY booking_video.posted_at ASC NULLS LAST, booking_video.id ASC
+          LIMIT 1
+        ) video ON TRUE
+        ORDER BY booking.created_at DESC, booking.id DESC
         LIMIT 20
       `, { type: QueryTypes.SELECT, replacements }),
         reportRepository.query(`

@@ -115,7 +115,7 @@ test('booking command service creates a booking from a resolved target creator',
       target_shop_id: 3,
       creator_username: 'creator',
       staff_id: 9,
-      booking_cost: 120,
+      total_cost: 120,
       product_ids: ['product-1'],
     },
     session: { role: 'admin' },
@@ -158,15 +158,13 @@ test('booking command service updates through repository and returns presented d
       total_cost: 75,
       status: 'booked',
       start_date: '2026-09-01',
-      end_date: '2026-09-15',
     },
     session: { role: 'admin' },
   });
 
   assert.equal(updateCall.id, 42);
   assert.equal(updateCall.payload.total_cost, 75);
-  assert.equal(updateCall.payload.booking_cost, 75);
-  assert.equal(updateCall.payload.deadline, '2026-09-15');
+  assert.equal(updateCall.payload.start_date, '2026-09-01');
   assert.deepEqual(result, { id: 42, target_shop_id: 3, presented: true });
 });
 

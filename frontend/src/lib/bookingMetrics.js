@@ -196,8 +196,6 @@ export const bookingCreatorKey = (booking) => {
   if (openId) return `open:${openId}`;
   const username = String(booking?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase('en');
   if (username) return `username:${username}`;
-  const creatorId = String(booking?.creator_id || '').trim();
-  if (creatorId) return `creator:${creatorId}`;
   return `booking:${booking?.id || ''}`;
 };
 
@@ -274,7 +272,7 @@ export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => 
   (Array.isArray(bookings) ? bookings : [])
     .filter((booking) => (
       isInPeriod(booking)
-      && finiteNumber(booking?.total_cost ?? booking?.booking_cost) > 0
+      && finiteNumber(booking?.total_cost) > 0
     ))
     .map(bookingCreatorKey),
 ).size;

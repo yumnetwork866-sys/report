@@ -506,9 +506,10 @@ test('booking video matcher auto-links a single exact creator video', async (t) 
   );
 
   assert.equal(response.status, 'matched');
-  assert.equal(updatedPayload.video_platform_id, '7400000000000000123');
-  assert.equal(updatedPayload.posted_at, '2026-07-22T10:30:00.000Z');
-  assert.match(updatedPayload.video_url, /@creator\.one\/video\/7400000000000000123$/);
+  assert.equal(updatedPayload.video_platform_id, undefined);
+  assert.equal(updatedPayload.evaluation_snapshot.video_match.id, '7400000000000000123');
+  assert.equal(updatedPayload.evaluation_snapshot.video_match.posted_at, '2026-07-22T10:30:00.000Z');
+  assert.match(updatedPayload.evaluation_snapshot.video_match.video_url, /@creator\.one\/video\/7400000000000000123$/);
   assert.equal(updatedPayload.evaluation_snapshot.video_match.gmv.amount, 450.5);
   assert.equal(updatedPayload.evaluation_snapshot.video_match.orders, 18);
 });
@@ -568,7 +569,8 @@ test('booking video matcher prefers the complete local Shop Video Catalog', asyn
 
   assert.equal(response.status, 'matched');
   assert.equal(analyticsCalled, false);
-  assert.equal(updatedPayload.video_platform_id, '7400000000000000789');
+  assert.equal(updatedPayload.video_platform_id, undefined);
+  assert.equal(updatedPayload.evaluation_snapshot.video_match.id, '7400000000000000789');
   assert.equal(updatedPayload.evaluation_snapshot.video_match.source, 'SHOP_VIDEO_CATALOG');
 });
 
@@ -602,7 +604,8 @@ test('booking video matcher accepts a manually confirmed TikTok URL without call
   );
 
   assert.equal(response.status, 'matched');
-  assert.equal(updatedPayload.video_platform_id, '7400000000000000456');
+  assert.equal(updatedPayload.video_platform_id, undefined);
+  assert.equal(updatedPayload.evaluation_snapshot.video_match.id, '7400000000000000456');
   assert.equal(updatedPayload.evaluation_snapshot.video_match.source, 'MANUAL_URL');
   assert.equal(updatedPayload.evaluation_snapshot.video_match.manually_confirmed, true);
 });
@@ -650,7 +653,7 @@ test('booking can be created from Creator Performance using username only', asyn
         creator_open_id: null,
         creator_username: 'performance_only',
         staff_id: 7,
-        booking_cost: 80,
+        total_cost: 80,
         performance_window_type: 'PAST_30_DAYS',
         product_ids: ['product-1'],
         products: [{ id: 'product-1', name: 'Serum', imageUrl: 'https://example.com/serum.jpg' }],
@@ -669,7 +672,7 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(createdPayload.target_collaboration_id, null);
   assert.equal(createdPayload.staff_id, 7);
   assert.equal(createdPayload.staff_name, 'Account manager');
-  assert.equal(createdPayload.deadline, null);
+  assert.equal(createdPayload.total_cost, 80);
   assert.equal(createdPayload.evaluation_snapshot.collaboration, null);
   assert.deepEqual(createdPayload.evaluation_snapshot.performance, performanceData);
   assert.deepEqual(createdPayload.evaluation_snapshot.product_ids, ['product-1']);
@@ -683,14 +686,12 @@ test('booking can be created from Creator Performance using username only', asyn
   assert.equal(autoLinkedBooking.id, 12);
 });
 
-test('updateBooking updates start_date and end_date', async (t) => {
+test('updateBooking updates the canonical booking date', async (t) => {
   let updatedPayload;
   const mockBooking = {
     id: 15,
     target_shop_id: 3,
     start_date: '2026-03-01',
-    end_date: '2026-03-31',
-    deadline: '2026-03-31',
   };
   const { updateBooking } = loadController(t, {
     Booking: {
@@ -710,7 +711,6 @@ test('updateBooking updates start_date and end_date', async (t) => {
       params: { id: 15 },
       body: {
         start_date: '2026-03-05',
-        end_date: '2026-04-10',
       },
     },
     {
@@ -720,8 +720,6 @@ test('updateBooking updates start_date and end_date', async (t) => {
   );
 
   assert.equal(updatedPayload.start_date, '2026-03-05');
-  assert.equal(updatedPayload.end_date, '2026-04-10');
-  assert.equal(updatedPayload.deadline, '2026-04-10');
 });
 
 test('getBookings filters by creator_username', async (t) => {

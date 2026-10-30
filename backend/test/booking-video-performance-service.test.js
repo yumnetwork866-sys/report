@@ -166,20 +166,14 @@ test('booking video must contain at least one product selected by the user', () 
   }), false);
 });
 
-test('booking video must match booking start_date and end_date range', () => {
+test('booking video must match the month of the canonical booking date', () => {
   const booking = {
     start_date: '2026-09-01',
-    end_date: '2026-09-15',
   };
   assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-09-05T12:00:00.000Z' }), true);
   assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-08-31T23:59:59.000Z' }), false);
-  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-09-16T00:00:01.000Z' }), false);
-
-  const legacyBooking = {
-    deadline: '2026-09-10',
-  };
-  assert.equal(matchesBookingDateRange(legacyBooking, { posted_at: '2026-09-10T10:00:00.000Z' }), true);
-  assert.equal(matchesBookingDateRange(legacyBooking, { posted_at: '2026-09-11T00:00:00.000Z' }), false);
+  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-09-30T23:59:59.000Z' }), true);
+  assert.equal(matchesBookingDateRange(booking, { posted_at: '2026-10-01T00:00:01.000Z' }), false);
 });
 
 test('booking without an explicit end date tracks videos only within its booking month', () => {
@@ -265,7 +259,7 @@ test('booking performance only counts the selected product breakdown', () => {
 
 test('actual booking performance uses latest snapshot and does not invent Net GMV', () => {
   const result = calculateActualPerformance({
-    booking_cost: 1500,
+    total_cost: 1500,
     booking_videos: [{
       status: 'COLLECTING',
       performance_snapshots: [
@@ -301,7 +295,7 @@ test('actual booking performance ignores zero-value snapshots when choosing curr
 
 test('actual booking performance calculates Net ROAS only with complete refund data', () => {
   const result = calculateActualPerformance({
-    booking_cost: 1000,
+    total_cost: 1000,
     booking_videos: [
       {
         status: 'FINALIZED',
@@ -326,7 +320,7 @@ test('actual booking performance calculates Net ROAS only with complete refund d
 
 test('actual booking performance exposes known commission without hiding it behind unmatched videos', () => {
   const result = calculateActualPerformance({
-    booking_cost: 1000,
+    total_cost: 1000,
     booking_videos: [
       {
         status: 'COLLECTING',
