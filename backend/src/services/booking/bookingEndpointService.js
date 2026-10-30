@@ -133,12 +133,13 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
   ]));
 
   const fallbackSnapshots = videoIds.length && typeof bookingRepository.findLatestVideoPerformanceSnapshotsByVideoIds === 'function'
-    ? await bookingRepository.findLatestVideoPerformanceSnapshotsByVideoIds(videoIds).catch(() => [])
+    ? await bookingRepository.findLatestVideoPerformanceSnapshotsByVideoIds(videoIds, shopIds).catch(() => [])
     : [];
-  const latestSnapshotByVideoId = new Map();
+  const latestSnapshotByShopAndVideoId = new Map();
   for (const snap of fallbackSnapshots) {
-    if (!latestSnapshotByVideoId.has(snap.video_id)) {
-      latestSnapshotByVideoId.set(snap.video_id, snap);
+    const key = `${snap.shop_id}:${snap.video_id}`;
+    if (!latestSnapshotByShopAndVideoId.has(key)) {
+      latestSnapshotByShopAndVideoId.set(key, snap);
     }
   }
 
@@ -196,7 +197,9 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
     for (const video of booking.booking_videos || []) {
       const existingSnapshots = Array.isArray(video.performance_snapshots) ? video.performance_snapshots : [];
       const existingLatest = existingSnapshots[0] || null;
-      const fallbackSnap = latestSnapshotByVideoId.get(video.platform_video_id);
+      const fallbackSnap = latestSnapshotByShopAndVideoId.get(
+        `${booking.target_shop_id}:${video.platform_video_id}`,
+      );
       const snapshot = exportRecord
         ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
         : null;

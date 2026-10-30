@@ -219,6 +219,8 @@ const BookingVideo = sequelize.define('BookingVideo', {
   attribution_start: { type: DataTypes.DATEONLY, allowNull: false },
   attribution_end: { type: DataTypes.DATEONLY, allowNull: false },
   attributed_product_ids: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  product_attribution_source: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'UNKNOWN' },
+  product_attribution_verified_at: DataTypes.DATE,
   mapping_source: { type: DataTypes.STRING(64), allowNull: false, defaultValue: 'MANUAL_URL' },
   status: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'COLLECTING' },
   last_synced_at: DataTypes.DATE,

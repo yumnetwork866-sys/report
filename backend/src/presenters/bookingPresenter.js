@@ -73,7 +73,10 @@ const compactBookingVideo = (video = {}) => {
     platform_video_id: video.platform_video_id,
     hashtags: hashtagsOfVideo(video, latest),
     posted_at: video.posted_at,
-    attributed_product_ids: video.attributed_product_ids || [],
+    attributed_product_ids: video.product_attribution_source === 'UNKNOWN'
+      ? []
+      : video.attributed_product_ids || [],
+    product_attribution_source: video.product_attribution_source || 'UNKNOWN',
     status: video.status,
     shared_booking_count: video.shared_booking_count,
     is_shared_booking_video: video.is_shared_booking_video,
@@ -175,10 +178,17 @@ const affiliateProductsOfSnapshot = (snapshot) => {
 };
 
 const hydrateBookingVideoProducts = async (bookings) => {
-  const shopIds = [...new Set(bookings.map((booking) => Number(booking.target_shop_id)).filter(Number.isInteger))];
-  const videoIds = [...new Set(bookings.flatMap((booking) => (
-    (booking.booking_videos || []).map((video) => String(video.platform_video_id || '').trim())
-  )).filter(Boolean))];
+  const unresolved = bookings.flatMap((booking) => (
+    (booking.booking_videos || []).flatMap((video) => {
+      const videoId = String(video.platform_video_id || '').trim();
+      const shopId = Number(booking.target_shop_id);
+      return videoId && Number.isInteger(shopId) && productIdsOfVideo(video).size === 0
+        ? [{ shopId, videoId }]
+        : [];
+    })
+  ));
+  const shopIds = [...new Set(unresolved.map(({ shopId }) => shopId))];
+  const videoIds = [...new Set(unresolved.map(({ videoId }) => videoId))];
   if (!shopIds.length || !videoIds.length) return bookings;
   const snapshots = typeof bookingRepository.findLatestAffiliateVideoSnapshots === 'function'
     ? await bookingRepository.findLatestAffiliateVideoSnapshots({ shopIds, videoIds })

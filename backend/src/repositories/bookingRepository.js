@@ -91,18 +91,65 @@ const findVideoPerformanceSnapshots = (options) => (
   TikTokVideoPerformanceSnapshot?.findAll ? TikTokVideoPerformanceSnapshot.findAll(options) : Promise.resolve([])
 );
 
-const findLatestVideoPerformanceSnapshotsByVideoIds = async (videoIds) => {
-  if (!Array.isArray(videoIds) || videoIds.length === 0 || !sequelize?.query) return [];
+const findLatestVideoPerformanceSnapshotsByVideoIds = async (videoIds, shopIds = []) => {
+  const normalizedShopIds = [...new Set(shopIds.map(Number).filter(Number.isInteger))];
+  if (!Array.isArray(videoIds) || videoIds.length === 0 || !normalizedShopIds.length || !sequelize?.query) return [];
   const chunkSize = 1000;
   const rows = [];
   for (let index = 0; index < videoIds.length; index += chunkSize) {
     const chunk = videoIds.slice(index, index + chunkSize);
     const chunkRows = await sequelize.query(`
-      SELECT DISTINCT ON (video_id) *
-      FROM tiktok_video_performance_snapshots
-      WHERE video_id IN (:videoIds)
-      ORDER BY video_id, export_id DESC, id DESC
-    `, { replacements: { videoIds: chunk }, type: QueryTypes.SELECT });
+      WITH latest AS MATERIALIZED (
+        SELECT DISTINCT ON (shop_id, video_id)
+          shop_id,
+          video_id,
+          video_views,
+          likes,
+          comments,
+          shares,
+          synced_at,
+          raw_metrics
+        FROM tiktok_video_performance_snapshots
+        WHERE shop_id IN (:shopIds)
+          AND video_id IN (:videoIds)
+        ORDER BY shop_id, video_id, id DESC
+      )
+      SELECT
+        shop_id,
+        video_id,
+        video_views,
+        likes,
+        comments,
+        shares,
+        synced_at,
+        jsonb_strip_nulls(jsonb_build_object(
+          'title', COALESCE(raw_metrics -> 'title', raw_metrics #> '{video,title}'),
+          'description', COALESCE(raw_metrics -> 'description', raw_metrics #> '{video,description}'),
+          'hashtags', COALESCE(
+            raw_metrics -> 'hashtags',
+            raw_metrics -> 'hash_tags',
+            raw_metrics #> '{video,hashtags}',
+            raw_metrics #> '{video,hash_tags}'
+          ),
+          'list', jsonb_strip_nulls(jsonb_build_object(
+            'title', COALESCE(raw_metrics #> '{list,title}', raw_metrics #> '{video,list,title}'),
+            'description', COALESCE(
+              raw_metrics #> '{list,description}',
+              raw_metrics #> '{video,list,description}'
+            ),
+            'hashtags', COALESCE(
+              raw_metrics #> '{list,hashtags}',
+              raw_metrics #> '{list,hash_tags}',
+              raw_metrics #> '{video,list,hashtags}',
+              raw_metrics #> '{video,list,hash_tags}'
+            )
+          ))
+        )) AS raw_metrics
+      FROM latest
+    `, {
+      replacements: { shopIds: normalizedShopIds, videoIds: chunk },
+      type: QueryTypes.SELECT,
+    });
     rows.push(...chunkRows);
   }
   return rows;

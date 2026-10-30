@@ -72,7 +72,11 @@ const productIdsOfVideo = (video) => {
       detail?.performance?.intervals?.flatMap((interval) => interval?.sales?.breakdowns || []) || [],
     ];
   });
+  const storedAttribution = video?.product_attribution_source === 'UNKNOWN'
+    ? []
+    : video?.attributed_product_ids;
   return normalizedProductIds(
+    storedAttribution,
     video?.product_id,
     video?.products,
     video?.affiliate_products,
@@ -835,6 +839,10 @@ const bookingVideoInclude = [{
 
 const recordBookingVideoMatch = async (booking, candidate, source, now = new Date()) => {
   const attributionStart = dateOnly(candidate.posted_at || booking.created_at || now);
+  const attributedProductIds = normalizedProductIds(candidate.attributed_product_ids);
+  const detectedProductIds = productIdsOfVideo({ ...candidate, attributed_product_ids: [] });
+  const attributionVerified = attributedProductIds.size > 0
+    && [...attributedProductIds].every((productId) => detectedProductIds.has(productId));
   const [video] = await BookingVideo.upsert({
     booking_id: booking.id,
     platform_video_id: String(candidate.id),
@@ -844,7 +852,9 @@ const recordBookingVideoMatch = async (booking, candidate, source, now = new Dat
     posted_at: candidate.posted_at || null,
     attribution_start: attributionStart,
     attribution_end: shiftDate(attributionStart, 30),
-    attributed_product_ids: [...normalizedProductIds(candidate.attributed_product_ids)],
+    attributed_product_ids: [...attributedProductIds],
+    product_attribution_source: attributionVerified ? 'TIKTOK_VERIFIED' : 'UNKNOWN',
+    product_attribution_verified_at: attributionVerified ? now : null,
     mapping_source: source,
     status: 'COLLECTING',
     last_synced_at: candidate.manually_confirmed ? null : now,

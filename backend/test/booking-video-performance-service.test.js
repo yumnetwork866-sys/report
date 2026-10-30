@@ -429,8 +429,9 @@ test('metricOfAffiliateSnapshot uses order ledger metrics when video detail is o
   assert.equal(result.raw_metrics.product_metrics_available, true);
 });
 
-test('productIdsOfVideo extracts product IDs from raw_data and ignores order_metrics', () => {
+test('productIdsOfVideo prefers attributed product IDs, reads raw_data, and ignores order_metrics', () => {
   const video = {
+    attributed_product_ids: ['prod-attributed-1'],
     raw_data: {
       products: [{ id: 'prod-catalog-1' }, { id: 'prod-catalog-2' }],
     },
@@ -441,6 +442,7 @@ test('productIdsOfVideo extracts product IDs from raw_data and ignores order_met
   const ids = productIdsOfVideo(video);
   assert.equal(ids.has('prod-catalog-1'), true);
   assert.equal(ids.has('prod-catalog-2'), true);
+  assert.equal(ids.has('prod-attributed-1'), true);
   assert.equal(ids.has('prod-order-1'), false);
   assert.equal(ids.has('prod-nonexistent'), false);
 });

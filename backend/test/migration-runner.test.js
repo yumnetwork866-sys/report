@@ -105,6 +105,7 @@ const defaultMigrationNames = [
   '096_link_connections_to_tiktok_apps',
   '097_optimize_booking_list_queries',
   '098_optimize_dashboard_video_sales_lookup',
+  '099_add_booking_video_product_attribution_verification',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));
