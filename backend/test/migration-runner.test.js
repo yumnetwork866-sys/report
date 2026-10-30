@@ -111,6 +111,7 @@ const defaultMigrationNames = [
   '102_remove_legacy_video_assignments',
   '103_cleanup_legacy_booking_columns',
   '104_move_booking_videos_to_child_table',
+  '105_optimize_high_traffic_indexes',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

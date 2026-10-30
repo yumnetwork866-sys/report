@@ -220,7 +220,11 @@ const BookingVideoPerformanceSnapshot = sequelize.define('BookingVideoPerformanc
 }, {
   tableName: 'booking_video_performance_snapshots',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['booking_video_id', 'snapshot_date'] }],
+  indexes: [{
+    name: 'booking_video_performance_sna_booking_video_id_snapshot_dat_key',
+    unique: true,
+    fields: ['booking_video_id', 'snapshot_date'],
+  }],
 });
 
 const ShopVideo = sequelize.define('ShopVideo', {
@@ -276,7 +280,10 @@ const ChannelReportVideoRevenueDaily = sequelize.define('ChannelReportVideoReven
 }, {
   tableName: 'channel_report_video_revenue_daily',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['shop_id', 'platform_video_id', 'metric_date'] }],
+  indexes: [
+    { unique: true, fields: ['shop_id', 'platform_video_id', 'metric_date'] },
+    { name: 'idx_channel_report_revenue_video_date', fields: ['platform_video_id', 'metric_date'] },
+  ],
 });
 
 const ChannelReportRevenueSyncDay = sequelize.define('ChannelReportRevenueSyncDay', {
@@ -327,7 +334,10 @@ const TikTokAffiliateOrderSku = sequelize.define('TikTokAffiliateOrderSku', {
 }, {
   tableName: 'tiktok_affiliate_order_skus',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['shop_id', 'order_id', 'sku_id'] }],
+  indexes: [
+    { unique: true, fields: ['shop_id', 'order_id', 'sku_id'] },
+    { name: 'idx_affiliate_order_skus_order_id', fields: ['affiliate_order_id'] },
+  ],
 });
 
 const TikTokAffiliateOrderSyncDay = sequelize.define('TikTokAffiliateOrderSyncDay', {
@@ -542,7 +552,10 @@ const TikTokCreatorPerformanceSnapshot = sequelize.define('TikTokCreatorPerforma
 }, {
   tableName: 'tiktok_creator_performance_snapshots',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['shop_id', 'username', 'start_date', 'end_date', 'plan_type'] }],
+  indexes: [
+    { unique: true, fields: ['shop_id', 'username', 'start_date', 'end_date', 'plan_type'] },
+    { name: 'idx_creator_perf_snapshots_export_id', fields: ['export_id'] },
+  ],
 });
 
 const TikTokVideoPerformanceSnapshot = sequelize.define('TikTokVideoPerformanceSnapshot', {
@@ -1075,8 +1088,8 @@ const VideoDailyStats = sequelize.define('VideoDailyStats', {
   tableName: 'video_daily_stats',
   timestamps: false,
   indexes: [
-    { fields: ['video_id', 'date'], unique: true },
-    { fields: ['date'] },
+    { name: 'video_daily_stats_video_date_unique_idx', fields: ['video_id', 'date'], unique: true },
+    { name: 'video_daily_stats_date', fields: ['date'] },
   ],
 });
 
