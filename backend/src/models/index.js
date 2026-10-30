@@ -239,6 +239,10 @@ const ShopVideo = sequelize.define('ShopVideo', {
   first_seen_at: DataTypes.DATE,
   last_seen_at: DataTypes.DATE,
   raw_data: DataTypes.JSONB,
+  latest_gross_gmv: { type: DataTypes.DECIMAL(20, 4), allowNull: false, defaultValue: 0 },
+  latest_orders: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  latest_currency: { type: DataTypes.STRING(16), defaultValue: 'MYR' },
+  latest_synced_at: DataTypes.DATE,
   created_at: DataTypes.DATE,
   updated_at: DataTypes.DATE,
 }, {

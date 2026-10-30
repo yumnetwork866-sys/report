@@ -194,7 +194,7 @@ const channelReportBaseSql = `
       AND revenue.revenue > 0
     JOIN tiktok_channels channel
       ON LOWER(LTRIM(BTRIM(channel.username), '@'))
-        = LOWER(LTRIM(BTRIM(shop_video.creator_username), '@'))
+        = LOWER(TRIM(LEADING '@' FROM COALESCE(shop_video.creator_username, '')))
     LEFT JOIN LATERAL (
       SELECT snapshot.views
       FROM shop_video_performance_snapshots snapshot

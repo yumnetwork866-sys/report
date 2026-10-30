@@ -71,14 +71,13 @@ const addLatestShopPerformance = async (videos) => {
   const snapshots = await sequelize.query(`
     SELECT DISTINCT ON (sv.platform_video_id)
       sv.platform_video_id,
-      snapshot.gross_gmv,
-      snapshot.orders,
-      snapshot.currency,
-      snapshot.synced_at
+      sv.latest_gross_gmv AS gross_gmv,
+      sv.latest_orders AS orders,
+      sv.latest_currency AS currency,
+      sv.latest_synced_at AS synced_at
     FROM shop_videos sv
-    JOIN shop_video_performance_snapshots snapshot ON snapshot.shop_video_id = sv.id
     WHERE sv.platform_video_id IN (:platformIds)
-    ORDER BY sv.platform_video_id, snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
+    ORDER BY sv.platform_video_id, sv.latest_synced_at DESC NULLS LAST, sv.id DESC
   `, {
     replacements: { platformIds },
     type: QueryTypes.SELECT,

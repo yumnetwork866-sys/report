@@ -52,6 +52,10 @@ const normalizedVideo = (shopId, video, now, accountType = 'AFFILIATE_ACCOUNTS',
       first_seen_at: now,
       last_seen_at: now,
       raw_data: video,
+      latest_gross_gmv: numberOrZero(gmv?.amount),
+      latest_orders: numberOrZero(video?.sku_orders ?? video?.orders),
+      latest_currency: gmv?.currency || 'MYR',
+      latest_synced_at: now,
       updated_at: now,
     },
     metrics: {
@@ -128,6 +132,7 @@ const persistPage = async (shopId, videos, {
     updateOnDuplicate: [
       'account_type', 'creator_username', 'title', 'video_url', 'posted_at',
       'last_seen_at', 'raw_data', 'updated_at',
+      'latest_gross_gmv', 'latest_orders', 'latest_currency', 'latest_synced_at',
     ],
   });
   await upsertShopProducts(shopId, rows.flatMap((row) => (

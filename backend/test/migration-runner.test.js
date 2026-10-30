@@ -112,6 +112,8 @@ const defaultMigrationNames = [
   '103_cleanup_legacy_booking_columns',
   '104_move_booking_videos_to_child_table',
   '105_optimize_high_traffic_indexes',
+  '106_denormalize_latest_shop_video_performance',
+  '107_add_normalized_shop_video_creator_index',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

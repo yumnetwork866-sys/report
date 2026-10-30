@@ -113,6 +113,8 @@ const migrations = [
   require('./103_cleanup_legacy_booking_columns'),
   require('./104_move_booking_videos_to_child_table'),
   require('./105_optimize_high_traffic_indexes'),
+  require('./106_denormalize_latest_shop_video_performance'),
+  require('./107_add_normalized_shop_video_creator_index'),
 ];
 
 const createMigrationRunner = ({

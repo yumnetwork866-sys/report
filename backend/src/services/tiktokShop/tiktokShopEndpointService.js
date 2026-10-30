@@ -1695,47 +1695,16 @@ const listMarketplaceCreators = async (req, res) => {
     const keyword = String(req.query.keyword || '').trim().replace(/^@+/, '');
     const mostRecentFirst = req.query.sort === 'most_recent';
     const browseSeed = marketplaceBrowseSeed(req.query.search_key);
-    const recentContactColumns = mostRecentFirst
-      ? `,
-          recent_contact.previously_invited,
-          recent_contact.previously_invited_at,
-          recent_contact.last_messaged_at`
-      : '';
-    const recentContactJoin = mostRecentFirst
-      ? `
-        LEFT JOIN LATERAL (
-          SELECT
-            GREATEST(history.last_invited_at, history.last_messaged_at) >= NOW() - INTERVAL '90 days' AS previously_invited,
-            GREATEST(history.last_invited_at, history.last_messaged_at) AS previously_invited_at,
-            history.last_messaged_at
-          FROM (
-            SELECT h.last_invited_at, h.last_messaged_at
-            FROM tiktok_creator_contact_histories h
-            WHERE h.shop_id = c.shop_id
-              AND h.creator_open_id = c.creator_open_id
-            UNION ALL
-            SELECT h.last_invited_at, h.last_messaged_at
-            FROM tiktok_creator_contact_histories h
-            WHERE h.shop_id = c.shop_id
-              AND h.username = LOWER(c.username)
-              AND h.creator_open_id IS DISTINCT FROM c.creator_open_id
-          ) history
-          ORDER BY GREATEST(history.last_invited_at, history.last_messaged_at) DESC
-          LIMIT 1
-        ) recent_contact ON TRUE`
-      : '';
     const rows = await tiktokShopRepository.query(`
       WITH candidates AS (
         SELECT
           c.*,
           COALESCE(d.detail, '{}'::jsonb) AS detail,
           c.profile || COALESCE(d.detail, '{}'::jsonb) AS metric_payload
-          ${recentContactColumns}
         FROM tiktok_marketplace_creators c
         LEFT JOIN tiktok_marketplace_creator_details d
           ON d.shop_id = c.shop_id
           AND d.creator_open_id = c.creator_open_id
-        ${recentContactJoin}
         WHERE c.shop_id = :shopId
           ${keyword ? `AND (c.username ILIKE :keywordPattern OR c.nickname ILIKE :keywordPattern)` : ''}
       ), ranked AS (
@@ -1751,7 +1720,7 @@ const listMarketplaceCreators = async (req, res) => {
         SELECT *
         FROM ranked
         ORDER BY ${mostRecentFirst
-    ? 'last_messaged_at DESC NULLS LAST, last_seen_at DESC NULLS LAST, creator_open_id'
+    ? 'last_seen_at DESC NULLS LAST, creator_open_id'
     : 'completeness_score DESC, MD5(creator_open_id || :browseSeed), creator_open_id'}
         LIMIT :pageSize OFFSET :offset
       )
@@ -1782,7 +1751,7 @@ const listMarketplaceCreators = async (req, res) => {
         LIMIT 1
       ) contact ON TRUE
       ORDER BY ${mostRecentFirst
-    ? 'paged.last_messaged_at DESC NULLS LAST, paged.last_seen_at DESC NULLS LAST, paged.creator_open_id'
+    ? 'paged.last_seen_at DESC NULLS LAST, paged.creator_open_id'
     : 'paged.completeness_score DESC, MD5(paged.creator_open_id || :browseSeed), paged.creator_open_id'}
     `, {
       replacements: {

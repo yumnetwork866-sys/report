@@ -85,6 +85,7 @@ test('dashboard video query accepts bounded search and allowlisted sorting', () 
 test('dashboard video sales lookup starts from the filtered video instead of the global latest view', () => {
   assert.match(LATEST_VIDEO_SALES_JOIN_SQL, /LEFT JOIN LATERAL/);
   assert.match(LATEST_VIDEO_SALES_JOIN_SQL, /shop_video\.platform_video_id = v\.platform_video_id/);
-  assert.match(LATEST_VIDEO_SALES_JOIN_SQL, /ORDER BY snapshot\.synced_at DESC NULLS LAST, snapshot\.id DESC/);
+  assert.match(LATEST_VIDEO_SALES_JOIN_SQL, /ORDER BY shop_video\.latest_synced_at DESC NULLS LAST, shop_video\.id DESC/);
   assert.doesNotMatch(LATEST_VIDEO_SALES_JOIN_SQL, /v_latest_shop_video_performance/);
+  assert.doesNotMatch(LATEST_VIDEO_SALES_JOIN_SQL, /shop_video_performance_snapshots/);
 });

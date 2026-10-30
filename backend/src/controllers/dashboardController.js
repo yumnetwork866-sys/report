@@ -27,15 +27,14 @@ const VIDEO_SORT_FIELDS = Object.freeze({
 const LATEST_VIDEO_SALES_JOIN_SQL = `
   LEFT JOIN LATERAL (
     SELECT
-      snapshot.gross_gmv,
-      snapshot.orders,
-      snapshot.currency,
-      snapshot.synced_at
+      shop_video.id AS shop_video_id,
+      shop_video.latest_gross_gmv AS gross_gmv,
+      shop_video.latest_orders AS orders,
+      shop_video.latest_currency AS currency,
+      shop_video.latest_synced_at AS synced_at
     FROM shop_videos shop_video
-    JOIN shop_video_performance_snapshots snapshot
-      ON snapshot.shop_video_id = shop_video.id
     WHERE shop_video.platform_video_id = v.platform_video_id
-    ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
+    ORDER BY shop_video.latest_synced_at DESC NULLS LAST, shop_video.id DESC
     LIMIT 1
   ) sales ON TRUE
 `;
@@ -274,8 +273,7 @@ const getDashboard = async (req, res) => {
           COUNT(CASE WHEN v.status = 'unavailable' THEN 1 END)::int AS unavailable_video_count,
           COUNT(CASE WHEN sales.shop_video_id IS NULL THEN 1 END)::int AS unlinked_video_count
         FROM videos v
-        LEFT JOIN v_latest_shop_video_performance sales
-          ON sales.platform_video_id = v.platform_video_id
+        ${LATEST_VIDEO_SALES_JOIN_SQL}
         ${filterSql}
       `, { type: QueryTypes.SELECT, replacements }),
       prevPeriodInfo
@@ -291,8 +289,7 @@ const getDashboard = async (req, res) => {
             COUNT(CASE WHEN v.status = 'unavailable' THEN 1 END)::int AS unavailable_video_count,
             COUNT(CASE WHEN sales.shop_video_id IS NULL THEN 1 END)::int AS unlinked_video_count
           FROM videos v
-          LEFT JOIN v_latest_shop_video_performance sales
-            ON sales.platform_video_id = v.platform_video_id
+          ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
         `, {
           type: QueryTypes.SELECT,
@@ -316,8 +313,7 @@ const getDashboard = async (req, res) => {
             COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
             COALESCE(SUM(sales.orders), 0)::bigint AS orders
           FROM videos v
-          LEFT JOIN v_latest_shop_video_performance sales
-            ON sales.platform_video_id = v.platform_video_id
+          ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
           AND v.published_at IS NOT NULL
           GROUP BY v.published_at::date
@@ -334,8 +330,7 @@ const getDashboard = async (req, res) => {
               v.shares,
               COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
             FROM videos v
-            LEFT JOIN v_latest_shop_video_performance sales
-              ON sales.platform_video_id = v.platform_video_id
+            ${LATEST_VIDEO_SALES_JOIN_SQL}
             ${filterSql}
             ORDER BY gross_gmv DESC, v.id DESC
             LIMIT 10
@@ -350,8 +345,7 @@ const getDashboard = async (req, res) => {
               v.shares,
               COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
             FROM videos v
-            LEFT JOIN v_latest_shop_video_performance sales
-              ON sales.platform_video_id = v.platform_video_id
+            ${LATEST_VIDEO_SALES_JOIN_SQL}
             ${filterSql}
             ORDER BY v.${metric} DESC, v.id DESC
             LIMIT 10
@@ -366,8 +360,7 @@ const getDashboard = async (req, res) => {
             v.thumbnail_url,
             COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv
           FROM videos v
-          LEFT JOIN v_latest_shop_video_performance sales
-            ON sales.platform_video_id = v.platform_video_id
+          ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
           AND v.published_at IS NOT NULL
           ORDER BY v.published_at::date, v.views DESC, v.id DESC
@@ -395,8 +388,7 @@ const getDashboard = async (req, res) => {
           sales.currency AS sales_currency,
           sales.synced_at AS sales_synced_at
         FROM videos v
-        LEFT JOIN v_latest_shop_video_performance sales
-          ON sales.platform_video_id = v.platform_video_id
+        ${LATEST_VIDEO_SALES_JOIN_SQL}
         ${filterSql}
         ORDER BY v.published_at DESC NULLS LAST, v.id DESC
         LIMIT :pageSize
@@ -418,8 +410,7 @@ const getDashboard = async (req, res) => {
           COALESCE(sales.gross_gmv, 0)::numeric AS gross_gmv,
           COALESCE(sales.orders, 0)::bigint AS orders
         FROM videos v
-        LEFT JOIN v_latest_shop_video_performance sales
-          ON sales.platform_video_id = v.platform_video_id
+        ${LATEST_VIDEO_SALES_JOIN_SQL}
         ${filterSql}
         ORDER BY ${TOP_VIDEO_SORT_EXPRESSIONS[topMetric]} DESC NULLS LAST, v.views DESC, v.id DESC
         LIMIT 5
