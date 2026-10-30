@@ -179,7 +179,10 @@ test('booking performance service resolves month range and formats the response'
     '../src/services/bookingVideoPerformanceService': {
       loadOrderMetricsForBookingProducts: async (options) => {
         calls.push(options);
-        return new Map([['product-1', { orders: 3 }]]);
+        return new Map([['product-1', {
+          orders: 3,
+          selected_products: [{ id: 'product-1', name: 'Duplicated metadata' }],
+        }]]);
       },
     },
   });
@@ -193,6 +196,7 @@ test('booking performance service resolves month range and formats the response'
   assert.deepEqual(result, {
     performance: { 'product-1': { orders: 3 } },
   });
+  assert.equal(result.performance['product-1'].selected_products, undefined);
   assert.deepEqual(calls[0], {
     bookings: [{ id: 1 }],
     startDate: '2024-02-01',

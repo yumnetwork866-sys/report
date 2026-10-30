@@ -104,6 +104,7 @@ const defaultMigrationNames = [
   '095_seed_tiktok_channel_app',
   '096_link_connections_to_tiktok_apps',
   '097_optimize_booking_list_queries',
+  '098_optimize_dashboard_video_sales_lookup',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

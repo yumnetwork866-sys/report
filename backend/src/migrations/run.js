@@ -105,6 +105,7 @@ const migrations = [
   require('./095_seed_tiktok_channel_app'),
   require('./096_link_connections_to_tiktok_apps'),
   require('./097_optimize_booking_list_queries'),
+  require('./098_optimize_dashboard_video_sales_lookup'),
 ];
 
 const createMigrationRunner = ({

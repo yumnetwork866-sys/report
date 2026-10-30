@@ -24,6 +24,21 @@ const VIDEO_SORT_FIELDS = Object.freeze({
   orders: 'sales.orders',
   gmv: 'sales.gross_gmv',
 });
+const LATEST_VIDEO_SALES_JOIN_SQL = `
+  LEFT JOIN LATERAL (
+    SELECT
+      snapshot.gross_gmv,
+      snapshot.orders,
+      snapshot.currency,
+      snapshot.synced_at
+    FROM shop_videos shop_video
+    JOIN shop_video_performance_snapshots snapshot
+      ON snapshot.shop_video_id = shop_video.id
+    WHERE shop_video.platform_video_id = v.platform_video_id
+    ORDER BY snapshot.synced_at DESC NULLS LAST, snapshot.id DESC
+    LIMIT 1
+  ) sales ON TRUE
+`;
 const number = (value) => Number(value || 0);
 const dateOnly = (value) => {
   const text = String(value || '');
@@ -589,6 +604,7 @@ const getDashboardVideos = async (req, res) => {
           ${filterSql}
         `, { type: QueryTypes.SELECT, replacements }),
         sequelize.query(`
+          /* dashboard-video-page */
           SELECT
             v.id,
             v.platform,
@@ -610,8 +626,7 @@ const getDashboardVideos = async (req, res) => {
             sales.currency AS sales_currency,
             sales.synced_at AS sales_synced_at
           FROM videos v
-          LEFT JOIN v_latest_shop_video_performance sales
-            ON sales.platform_video_id = v.platform_video_id
+          ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
           ORDER BY ${orderColumn} ${orderDirection} NULLS LAST, v.id DESC
           LIMIT :pageSize
@@ -660,4 +675,5 @@ module.exports = {
   dashboardFilters,
   getDashboard,
   getDashboardVideos,
+  LATEST_VIDEO_SALES_JOIN_SQL,
 };

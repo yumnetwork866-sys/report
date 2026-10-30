@@ -81,7 +81,12 @@ const getBookingProductPerformance = async (query = {}, { videoIdsByBooking = nu
     endTime: Number.isFinite(endTime) ? endTime : null,
     videoIdsByBooking: resolvedVideoIdsByBooking,
   });
-  return { performance: Object.fromEntries(performance) };
+  return {
+    performance: Object.fromEntries([...performance].map(([bookingId, value]) => {
+      const { selected_products: _selectedProducts, ...summary } = value || {};
+      return [bookingId, summary];
+    })),
+  };
 };
 
 module.exports = {
