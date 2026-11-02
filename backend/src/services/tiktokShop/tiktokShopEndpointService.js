@@ -1727,27 +1727,25 @@ const listMarketplaceCreators = async (req, res) => {
       SELECT
         paged.*,
         contact.previously_invited,
-        contact.previously_invited_at,
-        contact.last_messaged_at
+        contact.previously_invited_at
       FROM paged
       LEFT JOIN LATERAL (
         SELECT
-          GREATEST(history.last_invited_at, history.last_messaged_at) >= NOW() - INTERVAL '90 days' AS previously_invited,
-          GREATEST(history.last_invited_at, history.last_messaged_at) AS previously_invited_at,
-          history.last_messaged_at
+          history.last_invited_at >= NOW() - INTERVAL '90 days' AS previously_invited,
+          history.last_invited_at AS previously_invited_at
         FROM (
-          SELECT h.last_invited_at, h.last_messaged_at
+          SELECT h.last_invited_at
           FROM tiktok_creator_contact_histories h
           WHERE h.shop_id = paged.shop_id
             AND h.creator_open_id = paged.creator_open_id
           UNION ALL
-          SELECT h.last_invited_at, h.last_messaged_at
+          SELECT h.last_invited_at
           FROM tiktok_creator_contact_histories h
           WHERE h.shop_id = paged.shop_id
             AND h.username = LOWER(paged.username)
             AND h.creator_open_id IS DISTINCT FROM paged.creator_open_id
         ) history
-        ORDER BY GREATEST(history.last_invited_at, history.last_messaged_at) DESC
+        ORDER BY history.last_invited_at DESC
         LIMIT 1
       ) contact ON TRUE
       ORDER BY ${mostRecentFirst
@@ -1778,7 +1776,7 @@ const listMarketplaceCreators = async (req, res) => {
       marketplace_last_seen_at: row.last_seen_at,
       previously_invited: Boolean(row.previously_invited),
       previously_invited_at: row.previously_invited_at || null,
-      last_messaged_at: row.last_messaged_at || null,
+      last_messaged_at: null,
     }));
     let exchangeRate = null;
     try {

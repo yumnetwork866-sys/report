@@ -68,8 +68,6 @@ const importPlatformData = async (req, res) => {
           comments: item.comments || 0,
           shares: item.shares || 0,
           duration: item.duration || null,
-          campaign: item.campaign || null,
-          content_type: item.content_type || null,
           last_synced_at: new Date(),
         },
       });
@@ -86,8 +84,6 @@ const importPlatformData = async (req, res) => {
           comments: item.comments ?? video.comments,
           shares: item.shares ?? video.shares,
           duration: item.duration ?? video.duration,
-          campaign: item.campaign ?? video.campaign,
-          content_type: item.content_type ?? video.content_type,
           last_synced_at: new Date(),
         });
       }

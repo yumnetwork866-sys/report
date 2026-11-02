@@ -117,6 +117,7 @@ const migrations = [
   require('./107_add_normalized_shop_video_creator_index'),
   require('./108_add_scheduled_run_events_started_at_index'),
   require('./109_cleanup_duplicate_indexes_and_add_base_snapshots_export_idx'),
+  require('./110_drop_unused_legacy_columns'),
 ];
 
 const createMigrationRunner = ({
@@ -144,10 +145,10 @@ const createMigrationRunner = ({
   };
 
   const backup = async () => {
-    const directory = pathModule.resolve(process.env.DB_BACKUP_DIR || pathModule.join(process.cwd(), 'backups'));
-    await fsModule.mkdir(directory, { recursive: true });
+    const backupDir = pathModule.resolve(process.env.DB_BACKUP_DIR || pathModule.join(__dirname, '../../backups'));
+    await fsModule.mkdir(backupDir, { recursive: true });
     const filename = `report-${new Date().toISOString().replace(/[:.]/g, '-')}.dump`;
-    const output = pathModule.join(directory, filename);
+    const output = pathModule.join(backupDir, filename);
     await execFileFn('pg_dump', ['--format=custom', '--no-owner', '--no-privileges', '--file', output, getDatabaseUrl()]);
     console.log(`Database backup created: ${output}`);
     return output;

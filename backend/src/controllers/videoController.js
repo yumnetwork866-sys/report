@@ -28,8 +28,6 @@ const VIDEO_LIST_ATTRIBUTES = [
   'comments',
   'shares',
   'duration',
-  'campaign',
-  'content_type',
   'last_synced_at',
   'status',
 ];

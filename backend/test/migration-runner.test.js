@@ -116,6 +116,7 @@ const defaultMigrationNames = [
   '107_add_normalized_shop_video_creator_index',
   '108_add_scheduled_run_events_started_at_index',
   '109_cleanup_duplicate_indexes_and_add_base_snapshots_export_idx',
+  '110_drop_unused_legacy_columns',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

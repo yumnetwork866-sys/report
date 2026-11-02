@@ -134,9 +134,9 @@ const cacheCreatorAvatar = async (shopId, creator = {}, {
   }
   if (parsed.protocol !== 'https:' || !isAllowedAvatarHost(parsed.hostname)) return remoteUrl;
 
-  const directory = path.join(storageRoot, safeShopDirectory(shopId));
-  await fsModule.mkdir(directory, { recursive: true });
-  const cached = await existingAvatar(directory, key, shopId, fsModule);
+  const avatarDir = path.join(storageRoot, safeShopDirectory(shopId));
+  await fsModule.mkdir(avatarDir, { recursive: true });
+  const cached = await existingAvatar(avatarDir, key, shopId, fsModule);
   if (cached) return cached;
 
   const response = await fetchImpl(remoteUrl, {
@@ -161,8 +161,8 @@ const cacheCreatorAvatar = async (shopId, creator = {}, {
   if (!image.length) throw new Error('Creator avatar download returned an empty file.');
 
   const temporaryId = crypto.randomUUID();
-  const downloaded = path.join(directory, `.${key}.${temporaryId}${extension}`);
-  const optimized = path.join(directory, `.${key}.${temporaryId}.optimized.webp`);
+  const downloaded = path.join(avatarDir, `.${key}.${temporaryId}${extension}`);
+  const optimized = path.join(avatarDir, `.${key}.${temporaryId}.optimized.webp`);
   let storedFile = downloaded;
   let storedExtension = extension;
   await fsModule.writeFile(downloaded, image, { flag: 'wx' });
@@ -177,7 +177,7 @@ const cacheCreatorAvatar = async (shopId, creator = {}, {
     // Keep the downloaded image if ffmpeg is unavailable or rejects the source.
   }
   const filename = `${key}${storedExtension}`;
-  const destination = path.join(directory, filename);
+  const destination = path.join(avatarDir, filename);
   try {
     await fsModule.rename(storedFile, destination);
   } finally {

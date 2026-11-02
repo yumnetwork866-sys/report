@@ -151,7 +151,7 @@ const seed = async () => {
       }, { transaction });
       channels.push(channel);
 
-      for (const [videoIndex, [topic, contentType]] of videoTopics.entries()) {
+      for (const [videoIndex, [topic, _contentType]] of videoTopics.entries()) {
         const platformVideoId = `${DEMO_PREFIX}${channelIndex + 1}_${videoIndex + 1}`;
         const ageDays = channelIndex * 3 + videoIndex * 5 + 2;
         const views = 8200 + channelIndex * 6300 + videoIndex * 11700 + ((channelIndex + videoIndex) % 3) * 5100;
@@ -170,8 +170,6 @@ const seed = async () => {
             comments: Math.round(views * 0.0045),
             shares: Math.round(views * 0.0032),
             duration: 28 + videoIndex * 11,
-            campaign: ['Demo Summer Glow', 'Demo Hair Growth', 'Demo Acne Recovery'][channelIndex % 3],
-            content_type: contentType,
             last_synced_at: now,
           },
           transaction,
@@ -187,8 +185,6 @@ const seed = async () => {
           comments: Math.round(views * 0.0045),
           shares: Math.round(views * 0.0032),
           duration: 28 + videoIndex * 11,
-          campaign: ['Demo Summer Glow', 'Demo Hair Growth', 'Demo Acne Recovery'][channelIndex % 3],
-          content_type: contentType,
           last_synced_at: now,
         }, { transaction });
         await VideoDailyStats.destroy({ where: { video_id: video.id }, transaction });

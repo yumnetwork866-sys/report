@@ -38,6 +38,8 @@ Thumbs.db
 
 # Backend generated assets
 backend/generated/prisma/
-backend/backups/
+backups/
+**/backups/
+*.dump
 package-lock.json
 koc-main

@@ -85,10 +85,6 @@ const ContentTeam = sequelize.define('ContentTeam', {
     type: DataTypes.STRING(120),
     allowNull: false,
   },
-  legacy_key: {
-    type: DataTypes.STRING(80),
-    allowNull: true,
-  },
   created_at: DataTypes.DATE,
   updated_at: DataTypes.DATE,
 }, {
@@ -738,7 +734,6 @@ const TikTokCreatorContactHistory = sequelize.define('TikTokCreatorContactHistor
   creator_open_id: DataTypes.STRING,
   username: { type: DataTypes.STRING, allowNull: false },
   last_invited_at: DataTypes.DATE,
-  last_messaged_at: DataTypes.DATE,
   updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
   tableName: 'tiktok_creator_contact_histories',
@@ -1028,14 +1023,6 @@ const Video = sequelize.define('Video', {
   },
   duration: {
     type: DataTypes.INTEGER,
-    allowNull: true,
-  },
-  campaign: {
-    type: DataTypes.STRING,
-    allowNull: true,
-  },
-  content_type: {
-    type: DataTypes.STRING,
     allowNull: true,
   },
   last_synced_at: {

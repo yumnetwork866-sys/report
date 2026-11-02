@@ -22,11 +22,11 @@ const listAvatarFiles = async (storageRoot) => {
   const files = [];
   for (const shop of shops) {
     if (!shop.isDirectory()) continue;
-    const directory = path.join(storageRoot, shop.name);
-    const entries = await fs.readdir(directory, { withFileTypes: true });
+    const shopDirectory = path.join(storageRoot, shop.name);
+    const entries = await fs.readdir(shopDirectory, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isFile() && /^[a-f0-9]{32}\.webp$/i.test(entry.name)) {
-        files.push(path.join(directory, entry.name));
+        files.push(path.join(shopDirectory, entry.name));
       }
     }
   }
