@@ -1107,6 +1107,8 @@ const getAuthorizedShops = async (accessToken, fetchImpl, options = {}) => {
     accessToken,
     fetchImpl: actualFetch,
     appType: actualOptions.appType || 'partner',
+    region: actualOptions.region,
+    appId: actualOptions.appId,
   });
   return Array.isArray(payload.data?.shops) ? payload.data.shops : [];
 };

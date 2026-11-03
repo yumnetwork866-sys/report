@@ -1,9 +1,9 @@
 const express = require('express');
 const controller = require('../controllers/tiktokAppController');
-const { requireAnyPermission } = require('../lib/session');
+const { requirePermission } = require('../lib/session');
 
 const router = express.Router();
-const requireAppManage = requireAnyPermission(['app.manage', 'admin.shops.manage']);
+const requireAppManage = requirePermission('app.manage');
 
 router.get('/', controller.listApps);
 router.get('/active', controller.listActiveApps);

@@ -554,3 +554,33 @@ test('TikTok App API helpers dispatch correct paths, methods, and payloads', asy
     assert.equal(requests[5].url, '/api/tiktok-apps/10/secret');
   });
 });
+
+test('API responses refresh current permissions even when a revoked action returns 403', async () => {
+  await withBrowser(async () => {
+    const session = createSession('current');
+    saveStoredSession({ ...session, user: { ...session.user, role: 'admin', permissions: ['app.manage'] } });
+    globalThis.fetch = async () => new Response(JSON.stringify({ message: 'Forbidden' }), {
+      status: 403,
+      headers: { 'X-Session-Access': JSON.stringify({ role: 'member', permissions: [] }) },
+    });
+    await assert.rejects(fetchUsers(), /Forbidden/);
+    assert.equal(getStoredSession().user.role, 'member');
+    assert.deepEqual(getStoredSession().user.permissions, []);
+  });
+});
+
+test('a delayed permission response cannot overwrite a newer login', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('old'));
+    let resolveFetch;
+    globalThis.fetch = () => new Promise((resolve) => { resolveFetch = resolve; });
+    const request = fetchUsers();
+    const newSession = createSession('new');
+    saveStoredSession(newSession);
+    resolveFetch(new Response('[]', {
+      headers: { 'X-Session-Access': JSON.stringify({ role: 'member', permissions: [] }) },
+    }));
+    await request;
+    assert.deepEqual(getStoredSession(), newSession);
+  });
+});

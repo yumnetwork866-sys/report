@@ -16,7 +16,7 @@ import {
   updateUser,
 } from '../../../lib/api';
 import { useI18n } from '../../../lib/language';
-import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../../../lib/permissions';
+import { ALL_PERMISSIONS } from '../../../lib/permissions';
 import { isAdminSession } from '../../../lib/session';
 import { useSession } from '../../../lib/useSession';
 import {
@@ -471,7 +471,7 @@ export const useEmployeeManagement = () => {
         description: roleForm.description.trim(),
         permissions: roleForm.isSystem || editingRoleKey === 'admin'
           ? [...ALL_PERMISSIONS]
-          : (roleForm.permissions.length ? [...roleForm.permissions] : [...DEFAULT_PERMISSIONS]),
+          : [...roleForm.permissions],
       };
       if (editingRoleKey) await updateRole(editingRoleKey, payload);
       else await createRole({ ...payload, key: roleForm.key.trim().toLowerCase() });

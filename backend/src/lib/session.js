@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { expandLegacyPermissions } = require('./permissions');
+const { expandLegacyPermissions, normalizePermissions, ALL_PERMISSIONS } = require('./permissions');
 
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 
@@ -23,7 +23,7 @@ const createSessionToken = (user, permissions = []) => {
   return `${payload}.${sign(payload)}`;
 };
 
-const requireAdmin = (req, res, next) => {
+const requireAdmin = async (req, res, next) => {
   const token = req.get('authorization')?.replace(/^Bearer\s+/i, '');
   const [payload, signature] = String(token || '').split('.');
 
@@ -33,14 +33,28 @@ const requireAdmin = (req, res, next) => {
 
   try {
     const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (typeof session.role !== 'string' || !Number.isInteger(session.sub) || session.exp < Date.now()) {
+    if (typeof session.role !== 'string' || !Number.isInteger(session.sub) || !Number.isFinite(session.exp) || session.exp < Date.now()) {
       return res.status(401).json({ message: 'Session is invalid or expired' });
     }
     req.session = session;
-    return next();
   } catch {
     return res.status(401).json({ message: 'Session is invalid' });
   }
+
+  try {
+    const { User, Role } = require('../models');
+    const user = await User.findByPk(req.session.sub, { attributes: ['id', 'role', 'is_active'] });
+    if (!user || user.is_active === false) {
+      return res.status(401).json({ message: 'Session is no longer valid' });
+    }
+    const role = await Role.findByPk(user.role);
+    req.session.role = user.role;
+    req.session.permissions = user.role === 'admin' ? ALL_PERMISSIONS : normalizePermissions(role?.permissions);
+    res.set('X-Session-Access', JSON.stringify({ role: req.session.role, permissions: req.session.permissions }));
+  } catch (error) {
+    return next(error);
+  }
+  return next();
 };
 
 const requirePermission = (permission) => (req, res, next) => {

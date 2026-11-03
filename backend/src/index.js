@@ -52,6 +52,7 @@ const createApp = () => {
   app.use(cors({
     origin: process.env.FRONTEND_URL || true,
     credentials: true,
+    exposedHeaders: ['X-Session-Access'],
   }));
   app.use(requestTelemetry);
   app.use(createHealthRouter());

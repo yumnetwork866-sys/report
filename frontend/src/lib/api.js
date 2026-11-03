@@ -1,4 +1,4 @@
-import { clearStoredSessionIfTokenMatches, getStoredSession } from './session.js';
+import { clearStoredSessionIfTokenMatches, getStoredSession, saveStoredSession } from './session.js';
 
 const API_BASE_URL = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
 
@@ -22,6 +22,18 @@ async function apiRequest(path, options = {}) {
     body,
     ...(signal ? { signal } : {}),
   });
+
+  const accessHeader = response.headers?.get('X-Session-Access');
+  if (accessHeader && sessionToken) {
+    const currentSession = getStoredSession();
+    if (currentSession?.token === sessionToken) {
+      const access = JSON.parse(accessHeader);
+      saveStoredSession({
+        ...currentSession,
+        user: { ...currentSession.user, role: access.role, permissions: access.permissions },
+      });
+    }
+  }
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;

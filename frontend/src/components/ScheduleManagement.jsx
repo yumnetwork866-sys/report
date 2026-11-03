@@ -42,6 +42,7 @@ const JOB_APP_TAGS = {
   tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
   tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
   tiktok_booking_video_detail: { label: 'Partner', type: 'partner' },
+  tiktok_auth: { label: 'Auth', type: 'auth' },
 };
 
 const getRunDateKey = (dateValue) => {
@@ -215,11 +216,11 @@ const ScheduleManagement = () => {
   const scheduleGroups = useMemo(() => ([
     {
       key: 'shop',
-      schedules: schedules.filter((schedule) => !CHANNEL_JOB_KEYS.has(schedule.job_key)),
+      schedules: schedules.filter((schedule) => !CHANNEL_JOB_KEYS.has(schedule.job_key) && schedule.job_key !== 'tiktok_auth'),
     },
     {
       key: 'channel',
-      schedules: schedules.filter((schedule) => CHANNEL_JOB_KEYS.has(schedule.job_key)),
+      schedules: schedules.filter((schedule) => CHANNEL_JOB_KEYS.has(schedule.job_key) && schedule.job_key !== 'tiktok_auth'),
     },
   ]), [schedules]);
 
@@ -297,7 +298,11 @@ const ScheduleManagement = () => {
   };
 
   const statusLabel = (status) => t(`schedule.statuses.${String(status || 'EMPTY').toLowerCase()}`);
-  const triggerLabel = (trigger) => t(`schedule.triggers.${String(trigger || 'SCHEDULED').toLowerCase()}`);
+  const triggerLabel = (trigger) => {
+    const norm = String(trigger || 'SCHEDULED').toLowerCase();
+    if (norm === 'oauth') return t('schedule.triggers.oauth', 'OAuth');
+    return t(`schedule.triggers.${norm}`);
+  };
   const resultLabel = (run) => {
     if (!run.summary) return '—';
     const total = run.summary.total ?? run.summary.channels ?? 0;
@@ -321,7 +326,7 @@ const ScheduleManagement = () => {
 
       <div className="schedule-tabs" role="tablist" aria-label={t('schedule.tabsLabel')}>
         <button type="button" role="tab" aria-selected={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')}>
-          <CalendarClock aria-hidden="true" />{t('schedule.scheduleTab')}<span>{schedules.length}</span>
+          <CalendarClock aria-hidden="true" />{t('schedule.scheduleTab')}<span>{schedules.filter((s) => s.job_key !== 'tiktok_auth').length}</span>
         </button>
         <button type="button" role="tab" aria-selected={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>
           <History aria-hidden="true" />{t('schedule.logsTab')}<span>{allRuns.length}</span>
@@ -332,7 +337,7 @@ const ScheduleManagement = () => {
 
       {!loading && activeTab === 'schedules' ? (
         <div className="schedule-grid schedule-grid--compact" role="tabpanel">
-          {schedules.map((schedule) => {
+          {schedules.filter((s) => s.job_key !== 'tiktok_auth').map((schedule) => {
             const latest = schedule.runs?.[0];
             const isRunning = runningKey === schedule.job_key || isActiveRun(latest);
             const description = t(`schedule.jobs.${schedule.job_key}.description`);
@@ -442,7 +447,20 @@ const ScheduleManagement = () => {
           {monitorRun ? <ScheduleRunMonitor initialRun={monitorRun} shops={shops} onBack={() => setMonitorRun(null)} /> : <>
           <header className="schedule-logs__toolbar">
             <div className="schedule-logs__filters">
-              <label className="schedule-logs__filter-field"><span className="sr-only">{t('schedule.filterJob')}</span><select value={jobFilter} onChange={handleJobFilterChange}><option value="ALL">{t('schedule.allJobs')}</option>{scheduleGroups.map((group) => <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>{group.schedules.map((schedule) => <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>)}</optgroup>)}</select></label>
+              <label className="schedule-logs__filter-field">
+                <span className="sr-only">{t('schedule.filterJob')}</span>
+                <select value={jobFilter} onChange={handleJobFilterChange}>
+                  <option value="ALL">{t('schedule.allJobs')}</option>
+                  <option value="tiktok_auth">{t('schedule.jobs.tiktok_auth.name') || 'Xác thực & Kết nối'}</option>
+                  {scheduleGroups.map((group) => (
+                    <optgroup label={t(`schedule.groups.${group.key}.name`)} key={group.key}>
+                      {group.schedules.map((schedule) => (
+                        <option value={schedule.job_key} key={schedule.job_key}>{t(`schedule.jobs.${schedule.job_key}.name`)}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </label>
               <label className="schedule-logs__filter-field"><span className="sr-only">{t('schedule.filterStatus')}</span><select value={statusFilter} onChange={handleStatusFilterChange}><option value="ALL">{t('schedule.allStatuses')}</option><option value="SUCCEEDED">{statusLabel('SUCCEEDED')}</option><option value="FAILED">{statusLabel('FAILED')}</option><option value="PROCESSING">{statusLabel('PROCESSING')}</option><option value="RETRY_PENDING">{statusLabel('RETRY_PENDING')}</option><option value="CANCELLED">{statusLabel('CANCELLED')}</option></select></label>
               <button className="button button--ghost schedule-logs__refresh" type="button" disabled={refreshing} onClick={() => load(undefined, true)} aria-label={t('schedule.refresh')} title={t('schedule.refresh')}><RefreshCw className={refreshing ? 'is-spinning' : ''} aria-hidden="true" /><span className="schedule-logs__refresh-label">{t('schedule.refresh')}</span></button>
             </div>
@@ -486,7 +504,13 @@ const ScheduleManagement = () => {
                             </span>
                           ) : null}
                         </div>
-                        {run.summary?.results?.length === 1 && run.summary.results[0]?.shop_name ? <div><span className="schedule-log-shop-tag">{run.summary.results[0].shop_name}</span></div> : null}
+                        {run.summary?.results?.length === 1 && (run.summary.results[0]?.shop_name || run.summary.results[0]?.channel_name || run.summary?.app_name) ? (
+                          <div>
+                            <span className="schedule-log-shop-tag">
+                              {run.summary.results[0]?.shop_name || run.summary.results[0]?.channel_name || run.summary?.app_name}
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
                       <td>{triggerLabel(run.trigger_type)}</td>
                       <td><span className={`schedule-run-status is-${String(run.status).toLowerCase()}`}><ScheduleStatusIcon status={run.status} />{statusLabel(run.status)}</span></td>

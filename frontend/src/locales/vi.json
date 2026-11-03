@@ -1818,7 +1818,8 @@
     },
     "triggers": {
       "manual": "Thủ công",
-      "scheduled": "Theo lịch"
+      "scheduled": "Theo lịch",
+      "oauth": "OAuth"
     },
     "groups": {
       "shop": {
@@ -1864,6 +1865,10 @@
       "tiktok_booking_video_detail": {
         "name": "Chi tiết video Booking",
         "description": ""
+      },
+      "tiktok_auth": {
+        "name": "Xác thực & Kết nối",
+        "description": "Lịch sử ủy quyền OAuth Shop, Kênh, KOC và làm mới Token"
       }
     }
   },

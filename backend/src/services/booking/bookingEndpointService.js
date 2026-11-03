@@ -1032,6 +1032,7 @@ const isShopOauthState = (state) => {
 const handleTikTokPartnerOauthCallback = async (req, res) => {
   let creatorId;
   let returnPath = '/shop/bookings';
+  const startedAt = new Date();
   try {
     if (isShopOauthState(req.query.state)) return handleShopOauthCallback(req, res);
     const state = parseAuthorizationState(req.query.state);
@@ -1101,9 +1102,37 @@ const handleTikTokPartnerOauthCallback = async (req, res) => {
       INSERT INTO tiktok_partner_sync_logs (authorization_id, creator_id, status, synced_at)
       VALUES (:authorizationId, :creatorId, 'success', NOW())
     `, { replacements: { authorizationId: authorization.id, creatorId } });
+    try {
+      const { recordAuthLog } = require('../authLogService');
+      await recordAuthLog({
+        authType: 'partner_creator',
+        status: 'SUCCEEDED',
+        startedAt,
+        completedAt: new Date(),
+        creator,
+        openId,
+        scopes: normalizedScopes,
+        endpoint: '/api/bookings/tiktok-partner/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok Partner OAuth] Failed to record success log:', logErr.message);
+    }
     return res.redirect(buildPartnerReturnUrl('success', 'TikTok Creator connected.', creatorId, returnPath));
   } catch (error) {
     console.error('[TikTok Partner OAuth] Callback failed', { creatorId, message: error.message });
+    try {
+      const { recordAuthLog } = require('../authLogService');
+      await recordAuthLog({
+        authType: 'partner_creator',
+        status: 'FAILED',
+        startedAt,
+        completedAt: new Date(),
+        error,
+        endpoint: '/api/bookings/tiktok-partner/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok Partner OAuth] Failed to record error log:', logErr.message);
+    }
     return res.redirect(buildPartnerReturnUrl('error', error.message || 'TikTok Partner OAuth failed.', creatorId, returnPath));
   }
 };

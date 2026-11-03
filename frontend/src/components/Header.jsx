@@ -176,7 +176,7 @@ const Header = () => {
     '/manage/users': t('nav.manage'),
   };
   const currentLanguage = language;
-  const canManageApps = hasPermission(session, 'app.manage') || hasPermission(session, 'admin.shops.manage');
+  const canManageApps = hasPermission(session, 'app.manage');
 
   const renderTypeBadge = (appType) => {
     if (appType === 'channel') {

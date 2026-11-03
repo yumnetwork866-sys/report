@@ -23,6 +23,21 @@ test('Queue management REST API routes', async (t) => {
   process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'test-admin-password';
   process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-session-secret-12345678901234567890';
 
+  const models = require('../src/models');
+  const origUserFindByPk = models.User.findByPk;
+  const origRoleFindByPk = models.Role?.findByPk;
+  models.User.findByPk = async (id) => {
+    if (id === 1) return { id: 1, role: 'admin', is_active: true };
+    return null;
+  };
+  if (models.Role) {
+    models.Role.findByPk = async (roleName) => ({ permissions: roleName === 'admin' ? ['admin.queues.view'] : [] });
+  }
+  t.after(() => {
+    models.User.findByPk = origUserFindByPk;
+    if (models.Role) models.Role.findByPk = origRoleFindByPk;
+  });
+
   const app = createApp();
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, resolve));

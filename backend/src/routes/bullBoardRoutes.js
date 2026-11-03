@@ -55,7 +55,8 @@ const bullBoardAuth = (req, res, next) => {
 
   req.headers.authorization = `Bearer ${rawToken}`;
 
-  return requireAdmin(req, res, () => {
+  return requireAdmin(req, res, (error) => {
+    if (error) return next(error);
     if (req.session?.role !== 'admin') {
       return res.status(403).send('Forbidden: Quyền Quản trị viên (Admin) là bắt buộc.');
     }

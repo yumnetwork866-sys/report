@@ -1655,6 +1655,12 @@
   border: 1px solid #fed7aa;
 }
 
+.schedule-app-tag--auth {
+  background: #fdf4ff;
+  color: #c026d3;
+  border: 1px solid #f5d0fe;
+}
+
 .schedule-app-tag--sm {
   font-size: 0.64rem;
   padding: 1px 5px;

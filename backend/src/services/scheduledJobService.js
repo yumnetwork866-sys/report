@@ -49,6 +49,7 @@ const JOB_KEYS = new Set([
   'tiktok_booking_video_detail',
   'tiktok_channel_report_revenue',
   'tiktok_affiliate_orders',
+  'tiktok_auth',
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
@@ -762,6 +763,10 @@ const jobHandlers = {
       };
     })
   ), signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_booking_video_detail' }),
+  tiktok_auth: async () => {
+    const { checkTokenHealth } = require('./authLogService');
+    return checkTokenHealth();
+  },
 };
 
 const processScheduledJobRun = async (job, run, { shopId = null } = {}, {

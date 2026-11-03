@@ -1820,7 +1820,8 @@
     },
     "triggers": {
       "manual": "Manual",
-      "scheduled": "Scheduled"
+      "scheduled": "Scheduled",
+      "oauth": "OAuth"
     },
     "groups": {
       "shop": {
@@ -1866,6 +1867,10 @@
       "tiktok_booking_video_detail": {
         "name": "Booking Video Detail",
         "description": ""
+      },
+      "tiktok_auth": {
+        "name": "Authentication & OAuth",
+        "description": "OAuth authorization history for Shops, Channels, KOCs and token refresh"
       }
     }
   },

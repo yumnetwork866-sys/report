@@ -719,6 +719,7 @@ const syncTiktokChannel = async (channel) => {
 
 const handleTiktokOauthCallback = async (req, res) => {
   let stage = 'callback_received';
+  const startedAt = new Date();
   try {
     const { code, error, error_description: errorDescription, state } = req.query || {};
 
@@ -851,6 +852,21 @@ const handleTiktokOauthCallback = async (req, res) => {
       console.error(syncError);
     }
 
+    try {
+      const { recordAuthLog } = require('../services/authLogService');
+      await recordAuthLog({
+        authType: 'channel',
+        status: 'SUCCEEDED',
+        startedAt,
+        completedAt: new Date(),
+        channel,
+        openId: openId || null,
+        endpoint: '/api/channels/oauth/tiktok/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok OAuth] Failed to record success log:', logErr.message);
+    }
+
     return res.redirect(
       buildFrontendRedirectUrl(
         'success',
@@ -866,6 +882,19 @@ const handleTiktokOauthCallback = async (req, res) => {
       name: error?.name || null,
     });
     console.error(error);
+    try {
+      const { recordAuthLog } = require('../services/authLogService');
+      await recordAuthLog({
+        authType: 'channel',
+        status: 'FAILED',
+        startedAt,
+        completedAt: new Date(),
+        error,
+        endpoint: '/api/channels/oauth/tiktok/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok OAuth] Failed to record error log:', logErr.message);
+    }
     return res.redirect(buildFrontendRedirectUrl('error', error.message || 'TikTok OAuth failed'));
   }
 };

@@ -524,8 +524,11 @@ const startShopOauth = async (req, res) => {
 
 const handleShopOauthCallback = async (req, res) => {
   let returnPath = '/shop/analytics';
+  const startedAt = new Date();
+  let currentOauthState = null;
   try {
     const oauthState = parseShopAuthorizationState(req.query.state);
+    currentOauthState = oauthState;
     returnPath = oauthState.returnPath;
     const isCustom = oauthState.oauthType === 'shop_custom' || oauthState.appType === 'custom' || oauthState.serviceType === 'orders';
     const appType = oauthState.appType || (isCustom ? 'custom' : 'partner');
@@ -674,6 +677,27 @@ const handleShopOauthCallback = async (req, res) => {
           ? 'seller.affiliate_collaboration.read'
           : 'data.shop_analytics.public.read');
     const hasRequiredScope = normalizedScopes.includes(requiredScope);
+    try {
+      const { recordAuthLog } = require('../authLogService');
+      let targetApp = null;
+      if (oauthState.appId) {
+        const { TikTokApp } = require('../../models');
+        targetApp = await TikTokApp.findByPk(oauthState.appId).catch(() => null);
+      }
+      await recordAuthLog({
+        authType: isCustom ? 'shop_custom' : 'shop',
+        status: 'SUCCEEDED',
+        startedAt,
+        completedAt: new Date(),
+        app: targetApp,
+        shops: validShops,
+        scopes: normalizedScopes,
+        openId: tokenData.open_id,
+        endpoint: '/api/bookings/tiktok-partner/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok Shop OAuth] Failed to record success log:', logErr.message);
+    }
     return res.redirect(redirectUrl(
       hasRequiredScope ? 'success' : 'warning',
       hasRequiredScope
@@ -685,6 +709,19 @@ const handleShopOauthCallback = async (req, res) => {
     ));
   } catch (error) {
     console.error('[TikTok Shop OAuth] Callback failed', { message: error.message });
+    try {
+      const { recordAuthLog } = require('../authLogService');
+      await recordAuthLog({
+        authType: currentOauthState?.oauthType === 'shop_custom' ? 'shop_custom' : 'shop',
+        status: 'FAILED',
+        startedAt,
+        completedAt: new Date(),
+        error,
+        endpoint: '/api/bookings/tiktok-partner/callback',
+      });
+    } catch (logErr) {
+      console.warn('[TikTok Shop OAuth] Failed to record error log:', logErr.message);
+    }
     return res.redirect(redirectUrl('error', oauthErrorMessage(error), returnPath));
   }
 };

@@ -28,7 +28,7 @@ const ConnectionManagement = () => {
 
   const canManageShops = hasPermission(session, 'admin.shops.manage');
   const canManageChannels = hasPermission(session, 'channels.manage');
-  const canManageApps = hasPermission(session, ['app.manage', 'admin.shops.manage']);
+  const canManageApps = hasPermission(session, 'app.manage');
 
   const availableTabs = useMemo(() => {
     const list = [];
