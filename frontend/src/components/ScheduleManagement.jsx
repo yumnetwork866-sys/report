@@ -32,6 +32,19 @@ const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
 const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
 const isActiveRun = (run) => ['PROCESSING', 'RETRY_PENDING'].includes(run?.status);
 
+const getRunMenuPosition = (triggerElement, shopCount) => {
+  const rect = triggerElement.getBoundingClientRect();
+  const menuHeight = Math.min(288, 50 + shopCount * 45, window.innerHeight - 24);
+  const spaceBelow = window.innerHeight - rect.bottom;
+  const direction = spaceBelow < menuHeight && rect.top > spaceBelow ? 'up' : 'down';
+  return {
+    direction,
+    top: Math.max(12, Math.min(window.innerHeight - menuHeight - 12, rect.bottom + 6)),
+    bottom: Math.max(12, Math.min(window.innerHeight - menuHeight - 12, window.innerHeight - rect.top + 6)),
+    right: Math.max(12, window.innerWidth - rect.right),
+  };
+};
+
 const JOB_APP_TAGS = {
   tiktok_affiliate_orders: { label: 'Partner + OMS', type: 'oms' },
   tiktok_channel_metrics: { label: 'Channel', type: 'channel' },
@@ -119,15 +132,22 @@ const ScheduleManagement = () => {
       if (event.type === 'click' && (event.target.closest('.schedule-run-menu') || event.target.closest('.schedule-action--run-trigger'))) return;
       setOpenRunMenu(null);
     };
+    const repositionRunMenu = (event) => {
+      if (event.target?.closest?.('.schedule-run-menu')) return;
+      setOpenRunMenu((current) => current ? {
+        ...current,
+        ...getRunMenuPosition(current.triggerElement, current.shopCount),
+      } : null);
+    };
     document.addEventListener('click', closeRunMenu);
     document.addEventListener('keydown', closeRunMenu);
-    window.addEventListener('resize', closeRunMenu);
-    window.addEventListener('scroll', closeRunMenu, true);
+    window.addEventListener('resize', repositionRunMenu);
+    window.addEventListener('scroll', repositionRunMenu, true);
     return () => {
       document.removeEventListener('click', closeRunMenu);
       document.removeEventListener('keydown', closeRunMenu);
-      window.removeEventListener('resize', closeRunMenu);
-      window.removeEventListener('scroll', closeRunMenu, true);
+      window.removeEventListener('resize', repositionRunMenu);
+      window.removeEventListener('scroll', repositionRunMenu, true);
     };
   }, []);
 
@@ -251,18 +271,12 @@ const ScheduleManagement = () => {
       if (current?.jobKey === schedule.job_key) {
         return null;
       }
-      const rect = triggerElement.getBoundingClientRect();
-      const menuHeight = 50 + shops.length * 45;
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const direction = spaceBelow < menuHeight && spaceAbove > spaceBelow ? 'up' : 'down';
       return {
         jobKey: schedule.job_key,
         schedule,
-        direction,
-        top: Math.min(window.innerHeight - 12, rect.bottom + 6),
-        bottom: Math.max(12, window.innerHeight - (rect.top - 6)),
-        right: Math.max(12, window.innerWidth - rect.right),
+        triggerElement,
+        shopCount: shops.length,
+        ...getRunMenuPosition(triggerElement, shops.length),
       };
     });
   };

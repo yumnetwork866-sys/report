@@ -1080,6 +1080,8 @@ const downloadCompassExportFile = async ({ authorization, shopCipher, taskId, re
     fetchImpl: fetchImpl || fetch,
     query: { shop_cipher: shopCipher },
     contentType: 'multipart/form-data',
+    appType: authorization.app_type || 'partner',
+    appId: authorization.app_id || null,
   }));
 };
 
@@ -1092,7 +1094,7 @@ const getUsableShopToken = async (authorization, fetchImpl = fetch) => {
   const data = await refreshShopAuthorizationToken(
     decryptPartnerToken(authorization.refresh_token_encrypted),
     fetchImpl,
-    { appType: authorization.app_type || 'partner' },
+    { appType: authorization.app_type || 'partner', appId: authorization.app_id || null },
   );
   if (Number(data.user_type) !== 0) throw new Error('TikTok authorization is not a Seller token.');
   await authorization.update(shopTokenFields(data, authorization));
@@ -1121,6 +1123,7 @@ const getShopPerformance = async ({ authorization, shopCipher, startDate, endDat
     fetchImpl: fetchImpl || fetch,
     query: { shop_cipher: shopCipher, start_date_ge: startDate, end_date_lt: endDate, granularity: '1D', currency },
     appType: authorization?.app_type || 'partner',
+    appId: authorization?.app_id || null,
   });
   if (payload.data?.performance) payload.data.performance = normalizeShopPerformance(payload.data.performance);
   return payload;
@@ -1148,6 +1151,7 @@ const getShopVideoPerformance = async ({
     accessToken,
     fetchImpl: fetchImpl || fetch,
     appType: authorization?.app_type || 'partner',
+    appId: authorization?.app_id || null,
     query: {
       shop_cipher: shopCipher,
       start_date_ge: startDate,
@@ -1185,6 +1189,7 @@ const getShopVideoPerformanceDetails = async ({
     fetchImpl: fetchImpl || fetch,
     signal,
     appType: authorization?.app_type || 'partner',
+    appId: authorization?.app_id || null,
     query: {
       shop_cipher: shopCipher,
       start_date_ge: startDate,

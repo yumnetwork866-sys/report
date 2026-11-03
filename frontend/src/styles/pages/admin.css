@@ -1774,6 +1774,9 @@
 }
 
 .schedule-run-menu {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px);
   position: fixed;
   z-index: 9999;
   min-width: 210px;
@@ -1813,6 +1816,8 @@
 }
 
 .schedule-run-menu__list {
+  min-height: 0;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 2px;

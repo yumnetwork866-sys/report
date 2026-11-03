@@ -22,8 +22,8 @@ import {
 import { useI18n } from '../lib/language';
 
 const REGION_DATA = [
-  { code: 'AUTO', name: 'Tự nhận diện khi kết nối Shop', flag: '🌐' },
-  { code: 'ALL', name: 'Dùng chung tất cả các vùng (Global)', flag: '🌏' },
+  { code: 'AUTO', name: 'Auto', flag: '🌐' },
+  { code: 'ALL', name: 'Global', flag: '🌏' },
   { code: 'VN', name: 'Việt Nam', flag: '🇻🇳' },
   { code: 'MY', name: 'Malaysia', flag: '🇲🇾' },
   { code: 'US', name: 'United States', flag: '🇺🇸' },
@@ -52,16 +52,6 @@ const SHOP_AUTHORIZE_URL = 'https://services.tiktokshop.com/open/authorize';
 const CHANNEL_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/channels/oauth/tiktok/callback';
 const SHOP_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/bookings/tiktok-partner/callback';
 
-const COMMON_TIKTOK_SCOPES = [
-  { scope: 'seller.order.info', name: 'Đồng bộ Đơn hàng (Orders)', desc: 'Lấy danh sách đơn hàng, doanh số GMV và vận chuyển' },
-  { scope: 'seller.compass.read', name: 'Báo cáo Compass & KOC', desc: 'Xuất dữ liệu hiệu suất KOC, Compass và video bán hàng' },
-  { scope: 'data.shop_analytics.public.read', name: 'Phân tích Shop & Video', desc: 'Chỉ số tổng thể Shop và kho video sản phẩm' },
-  { scope: 'seller.affiliate_collaboration.read', name: 'Chiến dịch Affiliate & KOC', desc: 'Quản lý mở liên kết và Target Collaboration' },
-  { scope: 'seller.creator_marketplace.read', name: 'Creator Marketplace', desc: 'Tra cứu hồ sơ Creator và mời hợp tác' },
-  { scope: 'seller.product.basic', name: 'Thông tin sản phẩm', desc: 'Danh mục và thông tin cơ bản sản phẩm' },
-  { scope: 'seller.finance.read', name: 'Tài chính & Settlement', desc: 'Quyết toán đơn hàng và đối soát tài khoản' },
-];
-
 const INITIAL_FORM = {
   name: '',
   app_type: 'partner',
@@ -69,13 +59,6 @@ const INITIAL_FORM = {
   app_key: '',
   app_secret: '',
   service_id: '',
-  declared_scopes: [
-    'seller.order.info',
-    'seller.compass.read',
-    'data.shop_analytics.public.read',
-    'seller.affiliate_collaboration.read',
-  ],
-  custom_scopes: '',
   authorize_url: SHOP_AUTHORIZE_URL,
   redirect_uri: '',
   is_active: true,
@@ -203,10 +186,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
 
   const openEditModal = (app) => {
     setEditingApp(app);
-    const declared = Array.isArray(app.declared_scopes) ? app.declared_scopes : [];
-    const knownScopes = declared.filter((s) => COMMON_TIKTOK_SCOPES.some((c) => c.scope === s));
-    const extraScopes = declared.filter((s) => !COMMON_TIKTOK_SCOPES.some((c) => c.scope === s));
-
     setForm({
       name: app.name || '',
       app_type: app.app_type || 'partner',
@@ -214,8 +193,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
       app_key: app.app_key || '',
       app_secret: app.app_secret_masked || '••••••••',
       service_id: app.service_id || '',
-      declared_scopes: declared.length ? knownScopes : COMMON_TIKTOK_SCOPES.map((c) => c.scope),
-      custom_scopes: extraScopes.join(', '),
       authorize_url: app.authorize_url || (app.app_type === 'channel' ? CHANNEL_AUTHORIZE_URL : SHOP_AUTHORIZE_URL),
       redirect_uri: app.redirect_uri || '',
       is_active: app.is_active ?? true,
@@ -223,16 +200,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
     setShowSecret(false);
     setModalError('');
     setIsModalOpen(true);
-  };
-
-  const handleScopeToggle = (scopeName) => {
-    setForm((prev) => {
-      const current = Array.isArray(prev.declared_scopes) ? prev.declared_scopes : [];
-      const next = current.includes(scopeName)
-        ? current.filter((s) => s !== scopeName)
-        : [...current, scopeName];
-      return { ...prev, declared_scopes: next };
-    });
   };
 
   const closeModal = () => {
@@ -248,7 +215,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
       ...prev,
       app_type: nextType,
       region: isChannel ? 'ALL' : 'AUTO',
-      declared_scopes: isChannel ? ['channel.read', 'channel.content'] : COMMON_TIKTOK_SCOPES.map((c) => c.scope),
       authorize_url: isChannel ? CHANNEL_AUTHORIZE_URL : SHOP_AUTHORIZE_URL,
       redirect_uri: isChannel ? CHANNEL_REDIRECT_URI : SHOP_REDIRECT_URI,
     }));
@@ -279,26 +245,11 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
         ? editingApp.region
         : (targetType === 'channel' ? 'ALL' : (form.region || 'AUTO'));
 
-      const customList = typeof form.custom_scopes === 'string'
-        ? form.custom_scopes.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean)
-        : [];
-      const finalScopes = targetType === 'channel'
-        ? ['channel.read', 'channel.content']
-        : [...new Set([...(form.declared_scopes || []), ...customList])];
-
-      const inferredCaps = [];
-      if (finalScopes.some((s) => s.includes('order'))) inferredCaps.push('orders');
-      if (finalScopes.some((s) => s.includes('compass'))) inferredCaps.push('compass');
-      if (finalScopes.some((s) => s.includes('analytics'))) inferredCaps.push('analytics');
-      if (finalScopes.some((s) => s.includes('affiliate'))) inferredCaps.push('affiliate');
-
       const payload = {
         ...form,
         app_secret: isSecretMasked ? '' : form.app_secret,
         app_type: targetType,
         region: targetRegion,
-        capabilities: targetType === 'channel' ? ['channel'] : inferredCaps,
-        declared_scopes: finalScopes,
       };
       if (editingApp) {
         await updateTikTokApp(editingApp.id, payload);
@@ -667,7 +618,7 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                         >
                           {REGION_DATA.map((r) => (
                             <option key={r.code} value={r.code}>
-                              {r.flag} {r.name} ({r.code})
+                              {r.flag} {r.name}{['AUTO', 'ALL'].includes(r.code) ? '' : ` (${r.code})`}
                             </option>
                           ))}
                         </select>
@@ -718,60 +669,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                         </span>
                         <strong>{getRegionDisplay(editingApp.region).label}</strong>
                       </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                {form.app_type === 'partner' ? (
-                  <div className="field" style={{ marginBottom: '16px' }}>
-                    <label style={{ display: 'block', marginBottom: '8px' }}>
-                      {t('appsManagement.declaredScopesLabel') || 'Phạm vi quyền hạn (TikTok Scopes)'}
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '8px', marginBottom: '10px' }}>
-                      {COMMON_TIKTOK_SCOPES.map((item) => {
-                        const isChecked = (form.declared_scopes || []).includes(item.scope);
-                        return (
-                          <label
-                            key={item.scope}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '8px',
-                              padding: '8px 10px',
-                              border: `1px solid ${isChecked ? 'var(--color-primary, #6366f1)' : 'var(--color-border)'}`,
-                              borderRadius: '6px',
-                              background: isChecked ? 'rgba(99, 102, 241, 0.08)' : 'transparent',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => handleScopeToggle(item.scope)}
-                              style={{ marginTop: '2px' }}
-                            />
-                            <div>
-                              <strong style={{ display: 'block', fontSize: '12px' }}>{item.name}</strong>
-                              <code style={{ fontSize: '10.5px', color: 'var(--color-muted)', display: 'block' }}>{item.scope}</code>
-                              <span style={{ fontSize: '11px', color: 'var(--color-text-soft)', display: 'block', marginTop: '2px' }}>{item.desc}</span>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div style={{ marginTop: '8px' }}>
-                      <label htmlFor="custom-scopes" style={{ fontSize: '12px', color: 'var(--color-text-soft)', display: 'block', marginBottom: '4px' }}>
-                        Scopes tùy chỉnh bổ sung (cách nhau bởi dấu phẩy hoặc xuống dòng):
-                      </label>
-                      <input
-                        id="custom-scopes"
-                        name="custom_scopes"
-                        placeholder="seller.custom.scope, seller.finance.read"
-                        value={form.custom_scopes || ''}
-                        onChange={handleFormChange}
-                        style={{ fontSize: '12px' }}
-                      />
                     </div>
                   </div>
                 ) : null}
