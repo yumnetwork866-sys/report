@@ -6,7 +6,6 @@ const PERMISSION_GROUPS = [
       'shop.videos.library.view',
       'shop.videos.performance.view',
       'shop.affiliate.open.view',
-      'shop.affiliate.target.view',
       'shop.affiliate.discovery.view',
       'shop.affiliate.performance.view',
       'shop.affiliate.creators.view',

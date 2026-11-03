@@ -382,7 +382,7 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
 }
 
 export const fetchTikTokSellerOpenCollaborations = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'open-collaborations', filters);
-export const fetchTikTokSellerTargetCollaborations = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'target-collaborations', filters);
+export const fetchTikTokSellerCreatorInvitations = (shopId) => fetchTikTokSellerAffiliate(shopId, 'creator-invitations');
 export const fetchTikTokSellerAffiliateOrders = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'orders', filters);
 export const fetchTikTokSellerAffiliateOrderOverview = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'order-overview', filters);
 export const fetchTikTokSellerAffiliateCreators = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'creators', filters);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  fetchActiveTikTokApps, fetchBookingById, fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
+  fetchTikTokSellerCreatorInvitations, fetchActiveTikTokApps, fetchBookingById, fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
   fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
@@ -582,5 +582,18 @@ test('a delayed permission response cannot overwrite a newer login', async () =>
     }));
     await request;
     assert.deepEqual(getStoredSession(), newSession);
+  });
+});
+
+
+test('creator invite picker uses its own endpoint after campaign management is retired', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('invite-picker'));
+    globalThis.fetch = async (url) => {
+      assert.equal(url, '/api/tiktok-shop/shops/7/affiliate/creator-invitations');
+      return new Response(JSON.stringify({ invitations: [{ id: 'invitation-1' }] }), { status: 200 });
+    };
+    const result = await fetchTikTokSellerCreatorInvitations(7);
+    assert.equal(result.invitations[0].id, 'invitation-1');
   });
 });

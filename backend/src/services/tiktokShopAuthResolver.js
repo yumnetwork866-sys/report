@@ -52,7 +52,7 @@ const SYSTEM_CORE_SCOPES = [
     scope: SELLER_AFFILIATE_SCOPE,
     label: 'Chiến dịch Affiliate & KOC',
     category: 'affiliate',
-    description: 'Quản lý mở liên kết và chiến dịch KOC Target Collaboration',
+    description: 'Quản lý Affiliate và lời mời hợp tác Creator',
     jobs: [],
   },
   {

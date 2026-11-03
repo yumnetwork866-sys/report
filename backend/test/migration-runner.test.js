@@ -119,6 +119,7 @@ const defaultMigrationNames = [
   '110_drop_unused_legacy_columns',
   '111_allow_multiple_apps_and_add_capabilities',
   '112_add_tiktok_auth_scheduled_job',
+  '113_remove_target_collaboration_permission',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

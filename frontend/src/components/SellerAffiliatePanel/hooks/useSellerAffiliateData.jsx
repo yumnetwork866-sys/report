@@ -10,7 +10,7 @@ import {
   fetchTikTokSellerCreatorContentDetails,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokSellerOpenCollaborationSettings,
-  fetchTikTokSellerTargetCollaborations,
+  fetchTikTokSellerCreatorInvitations,
   fetchTikTokCreatorPerformance,
   fetchTikTokShops,
   startTikTokShopOauth,
@@ -193,17 +193,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     { value: 'custom', label: t('shopAnalytics.periodCustom') },
   ], [t]);
 
-  const targetStatusOptions = useMemo(() => [
-    'ONGOING',
-    'EXPIRING',
-    'VALID',
-    'CANCELING',
-    'COMPLETED',
-  ].map((value) => ({
-    value,
-    label: formatStatus(value, t),
-  })), [t]);
-  
   const creatorStatusOptions = useMemo(() => [
     { value: '', label: t('sellerAffiliate.allStatuses') },
     ...['PENDING', 'AWAITING_SHIPMENT', 'SHIPPED', 'CONTENT_PENDING', 'COMPLETED', 'REJECT_CANCELLED'].map((value) => ({
@@ -297,8 +286,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
           fetchTikTokSellerOpenCollaborations(shopId, filters),
           fetchTikTokSellerOpenCollaborationSettings(shopId, signal).then(setSettings).catch(() => setSettings(null)),
         ]);
-      } else if (section === 'target') {
-        result = await fetchTikTokSellerTargetCollaborations(shopId, { ...filters, status });
+
       } else if (section === 'performance') {
         result = await fetchTikTokCreatorPerformance(shopId, {
           ...filters,
@@ -428,8 +416,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   
   const rows = useMemo(() => section === 'open'
     ? (data.open_collaborations || [])
-    : section === 'target'
-      ? (data.target_collaborations || [])
       : section === 'creators'
         ? (data.sample_applications || [])
         : section === 'discover'
@@ -488,7 +474,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   const currentPage = pageTokens.length + 1;
   const supportsNumberedPagination = section === 'performance'
     || section === 'discover'
-    || (section === 'target' && data.source === 'DATABASE_SNAPSHOT')
     || (ordersOnly && section === 'orders');
   const totalPages = Math.max(
     currentPage + (nextPageToken ? 1 : 0),
@@ -512,13 +497,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     }
   
     if (section === 'discover') {
-      setPageTokens(Array.from(
-        { length: target - 1 },
-        (_, index) => String((index + 1) * PAGE_SIZE),
-      ));
-      return;
-    }
-    if (section === 'target' && data.source === 'DATABASE_SNAPSHOT') {
       setPageTokens(Array.from(
         { length: target - 1 },
         (_, index) => String((index + 1) * PAGE_SIZE),
@@ -550,8 +528,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
         let intermediate;
         if (section === 'open') {
           intermediate = await fetchTikTokSellerOpenCollaborations(shopId, filters);
-        } else if (section === 'target') {
-          intermediate = await fetchTikTokSellerTargetCollaborations(shopId, { ...filters, status });
+
         } else if (section === 'creators') {
           intermediate = await fetchTikTokSellerAffiliateCreators(shopId, { ...filters, status });
         } else {
@@ -699,7 +676,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
   ];
   const tableColumnCount = {
     open: 4,
-    target: 5,
     discover: 5,
     performance: performanceColumns.length,
     creators: 7,
@@ -740,7 +716,7 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
           : formatNumber(value),
       ])
     : [];
-  const changeSection = (value) => { resetMarketplaceSearch(); setSection(value); setStatus(value === 'target' ? 'ONGOING' : ''); setKeyword(''); setSubmittedKeyword(''); setPageTokens([]); setData({}); setError(''); };
+  const changeSection = (value) => { resetMarketplaceSearch(); setSection(value); setStatus(''); setKeyword(''); setSubmittedKeyword(''); setPageTokens([]); setData({}); setError(''); };
   const submitSearch = (event) => {
     event.preventDefault();
     resetMarketplaceSearch();
@@ -787,10 +763,10 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     });
     try {
       const [targetResult, productResult] = await Promise.all([
-        fetchTikTokSellerTargetCollaborations(shopId, { pageSize: 20, status: 'ONGOING' }),
+        fetchTikTokSellerCreatorInvitations(shopId),
         fetchTikTokSellerOpenCollaborations(shopId, { pageSize: 100 }),
       ]);
-      const invitations = (targetResult.target_collaborations || []).slice(0, 5);
+      const invitations = (targetResult.invitations || []).slice(0, 5);
       const products = (productResult.open_collaborations || []).filter((item) => item.product?.id);
       setOngoingInvitations(invitations);
       setSelectedInvitationId(invitations[0]?.id ? String(invitations[0].id) : '');
@@ -1022,7 +998,6 @@ export const useSellerAffiliateData = ({ initialSection, ordersOnly }) => {
     submittedKeyword,
     t,
     tableColumnCount,
-    targetStatusOptions,
     toggleInviteProduct,
     totalPages,
     applyOrderFilters,

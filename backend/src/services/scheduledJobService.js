@@ -27,7 +27,6 @@ const {
   syncShopAnalyticsSnapshot,
 } = require('./tiktokShopAnalyticsSyncService');
 const { run: syncTikTokChannels } = require('../jobs/syncTiktokChannels');
-const { targetCollaborationSyncService } = require('./tiktokTargetCollaborationSyncService');
 const { syncActiveBookingVideos } = require('./bookingVideoPerformanceService');
 const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
 const {
@@ -677,8 +676,7 @@ const jobHandlers = {
     const range = scheduledAnalyticsRange(shop);
     const analytics = await syncShopAnalyticsSnapshot(shop, range);
     throwIfAborted(signal);
-    const target_collaborations = await targetCollaborationSyncService.syncShop(shop, { signal });
-    return { ...analytics, target_collaborations };
+    return analytics;
   }, signal, shopId, { jobKey: 'tiktok_shop_analytics' }),
   tiktok_channel_metrics: async ({ signal } = {}) => {
     throwIfAborted(signal);

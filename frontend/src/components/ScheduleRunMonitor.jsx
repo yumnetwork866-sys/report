@@ -114,8 +114,10 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
     <header className="run-monitor__header">
       <button type="button" className="button button--ghost" onClick={onBack} aria-label={t('schedule.monitor.back')} title={t('schedule.monitor.back')}><ArrowLeft size={16} aria-hidden="true" /></button>
       <div className="run-monitor__heading">
-        <h2>#{run.id}</h2>
-        <p>{t(`schedule.jobs.${initialRun.job_key}.name`)} · {timestamp(run.started_at, locale)}</p></div>
+        <h2>{t(`schedule.jobs.${initialRun.job_key}.name`)}</h2>
+        <span className="run-monitor__run-id">#{run.id}</span>
+        <time dateTime={run.started_at}>{timestamp(run.started_at, locale)}</time>
+      </div>
     </header>
     <div className="run-monitor__metrics">
       {[[t('schedule.monitor.requests'), stats.requests ?? 0], [t('schedule.monitor.success'), stats.succeeded ?? 0], [t('schedule.monitor.errors'), stats.failed ?? 0], [t('schedule.monitor.inFlight'), stats.in_flight ?? 0], [t('schedule.duration'), formatMonitorDuration(runElapsed)]].map(([name, value]) => <div key={name}><span>{name}</span><strong>{value}</strong></div>)}

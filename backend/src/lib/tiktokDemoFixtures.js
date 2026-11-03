@@ -48,7 +48,7 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
       request_id: requestId,
     };
   }
-  if (namespace === 'target-collaborations') {
+  if (namespace === 'creator-invitations') {
     const rows = Array.from({ length: 7 }, (_, index) => ({
       id: `${DEMO_PREFIX}target_${index + 1}`,
       name: `Demo Invitation ${index + 1}`,
@@ -67,7 +67,7 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
       data: {
         total_count: rows.length,
         next_page_token: null,
-        target_collaborations: query.status ? rows.filter((row) => row.status === query.status) : rows,
+        invitations: rows.filter((row) => row.status === 'ONGOING'),
       },
       request_id: requestId,
     };

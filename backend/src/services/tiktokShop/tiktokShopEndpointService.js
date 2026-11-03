@@ -51,14 +51,10 @@ const { createTtlPromiseCache } = require('../../lib/ttlPromiseCache');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../../lib/tiktokDemoFixtures');
 const {
   hydrateCreatorRows,
-  syncAndHydrateCollaborationCreators,
 } = require('../tiktokCreatorProfileService');
 const {
-  recordTargetCollaborationInvites,
   recordCreatorContact,
 } = require('../tiktokCreatorContactHistoryService');
-const { saveTargetCollaborationSnapshots } = require('../tiktokTargetCollaborationSnapshotService');
-const { targetCollaborationSyncService } = require('../tiktokTargetCollaborationSyncService');
 const { productView, skuView, upsertShopProducts } = require('../shopProductCatalogService');
 const { getOrSetCache } = require('../../lib/redis');
 
@@ -876,8 +872,7 @@ const syncShopAnalytics = async (req, res) => {
     });
     await shop.update({ last_synced_at: new Date(), last_sync_status: 'success', last_sync_error: null });
     await shop.authorization.update({ last_sync_status: 'success', last_sync_error: null, updated_at: new Date() });
-    const collaborationSync = targetCollaborationSyncService.startShopSync(shop);
-    res.json({ shop: safeShop(shop), snapshot, target_collaboration_sync: collaborationSync });
+    res.json({ shop: safeShop(shop), snapshot });
   } catch (error) {
     await shop?.update({ last_synced_at: new Date(), last_sync_status: 'failed', last_sync_error: String(error.message).slice(0, 2000) }).catch(() => {});
     await shop?.authorization?.update({ last_sync_status: 'failed', last_sync_error: String(error.message).slice(0, 2000), updated_at: new Date() }).catch(() => {});
@@ -1074,44 +1069,6 @@ const affiliateResponse = (namespace, operation) => async (req, res) => {
   }
 };
 
-const mapWithConcurrency = async (items, concurrency, mapper) => {
-  const results = Array.from({ length: items.length });
-  let cursor = 0;
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await mapper(items[index], index);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-};
-
-const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const targetDetailRetryCodes = new Set([36009002, 36009037]);
-const getTargetCollaborationWithRetry = async (shop, collaborationId) => {
-  const retryCount = Math.min(5, Math.max(0, Number(process.env.TIKTOK_TARGET_DETAIL_RETRY_COUNT ?? 3) || 0));
-  let lastError;
-  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-    try {
-      return await getTargetCollaboration({
-        authorization: shop.authorization,
-        shopCipher: shop.cipher,
-        collaborationId,
-      });
-    } catch (error) {
-      lastError = error;
-      const rateLimited = targetDetailRetryCodes.has(Number(error.tiktokCode));
-      const transientNetworkError = error.tiktokCode == null
-        && /fetch|network|socket|timeout|aborted/i.test(String(error.message || ''));
-      if (attempt >= retryCount || (!rateLimited && !transientNetworkError)) throw error;
-      await delay(500 * (2 ** attempt));
-    }
-  }
-  throw lastError;
-};
-
 const listOpenCollaborations = affiliateResponse('open-collaborations', async (shop, req) => {
   const payload = await searchOpenCollaborations({
     authorization: shop.authorization,
@@ -1124,81 +1081,18 @@ const listOpenCollaborations = affiliateResponse('open-collaborations', async (s
   return payload;
 });
 
-const loadTargetCollaborationsFromTikTok = async (shop, req) => {
+// The invite picker only needs active invitation summaries. Do not fetch every
+// collaboration detail or trigger a full campaign synchronization here.
+const listCreatorInvitations = affiliateResponse('creator-invitations', async (shop) => {
   const payload = await searchTargetCollaborations({
     authorization: shop.authorization,
     shopCipher: shop.cipher,
-    pageToken: req.query.page_token,
-    pageSize: pageSizeValue(req.query.page_size),
-    keyword: req.query.keyword,
-    status: ['ONGOING', 'EXPIRING', 'VALID', 'CANCELING', 'COMPLETED'].includes(req.query.status) ? req.query.status : 'ONGOING',
+    pageSize: 20,
+    status: 'ONGOING',
   });
-  const rows = Array.isArray(payload.data?.target_collaborations) ? payload.data.target_collaborations : [];
-  // TikTok throttles this detail endpoint much more aggressively than the search
-  // endpoint. Fetch sequentially so a page load does not create a burst of up to
-  // 100 requests; retry only rate limits and transient transport failures.
-  const detailedRows = await mapWithConcurrency(rows, 1, async (row) => {
-    try {
-      const detail = await getTargetCollaborationWithRetry(shop, row.id);
-      return { ...row, ...detail.data?.target_collaboration };
-    } catch (error) {
-      console.warn('[Target Collaborations] Creator detail unavailable', {
-        shopId: shop.id,
-        collaborationId: row.id,
-        code: error.tiktokCode || null,
-        requestId: error.requestId || null,
-        message: error.message,
-      });
-      return row;
-    }
-  });
-  const sharedProfileRows = await syncAndHydrateCollaborationCreators(shop.id, detailedRows);
-  await saveTargetCollaborationSnapshots(shop.id, sharedProfileRows);
-  await recordTargetCollaborationInvites(shop.id, sharedProfileRows);
-  return { ...payload, data: { ...payload.data, target_collaborations: sharedProfileRows } };
-};
-
-const listTargetCollaborations = affiliateResponse('target-collaborations', async (shop, req) => {
-  const status = ['ONGOING', 'EXPIRING', 'VALID', 'CANCELING', 'COMPLETED'].includes(req.query.status)
-    ? req.query.status
-    : 'ONGOING';
-  const pageSize = pageSizeValue(req.query.page_size);
-  const offset = /^\d+$/.test(String(req.query.page_token || ''))
-    ? Math.max(0, Number(req.query.page_token))
-    : 0;
-  const keyword = String(req.query.keyword || '').trim();
-  const where = {
-    shop_id: shop.id,
-    status,
-    ...(keyword ? { name: { [Op.iLike]: `%${keyword}%` } } : {}),
-  };
-  const { count, rows } = await tiktokShopRepository.findAndCountTargetCollaborations({
-    where,
-    order: [['end_at', 'DESC'], ['synced_at', 'DESC'], ['id', 'DESC']],
-    limit: pageSize,
-    offset,
-  });
-  if (!count) return loadTargetCollaborationsFromTikTok(shop, req);
-  const targetCollaborations = rows.map((instance) => {
-    const snapshot = instance.toJSON();
-    return {
-      ...(snapshot.raw_data || {}),
-      id: snapshot.collaboration_id,
-      name: snapshot.name,
-      status: snapshot.status,
-      collaboration_status: snapshot.status,
-      snapshot_synced_at: snapshot.synced_at,
-    };
-  });
-  const nextOffset = offset + targetCollaborations.length;
   return {
-    request_id: null,
-    data: {
-      target_collaborations: targetCollaborations,
-      total_count: count,
-      next_page_token: nextOffset < count ? String(nextOffset) : '',
-      source: 'DATABASE_SNAPSHOT',
-    },
+    request_id: payload.request_id || null,
+    data: { invitations: payload.data?.target_collaborations || [] },
   };
 });
 
@@ -2700,7 +2594,7 @@ const service = {
   startShopOauth, handleShopOauthCallback, listShopConnections, listShops, updateShopAvatarChannel,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, getShopVideoThumbnail,
-  listOpenCollaborations, listTargetCollaborations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
+  listOpenCollaborations, listCreatorInvitations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
   listAffiliateCreators, showAffiliateCreatorFulfillments, getOrderTracking, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
   getMarketplaceCreatorConversation, sendMarketplaceCreatorMessage,

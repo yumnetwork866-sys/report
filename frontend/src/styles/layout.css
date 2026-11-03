@@ -498,14 +498,6 @@
 }
 
 
-.target-collaboration__creators {
-  display: grid;
-  gap: 8px;
-  margin-top: 0;
-  min-width: 190px;
-}
-
-
 .app-shell {
   overflow: clip;
   background: transparent;

@@ -101,31 +101,27 @@ const saveCreatorProfiles = async (shopId, creators = [], source = 'unknown', {
   const identityChanges = [...unique.values()].map((profile) => (
     describeIdentityChange(profile, existingByUsername.get(profile.username))
   ));
-  // A Target Collaboration can contain thousands of creators. Its sync service
-  // emits compact progress summaries, so avoid one console entry per identity.
-  if (source !== 'target_collaboration') {
-    for (const change of identityChanges.filter((item) => item.nameChanged || item.avatarChanged)) {
-      logger?.info?.('[Creator Profile] Identity persisted', {
-        shopId,
-        source,
-        username: change.username,
-        nameChanged: change.nameChanged,
-        previousName: change.previousName,
-        currentName: change.currentName,
-        avatarChanged: change.avatarChanged,
-        avatarAction: change.avatarAction,
-      });
-    }
-    logger?.info?.('[Creator Profile] Batch persisted', {
+  for (const change of identityChanges.filter((item) => item.nameChanged || item.avatarChanged)) {
+    logger?.info?.('[Creator Profile] Identity persisted', {
       shopId,
       source,
-      received: creators.length,
-      persisted: unique.size,
-      identityUpdates: identityChanges.filter((item) => item.nameChanged || item.avatarChanged).length,
-      nameUpdates: identityChanges.filter((item) => item.nameChanged).length,
-      avatarUpdates: identityChanges.filter((item) => item.avatarChanged).length,
+      username: change.username,
+      nameChanged: change.nameChanged,
+      previousName: change.previousName,
+      currentName: change.currentName,
+      avatarChanged: change.avatarChanged,
+      avatarAction: change.avatarAction,
     });
   }
+  logger?.info?.('[Creator Profile] Batch persisted', {
+    shopId,
+    source,
+    received: creators.length,
+    persisted: unique.size,
+    identityUpdates: identityChanges.filter((item) => item.nameChanged || item.avatarChanged).length,
+    nameUpdates: identityChanges.filter((item) => item.nameChanged).length,
+    avatarUpdates: identityChanges.filter((item) => item.avatarChanged).length,
+  });
   return loadCreatorProfiles(shopId, profiles);
 };
 
@@ -150,26 +146,6 @@ const hydrateCreatorRows = async (shopId, rows = []) => {
   });
 };
 
-const syncAndHydrateCollaborationCreators = async (shopId, rows = [], options = {}) => {
-  const creators = rows.flatMap((row) => row.creators || []);
-  const map = await saveCreatorProfiles(shopId, creators, 'target_collaboration', options);
-  return rows.map((row) => ({
-    ...row,
-    creators: (row.creators || []).map((creator) => {
-      const shared = sharedProfileFor(creator, map);
-      if (!shared) return creator;
-      return {
-        ...creator,
-        creator_open_id: shared.creator_open_id || creator.creator_open_id || null,
-        username: shared.username || creator.username,
-        nickname: shared.nickname || creator.nickname || null,
-        avatar: { ...creator.avatar, ...(shared.avatar_url ? { url: shared.avatar_url } : {}) },
-        avatar_url: shared.avatar_url || creator.avatar_url || null,
-      };
-    }),
-  }));
-};
-
 module.exports = {
   normalizeUsername,
   normalizeCreatorProfile,
@@ -177,5 +153,4 @@ module.exports = {
   loadCreatorProfiles,
   saveCreatorProfiles,
   hydrateCreatorRows,
-  syncAndHydrateCollaborationCreators,
 };

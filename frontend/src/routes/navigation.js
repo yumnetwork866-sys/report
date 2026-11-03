@@ -2,7 +2,7 @@ export const topNavItems = [
   {
     to: '/shop/analytics',
     label: 'TikTok',
-    permission: ['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
+    permission: ['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
     alternatePermission: ['channels.dashboard.view', 'channels.reports.video.view', 'channels.reports.revenue.view', 'channels.reports.statistics.view'],
     fallbackTo: '/channels/overview',
   },
@@ -17,11 +17,11 @@ export const sidebarSections = [
         id: 'tiktok-shop',
         labelKey: 'navigation.tiktokShop',
         icon: 'shop',
-        permission: ['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
+        permission: ['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
         children: [
           { to: '/shop/analytics', labelKey: 'navigation.shopAnalytics', permission: 'shop.analytics.view' },
           { to: '/shop/videos', labelKey: 'navigation.videos', permission: ['shop.videos.library.view', 'shop.videos.performance.view'] },
-          { to: '/shop/affiliate', labelKey: 'navigation.affiliate', permission: ['shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'] },
+          { to: '/shop/affiliate', labelKey: 'navigation.affiliate', permission: ['shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'] },
           { to: '/shop/orders', labelKey: 'navigation.orders', permission: 'shop.orders.view' },
           { to: '/shop/bookings', labelKey: 'navigation.bookings', permission: ['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'] },
         ],
@@ -98,7 +98,7 @@ export const protectedRouteCards = [
   {
     path: '/shop/affiliate',
     component: 'SellerAffiliatePanel',
-    permission: ['shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'],
+    permission: ['shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'],
     props: {},
   },
   {

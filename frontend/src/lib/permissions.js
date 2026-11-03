@@ -8,7 +8,6 @@ export const PERMISSION_GROUPS = [
       ] },
       { key: 'affiliate', labelKey: 'rolePermissions.affiliate', permissions: [
         { key: 'shop.affiliate.open.view', labelKey: 'rolePermissions.affiliateOpen' },
-        { key: 'shop.affiliate.target.view', labelKey: 'rolePermissions.affiliateTarget' },
         { key: 'shop.affiliate.discovery.view', labelKey: 'rolePermissions.affiliateDiscovery' },
         { key: 'shop.affiliate.performance.view', labelKey: 'rolePermissions.affiliatePerformance' },
         { key: 'shop.affiliate.creators.view', labelKey: 'rolePermissions.affiliateCreators' },

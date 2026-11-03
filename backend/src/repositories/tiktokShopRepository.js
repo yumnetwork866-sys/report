@@ -116,7 +116,6 @@ module.exports = {
   findMarketplaceCreatorDetail: (options) => models().TikTokMarketplaceCreatorDetail.findOne(options),
   findMarketplaceDiscoveryStateById: (id, options) => models().TikTokMarketplaceDiscoveryState.findByPk(id, options),
   findTargetCollaborations: (options) => models().TikTokTargetCollaborationSnapshot.findAll(options),
-  findAndCountTargetCollaborations: (options) => models().TikTokTargetCollaborationSnapshot.findAndCountAll(options),
   findAndCountAffiliateOrders: (options = {}, skuWhere, skuRequired = false) => models().TikTokAffiliateOrder.findAndCountAll({
     ...options,
     include: [{

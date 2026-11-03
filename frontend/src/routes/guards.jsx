@@ -6,7 +6,7 @@ import { hasPermission } from '../lib/session';
 const authorizedLandingPages = [
   ['shop.analytics.view', '/shop/analytics'],
   [['shop.videos.library.view', 'shop.videos.performance.view'], '/shop/videos'],
-  [['shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'], '/shop/affiliate'],
+  [['shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'], '/shop/affiliate'],
   ['shop.orders.view', '/shop/orders'],
   [['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'], '/shop/bookings'],
   ['channels.dashboard.view', '/channels/overview'],

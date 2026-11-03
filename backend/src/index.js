@@ -85,7 +85,7 @@ const createApp = () => {
   app.use('/api/channels', channelRoutes);
   app.use('/api/auth/login', loginRateLimit);
   app.use('/api/auth', authRoutes);
-  app.use('/api/tiktok-shop', requireAdmin, requireAnyPermission(['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.target.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage', 'shop.affiliate.invite', 'shop.affiliate.message', 'admin.shops.manage']), tiktokShopRoutes.adminRouter);
+  app.use('/api/tiktok-shop', requireAdmin, requireAnyPermission(['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view', 'shop.bookings.manage', 'shop.affiliate.invite', 'shop.affiliate.message', 'admin.shops.manage']), tiktokShopRoutes.adminRouter);
   app.get('/api/exchange-rates', async (req, res) => {
     try {
       res.json(await getMyrExchangeRates());

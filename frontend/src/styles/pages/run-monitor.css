@@ -2,10 +2,10 @@
 .run-monitor__header, .run-monitor__actions, .run-monitor__activity, .run-monitor__filters, .run-monitor__detail > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .run-monitor__header { justify-content: space-between; flex-wrap: nowrap; }
 .run-monitor__header > button { flex-shrink: 0; }
-.run-monitor__heading { min-width: 0; margin-left: auto; text-align: right; overflow-wrap: anywhere; }
-.run-monitor__header h2 { margin: 0 0 4px; font-size: 1.2rem; }
-.run-monitor__header h2 span, .run-monitor__header p { color: #63758c; }
-.run-monitor__header p { margin: 0; font-size: .8rem; }
+.run-monitor__heading { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 10px; min-width: 0; margin-left: auto; text-align: right; overflow-wrap: anywhere; }
+.run-monitor__header h2 { margin: 0; font-size: .9rem; line-height: 1.4; }
+.run-monitor__run-id { padding: 2px 6px; border-radius: 5px; background: var(--color-surface-subtle); color: var(--color-text-soft); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.run-monitor__heading time { color: var(--color-text-soft); font-size: .75rem; white-space: nowrap; }
 .run-monitor__live { display: flex; align-items: center; gap: 6px; font-size: .78rem; }
 .run-monitor__metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
 .run-monitor__metrics > div { display: grid; gap: 8px; padding: 14px; background: #f7f9fd; border: 1px solid #e0e7f0; border-radius: 10px; }

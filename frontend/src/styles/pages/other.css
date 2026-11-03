@@ -622,40 +622,6 @@
 }
 
 
-.target-collaboration__creators .creator-identity strong {
-  display: block;
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-
-.target-collaboration__creators .creator-identity__avatar {
-  width: 30px;
-  height: 30px;
-}
-
-
-.target-collaboration__creators .creator-identity .row-subtitle {
-  display: block;
-  max-width: 180px;
-  overflow: hidden;
-  color: var(--color-muted);
-  font-size: 0.78rem;
-  font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-
-.target-collaboration__more {
-  color: var(--color-muted);
-  font-size: 0.82rem;
-  font-weight: 700;
-}
-
-
 .brand__name {
   color: var(--color-text);
   font-family: var(--font-heading);

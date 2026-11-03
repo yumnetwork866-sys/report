@@ -1,36 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { recordCreatorContact } = require('../src/services/tiktokCreatorContactHistoryService');
 
-const {
-  contactDate,
-  invitationDate,
-  recordTargetCollaborationInvites,
-} = require('../src/services/tiktokCreatorContactHistoryService');
-
-test('contact dates accept TikTok seconds and milliseconds', () => {
-  assert.equal(contactDate(1700000000).toISOString(), '2023-11-14T22:13:20.000Z');
-  assert.equal(contactDate(1700000000000).toISOString(), '2023-11-14T22:13:20.000Z');
+test('sending a creator invitation still records contact history', async () => {
+  let created;
+  const contactedAt = new Date('2026-11-03T00:00:00Z');
+  const model = {
+    findOne: async () => null,
+    create: async (values) => { created = values; return values; },
+  };
+  await recordCreatorContact(7, { creator_open_id: 'open-1', username: '@Creator.One' }, 'invite', { contactedAt, model });
+  assert.equal(created.shop_id, 7);
+  assert.equal(created.username, 'creator.one');
+  assert.equal(created.creator_open_id, 'open-1');
+  assert.equal(created.last_invited_at, contactedAt);
 });
 
-test('active invitations without a creation timestamp use the observation time', () => {
-  const observedAt = new Date('2026-07-22T00:00:00.000Z');
-  assert.equal(invitationDate({ status: 'ONGOING' }, observedAt), observedAt);
-  assert.equal(invitationDate({ status: 'COMPLETED' }, observedAt), null);
-});
-
-test('target collaboration creators are persisted once with the newest invitation', async () => {
-  const calls = [];
-  const model = { findAll: async () => [], bulkCreate: async (...args) => calls.push(args) };
-  const count = await recordTargetCollaborationInvites(7, [{
-    status: 'ONGOING',
-    creators: [
-      { creator_open_id: 'open-1', username: '@Creator.One' },
-      { creator_open_id: 'open-1', username: 'creator.one' },
-    ],
-  }], { observedAt: new Date('2026-07-22T00:00:00.000Z'), model });
-
-  assert.equal(count, 1);
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][0][0].username, 'creator.one');
-  assert.equal(calls[0][0][0].creator_open_id, 'open-1');
+test('sending another invitation updates existing history without removing the creator identity', async () => {
+  let saved = false;
+  const existing = { creator_open_id: 'open-1', async save() { saved = true; return this; } };
+  const contactedAt = new Date('2026-11-03T00:00:00Z');
+  const model = { findOne: async () => existing };
+  await recordCreatorContact(7, { username: 'creator.one' }, 'invite', { contactedAt, model });
+  assert.equal(saved, true);
+  assert.equal(existing.creator_open_id, 'open-1');
+  assert.equal(existing.last_invited_at, contactedAt);
 });

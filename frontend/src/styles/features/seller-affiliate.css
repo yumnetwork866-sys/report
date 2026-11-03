@@ -536,12 +536,6 @@
   white-space: nowrap;
 }
 
-
-.seller-affiliate__table td:has(> .target-collaboration__creators) > strong,
-.seller-affiliate__table td:has(> .target-collaboration__creators) > .row-subtitle {
-  display: none;
-}
-
 .seller-affiliate__table tbody:has(.marketplace-creator-row) > tr:not(.marketplace-creator-row) {
   display: none;
 }
