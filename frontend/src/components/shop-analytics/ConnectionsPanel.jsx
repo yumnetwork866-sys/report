@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import AnalyticsIcon from './AnalyticsIcon';
+import { connectionAppType, uniqueShopAuthorizations } from '../../lib/shopConnections';
 import { REQUIRED_SCOPE, scopesOf } from './shopAnalyticsUtils';
 
 const ConnectionsPanel = ({
@@ -30,55 +31,34 @@ const ConnectionsPanel = ({
         processedShopIds.add(String(shop.id));
 
         const connectedApps = [];
-        // Partner Auth
-        if (shop.authorization) {
-          linkedAuthIds.add(String(shop.authorization.id));
+        for (const authorization of uniqueShopAuthorizations(shop)) {
+          linkedAuthIds.add(String(authorization.id));
+          const isCustom = connectionAppType(authorization) === 'custom';
           connectedApps.push({
-            auth: shop.authorization,
-            app: shop.authorization.app || null,
-            role: 'partner',
-            label: t('shopAnalytics.partnerApp', 'Partner App'),
-            appName: shop.authorization.app?.name || t('shopAnalytics.partnerApp', 'TikTok Shop Partner'),
-            appKey: shop.authorization.app?.app_key || null,
-            region: shop.authorization.app?.region || shop.region || null,
-            connectedAt: shop.authorization.connected_at,
+            auth: authorization,
+            app: authorization.app || null,
+            role: isCustom ? 'custom' : 'partner',
+            label: isCustom ? t('shopAnalytics.customOrderApp', 'Custom OMS') : t('shopAnalytics.partnerApp', 'Partner App'),
+            appName: authorization.app?.name || (isCustom ? t('shopAnalytics.customOrderApp', 'TikTok OMS App') : t('shopAnalytics.partnerApp', 'TikTok Shop Partner')),
+            appKey: authorization.app?.app_key || null,
+            region: authorization.app?.region || shop.region || null,
+            connectedAt: authorization.connected_at,
             expired: Boolean(
-              shop.authorization.refresh_token_expires_at
-                && new Date(shop.authorization.refresh_token_expires_at).getTime() <= Date.now(),
+              authorization.refresh_token_expires_at
+                && new Date(authorization.refresh_token_expires_at).getTime() <= Date.now(),
             ),
-            scopes: scopesOf(shop.authorization),
-            lastSyncError: shop.authorization.last_sync_error,
-          });
-        }
-        // Order / OMS Auth
-        if (shop.orderAuthorization) {
-          linkedAuthIds.add(String(shop.orderAuthorization.id));
-          connectedApps.push({
-            auth: shop.orderAuthorization,
-            app: shop.orderAuthorization.app || null,
-            role: 'custom',
-            label: t('shopAnalytics.customOrderApp', 'Custom OMS'),
-            appName: shop.orderAuthorization.app?.name || t('shopAnalytics.customOrderApp', 'TikTok OMS App'),
-            appKey: shop.orderAuthorization.app?.app_key || null,
-            region: shop.orderAuthorization.app?.region || shop.region || null,
-            connectedAt: shop.orderAuthorization.connected_at,
-            expired: Boolean(
-              shop.orderAuthorization.refresh_token_expires_at
-                && new Date(shop.orderAuthorization.refresh_token_expires_at).getTime() <= Date.now(),
-            ),
-            scopes: scopesOf(shop.orderAuthorization),
-            lastSyncError: shop.orderAuthorization.last_sync_error,
+            scopes: scopesOf(authorization),
+            lastSyncError: authorization.last_sync_error,
           });
         }
 
-        // Check additional authorizations referencing this shop
         if (Array.isArray(connections)) {
           for (const conn of connections) {
             const hasThisShop = (conn.shops || []).some((s) => String(s.id) === String(shop.id))
               || (conn.order_shops || []).some((s) => String(s.id) === String(shop.id));
             if (hasThisShop && !linkedAuthIds.has(String(conn.id))) {
               linkedAuthIds.add(String(conn.id));
-              const isCustom = conn.app_type === 'custom';
+              const isCustom = connectionAppType(conn) === 'custom';
               connectedApps.push({
                 auth: conn,
                 app: conn.app || null,
@@ -121,7 +101,7 @@ const ConnectionsPanel = ({
             for (const cShop of connShops) {
               if (!processedShopIds.has(String(cShop.id))) {
                 processedShopIds.add(String(cShop.id));
-                const isCustom = conn.app_type === 'custom';
+                const isCustom = connectionAppType(conn) === 'custom';
                 list.push({
                   id: String(cShop.id),
                   shop: cShop,
@@ -151,7 +131,7 @@ const ConnectionsPanel = ({
             }
           } else {
             // Unlinked / orphan connection
-            const isCustom = conn.app_type === 'custom';
+            const isCustom = connectionAppType(conn) === 'custom';
             list.push({
               id: `orphan-${conn.id}`,
               shop: null,
@@ -341,7 +321,7 @@ const ConnectionsPanel = ({
                             ) : (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
                                 <span className="chip chip--amber" title={missingScopes.map((m) => `${m.scope}: ${m.name}`).join('\n')}>
-                                  ⚠️ {t('shopAnalytics.missingScopesCount', `Thiếu ${missingScopes.length} scopes`)}
+                                  {t('shopAnalytics.missingScopesCount', `Thiếu ${missingScopes.length} scopes`)}
                                 </span>
                                 <div style={{ fontSize: '11px', color: '#b45309', maxWidth: '170px', lineHeight: 1.25 }}>
                                   {missingScopes.slice(0, 2).map((m) => m.name || m.scope).join(', ')}

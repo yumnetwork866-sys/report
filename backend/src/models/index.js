@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const sequelize = require('../db/config');
 
 const User = sequelize.define('User', {
@@ -401,7 +401,10 @@ const TikTokShopAuthorization = sequelize.define('TikTokShopAuthorization', {
 }, {
   tableName: 'tiktok_shop_authorizations',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['open_id', 'app_type'] }],
+  indexes: [
+    { name: 'tiktok_shop_authorizations_app_open_id_uidx', unique: true, fields: ['app_id', 'open_id'], where: { app_id: { [Op.ne]: null }, open_id: { [Op.ne]: null } } },
+    { name: 'tiktok_shop_authorizations_legacy_open_id_uidx', unique: true, fields: ['open_id', 'app_type'], where: { app_id: null, open_id: { [Op.ne]: null } } },
+  ],
 });
 
 const TikTokApp = sequelize.define('TikTokApp', {

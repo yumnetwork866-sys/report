@@ -120,6 +120,7 @@ const defaultMigrationNames = [
   '111_allow_multiple_apps_and_add_capabilities',
   '112_add_tiktok_auth_scheduled_job',
   '113_remove_target_collaboration_permission',
+  '114_scope_shop_authorizations_to_app',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

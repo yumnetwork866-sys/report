@@ -542,7 +542,10 @@ const handleShopOauthCallback = async (req, res) => {
     const normalizedScopes = Array.isArray(scopes) ? scopes : String(scopes).split(',').map((item) => item.trim()).filter(Boolean);
     currentGrantedScopes = normalizedScopes;
     const existing = tokenData.open_id
-      ? await tiktokShopRepository.findShopAuthorization({ where: { open_id: tokenData.open_id, app_type: appType } })
+      ? await tiktokShopRepository.findShopAuthorization({ where: {
+        open_id: tokenData.open_id,
+        ...(oauthState.appId ? { app_id: oauthState.appId } : { app_id: null, app_type: appType }),
+      } })
       : null;
     const values = {
       ...shopTokenFields({ ...tokenData, granted_scopes: normalizedScopes }, existing || {}),
@@ -559,6 +562,9 @@ const handleShopOauthCallback = async (req, res) => {
       appKey: oauthState.appKey,
     });
     const validShops = shops.filter((item) => item?.id && item?.cipher);
+    if (!validShops.length) {
+      throw new Error('TikTok returned no authorized Shops. Existing connections were kept; authorize the Shop again.');
+    }
     try {
       const { autoSyncAppFromConnection } = require('../tiktokAppService');
       await autoSyncAppFromConnection({
@@ -657,7 +663,10 @@ const handleShopOauthCallback = async (req, res) => {
             }, { transaction });
           }
         }
-        await tiktokShopRepository.destroyShops({
+        await tiktokShopRepository.updateShops({
+          last_sync_status: 'failed',
+          last_sync_error: 'Shop was not returned during Seller reauthorization. Existing data was kept; reconnect the Seller app.',
+        }, {
           where: {
             authorization_id: authorization.id,
             ...(validShops.length ? { platform_shop_id: { [Op.notIn]: validShops.map((shop) => String(shop.id)) } } : {}),
