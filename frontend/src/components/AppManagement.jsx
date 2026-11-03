@@ -399,7 +399,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                     <th>{t('appsManagement.appName') || 'Tên App'}</th>
                     <th>{t('appsManagement.appType') || 'Loại App'}</th>
                     <th>{t('appsManagement.region') || 'Vùng'}</th>
-                    <th>{t('appsManagement.declaredScopes') || 'Danh sách Scopes'}</th>
                     <th>{t('appsManagement.appKey') || 'App Key'}</th>
                     <th>{t('appsManagement.serviceId') || 'Service ID'}</th>
                     <th>{t('appsManagement.linkedAccounts') || 'Đang liên kết'}</th>
@@ -424,32 +423,6 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                           <div className="app-management__region-cell" title={regionFull.name}>
                             <span className="app-management__region-flag" aria-hidden="true">{regionDisplay.flag}</span>
                             <span>{regionDisplay.label}</span>
-                          </div>
-                        </td>
-                        <td>
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '280px' }}>
-                            {app.app_type === 'channel' ? (
-                              <span className="chip chip--blue" style={{ fontSize: '11px' }}>📺 Channel API</span>
-                            ) : Array.isArray(app.declared_scopes) && app.declared_scopes.length ? (
-                              <>
-                                {app.declared_scopes.slice(0, 3).map((scope) => (
-                                  <code key={scope} className="chip chip--subtle" style={{ fontSize: '11px', padding: '2px 6px', fontFamily: 'monospace' }} title={scope}>
-                                    {scope}
-                                  </code>
-                                ))}
-                                {app.declared_scopes.length > 3 ? (
-                                  <span
-                                    className="chip chip--subtle"
-                                    style={{ fontSize: '11px', padding: '2px 6px', color: 'var(--color-muted)', cursor: 'default' }}
-                                    title={app.declared_scopes.slice(3).join(', ')}
-                                  >
-                                    +{app.declared_scopes.length - 3} scopes
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : (
-                              <span style={{ color: 'var(--color-muted)', fontSize: '11px' }}>Tất cả quyền mặc định</span>
-                            )}
                           </div>
                         </td>
                         <td>

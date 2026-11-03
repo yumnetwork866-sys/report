@@ -73,6 +73,7 @@ const ConnectionManagement = () => {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       next.set('tab', nextTab);
+      next.delete('app_id');
       return next;
     }, { replace: true });
   };
