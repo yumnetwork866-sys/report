@@ -414,13 +414,18 @@ const TikTokApp = sequelize.define('TikTokApp', {
   service_id: { type: DataTypes.STRING(128), allowNull: true },
   authorize_url: { type: DataTypes.STRING(255), allowNull: true, defaultValue: 'https://services.tiktokshop.com/open/authorize' },
   redirect_uri: { type: DataTypes.STRING(255), allowNull: true },
+  capabilities: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
+  declared_scopes: { type: DataTypes.JSONB, allowNull: false, defaultValue: [] },
   is_active: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
   created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
   updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
 }, {
   tableName: 'tiktok_apps',
   timestamps: false,
-  indexes: [{ unique: true, fields: ['app_type', 'region'] }],
+  indexes: [
+    { unique: true, fields: ['app_key'] },
+    { fields: ['app_type', 'region'] },
+  ],
 });
 
 const TikTokShop = sequelize.define('TikTokShop', {

@@ -2273,7 +2273,12 @@
 }
 
 .shop-management__row {
+  cursor: pointer;
   transition: background-color 150ms ease;
+}
+
+.shop-management__row:hover > td {
+  background: var(--color-surface-subtle, #f8faff);
 }
 
 .shop-management__row--expanded > td {

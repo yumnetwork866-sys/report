@@ -176,22 +176,28 @@ export function startTikTokPartnerOauth(returnPath = '/shop/bookings', { creator
   return apiRequest(`/bookings/tiktok-partner/oauth/start?${params.toString()}`);
 }
 
-export function startTikTokShopOauth(returnPath, appType = 'partner', region) {
+export function startTikTokShopOauth(returnPath, appType = 'partner', region, extraOptions = {}) {
+  const options = (typeof appType === 'object' && appType !== null)
+    ? appType
+    : { appType, region, ...extraOptions };
   const params = new URLSearchParams();
   if (returnPath) params.set('return_path', returnPath);
-  const normalizedRegion = String(region || '').toUpperCase();
-  let resolvedAppType = appType;
-  if (appType !== 'custom') {
-    if (normalizedRegion === 'VN' || appType === 'partner_vn') {
+  const targetAppType = options.appType || 'partner';
+  const targetRegion = String(options.region || '').toUpperCase();
+  let resolvedAppType = targetAppType;
+  if (targetAppType !== 'custom') {
+    if (targetRegion === 'VN' || targetAppType === 'partner_vn') {
       resolvedAppType = 'partner_vn';
-    } else if (normalizedRegion === 'US' || appType === 'partner_us') {
+    } else if (targetRegion === 'US' || targetAppType === 'partner_us') {
       resolvedAppType = 'partner_us';
-    } else if (normalizedRegion === 'MY' || appType === 'partner') {
+    } else if (targetRegion === 'MY' || targetAppType === 'partner') {
       resolvedAppType = 'partner';
     }
   }
   if (resolvedAppType && resolvedAppType !== 'partner') params.set('app_type', resolvedAppType);
-  if (region) params.set('region', region);
+  if (targetRegion) params.set('region', targetRegion);
+  if (options.appId) params.set('app_id', options.appId);
+  if (options.serviceType) params.set('service_type', options.serviceType);
   const query = params.toString();
   return apiRequest(`/tiktok-shop/oauth/start${query ? `?${query}` : ''}`);
 }

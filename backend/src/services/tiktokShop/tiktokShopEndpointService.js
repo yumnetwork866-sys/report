@@ -46,6 +46,7 @@ const {
   importVideoPerformanceWorkbook,
   startVideoPerformanceApiSync,
 } = require('../tiktokVideoPerformanceService');
+const { getShopCapabilitiesStatus, getShopScopeAudit } = require('../tiktokShopAuthResolver');
 const { createTtlPromiseCache } = require('../../lib/ttlPromiseCache');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../../lib/tiktokDemoFixtures');
 const {
@@ -505,6 +506,8 @@ const startShopOauth = async (req, res) => {
   try {
     let appType = req.query.app_type;
     const region = String(req.query.region || '').toUpperCase();
+    const appId = req.query.app_id ? Number(req.query.app_id) : undefined;
+    const serviceType = req.query.service_type || req.query.capability;
     if (region === 'VN' || appType === 'partner_vn') {
       appType = 'partner_vn';
     } else if (region === 'US' || appType === 'partner_us') {
@@ -514,7 +517,7 @@ const startShopOauth = async (req, res) => {
     } else {
       appType = 'partner';
     }
-    res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType, region }) });
+    res.json({ authorizeUrl: buildShopAuthorizationUrl(req.query.return_path, { appType, region, appId, serviceType }) });
   }
   catch (error) { res.status(error.message.includes('not configured') ? 503 : 500).json({ message: error.message }); }
 };
@@ -524,7 +527,7 @@ const handleShopOauthCallback = async (req, res) => {
   try {
     const oauthState = parseShopAuthorizationState(req.query.state);
     returnPath = oauthState.returnPath;
-    const isCustom = oauthState.oauthType === 'shop_custom' || oauthState.appType === 'custom';
+    const isCustom = oauthState.oauthType === 'shop_custom' || oauthState.appType === 'custom' || oauthState.serviceType === 'orders';
     const appType = oauthState.appType || (isCustom ? 'custom' : 'partner');
     const code = req.query.code || req.query.auth_code;
     if (!code) throw new Error(req.query.error || 'TikTok Shop authorization was denied.');
@@ -560,7 +563,12 @@ const handleShopOauthCallback = async (req, res) => {
       const authorization = existing
         ? await existing.update(values, { transaction })
         : await tiktokShopRepository.createShopAuthorization(values, { transaction });
-      if (isCustom) {
+
+      const hasOrderScope = normalizedScopes.includes('seller.order.info') || normalizedScopes.some((s) => s.includes('order'));
+      const hasAnalyticsScope = normalizedScopes.includes('data.shop_analytics.public.read') || normalizedScopes.includes('seller.compass.read') || normalizedScopes.some((s) => s.includes('analytics') || s.includes('compass') || s.includes('affiliate'));
+      const isOrderRole = isCustom || oauthState.serviceType === 'orders' || (hasOrderScope && !hasAnalyticsScope);
+
+      if (isOrderRole) {
         for (const shop of validShops) {
           const existingShop = await tiktokShopRepository.findShop({
             where: { platform_shop_id: String(shop.id) },
@@ -609,7 +617,7 @@ const handleShopOauthCallback = async (req, res) => {
             transaction,
           });
           if (existingShop) {
-            await existingShop.update({
+            const updates = {
               authorization_id: authorization.id,
               name: shop.name || shop.code || existingShop.name,
               region: shop.region || existingShop.region,
@@ -618,10 +626,15 @@ const handleShopOauthCallback = async (req, res) => {
               code: shop.code || existingShop.code,
               last_sync_status: 'success',
               last_sync_error: null,
-            }, { transaction });
+            };
+            if (hasOrderScope && !existingShop.order_authorization_id) {
+              updates.order_authorization_id = authorization.id;
+            }
+            await existingShop.update(updates, { transaction });
           } else {
             await tiktokShopRepository.upsertShop({
               authorization_id: authorization.id,
+              order_authorization_id: hasOrderScope ? authorization.id : null,
               platform_shop_id: String(shop.id),
               name: shop.name || shop.code || String(shop.id),
               region: shop.region || null,
@@ -668,21 +681,41 @@ const handleShopOauthCallback = async (req, res) => {
 
 const listShopConnections = async (_req, res) => {
   try {
-    const [authorizations, avatarIndex] = await Promise.all([
+    const { TikTokApp } = require('../../models');
+    const [authorizations, avatarIndex, activeApps, shopsWithAuth] = await Promise.all([
       tiktokShopRepository.findShopAuthorizationsWithShops({
         attributes: { exclude: ['access_token_encrypted', 'refresh_token_encrypted'] },
         order: [['connected_at', 'DESC']],
       }),
       getChannelAvatarIndex(),
+      TikTokApp ? TikTokApp.findAll({ where: { is_active: true } }).catch(() => []) : [],
+      tiktokShopRepository.findShopsWithAuthorization({
+        attributes: { exclude: ['cipher'] },
+      }).catch(() => []),
     ]);
+
+    const shopAuditMap = new Map();
+    if (Array.isArray(shopsWithAuth)) {
+      for (const shop of shopsWithAuth) {
+        if (shop?.id) {
+          shopAuditMap.set(String(shop.id), getShopScopeAudit(shop, activeApps));
+        }
+      }
+    }
+
     res.json(authorizations.map((authorization) => {
       const value = authorization.toJSON();
       const rawShops = (value.app_type === 'custom' && (!value.shops || !value.shops.length))
         ? (value.order_shops || [])
         : (value.shops && value.shops.length ? value.shops : (value.order_shops || []));
+      const enrichedShops = rawShops.map((shop) => ({
+        ...addMatchingChannelAvatar(shop, avatarIndex),
+        scope_audit: shopAuditMap.get(String(shop.id)) || null,
+      }));
       return {
         ...value,
-        shops: rawShops.map((shop) => addMatchingChannelAvatar(shop, avatarIndex)),
+        shops: enrichedShops,
+        scope_audit: enrichedShops[0]?.scope_audit || null,
       };
     }));
   } catch (error) { res.status(500).json({ message: error.message }); }
@@ -690,14 +723,23 @@ const listShopConnections = async (_req, res) => {
 
 const listShops = async (_req, res) => {
   try {
-    const [shops, avatarIndex] = await Promise.all([
+    const { TikTokApp } = require('../../models');
+    const [shops, avatarIndex, activeApps] = await Promise.all([
       tiktokShopRepository.findShopsWithAuthorization({
         attributes: { exclude: ['cipher'] },
         order: [['name', 'ASC']],
       }),
       getChannelAvatarIndex(),
+      TikTokApp ? TikTokApp.findAll({ where: { is_active: true } }).catch(() => []) : [],
     ]);
-    res.json(shops.map((shop) => addMatchingChannelAvatar(shop, avatarIndex)));
+    res.json(shops.map((shop) => {
+      const value = addMatchingChannelAvatar(shop, avatarIndex);
+      return {
+        ...value,
+        capabilities_status: getShopCapabilitiesStatus(shop),
+        scope_audit: getShopScopeAudit(shop, activeApps),
+      };
+    }));
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 

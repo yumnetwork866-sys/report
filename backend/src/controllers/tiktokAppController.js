@@ -21,6 +21,8 @@ const serializeApp = (app, linkedCount = 0) => {
     service_id: data.service_id || null,
     authorize_url: data.authorize_url || 'https://services.tiktokshop.com/open/authorize',
     redirect_uri: data.redirect_uri || null,
+    capabilities: Array.isArray(data.capabilities) ? data.capabilities : [],
+    declared_scopes: Array.isArray(data.declared_scopes) ? data.declared_scopes : [],
     is_active: Boolean(data.is_active),
     linked_count: Number(linkedCount) || 0,
     created_at: data.created_at,
@@ -117,12 +119,17 @@ const createApp = async (req, res) => {
     if (!appKey) return res.status(400).json({ message: 'App Key là bắt buộc' });
     if (!appSecret) return res.status(400).json({ message: 'App Secret là bắt buộc' });
 
-    const existing = await TikTokApp.findOne({
-      where: { app_type: appType, region },
+    const existingKey = await TikTokApp.findOne({
+      where: { app_key: appKey },
     });
-    if (existing) {
-      return res.status(409).json({ message: `Đã tồn tại App cho loại "${appType}" tại vùng "${region}"` });
+    if (existingKey) {
+      return res.status(409).json({ message: `App Key "${appKey}" đã tồn tại trong hệ thống` });
     }
+
+    const capabilities = Array.isArray(req.body.capabilities)
+      ? req.body.capabilities
+      : (req.body.capabilities ? [req.body.capabilities] : (appType === 'channel' ? ['channel'] : ['orders', 'compass', 'affiliate', 'analytics']));
+    const declaredScopes = Array.isArray(req.body.declared_scopes) ? req.body.declared_scopes : [];
 
     const appSecretEncrypted = encryptPartnerToken(appSecret);
 
@@ -135,6 +142,8 @@ const createApp = async (req, res) => {
       service_id: serviceId,
       authorize_url: authorizeUrl,
       redirect_uri: redirectUri,
+      capabilities,
+      declared_scopes: declaredScopes,
       is_active: isActive,
       created_at: new Date(),
       updated_at: new Date(),
@@ -172,12 +181,12 @@ const updateApp = async (req, res) => {
     if (!name) return res.status(400).json({ message: 'Tên App là bắt buộc' });
     if (!appKey) return res.status(400).json({ message: 'App Key là bắt buộc' });
 
-    if (appType !== app.app_type || region !== app.region) {
+    if (appKey !== app.app_key) {
       const conflict = await TikTokApp.findOne({
-        where: { app_type: appType, region },
+        where: { app_key: appKey },
       });
       if (conflict && conflict.id !== id) {
-        return res.status(409).json({ message: `Đã tồn tại App cho loại "${appType}" tại vùng "${region}"` });
+        return res.status(409).json({ message: `App Key "${appKey}" đã được sử dụng bởi App khác` });
       }
     }
 
@@ -192,6 +201,18 @@ const updateApp = async (req, res) => {
       is_active: isActive,
       updated_at: new Date(),
     };
+
+    if (req.body.capabilities !== undefined) {
+      updates.capabilities = Array.isArray(req.body.capabilities)
+        ? req.body.capabilities
+        : (req.body.capabilities ? [req.body.capabilities] : []);
+    }
+
+    if (req.body.declared_scopes !== undefined) {
+      updates.declared_scopes = Array.isArray(req.body.declared_scopes)
+        ? req.body.declared_scopes
+        : [];
+    }
 
     const isMaskedSecret = appSecret === '••••••••' || /^[*•]{3,}$/.test(appSecret);
     if (appSecret && !isMaskedSecret) {

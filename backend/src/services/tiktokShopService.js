@@ -175,16 +175,20 @@ const signState = (payload, secret) => crypto.createHmac('sha256', secret).updat
 const buildShopAuthorizationUrl = (returnPath = '/shop/analytics', options = {}) => {
   const appType = typeof options === 'string' ? options : (options?.appType || 'partner');
   const region = typeof options === 'object' ? options?.region : undefined;
-  const isCustom = appType === 'custom';
+  const appId = typeof options === 'object' ? options?.appId : undefined;
+  const capability = typeof options === 'object' ? (options?.capability || options?.serviceType) : undefined;
+  const serviceType = typeof options === 'object' ? options?.serviceType : undefined;
+  const isCustom = appType === 'custom' || serviceType === 'orders';
   const config = getConfig();
-  assertConfigured(config, { oauth: true, appType, region });
-  const credentials = resolveAppCredentials(appType, config, { region });
+  assertConfigured(config, { oauth: true, appType, region, appId });
+  const credentials = resolveAppCredentials(appType, config, { region, appId, capability });
   const secret = credentials.appSecret;
   const payload = Buffer.from(JSON.stringify({
     oauthType: isCustom ? 'shop_custom' : 'shop',
     appType,
     appId: credentials.id || null,
     appKey: credentials.appKey || null,
+    ...(serviceType ? { serviceType } : {}),
     ...(region ? { region } : {}),
     returnPath: [
       '/manage/connections', '/manage/shops', '/shop/analytics', '/shop/videos', '/shop/affiliate',

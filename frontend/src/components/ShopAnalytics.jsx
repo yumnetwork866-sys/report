@@ -473,6 +473,7 @@ const ShopAnalytics = ({
           appIdFilter={appIdFilter}
           connecting={connecting}
           connections={connections}
+          shops={inventory.shops}
           disconnectingId={disconnectingId}
           formatDateTime={formatDateTime}
           loading={loading}

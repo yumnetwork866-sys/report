@@ -95,10 +95,13 @@ export function useLanguage() {
 export function useI18n() {
   const language = useLanguage();
   const t = useMemo(() => (path, values) => {
-    const defaultValue = (values && typeof values === 'object' && 'defaultValue' in values)
-      ? values.defaultValue
-      : undefined;
-    return formatMessage(getTranslation(path, language, defaultValue), values);
+    const defaultValue = typeof values === 'string'
+      ? values
+      : (values && typeof values === 'object' && 'defaultValue' in values
+          ? values.defaultValue
+          : undefined);
+    const params = typeof values === 'object' && values !== null ? values : {};
+    return formatMessage(getTranslation(path, language, defaultValue), params);
   }, [language]);
 
   return {

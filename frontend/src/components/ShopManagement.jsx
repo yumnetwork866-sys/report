@@ -17,7 +17,7 @@ const ShopManagement = ({ appIdFilter: propAppIdFilter = null, onCountChange }) 
     t,
   });
   const {
-    connections, loadInventory, loading, selectedShop,
+    connections, loadInventory, loading, selectedShop, shops,
   } = inventory;
 
   const {
@@ -34,10 +34,10 @@ const ShopManagement = ({ appIdFilter: propAppIdFilter = null, onCountChange }) 
   });
 
   useEffect(() => {
-    if (onCountChange && Array.isArray(connections)) {
-      onCountChange(connections.length);
+    if (onCountChange && Array.isArray(shops)) {
+      onCountChange(shops.length);
     }
-  }, [connections, onCountChange]);
+  }, [shops, onCountChange]);
 
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
   const formatDateTime = (value) => {
@@ -61,6 +61,7 @@ const ShopManagement = ({ appIdFilter: propAppIdFilter = null, onCountChange }) 
         appIdFilter={appIdFilter}
         connecting={connecting}
         connections={connections}
+        shops={shops}
         disconnectingId={disconnectingId}
         formatDateTime={formatDateTime}
         loading={loading}

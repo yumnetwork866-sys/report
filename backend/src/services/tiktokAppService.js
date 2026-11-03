@@ -3,6 +3,7 @@ const { decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 
 let appCache = null;
 let candidateSecretsCache = [];
+let allActiveAppsList = [];
 
 const normalizeAppKey = (appType = 'partner', region = 'MY') => {
   const normType = String(appType || 'partner').trim().toLowerCase();
@@ -34,6 +35,7 @@ const refreshAppCache = async () => {
     const apps = await TikTokApp.findAll({ where: { is_active: true } });
     const newCache = new Map();
     const secrets = [];
+    const activeList = [];
 
     for (const app of apps) {
       const data = app.get ? app.get({ plain: true }) : app;
@@ -41,7 +43,6 @@ const refreshAppCache = async () => {
       try {
         decryptedSecret = decryptPartnerToken(data.app_secret_encrypted);
       } catch (err) {
-        // Log decryption failure but do not crash
         console.error(`[TikTokApp] Failed to decrypt secret for app ${data.id} (${data.name}):`, err.message);
       }
 
@@ -59,16 +60,24 @@ const refreshAppCache = async () => {
         serviceId: data.service_id || data.app_key,
         authorizeUrl: data.authorize_url || 'https://services.tiktokshop.com/open/authorize',
         redirectUri: data.redirect_uri || '',
+        capabilities: Array.isArray(data.capabilities) ? data.capabilities : [],
+        declaredScopes: Array.isArray(data.declared_scopes) ? data.declared_scopes : [],
         isActive: data.is_active,
       };
 
       const key = normalizeAppKey(data.app_type, data.region);
-      newCache.set(key, entry);
+      // If no default exists yet, or if this one is richer/newer, set as default for key
+      if (!newCache.has(key)) {
+        newCache.set(key, entry);
+      }
       newCache.set(`id:${data.id}`, entry);
+      newCache.set(`key:${data.app_key}`, entry);
+      activeList.push(entry);
     }
 
     appCache = newCache;
     candidateSecretsCache = secrets;
+    allActiveAppsList = activeList;
     return newCache;
   } catch (error) {
     console.error('[TikTokApp] Failed to load TikTok apps from DB:', error.message);
@@ -79,7 +88,6 @@ const refreshAppCache = async () => {
 
 const getAppCredentials = (rawType = 'partner', rawRegion = '', options = {}) => {
   if (!appCache) {
-    // If cache not yet loaded, return null to fall back to .env
     return null;
   }
   const explicitAppId = (typeof rawType === 'object' && rawType !== null ? rawType.appId : null)
@@ -89,7 +97,43 @@ const getAppCredentials = (rawType = 'partner', rawRegion = '', options = {}) =>
     if (byId) return byId;
   }
 
+  const explicitAppKey = (typeof rawType === 'object' && rawType !== null ? rawType.appKey : null)
+    || options?.appKey;
+  if (explicitAppKey) {
+    const byKey = appCache.get(`key:${explicitAppKey}`);
+    if (byKey) return byKey;
+  }
+
   const { appType, region } = mapLegacyAppType(rawType, rawRegion);
+  const capability = options?.capability || (typeof rawType === 'object' ? rawType.capability : null);
+  const requiredScope = options?.requiredScope || (typeof rawType === 'object' ? rawType.requiredScope : null);
+
+  // If capability or requiredScope is specified, search active apps list for best match
+  if (capability || requiredScope) {
+    const candidates = allActiveAppsList.filter((app) => {
+      const typeMatches = app.appType === appType || (appType === 'custom' && app.appType === 'partner');
+      if (!typeMatches) return false;
+      const regionMatches = app.region === region || app.region === 'AUTO' || app.region === 'ALL';
+      return regionMatches;
+    });
+
+    if (candidates.length) {
+      // Prioritize exact region + scope/capability match
+      const scored = candidates.map((app) => {
+        let score = 0;
+        if (app.region === region) score += 10;
+        else if (app.region === 'AUTO') score += 5;
+        else if (app.region === 'ALL') score += 3;
+
+        if (requiredScope && app.declaredScopes?.includes(requiredScope)) score += 20;
+        if (capability && app.capabilities?.includes(capability)) score += 15;
+        return { app, score };
+      }).sort((a, b) => b.score - a.score);
+
+      if (scored[0]?.app) return scored[0].app;
+    }
+  }
+
   const appTypes = appType === 'custom' ? ['custom', 'partner'] : [appType];
 
   for (const candidateType of appTypes) {
@@ -106,7 +150,7 @@ const getAppCredentials = (rawType = 'partner', rawRegion = '', options = {}) =>
   return null;
 };
 
-const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion }) => {
+const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion, detectedScopes }) => {
   try {
     const { TikTokApp } = require('../models');
     let app = null;
@@ -121,13 +165,35 @@ const autoSyncAppFromConnection = async ({ appId, appKey, detectedRegion }) => {
     const updates = {};
     const normDetectedRegion = String(detectedRegion || '').trim().toUpperCase();
 
-    // 1. Auto-update region if app is AUTO or differs and no conflict exists
+    // 1. Auto-update region if app is AUTO or differs
     if (normDetectedRegion && normDetectedRegion !== app.region && app.region !== 'ALL') {
-      const conflict = await TikTokApp.findOne({
-        where: { app_type: app.app_type, region: normDetectedRegion },
-      });
-      if (!conflict || conflict.id === app.id) {
-        updates.region = normDetectedRegion;
+      updates.region = normDetectedRegion;
+    }
+
+    // 2. Auto-record detected scopes and infer capabilities if present
+    if (Array.isArray(detectedScopes) && detectedScopes.length > 0) {
+      const currentScopes = Array.isArray(app.declared_scopes) ? app.declared_scopes : [];
+      const mergedScopes = [...new Set([...currentScopes, ...detectedScopes])];
+      if (mergedScopes.length !== currentScopes.length) {
+        updates.declared_scopes = mergedScopes;
+      }
+
+      const currentCaps = Array.isArray(app.capabilities) ? app.capabilities : [];
+      const nextCaps = [...currentCaps];
+      if (detectedScopes.some((s) => s.includes('order')) && !nextCaps.includes('orders')) {
+        nextCaps.push('orders');
+      }
+      if (detectedScopes.some((s) => s.includes('compass')) && !nextCaps.includes('compass')) {
+        nextCaps.push('compass');
+      }
+      if (detectedScopes.some((s) => s.includes('affiliate')) && !nextCaps.includes('affiliate')) {
+        nextCaps.push('affiliate');
+      }
+      if (detectedScopes.some((s) => s.includes('analytics')) && !nextCaps.includes('analytics')) {
+        nextCaps.push('analytics');
+      }
+      if (nextCaps.length !== currentCaps.length) {
+        updates.capabilities = nextCaps;
       }
     }
 

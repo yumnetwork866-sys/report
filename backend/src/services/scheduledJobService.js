@@ -8,9 +8,11 @@ const {
   ScheduledJobRun,
   TikTokShop,
   TikTokShopAuthorization,
+  TikTokApp,
   TikTokCreatorPerformanceSnapshot,
   sequelize,
 } = require('../models');
+const { resolveShopAuthorization, JOB_SCOPE_MAPPINGS } = require('./tiktokShopAuthResolver');
 const {
   createCreatorPerformanceExportWithFallback,
   createBasePerformanceExportWithFallback,
@@ -184,8 +186,16 @@ const resolveCreatorPerformanceEndDayOffset = ({
 const connectedShops = (targetShopId = null) => TikTokShop.findAll({
   where: targetShopId ? { id: Number(targetShopId) } : undefined,
   include: [
-    { model: TikTokShopAuthorization, as: 'authorization' },
-    { model: TikTokShopAuthorization, as: 'orderAuthorization' },
+    {
+      model: TikTokShopAuthorization,
+      as: 'authorization',
+      include: [{ model: TikTokApp, as: 'app', required: false }],
+    },
+    {
+      model: TikTokShopAuthorization,
+      as: 'orderAuthorization',
+      include: [{ model: TikTokApp, as: 'app', required: false }],
+    },
   ],
   order: [['id', 'ASC']],
 });
@@ -198,7 +208,7 @@ const configuredAffiliateVideoShopDelayMs = () => {
     : DEFAULT_AFFILIATE_VIDEO_SHOP_DELAY_MS;
 };
 
-const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs = 0 } = {}) => {
+const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs = 0, jobKey = null } = {}) => {
   const shops = await connectedShops(targetShopId);
   if (!shops.length && targetShopId) {
     throw new Error(`Shop #${targetShopId} not found or not connected.`);
@@ -212,6 +222,16 @@ const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs
       throwIfAborted(signal);
     }
     try {
+      if (jobKey) {
+        const matchingAuth = resolveShopAuthorization(shop, { jobKey });
+        if (matchingAuth) {
+          if (JOB_SCOPE_MAPPINGS[jobKey]?.capability === 'orders') {
+            shop.orderAuthorization = matchingAuth;
+          } else {
+            shop.authorization = matchingAuth;
+          }
+        }
+      }
       results.push({
         shop_id: shop.id,
         shop_name: shop.name,
@@ -643,6 +663,11 @@ const jobHandlers = {
       offset,
     ));
 
+    shops.forEach((shop) => {
+      const auth = resolveShopAuthorization(shop, { jobKey: 'tiktok_creator_performance' });
+      if (auth) shop.authorization = auth;
+    });
+
     return (dependencies.runCompassSync || runResumableCompassSync)({
       shops, signal, resumeState, checkpoint,
     }, { endDayForShop });
@@ -653,7 +678,7 @@ const jobHandlers = {
     throwIfAborted(signal);
     const target_collaborations = await targetCollaborationSyncService.syncShop(shop, { signal });
     return { ...analytics, target_collaborations };
-  }, signal, shopId),
+  }, signal, shopId, { jobKey: 'tiktok_shop_analytics' }),
   tiktok_channel_metrics: async ({ signal } = {}) => {
     throwIfAborted(signal);
     const summary = await syncTikTokChannels({ closeConnection: false });
@@ -670,16 +695,19 @@ const jobHandlers = {
     (shop) => syncShopVideoCatalog(shop, { signal }),
     signal,
     shopId,
+    { jobKey: 'tiktok_shop_video_catalog' },
   ),
   tiktok_channel_report_revenue: ({ signal, shopId } = {}) => runForShops(
     (shop) => syncChannelReportRevenue(shop, { signal }),
     signal,
     shopId,
+    { jobKey: 'tiktok_channel_report_revenue' },
   ),
   tiktok_affiliate_orders: ({ signal, shopId } = {}) => runForShops(
     (shop) => syncAffiliateOrders(shop, { signal }),
     signal,
     shopId,
+    { jobKey: 'tiktok_affiliate_orders' },
   ),
   tiktok_affiliate_video_performance: ({ signal, shopId } = {}) => runForShops(async (shop) => {
     const { endDate } = scheduledAnalyticsRange(shop);
@@ -701,7 +729,7 @@ const jobHandlers = {
       });
     }
     return { windows };
-  }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
+  }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_affiliate_video_performance' }),
   tiktok_booking_video_detail: ({ signal, shopId } = {}) => runForShops(async (shop) => (
     withMonitorContext({ module_type: 'VIDEO_DETAIL', window_type: 'PAST_30_DAYS' }, async () => {
       const { endDate } = scheduledAnalyticsRange(shop);
@@ -733,7 +761,7 @@ const jobHandlers = {
         }],
       };
     })
-  ), signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs() }),
+  ), signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_booking_video_detail' }),
 };
 
 const processScheduledJobRun = async (job, run, { shopId = null } = {}, {

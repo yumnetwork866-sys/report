@@ -10,6 +10,12 @@ module.exports = {
     ...options,
     include: [
       {
+        model: models().TikTokApp,
+        as: 'app',
+        attributes: ['id', 'name', 'app_type', 'region', 'app_key', 'capabilities', 'declared_scopes'],
+        required: false,
+      },
+      {
         model: models().TikTokShop,
         as: 'shops',
         attributes: { exclude: ['cipher'] },
@@ -42,7 +48,13 @@ module.exports = {
       {
         model: models().TikTokShopAuthorization,
         as: 'authorization',
-        attributes: ['id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at'],
+        attributes: ['id', 'app_id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at', 'last_sync_error'],
+        include: [{
+          model: models().TikTokApp,
+          as: 'app',
+          attributes: ['id', 'name', 'app_type', 'region', 'app_key', 'capabilities', 'declared_scopes'],
+          required: false,
+        }],
       },
       {
         model: models().TikTokChannel,
@@ -52,15 +64,39 @@ module.exports = {
       {
         model: models().TikTokShopAuthorization,
         as: 'orderAuthorization',
-        attributes: ['id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at'],
+        attributes: ['id', 'app_id', 'granted_scopes', 'refresh_token_expires_at', 'app_type', 'connected_at', 'last_sync_error'],
+        include: [{
+          model: models().TikTokApp,
+          as: 'app',
+          attributes: ['id', 'name', 'app_type', 'region', 'app_key', 'capabilities', 'declared_scopes'],
+          required: false,
+        }],
       },
     ],
   }),
   findShopWithAuthorization: (id, options = {}) => models().TikTokShop.findByPk(id, {
     ...options,
     include: [
-      { model: models().TikTokShopAuthorization, as: 'authorization' },
-      { model: models().TikTokShopAuthorization, as: 'orderAuthorization' },
+      {
+        model: models().TikTokShopAuthorization,
+        as: 'authorization',
+        include: [{
+          model: models().TikTokApp,
+          as: 'app',
+          attributes: ['id', 'name', 'app_type', 'region', 'app_key', 'capabilities', 'declared_scopes'],
+          required: false,
+        }],
+      },
+      {
+        model: models().TikTokShopAuthorization,
+        as: 'orderAuthorization',
+        include: [{
+          model: models().TikTokApp,
+          as: 'app',
+          attributes: ['id', 'name', 'app_type', 'region', 'app_key', 'capabilities', 'declared_scopes'],
+          required: false,
+        }],
+      },
     ],
   }),
   findShopById: (id, options) => models().TikTokShop.findByPk(id, options),

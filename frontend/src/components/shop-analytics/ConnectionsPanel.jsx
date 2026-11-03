@@ -1,29 +1,202 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import AnalyticsIcon from './AnalyticsIcon';
 import { REQUIRED_SCOPE, scopesOf } from './shopAnalyticsUtils';
 
 const ConnectionsPanel = ({
   appIdFilter = null,
   connecting,
-  connections,
+  connections = [],
+  shops = [],
   disconnectingId,
   formatDateTime,
   loading,
   onConnect,
-  onConnectCustom,
+  onConnectCustom: _onConnectCustom,
   t,
   onDisconnect,
   hideTitle = true,
 }) => {
-  const [expandedAuthIds, setExpandedAuthIds] = useState(() => new Set());
-  const visibleConnections = appIdFilter
-    ? connections.filter((authorization) => String(authorization.app_id || '') === String(appIdFilter))
-    : connections;
+  const [expandedShopIds, setExpandedShopIds] = useState(() => new Set());
 
-  const toggleExpand = (authId) => {
-    setExpandedAuthIds((prev) => {
+  // Group by Shop (1 Shop = 1 Row)
+  const shopRows = useMemo(() => {
+    const list = [];
+    const processedShopIds = new Set();
+    const linkedAuthIds = new Set();
+
+    if (Array.isArray(shops)) {
+      for (const shop of shops) {
+        if (!shop) continue;
+        processedShopIds.add(String(shop.id));
+
+        const connectedApps = [];
+        // Partner Auth
+        if (shop.authorization) {
+          linkedAuthIds.add(String(shop.authorization.id));
+          connectedApps.push({
+            auth: shop.authorization,
+            app: shop.authorization.app || null,
+            role: 'partner',
+            label: t('shopAnalytics.partnerApp', 'Partner App'),
+            appName: shop.authorization.app?.name || t('shopAnalytics.partnerApp', 'TikTok Shop Partner'),
+            appKey: shop.authorization.app?.app_key || null,
+            region: shop.authorization.app?.region || shop.region || null,
+            connectedAt: shop.authorization.connected_at,
+            expired: Boolean(
+              shop.authorization.refresh_token_expires_at
+                && new Date(shop.authorization.refresh_token_expires_at).getTime() <= Date.now(),
+            ),
+            scopes: scopesOf(shop.authorization),
+            lastSyncError: shop.authorization.last_sync_error,
+          });
+        }
+        // Order / OMS Auth
+        if (shop.orderAuthorization) {
+          linkedAuthIds.add(String(shop.orderAuthorization.id));
+          connectedApps.push({
+            auth: shop.orderAuthorization,
+            app: shop.orderAuthorization.app || null,
+            role: 'custom',
+            label: t('shopAnalytics.customOrderApp', 'Custom OMS'),
+            appName: shop.orderAuthorization.app?.name || t('shopAnalytics.customOrderApp', 'TikTok OMS App'),
+            appKey: shop.orderAuthorization.app?.app_key || null,
+            region: shop.orderAuthorization.app?.region || shop.region || null,
+            connectedAt: shop.orderAuthorization.connected_at,
+            expired: Boolean(
+              shop.orderAuthorization.refresh_token_expires_at
+                && new Date(shop.orderAuthorization.refresh_token_expires_at).getTime() <= Date.now(),
+            ),
+            scopes: scopesOf(shop.orderAuthorization),
+            lastSyncError: shop.orderAuthorization.last_sync_error,
+          });
+        }
+
+        // Check additional authorizations referencing this shop
+        if (Array.isArray(connections)) {
+          for (const conn of connections) {
+            const hasThisShop = (conn.shops || []).some((s) => String(s.id) === String(shop.id))
+              || (conn.order_shops || []).some((s) => String(s.id) === String(shop.id));
+            if (hasThisShop && !linkedAuthIds.has(String(conn.id))) {
+              linkedAuthIds.add(String(conn.id));
+              const isCustom = conn.app_type === 'custom';
+              connectedApps.push({
+                auth: conn,
+                app: conn.app || null,
+                role: isCustom ? 'custom' : 'partner',
+                label: isCustom ? t('shopAnalytics.customOrderApp', 'Custom OMS') : t('shopAnalytics.partnerApp', 'Partner App'),
+                appName: conn.app?.name || (isCustom ? 'Custom OMS' : 'TikTok Shop Partner'),
+                appKey: conn.app?.app_key || null,
+                region: conn.app?.region || shop.region || null,
+                connectedAt: conn.connected_at,
+                expired: Boolean(
+                  conn.refresh_token_expires_at
+                    && new Date(conn.refresh_token_expires_at).getTime() <= Date.now(),
+                ),
+                scopes: scopesOf(conn),
+                lastSyncError: conn.last_sync_error,
+              });
+            }
+          }
+        }
+
+        list.push({
+          id: String(shop.id),
+          shop,
+          name: shop.name || t('common.unknown', 'Không xác định'),
+          code: shop.code || '',
+          region: shop.region || '',
+          avatarUrl: shop.avatar_url || shop.avatar_large_url || shop.avatar_channel?.avatar_url || '',
+          connectedApps,
+          scopeAudit: shop.scope_audit || null,
+        });
+      }
+    }
+
+    // Include any authorizations from connections not yet linked to an existing shop
+    if (Array.isArray(connections)) {
+      for (const conn of connections) {
+        if (!linkedAuthIds.has(String(conn.id))) {
+          const connShops = [...(conn.shops || []), ...(conn.order_shops || [])];
+          if (connShops.length > 0) {
+            for (const cShop of connShops) {
+              if (!processedShopIds.has(String(cShop.id))) {
+                processedShopIds.add(String(cShop.id));
+                const isCustom = conn.app_type === 'custom';
+                list.push({
+                  id: String(cShop.id),
+                  shop: cShop,
+                  name: cShop.name || t('common.unknown', 'Không xác định'),
+                  code: cShop.code || '',
+                  region: cShop.region || '',
+                  avatarUrl: cShop.avatar_url || cShop.avatar_large_url || '',
+                  connectedApps: [{
+                    auth: conn,
+                    app: conn.app || null,
+                    role: isCustom ? 'custom' : 'partner',
+                    label: isCustom ? t('shopAnalytics.customOrderApp', 'Custom OMS') : t('shopAnalytics.partnerApp', 'Partner App'),
+                    appName: conn.app?.name || (isCustom ? 'Custom OMS' : 'TikTok Shop Partner'),
+                    appKey: conn.app?.app_key || null,
+                    region: conn.app?.region || cShop.region || null,
+                    connectedAt: conn.connected_at,
+                    expired: Boolean(
+                      conn.refresh_token_expires_at
+                        && new Date(conn.refresh_token_expires_at).getTime() <= Date.now(),
+                    ),
+                    scopes: scopesOf(conn),
+                    lastSyncError: conn.last_sync_error,
+                  }],
+                  scopeAudit: cShop.scope_audit || null,
+                });
+              }
+            }
+          } else {
+            // Unlinked / orphan connection
+            const isCustom = conn.app_type === 'custom';
+            list.push({
+              id: `orphan-${conn.id}`,
+              shop: null,
+              isOrphan: true,
+              name: t('shopAnalytics.unlinkedConnection', 'Kết nối chưa liên kết Shop'),
+              code: '',
+              region: conn.app?.region || '',
+              avatarUrl: '',
+              connectedApps: [{
+                auth: conn,
+                app: conn.app || null,
+                role: isCustom ? 'custom' : 'partner',
+                label: isCustom ? t('shopAnalytics.customOrderApp', 'Custom OMS') : t('shopAnalytics.partnerApp', 'Partner App'),
+                appName: conn.app?.name || (isCustom ? 'Custom OMS' : 'TikTok Shop Partner'),
+                appKey: conn.app?.app_key || null,
+                region: conn.app?.region || null,
+                connectedAt: conn.connected_at,
+                expired: Boolean(
+                  conn.refresh_token_expires_at
+                    && new Date(conn.refresh_token_expires_at).getTime() <= Date.now(),
+                ),
+                scopes: scopesOf(conn),
+                lastSyncError: conn.last_sync_error,
+              }],
+              scopeAudit: null,
+            });
+          }
+        }
+      }
+    }
+
+    // Filter by appIdFilter if provided
+    if (appIdFilter) {
+      return list.filter((row) =>
+        row.connectedApps.some((ca) => String(ca.auth?.app_id || ca.app?.id || '') === String(appIdFilter))
+      );
+    }
+
+    return list;
+  }, [shops, connections, appIdFilter, t]);
+
+  const toggleExpand = (shopId) => {
+    setExpandedShopIds((prev) => {
       const next = new Set(prev);
-      const key = String(authId);
+      const key = String(shopId);
       if (next.has(key)) {
         next.delete(key);
       } else {
@@ -46,12 +219,13 @@ const ConnectionsPanel = ({
             </div>
           </div>
         ) : null}
+
         {loading ? (
           <div className="empty-state">
             <span className="loading-dot" />
             {t('shopAnalytics.loadingConnections')}
           </div>
-        ) : !visibleConnections.length ? (
+        ) : !shopRows.length ? (
           <div className="shop-analytics__connections-empty">
             <div className="shop-analytics__empty-icon" aria-hidden="true">
               <AnalyticsIcon name="connections" />
@@ -64,167 +238,284 @@ const ConnectionsPanel = ({
             <table className="data-table shop-management__table">
               <thead>
                 <tr>
-                  <th>{t('shopAnalytics.shop')}</th>
-                  <th>{t('shopAnalytics.videoAccountType')}</th>
+                  <th>{t('shopAnalytics.shop', 'Cửa hàng')}</th>
+                  <th>{t('shopAnalytics.connectedApps', 'Các App đang kết nối')}</th>
                   <th>{t('shopAnalytics.status', 'Trạng thái')}</th>
-                  <th>{t('shopAnalytics.connectedAt')}</th>
-                  <th>{t('shopAnalytics.permissions')}</th>
-                  <th className="cell-actions">{t('common.actions')}</th>
+                  <th>{t('shopAnalytics.connectedAt', 'Ngày kết nối')}</th>
+                  <th className="cell-actions">{t('common.actions', 'Thao tác')}</th>
                 </tr>
               </thead>
               <tbody>
-                {visibleConnections.map((authorization) => {
-                  const scopes = scopesOf(authorization);
-                  const isCustom = authorization.app_type === 'custom';
-                  const requiredScope = isCustom ? 'seller.order.info' : REQUIRED_SCOPE;
-                  const expired = Boolean(
-                    authorization.refresh_token_expires_at
-                      && new Date(authorization.refresh_token_expires_at).getTime() <= Date.now(),
-                  );
-                  const missingScope = !scopes.includes(requiredScope);
-                  const authorizationShops = Array.isArray(authorization.shops) ? authorization.shops : [];
-                  const isExpanded = expandedAuthIds.has(String(authorization.id));
+                {shopRows.map((row) => {
+                  const isExpanded = expandedShopIds.has(String(row.id));
+                  const allUniqueScopes = Array.from(new Set(
+                    row.connectedApps.flatMap((ca) => ca.scopes || [])
+                  ));
+                  const hasExpired = row.connectedApps.some((ca) => ca.expired);
+
+                  // Latest connection date
+                  const connectedDates = row.connectedApps
+                    .map((ca) => (ca.connectedAt ? new Date(ca.connectedAt).getTime() : 0))
+                    .filter((ts) => ts > 0);
+                  const latestConnectedAt = connectedDates.length ? Math.max(...connectedDates) : null;
+
+                  const scopeAudit = row.scopeAudit;
+                  const missingScopes = Array.isArray(scopeAudit?.missing_scopes) ? scopeAudit.missing_scopes : [];
+                  const hasMissingScopes = missingScopes.length > 0;
+                  const legacyMissingScope = !allUniqueScopes.includes(REQUIRED_SCOPE) && !allUniqueScopes.includes('seller.order.info');
+
+                  const scopeProviders = {};
+                  for (const ca of row.connectedApps) {
+                    for (const s of (ca.scopes || [])) {
+                      if (!scopeProviders[s]) scopeProviders[s] = [];
+                      scopeProviders[s].push(ca.appName);
+                    }
+                  }
 
                   return (
-                    <React.Fragment key={authorization.id}>
-                      <tr className={`shop-management__row${isExpanded ? ' shop-management__row--expanded' : ''}`}>
+                    <React.Fragment key={row.id}>
+                      <tr
+                        className={`shop-management__row${isExpanded ? ' shop-management__row--expanded' : ''}`}
+                        onClick={(e) => {
+                          if (e.target.closest('button, a, input, select, textarea')) return;
+                          toggleExpand(row.id);
+                        }}
+                      >
+                        {/* Column 1: Shop */}
                         <td>
-                          {authorizationShops.length === 0 ? (
-                            <div className="shop-management__cell-identity">
-                              <span className="shop-management__shop-avatar" aria-hidden="true">
-                                <AnalyticsIcon name="shop" />
+                          <div className="shop-management__cell-identity">
+                            <span
+                              className={`sidebar__chevron${isExpanded ? ' sidebar__chevron--open' : ''}`}
+                              aria-hidden="true"
+                              style={{
+                                margin: '0 2px 0 0',
+                                flexShrink: 0,
+                                color: isExpanded ? 'var(--color-primary, #2563eb)' : '#94a3b8',
+                              }}
+                            />
+                            <span className="shop-management__shop-avatar" aria-hidden="true">
+                              {row.avatarUrl ? (
+                                <img src={row.avatarUrl} alt="" />
+                              ) : <AnalyticsIcon name="shop" />}
+                            </span>
+                            <div>
+                              <strong>{row.name}</strong>
+                              <span className="shop-management__cell-sub">
+                                {[row.code, row.region].filter(Boolean).join(' · ') || (row.isOrphan ? '—' : t('shopAnalytics.connected'))}
                               </span>
-                              <div>
-                                <strong>{t('shopAnalytics.shopConnection')}</strong>
-                                <span className="shop-management__cell-sub">—</span>
-                              </div>
                             </div>
-                          ) : (
-                            <div className="shop-management__shops-col">
-                              {authorizationShops.map((shop) => (
-                                <div className="shop-management__cell-identity" key={shop.id || shop.platform_shop_id || shop.name}>
-                                  <span className="shop-management__shop-avatar" aria-hidden="true">
-                                    {shop.avatar_url || shop.avatar_large_url ? (
-                                      <img src={shop.avatar_url || shop.avatar_large_url} alt="" />
-                                    ) : <AnalyticsIcon name="shop" />}
-                                  </span>
-                                  <div>
-                                    <strong>{shop.name || t('common.unknown')}</strong>
-                                    <span className="shop-management__cell-sub">
-                                      {[shop.code, shop.region].filter(Boolean).join(' · ') || t('shopAnalytics.connected')}
-                                    </span>
-                                  </div>
+                          </div>
+                        </td>
+
+                        {/* Column 2: Connected Apps (Multiple Apps per Shop) */}
+                        <td>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', maxWidth: '240px' }}>
+                            {row.connectedApps.length === 0 ? (
+                              <span style={{ color: 'var(--color-muted)', fontSize: '12px' }}>—</span>
+                            ) : (
+                              row.connectedApps.map((ca, idx) => (
+                                <span
+                                  key={ca.auth?.id || idx}
+                                  className={`chip ${ca.role === 'custom' ? 'chip--blue' : 'chip--purple'}`}
+                                  style={{ fontSize: '11px', padding: '2px 8px', fontWeight: 500 }}
+                                  title={`${ca.appName} (${ca.label}) - Key: ${ca.appKey || 'N/A'}`}
+                                >
+                                  {ca.appName}
+                                </span>
+                              ))
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Column 3: Status & Missing Scopes */}
+                        <td>
+                          {hasExpired ? (
+                            <span className="chip chip--amber">
+                              {t('shopAnalytics.tokenExpired', 'Hết hạn token')}
+                            </span>
+                          ) : scopeAudit ? (
+                            !hasMissingScopes ? (
+                              <span className="chip chip--positive" title="Shop đã cấp đủ tất cả các scopes cốt lõi">
+                                ✓ {t('shopAnalytics.fullyAuthorized', 'Đủ scopes')} ({allUniqueScopes.length})
+                              </span>
+                            ) : (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                <span className="chip chip--amber" title={missingScopes.map((m) => `${m.scope}: ${m.name}`).join('\n')}>
+                                  ⚠️ {t('shopAnalytics.missingScopesCount', `Thiếu ${missingScopes.length} scopes`)}
+                                </span>
+                                <div style={{ fontSize: '11px', color: '#b45309', maxWidth: '170px', lineHeight: 1.25 }}>
+                                  {missingScopes.slice(0, 2).map((m) => m.name || m.scope).join(', ')}
+                                  {missingScopes.length > 2 ? ` (+${missingScopes.length - 2})` : ''}
                                 </div>
-                              ))}
-                            </div>
+                              </div>
+                            )
+                          ) : (
+                            <span className={`chip ${legacyMissingScope ? 'chip--amber' : 'chip--positive'}`}>
+                              {legacyMissingScope ? t('shopAnalytics.missingScope', 'Thiếu quyền') : t('shopAnalytics.connected', 'Đã kết nối')}
+                            </span>
                           )}
                         </td>
-                        <td>
-                          <span className={`chip ${isCustom ? 'chip--blue' : 'chip--purple'}`}>
-                            {isCustom ? t('shopAnalytics.customOrderApp') : t('shopAnalytics.partnerApp')}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`chip ${expired || missingScope ? 'chip--amber' : 'chip--positive'}`}>
-                            {expired
-                              ? t('shopAnalytics.tokenExpired')
-                              : missingScope
-                                ? t('shopAnalytics.missingScope')
-                                : t('shopAnalytics.connected')}
-                          </span>
-                        </td>
+
+                        {/* Column 4: Connected At */}
                         <td className="cell-date">
-                          {formatDateTime(authorization.connected_at)}
+                          {formatDateTime(latestConnectedAt)}
                         </td>
-                        <td>
-                          <button
-                            className={`shop-management__perm-trigger${isExpanded ? ' is-expanded' : ''}`}
-                            type="button"
-                            aria-expanded={isExpanded}
-                            onClick={() => toggleExpand(authorization.id)}
-                            title={isExpanded ? t('navigation.collapse', 'Thu gọn') : t('navigation.expand', 'Xem quyền')}
-                          >
-                            <span className={`chip ${missingScope ? 'chip--amber' : ''}`}>
-                              {scopes.length} {t('shopAnalytics.permissions')}
-                            </span>
-                            <span className={`sidebar__chevron${isExpanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
-                          </button>
-                        </td>
+
+                        {/* Column 5: Actions */}
                         <td className="cell-actions">
                           <div className="actions actions--inline shop-management__actions-col">
-                            {expired || missingScope ? (
+                            {hasExpired ? (
                               <button
                                 className="button button--small button--ghost"
                                 type="button"
                                 disabled={connecting || disconnectingId !== null}
-                                onClick={isCustom ? onConnectCustom : onConnect}
+                                onClick={() => {
+                                  const expiredApp = row.connectedApps.find((ca) => ca.expired);
+                                  if (expiredApp?.auth?.app_id) {
+                                    onConnect({
+                                      appId: expiredApp.auth.app_id,
+                                      appType: expiredApp.auth.app_type,
+                                      region: expiredApp.region,
+                                    });
+                                  } else {
+                                    onConnect();
+                                  }
+                                }}
                               >
-                                {t('shopAnalytics.reconnect')}
+                                {t('shopAnalytics.reconnect', 'Kết nối lại')}
                               </button>
                             ) : null}
-                            {authorizationShops.map((shop) => (
+
+                            {row.shop ? (
                               <button
-                                key={shop.id || shop.name}
+                                key={row.shop.id || row.shop.name}
                                 className="button button--small button--danger shop-management__disconnect"
                                 type="button"
                                 disabled={connecting || disconnectingId !== null}
-                                onClick={() => onDisconnect(shop)}
+                                onClick={() => onDisconnect(row.shop)}
                               >
-                                {String(disconnectingId) === String(shop.id)
+                                {String(disconnectingId) === String(row.shop.id)
                                   ? t('common.loading')
-                                  : t('shopAnalytics.disconnect')}
+                                  : t('shopAnalytics.disconnect', 'Ngắt kết nối')}
                               </button>
-                            ))}
+                            ) : null}
                           </div>
                         </td>
                       </tr>
+
+                      {/* Expanded Details Row */}
                       {isExpanded ? (
                         <tr className="shop-management__expanded-row">
-                          <td colSpan="6">
+                          <td colSpan="5">
                             <div className="shop-management__expanded-content">
-                              <div className="shop-management__expanded-header">
-                                <div className="shop-management__expanded-title">
-                                  <span className="shop-management__expanded-icon" aria-hidden="true">
-                                    <AnalyticsIcon name="connections" />
-                                  </span>
-                                  <strong>{t('shopAnalytics.permissions')} ({scopes.length})</strong>
+                              {/* Sync Error Alert if any App has an error */}
+                              {row.connectedApps.some((ca) => ca.lastSyncError) ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {row.connectedApps.filter((ca) => ca.lastSyncError).map((ca, idx) => (
+                                    <div
+                                      key={ca.auth?.id || idx}
+                                      className="shop-management__expanded-error"
+                                      style={{ padding: '8px 12px', fontSize: '12px' }}
+                                      role="alert"
+                                    >
+                                      <strong>{ca.appName} ({t('shopAnalytics.syncFailed', 'Lỗi đồng bộ')}):</strong> {ca.lastSyncError}
+                                    </div>
+                                  ))}
                                 </div>
-                                {missingScope ? (
-                                  <span className="chip chip--amber">
-                                    {t('shopAnalytics.missing')}: {requiredScope}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="shop-management__permissions-grid">
-                                {scopes.length ? (
-                                  scopes.map((scope) => {
-                                    const isRequired = scope === requiredScope;
-                                    return (
-                                      <span
-                                        className={`chip ${isRequired ? 'chip--positive' : 'chip--subtle'}`}
-                                        key={scope}
-                                        title={isRequired ? `${scope} (${t('common.required', 'Bắt buộc')})` : scope}
+                              ) : null}
+
+                              {/* Missing Scopes Alert Box */}
+                              {hasMissingScopes ? (
+                                <div
+                                  style={{
+                                    padding: '10px 12px',
+                                    borderRadius: '8px',
+                                    background: '#fffbeb',
+                                    border: '1px solid #fde68a',
+                                    color: '#92400e',
+                                    fontSize: '12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '6px',
+                                  }}
+                                >
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    {missingScopes.map((m) => (
+                                      <div
+                                        key={m.scope}
+                                        style={{
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'space-between',
+                                          flexWrap: 'wrap',
+                                          gap: '8px',
+                                          padding: '6px 10px',
+                                          background: '#ffffff',
+                                          borderRadius: '6px',
+                                          border: '1px solid #fef3c7',
+                                        }}
                                       >
-                                        {isRequired ? '✓ ' : ''}{scope}
-                                      </span>
-                                    );
-                                  })
-                                ) : (
-                                  <span className="shop-management__permissions-empty">
-                                    {t('shopAnalytics.noPermissions')}
-                                  </span>
-                                )}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          <code style={{ fontSize: '11px', fontWeight: 600, color: '#b45309' }}>{m.scope}</code>
+                                          <strong>{m.name}</strong>
+                                          {Array.isArray(m.affectedJobs) && m.affectedJobs.length ? (
+                                            <span style={{ fontSize: '11px', color: '#78350f', fontStyle: 'italic' }}>
+                                              — Ảnh hưởng: {m.affectedJobs.join(', ')}
+                                            </span>
+                                          ) : null}
+                                        </div>
+                                        {Array.isArray(m.suggestedApps) && m.suggestedApps.length > 0 ? (
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span style={{ fontSize: '11px' }}>App có scope này:</span>
+                                            {m.suggestedApps.map((sApp) => (
+                                              <button
+                                                key={sApp.id}
+                                                type="button"
+                                                className="button button--small button--ghost"
+                                                style={{ fontSize: '11px', padding: '2px 8px', height: 'auto', background: '#f8fafc' }}
+                                                disabled={connecting || disconnectingId !== null}
+                                                onClick={() => onConnect({ appId: sApp.id, appType: sApp.appType, region: sApp.region })}
+                                              >
+                                                + Kết nối {sApp.name}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>Chưa có App nào trong vùng hỗ trợ</span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              {/* Overall Scopes Summary */}
+                              <div>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--color-text-soft)', display: 'block', marginBottom: '6px' }}>
+                                  {t('shopAnalytics.commonScopes', 'Scope chung')}:
+                                </span>
+                                <div className="shop-management__permissions-grid">
+                                  {allUniqueScopes.length ? (
+                                    allUniqueScopes.map((scope) => {
+                                      const providers = scopeProviders[scope];
+                                      const tooltip = providers?.length ? `${scope} (cung cấp bởi: ${providers.join(', ')})` : scope;
+                                      return (
+                                        <span
+                                          className="chip chip--positive"
+                                          key={scope}
+                                          title={tooltip}
+                                        >
+                                          ✓ {scope}
+                                        </span>
+                                      );
+                                    })
+                                  ) : (
+                                    <span className="shop-management__permissions-empty">
+                                      {t('shopAnalytics.noPermissions', 'Chưa có quyền nào')}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                              {authorization.last_sync_error ? (
-                                <div className="shop-management__expanded-error" role="alert">
-                                  <strong>{t('shopAnalytics.syncFailed')}:</strong> {authorization.last_sync_error}
-                                </div>
-                              ) : null}
-                              {authorization.refresh_token_expires_at ? (
-                                <div className="shop-management__expanded-meta">
-                                  <span>{t('shopAnalytics.tokenExpiresAt', 'Hạn token')}: {formatDateTime(authorization.refresh_token_expires_at)}</span>
-                                </div>
-                              ) : null}
                             </div>
                           </td>
                         </tr>

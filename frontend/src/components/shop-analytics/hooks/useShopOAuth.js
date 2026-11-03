@@ -33,7 +33,7 @@ const useShopOAuth = ({
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
   }, [t]);
 
-  const startConnect = useCallback(async () => {
+  const startConnect = useCallback(async (options = {}) => {
     if (disconnectingId !== null) return;
     try {
       setConnecting(true);
@@ -43,7 +43,8 @@ const useShopOAuth = ({
         : videoOnly
           ? videoExportOnly ? '/shop/videos' : '/shop/videos?view=performance'
           : '/shop/analytics';
-      const { authorizeUrl } = await startTikTokShopOauth(returnPath);
+      const oauthOpts = typeof options === 'object' && options !== null ? options : {};
+      const { authorizeUrl } = await startTikTokShopOauth(returnPath, oauthOpts);
       if (!authorizeUrl) throw new Error(t('shopAnalytics.oauthError'));
       window.location.assign(authorizeUrl);
     } catch (error) {
