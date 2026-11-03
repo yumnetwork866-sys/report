@@ -223,7 +223,8 @@ const parseShopAuthorizationState = (state) => {
   }
   const appType = data?.appType || (data?.oauthType === 'shop_custom' ? 'custom' : 'partner');
   const region = data?.region;
-  const credentials = resolveAppCredentials(appType, config, { region });
+  const appId = data?.appId;
+  const credentials = resolveAppCredentials(appType, config, { region, appId });
   const candidateSecrets = [
     credentials.appSecret,
     ...getCandidateSecrets(),
@@ -253,8 +254,9 @@ const tokenRequest = async (path, params, fetchImpl = fetch, options = {}) => {
   const config = getConfig();
   const appType = options?.appType || 'partner';
   const region = options?.region;
-  assertConfigured(config, { appType, region });
-  const credentials = resolveAppCredentials(appType, config, { region });
+  const appId = options?.appId;
+  assertConfigured(config, { appType, region, appId });
+  const credentials = resolveAppCredentials(appType, config, { region, appId });
   const appKey = credentials.appKey;
   const appSecret = credentials.appSecret;
   const url = new URL(`${config.tokenBaseUrl}/${path}`);

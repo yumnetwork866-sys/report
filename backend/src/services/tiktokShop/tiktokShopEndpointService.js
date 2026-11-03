@@ -531,7 +531,12 @@ const handleShopOauthCallback = async (req, res) => {
     const appType = oauthState.appType || (isCustom ? 'custom' : 'partner');
     const code = req.query.code || req.query.auth_code;
     if (!code) throw new Error(req.query.error || 'TikTok Shop authorization was denied.');
-    const tokenData = await exchangeShopAuthorizationCode(code, { appType });
+    const tokenData = await exchangeShopAuthorizationCode(code, {
+      appType,
+      region: oauthState.region,
+      appId: oauthState.appId,
+      appKey: oauthState.appKey,
+    });
     if (Number(tokenData.user_type) !== 0) throw new Error('TikTok authorization must return a Seller token (user_type=0).');
     const scopes = tokenData.granted_scopes || tokenData.granted_permissions || [];
     const normalizedScopes = Array.isArray(scopes) ? scopes : String(scopes).split(',').map((item) => item.trim()).filter(Boolean);
@@ -546,7 +551,12 @@ const handleShopOauthCallback = async (req, res) => {
       last_sync_status: 'success',
       last_sync_error: null,
     };
-    const shops = await getAuthorizedShops(tokenData.access_token, undefined, { appType });
+    const shops = await getAuthorizedShops(tokenData.access_token, undefined, {
+      appType,
+      region: oauthState.region,
+      appId: oauthState.appId,
+      appKey: oauthState.appKey,
+    });
     const validShops = shops.filter((item) => item?.id && item?.cipher);
     try {
       const { autoSyncAppFromConnection } = require('../tiktokAppService');

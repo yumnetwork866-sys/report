@@ -255,9 +255,9 @@ const Header = () => {
       if (app.app_type === 'channel') {
         authorizeUrl = await getTikTokOauthUrl();
       } else if (app.app_type === 'custom') {
-        ({ authorizeUrl } = await startTikTokShopOauth('/shop/orders', 'custom', app.region));
+        ({ authorizeUrl } = await startTikTokShopOauth('/manage/shops', { appType: 'custom', region: app.region, appId: app.id }));
       } else {
-        ({ authorizeUrl } = await startTikTokShopOauth(undefined, 'partner', app.region));
+        ({ authorizeUrl } = await startTikTokShopOauth('/manage/shops', { appType: 'partner', region: app.region, appId: app.id }));
       }
       if (!authorizeUrl) throw new Error(t('header.connectionError'));
       setActiveMenu(null);
