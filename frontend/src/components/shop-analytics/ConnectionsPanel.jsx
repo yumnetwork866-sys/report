@@ -424,70 +424,70 @@ const ConnectionsPanel = ({
                                 </div>
                               ) : null}
 
-                              {/* Missing Scopes Alert Box */}
+                              {/* Missing Scopes List */}
                               {hasMissingScopes ? (
-                                <div
-                                  style={{
-                                    padding: '10px 12px',
-                                    borderRadius: '8px',
-                                    background: '#fffbeb',
-                                    border: '1px solid #fde68a',
-                                    color: '#92400e',
-                                    fontSize: '12px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '6px',
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                    {missingScopes.map((m) => (
-                                      <div
-                                        key={m.scope}
-                                        style={{
-                                          display: 'flex',
-                                          alignItems: 'center',
-                                          justifyContent: 'space-between',
-                                          flexWrap: 'wrap',
-                                          gap: '8px',
-                                          padding: '6px 10px',
-                                          background: '#ffffff',
-                                          borderRadius: '6px',
-                                          border: '1px solid #fef3c7',
-                                        }}
-                                      >
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                          <code style={{ fontSize: '11px', fontWeight: 600, color: '#b45309' }}>{m.scope}</code>
-                                          <strong>{m.name}</strong>
-                                          {Array.isArray(m.affectedJobs) && m.affectedJobs.length ? (
-                                            <span style={{ fontSize: '11px', color: '#78350f', fontStyle: 'italic' }}>
-                                              — Ảnh hưởng: {m.affectedJobs.join(', ')}
-                                            </span>
-                                          ) : null}
-                                        </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                  {missingScopes.map((m) => (
+                                    <div
+                                      key={m.scope}
+                                      style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        flexWrap: 'wrap',
+                                        gap: '8px',
+                                        padding: '8px 12px',
+                                        background: 'var(--color-bg-subtle, #f8fafc)',
+                                        borderRadius: '8px',
+                                        border: '1px solid var(--color-border, #e2e8f0)',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <code style={{ fontSize: '11px', fontWeight: 600, color: '#b45309' }}>{m.scope}</code>
+                                        <strong style={{ fontSize: '12px' }}>{m.name}</strong>
+                                        {Array.isArray(m.affectedJobs) && m.affectedJobs.length ? (
+                                          <span style={{ fontSize: '11px', color: '#b45309', fontStyle: 'italic' }}>
+                                            — Ảnh hưởng: {m.affectedJobs.join(', ')}
+                                          </span>
+                                        ) : null}
+                                      </div>
                                         {Array.isArray(m.suggestedApps) && m.suggestedApps.length > 0 ? (
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <span style={{ fontSize: '11px' }}>App có scope này:</span>
                                             {m.suggestedApps.map((sApp) => (
                                               <button
                                                 key={sApp.id}
                                                 type="button"
-                                                className="button button--small button--ghost"
-                                                style={{ fontSize: '11px', padding: '2px 8px', height: 'auto', background: '#f8fafc' }}
+                                                className="button button--small"
+                                                style={{
+                                                  fontSize: '11px',
+                                                  padding: '3px 10px',
+                                                  height: 'auto',
+                                                  lineHeight: 1.3,
+                                                  background: 'var(--color-primary-light, #eff6ff)',
+                                                  color: 'var(--color-primary, #2563eb)',
+                                                  border: '1px solid #bfdbfe',
+                                                  borderRadius: '999px',
+                                                  fontWeight: 500,
+                                                  whiteSpace: 'nowrap',
+                                                  cursor: 'pointer',
+                                                }}
                                                 disabled={connecting || disconnectingId !== null}
+                                                title={`Cấp scope "${m.scope}" bằng cách kết nối ${sApp.name}`}
                                                 onClick={() => onConnect({ appId: sApp.id, appType: sApp.appType, region: sApp.region })}
                                               >
-                                                + Kết nối {sApp.name}
+                                                {sApp.name} ↗
                                               </button>
                                             ))}
                                           </div>
                                         ) : (
-                                          <span style={{ fontSize: '11px', color: '#9ca3af' }}>Chưa có App nào trong vùng hỗ trợ</span>
+                                          <span style={{ fontSize: '11px', color: '#94a3b8', fontStyle: 'italic' }}>
+                                            Chưa có App nào hỗ trợ
+                                          </span>
                                         )}
                                       </div>
                                     ))}
                                   </div>
-                                </div>
-                              ) : null}
+                                ) : null}
 
                               {/* Overall Scopes Summary */}
                               <div>
