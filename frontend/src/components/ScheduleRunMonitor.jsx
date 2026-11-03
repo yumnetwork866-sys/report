@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Copy, Search } from 'lucide-react';
+import { ArrowLeft, Copy, ListFilter, Search, Store } from 'lucide-react';
 import { fetchScheduleRunEvents, fetchScheduleRunEvent } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { formatMonitorDuration, isMonitorActive, mergeMonitorEvents } from '../lib/runMonitor';
+import SelectDropdown from './SelectDropdown';
 import '../styles/pages/run-monitor.css';
 
 const timestamp = (value, locale) => value ? new Date(value).toLocaleString(locale, { hour12: false }) : '—';
@@ -111,8 +112,9 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
 
   return <div className="run-monitor">
     <header className="run-monitor__header">
-      <div><button type="button" className="button button--ghost" onClick={onBack}><ArrowLeft size={16} />{t('schedule.monitor.back')}</button>
-        <h2>{t('schedule.monitor.title')} <span>#{run.id}</span></h2>
+      <button type="button" className="button button--ghost" onClick={onBack} aria-label={t('schedule.monitor.back')} title={t('schedule.monitor.back')}><ArrowLeft size={16} aria-hidden="true" /></button>
+      <div className="run-monitor__heading">
+        <h2>#{run.id}</h2>
         <p>{t(`schedule.jobs.${initialRun.job_key}.name`)} · {timestamp(run.started_at, locale)}</p></div>
     </header>
     <div className="run-monitor__metrics">
@@ -156,10 +158,33 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
     </details> : null}
     <div className="run-monitor__filters">
       <label className="run-monitor__search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('schedule.monitor.search')} aria-label={t('schedule.monitor.search')} /></label>
-      <select value={filter} onChange={(e) => setFilter(e.target.value)} aria-label={t('schedule.filterStatus')}>
-        <option value="ALL">{t('schedule.allStatuses')}</option><option value="ERRORS">{t('schedule.monitor.errors')}</option><option value="IN_FLIGHT">{label('IN_FLIGHT')}</option><option value="SUCCEEDED">{label('SUCCEEDED')}</option><option value="RETRY_PENDING">{label('RETRY_PENDING')}</option>
-      </select>
-      <select value={shopId} onChange={(e) => setShopId(e.target.value)} aria-label={t('schedule.monitor.shop')}><option value="">{t('schedule.monitor.allShops')}</option>{shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}</select>
+      <div className="run-monitor__filter">
+        <label className="sr-only" htmlFor={`run-${runId}-status`}>{t('schedule.filterStatus')}</label>
+        <SelectDropdown
+          id={`run-${runId}-status`}
+          value={filter}
+          onChange={setFilter}
+          icon={<ListFilter size={16} />}
+          options={[
+            { value: 'ALL', label: t('schedule.allStatuses') },
+            { value: 'ERRORS', label: t('schedule.monitor.errors') },
+            ...['IN_FLIGHT', 'SUCCEEDED', 'RETRY_PENDING'].map((status) => ({ value: status, label: label(status) })),
+          ]}
+        />
+      </div>
+      <div className="run-monitor__filter">
+        <label className="sr-only" htmlFor={`run-${runId}-shop`}>{t('schedule.monitor.shop')}</label>
+        <SelectDropdown
+          id={`run-${runId}-shop`}
+          value={shopId}
+          onChange={setShopId}
+          icon={<Store size={16} />}
+          options={[
+            { value: '', label: t('schedule.monitor.allShops') },
+            ...shops.map((shop) => ({ value: String(shop.id), label: shop.name })),
+          ]}
+        />
+      </div>
     </div>
     {error ? <p className="run-monitor__error" role="alert">{error}</p> : null}
     <div className="run-monitor__workspace">
@@ -190,7 +215,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
           ].filter(([, value]) => value != null).map(([name, value]) => <div key={name}><dt>{name}</dt><dd>{value}{name === 'Request ID' ? <button type="button" onClick={() => copy(String(value))} aria-label={t('schedule.monitor.copy')}><Copy size={13} /></button> : null}</dd></div>)}</dl>
           {detail.message ? <p className="run-monitor__message">{detail.message}</p> : null}
           <div className="run-monitor__tabs" role="tablist">{[['request_data', 'Request'], ['response_data', 'Response'], ['response_headers', 'Headers']].map(([key, name]) => <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => { setTab(key); setCopied(false); }}>{name}</button>)}<button type="button" disabled={!selectedText} onClick={() => copy(selectedText)} aria-label={t('schedule.monitor.copy')}><Copy size={14} />{copied ? t('schedule.monitor.copied') : t('schedule.monitor.copy')}</button></div>
-          <p className="run-monitor__capture-note">{t('schedule.monitor.redacted')}{detail.payload_truncated ? ` ${t('schedule.monitor.truncated')}` : ''}</p>
+          {detail.payload_truncated ? <p className="run-monitor__capture-note">{t('schedule.monitor.truncated')}</p> : null}
           <pre role="tabpanel" tabIndex={0}>{selectedText || t(['IN_FLIGHT', 'RECEIVED'].includes(detail.status) ? 'schedule.monitor.awaitingResponse' : 'schedule.monitor.noPayload')}</pre>
         </> : <p className="run-monitor__empty">{t('schedule.monitor.loading')}</p>}
         {detailError ? <p className="run-monitor__error" role="alert">{detailError}</p> : null}
