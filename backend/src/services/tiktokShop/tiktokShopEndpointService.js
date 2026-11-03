@@ -522,6 +522,7 @@ const handleShopOauthCallback = async (req, res) => {
   let returnPath = '/shop/analytics';
   const startedAt = new Date();
   let currentOauthState = null;
+  let currentGrantedScopes = [];
   try {
     const oauthState = parseShopAuthorizationState(req.query.state);
     currentOauthState = oauthState;
@@ -539,6 +540,7 @@ const handleShopOauthCallback = async (req, res) => {
     if (Number(tokenData.user_type) !== 0) throw new Error('TikTok authorization must return a Seller token (user_type=0).');
     const scopes = tokenData.granted_scopes || tokenData.granted_permissions || [];
     const normalizedScopes = Array.isArray(scopes) ? scopes : String(scopes).split(',').map((item) => item.trim()).filter(Boolean);
+    currentGrantedScopes = normalizedScopes;
     const existing = tokenData.open_id
       ? await tiktokShopRepository.findShopAuthorization({ where: { open_id: tokenData.open_id, app_type: appType } })
       : null;
@@ -704,15 +706,33 @@ const handleShopOauthCallback = async (req, res) => {
       oauthState.returnPath,
     ));
   } catch (error) {
-    console.error('[TikTok Shop OAuth] Callback failed', { message: error.message });
+    console.error('[TikTok Shop OAuth] Callback failed', {
+      message: error.message,
+      appId: currentOauthState?.appId || null,
+      grantedScopes: currentGrantedScopes,
+    });
     try {
       const { recordAuthLog } = require('../authLogService');
+      const { TikTokApp } = require('../../models');
+      const targetApp = currentOauthState?.appId && TikTokApp
+        ? await TikTokApp.findByPk(currentOauthState.appId, {
+          attributes: ['id', 'name', 'app_key', 'app_type', 'region'],
+        }).catch(() => null)
+        : null;
       await recordAuthLog({
         authType: currentOauthState?.oauthType === 'shop_custom' ? 'shop_custom' : 'shop',
         status: 'FAILED',
         startedAt,
         completedAt: new Date(),
         error,
+        app: targetApp,
+        scopes: currentGrantedScopes,
+        httpStatus: error.httpStatus || null,
+        details: { request: { requested_app_id: currentOauthState?.appId || null }, response: {
+          failed_endpoint: error.endpoint || null,
+          tiktok_code: error.tiktokCode || null,
+          request_id: error.requestId || null,
+        } },
         endpoint: '/api/bookings/tiktok-partner/callback',
       });
     } catch (logErr) {
