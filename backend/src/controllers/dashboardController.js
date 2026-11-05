@@ -162,8 +162,8 @@ const getDashboard = async (req, res) => {
     const { data: payload, hit } = await getOrSetCache(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async () => {
       const filterSql = `
       WHERE (:channelId::int IS NULL OR v.channel_id = :channelId)
-        AND (:startDate::date IS NULL OR v.published_at::date >= :startDate)
-        AND (:endDate::date IS NULL OR v.published_at::date <= :endDate)
+        AND (:startDate::date IS NULL OR (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= :startDate)
+        AND (:endDate::date IS NULL OR (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= :endDate)
         AND (
           :userId::int IS NULL
           OR EXISTS (
@@ -304,7 +304,7 @@ const getDashboard = async (req, res) => {
       metric === 'date'
         ? sequelize.query(`
           SELECT
-            v.published_at::date AS date,
+            (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS date,
             COUNT(*)::int AS video_count,
             COALESCE(SUM(v.views), 0)::bigint AS views,
             COALESCE(SUM(v.likes), 0)::bigint AS likes,
@@ -316,7 +316,7 @@ const getDashboard = async (req, res) => {
           ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
           AND v.published_at IS NOT NULL
-          GROUP BY v.published_at::date
+          GROUP BY (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date
           ORDER BY date ASC
         `, { type: QueryTypes.SELECT, replacements })
         : metric === 'gmv'
@@ -352,8 +352,8 @@ const getDashboard = async (req, res) => {
           `, { type: QueryTypes.SELECT, replacements }),
       metric === 'date'
         ? sequelize.query(`
-          SELECT DISTINCT ON (v.published_at::date)
-            v.published_at::date AS date,
+          SELECT DISTINCT ON ((v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date)
+            (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date AS date,
             v.id,
             v.title,
             v.views,
@@ -363,7 +363,7 @@ const getDashboard = async (req, res) => {
           ${LATEST_VIDEO_SALES_JOIN_SQL}
           ${filterSql}
           AND v.published_at IS NOT NULL
-          ORDER BY v.published_at::date, v.views DESC, v.id DESC
+          ORDER BY (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date, v.views DESC, v.id DESC
         `, { type: QueryTypes.SELECT, replacements })
         : Promise.resolve([]),
       sequelize.query(`
@@ -545,9 +545,9 @@ const getDashboardVideos = async (req, res) => {
     const { data: payload, hit } = await getOrSetCache(cacheKey, DASHBOARD_CACHE_TTL_SECONDS, async () => {
       const filterSql = `
         WHERE (:channelId::int IS NULL OR v.channel_id = :channelId)
-          AND (:startDate::date IS NULL OR v.published_at::date >= :startDate)
-          AND (:endDate::date IS NULL OR v.published_at::date <= :endDate)
-          AND (:publishedDate::date IS NULL OR v.published_at::date = :publishedDate)
+          AND (:startDate::date IS NULL OR (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= :startDate)
+          AND (:endDate::date IS NULL OR (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= :endDate)
+          AND (:publishedDate::date IS NULL OR (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date = :publishedDate)
           AND (
             :search = ''
             OR COALESCE(v.title, '') ILIKE :searchPattern

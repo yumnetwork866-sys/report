@@ -84,7 +84,7 @@ const BookingVideoTitle = ({
         >
           <strong>{video.title || video.platform_video_id}</strong>
         </button>
-        <small>{formatDateOnly(video.posted_at, '—')}</small>
+        <small>{formatDateOnly(video.post_date || video.posted_at, '—')}</small>
         <div className="video-engagement video-engagement--inline booking-video-expansion__stats-line">
           <span title={t('videoLibrary.views', 'Lượt xem')} aria-label={`${t('videoLibrary.views', 'Lượt xem')}: ${formatNumber(displayViews ?? 0)}`}>
             <Eye size={13} strokeWidth={1.8} aria-hidden="true" />

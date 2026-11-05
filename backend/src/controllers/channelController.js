@@ -11,6 +11,7 @@ const {
 } = require('../models');
 const { delByPattern } = require('../lib/redis');
 const { getAppCredentials } = require('../services/tiktokAppService');
+const { dateOnlyInTimezone } = require('../lib/tiktokShopDateTime');
 
 const DEFAULT_CHANNEL_SCOPES = 'user.info.basic,user.info.profile,user.info.stats,video.list';
 
@@ -606,7 +607,7 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
 
       await VideoDailyStats.upsert({
         video_id: video.id,
-        date: new Date().toISOString().slice(0, 10),
+        date: dateOnlyInTimezone(new Date(), 'Asia/Ho_Chi_Minh'),
         views: item.views,
         likes: item.likes,
         comments: item.comments,

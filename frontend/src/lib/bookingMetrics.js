@@ -277,11 +277,12 @@ export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => 
     .map(bookingCreatorKey),
 ).size;
 
-export const orderRangeForPeriod = (period, customRange) => {
+export const orderRangeForPeriod = (period, customRange, region = 'MY') => {
   if (!period || period === 'all') {
     return { startTime: null, endTime: null, windowType: 'LIFETIME' };
   }
-  const malaysiaMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00+08:00`).getTime() / 1000);
+  const timezoneOffset = ['VN', 'TH', 'ID'].includes(String(region || '').toUpperCase()) ? '+07:00' : '+08:00';
+  const shopMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00${timezoneOffset}`).getTime() / 1000);
   if (period === 'custom') {
     if (!customRange?.start || !customRange?.end) {
       return { startTime: null, endTime: null, windowType: 'LIFETIME' };
@@ -289,8 +290,8 @@ export const orderRangeForPeriod = (period, customRange) => {
     const todayStr = dateInputValue(new Date());
     const isPast = customRange.end < todayStr;
     return {
-      startTime: malaysiaMidnightUnix(customRange.start),
-      endTime: malaysiaMidnightUnix(shiftDateInputValue(customRange.end, 1)),
+      startTime: shopMidnightUnix(customRange.start),
+      endTime: shopMidnightUnix(shiftDateInputValue(customRange.end, 1)),
       startDate: customRange.start,
       endDate: customRange.end,
       windowType: isPast ? 'CUSTOM' : 'LIFETIME',
@@ -307,8 +308,8 @@ export const orderRangeForPeriod = (period, customRange) => {
     const todayStr = dateInputValue(new Date());
     const isPast = endStr < todayStr;
     return {
-      startTime: malaysiaMidnightUnix(startStr),
-      endTime: malaysiaMidnightUnix(nextMonthStr),
+      startTime: shopMidnightUnix(startStr),
+      endTime: shopMidnightUnix(nextMonthStr),
       startDate: startStr,
       endDate: endStr,
       windowType: isPast ? 'CUSTOM' : 'LIFETIME',
@@ -681,11 +682,9 @@ export const filterVideosByPeriod = (videos = [], periodRange = null) => {
     return list;
   }
   return list.filter((video) => {
-    const rawPostDate = video?.posted_at || video?.video_post_time || video?.post_date || video?.post_time;
+    const rawPostDate = video?.post_date || video?.video_post_time || video?.posted_at || video?.post_time;
     if (!rawPostDate) return false;
-    const postDate = rawPostDate instanceof Date
-      ? dateInputValue(rawPostDate)
-      : String(rawPostDate).slice(0, 10);
+    const postDate = String(rawPostDate).slice(0, 10);
     if (periodRange.startDate && postDate < periodRange.startDate) return false;
     if (periodRange.endDate && postDate > periodRange.endDate) return false;
     return true;

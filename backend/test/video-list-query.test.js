@@ -22,6 +22,14 @@ test('video list query applies bounded pagination and supported filters', () => 
   assert.equal(options.where.channel_id, 7);
   assert.equal(options.where.published_at[Op.gte].toISOString(), '2026-07-01T00:00:00.000Z');
   assert.equal(options.where.published_at[Op.lt].toISOString(), '2026-08-01T00:00:00.000Z');
+
+  const tzOptions = videoListOptions({
+    start_date: '2026-07-01',
+    end_date: '2026-07-31',
+    timezone: 'Asia/Ho_Chi_Minh',
+  });
+  assert.equal(tzOptions.where.published_at[Op.gte].toISOString(), '2026-06-30T17:00:00.000Z');
+  assert.equal(tzOptions.where.published_at[Op.lt].toISOString(), '2026-07-31T17:00:00.000Z');
 });
 
 test('dashboard query only accepts safe channel, date, and metric values', () => {

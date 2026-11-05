@@ -92,8 +92,20 @@ const creatorVideoActivityInRange = (startDate, endDate) => literal(`EXISTS (
   WHERE scoped_booking.target_shop_id = "Booking"."target_shop_id"
     AND LOWER(TRIM(LEADING '@' FROM COALESCE(scoped_booking.creator_username, '')))
       = LOWER(TRIM(LEADING '@' FROM COALESCE("Booking"."creator_username", '')))
-    AND scoped_video.posted_at >= '${startDate}'::date
-    AND scoped_video.posted_at < '${shiftDateString(endDate, 1)}'::date
+    AND (
+      (scoped_video.posted_at AT TIME ZONE (
+        CASE
+          WHEN EXISTS (SELECT 1 FROM tiktok_shops ts WHERE ts.id = scoped_booking.target_shop_id AND ts.region IN ('MY', 'SG', 'PH')) THEN 'Asia/Kuala_Lumpur'
+          ELSE 'Asia/Ho_Chi_Minh'
+        END
+      ))::date >= '${startDate}'::date
+      AND (scoped_video.posted_at AT TIME ZONE (
+        CASE
+          WHEN EXISTS (SELECT 1 FROM tiktok_shops ts WHERE ts.id = scoped_booking.target_shop_id AND ts.region IN ('MY', 'SG', 'PH')) THEN 'Asia/Kuala_Lumpur'
+          ELSE 'Asia/Ho_Chi_Minh'
+        END
+      ))::date < '${shiftDateString(endDate, 1)}'::date
+    )
 )`);
 
 const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, customRange = {}) => {

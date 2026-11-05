@@ -606,8 +606,8 @@ const getChannelReport = async (req, res) => {
           JOIN tiktok_affiliate_order_skus sku ON sku.content_id = avt.platform_video_id AND UPPER(sku.content_type) = 'VIDEO'
           JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
           LEFT JOIN tiktok_shop_products tsp ON tsp.product_id = sku.product_id
-          WHERE o.create_time >= CAST(:startDate AS DATE)
-            AND o.create_time < CAST(:endDateExclusive AS DATE)
+          WHERE (o.create_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= CAST(:startDate AS DATE)
+            AND (o.create_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < CAST(:endDateExclusive AS DATE)
           GROUP BY avt.team_id, sku.product_id, sku.product_name, tsp.title, tsp.image_url, sku.currency, o.id
         )
         SELECT
@@ -990,8 +990,8 @@ const getChannelReportMemberDetail = async (req, res) => {
                 JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
                 WHERE UPPER(COALESCE(sku.content_type, '')) = 'VIDEO'
                   AND sku.content_id = video.platform_video_id
-                  AND o.create_time >= CAST(:startDate AS DATE)
-                  AND o.create_time < CAST(:endDateExclusive AS DATE)
+                  AND (o.create_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= CAST(:startDate AS DATE)
+                  AND (o.create_time AT TIME ZONE 'Asia/Ho_Chi_Minh')::date < CAST(:endDateExclusive AS DATE)
                 GROUP BY sku.product_id
               ) pq ON pq.product_id = raw_mapped.product_id
               WHERE raw_mapped.product_id IS NOT NULL

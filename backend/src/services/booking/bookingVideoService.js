@@ -72,6 +72,7 @@ const normalizeCachedVideoCandidate = (videoInstance) => {
     title: video.title || video.platform_video_id,
     username: normalizedUsername(video.creator_username),
     posted_at: video.posted_at || null,
+    video_post_time: video.raw_data?.video_post_time || video.raw_data?.post_time || null,
     video_url: video.video_url || null,
     gmv: {
       amount: Number(latest.gross_gmv || 0),

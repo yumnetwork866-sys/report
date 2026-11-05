@@ -12,6 +12,10 @@ const {
   TikTokVideoPerformanceSnapshot,
   UserContentAttribution,
 } = require('../models');
+const {
+  dateOnlyInTimezone,
+  localMidnightToUtc,
+} = require('../lib/tiktokShopDateTime');
 
 const dateOnly = (value = new Date()) => new Date(value).toISOString().slice(0, 10);
 const shiftDate = (value, days) => {
@@ -107,14 +111,17 @@ const videoMatchesStaffHashtags = (title, configuredHashtags = []) => {
 };
 const matchesBookingDateRange = (booking, video, now = new Date()) => {
   if (!video) return false;
-  const rawPostDate = video.posted_at || video.video_post_time || video.post_date || video.post_time;
+  const rawPostDate = video.posted_at || video.video_post_time || video.post_date || video.post_time
+    || video.raw_data?.video_post_time || video.raw_data?.post_time;
   if (!rawPostDate) return true;
-  const postDate = dateOnly(rawPostDate);
+  const region = booking?.target_shop?.region || booking?.shop?.region || booking?.region
+    || video?.region || video?.shop?.region || video?.target_shop?.region;
+  const postDate = dateOnlyInTimezone(rawPostDate, region);
   const startDate = booking?.start_date ? dateOnly(booking.start_date) : null;
   if (startDate && postDate < startDate) return false;
   const endDate = bookingAttributionEndDate(booking);
   if (endDate && postDate > endDate) return false;
-  const today = dateOnly(now);
+  const today = dateOnlyInTimezone(now, region);
   if (postDate > today) return false;
   return true;
 };
@@ -417,11 +424,17 @@ const loadOrderMetricsForBookingProducts = async ({
     ...(hasGlobalVideoFilter ? { filteredVideoIds: allFilteredVideoIds } : {}),
   };
 
+  const targetRegion = bookingList.find((b) => b.target_shop?.region || b.shop?.region)?.target_shop?.region
+    || bookingList.find((b) => b.target_shop?.region || b.shop?.region)?.shop?.region
+    || null;
+
   if (startTime) {
     replacements.startDateTime = new Date(Number(startTime) * 1000).toISOString();
     dateClauses.push('o.create_time >= :startDateTime');
   } else if (startDate) {
-    replacements.startDateTime = `${dateOnly(startDate)}T00:00:00.000Z`;
+    replacements.startDateTime = targetRegion
+      ? localMidnightToUtc(dateOnly(startDate), targetRegion).toISOString()
+      : `${dateOnly(startDate)}T00:00:00.000Z`;
     dateClauses.push('o.create_time >= :startDateTime');
   }
 
@@ -429,7 +442,9 @@ const loadOrderMetricsForBookingProducts = async ({
     replacements.endDateTime = new Date(Number(endTime) * 1000).toISOString();
     dateClauses.push('o.create_time < :endDateTime');
   } else if (endDate) {
-    replacements.endDateTime = `${shiftDate(endDate, 1)}T00:00:00.000Z`;
+    replacements.endDateTime = targetRegion
+      ? localMidnightToUtc(shiftDate(endDate, 1), targetRegion).toISOString()
+      : `${shiftDate(endDate, 1)}T00:00:00.000Z`;
     dateClauses.push('o.create_time < :endDateTime');
   }
 
@@ -1117,6 +1132,11 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
   if (attributionEvaluated) await BookingVideo.destroy({ where: staleAutoLinkWhere });
   if (!candidates.length) return { status: 'no_match', candidate_count: 0 };
 
+  candidates.sort((a, b) => (
+    (Number(b.gmv?.amount) || 0) - (Number(a.gmv?.amount) || 0)
+    || (Number(b.orders) || 0) - (Number(a.orders) || 0)
+    || new Date(b.posted_at || 0) - new Date(a.posted_at || 0)
+  ));
   const selected = candidates[0];
   const updatePayload = {
     evaluation_snapshot: {

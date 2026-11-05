@@ -10,6 +10,7 @@ const {
 } = require('../services/bookingVideoPerformanceService');
 const { loadShopProducts } = require('../services/shopProductCatalogService');
 const bookingRepository = require('../repositories/bookingRepository');
+const { dateOnlyInTimezone } = require('../lib/tiktokShopDateTime');
 
 const normalizedUsername = (value) => String(value || '').trim().replace(/^@+/, '').toLowerCase();
 
@@ -64,7 +65,7 @@ const hashtagsOfVideo = (video, snapshot) => {
   return [...new Set(normalized.map((value) => value.toLowerCase()))];
 };
 
-const compactBookingVideo = (video = {}) => {
+const compactBookingVideo = (video = {}, region = null) => {
   const latest = latestPerformanceSnapshot(video);
   const performance = compactSnapshot(latest);
   return {
@@ -73,6 +74,8 @@ const compactBookingVideo = (video = {}) => {
     platform_video_id: video.platform_video_id,
     hashtags: hashtagsOfVideo(video, latest),
     posted_at: video.posted_at,
+    post_date: video.video_post_time
+      || (video.posted_at ? dateOnlyInTimezone(video.posted_at, region) : null),
     attributed_product_ids: video.product_attribution_source === 'UNKNOWN'
       ? []
       : video.attributed_product_ids || [],
@@ -129,7 +132,7 @@ const serializeBookingSummary = (booking = {}) => {
     updated_at: booking.updated_at,
     products,
     product_ids: productIds,
-    booking_videos: (booking.booking_videos || []).map(compactBookingVideo),
+    booking_videos: (booking.booking_videos || []).map((video) => compactBookingVideo(video, booking.target_shop?.region)),
     video_match_status: booking.video_match_status,
     actual_performance: booking.actual_performance || {},
     product_performance: booking.product_performance,
@@ -240,7 +243,19 @@ const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((bookin
   const matchingVideos = originalVideos.filter((video) => (
     matchesBookingProducts(booking, video)
     && matchesBookingDateRange(booking, video)
-  ));
+  )).map((video) => {
+    const rawPostDate = video.posted_at || video.video_post_time;
+    const postDate = video.post_date || (rawPostDate ? dateOnlyInTimezone(rawPostDate, booking.target_shop?.region) : null);
+    if (typeof video?.toJSON === 'function') {
+      const json = video.toJSON();
+      json.post_date = postDate;
+      return json;
+    }
+    if (video && typeof video === 'object') {
+      video.post_date = postDate;
+    }
+    return video;
+  });
   booking.booking_videos = matchingVideos;
   booking.video_match_status = matchingVideos.length
     ? 'MATCHED'

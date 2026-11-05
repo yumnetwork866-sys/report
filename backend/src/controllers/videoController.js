@@ -10,6 +10,7 @@ const {
   sequelize,
 } = require('../models');
 const { getOrSetCache, delByPattern } = require('../lib/redis');
+const { localMidnightToUtc } = require('../lib/tiktokShopDateTime');
 
 const videoDetailInclude = [
   { model: TikTokChannel, as: 'channel' },
@@ -39,6 +40,12 @@ const dateOnly = (value) => {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === text ? text : null;
 };
 
+const shiftDate = (dateStr, days) => {
+  const d = new Date(`${dateStr}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
 const positiveInteger = (value, fallback, maximum = Number.MAX_SAFE_INTEGER) => {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
@@ -53,10 +60,11 @@ const videoListOptions = (query = {}) => {
 
   const startDate = dateOnly(query.start_date);
   const endDate = dateOnly(query.end_date);
+  const timezone = query.timezone || null;
   if (startDate || endDate) {
     where.published_at = {
-      ...(startDate ? { [Op.gte]: new Date(`${startDate}T00:00:00.000Z`) } : {}),
-      ...(endDate ? { [Op.lt]: new Date(new Date(`${endDate}T00:00:00.000Z`).getTime() + 86400000) } : {}),
+      ...(startDate ? { [Op.gte]: timezone ? localMidnightToUtc(startDate, timezone) : new Date(`${startDate}T00:00:00.000Z`) } : {}),
+      ...(endDate ? { [Op.lt]: timezone ? localMidnightToUtc(shiftDate(endDate, 1), timezone) : new Date(new Date(`${endDate}T00:00:00.000Z`).getTime() + 86400000) } : {}),
     };
   }
 
@@ -98,7 +106,8 @@ const addLatestShopPerformance = async (videos) => {
 
 const getVideos = async (req, res) => {
   try {
-    const { page, pageSize, where } = videoListOptions(req.query);
+    const timezone = req.query.timezone || 'Asia/Ho_Chi_Minh';
+    const { page, pageSize, where } = videoListOptions({ ...req.query, timezone });
     const channelId = req.query.channel_id || 'all';
     const startDate = req.query.start_date || 'none';
     const endDate = req.query.end_date || 'none';
