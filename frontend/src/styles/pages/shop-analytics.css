@@ -1142,6 +1142,210 @@
 }
 
 
+.shop-analytics__chart-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+
+.shop-analytics__chart-title-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+
+.shop-analytics__compare-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+
+.shop-analytics__compare-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+  font: inherit;
+  font-family: var(--font-heading);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+
+.shop-analytics__compare-btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-surface-raised);
+  color: var(--color-primary);
+}
+
+
+.shop-analytics__compare-btn.is-open {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.18);
+  background: var(--color-surface-raised);
+}
+
+
+.shop-analytics__compare-chevron {
+  transition: transform 0.2s ease;
+  color: var(--color-muted-strong);
+}
+
+
+.shop-analytics__compare-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+
+.shop-analytics__compare-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 260px;
+  max-width: 340px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: var(--color-surface-raised, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.18), 0 4px 10px -2px rgba(15, 23, 42, 0.08);
+}
+
+
+.shop-analytics__compare-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--color-border, #f1f5f9);
+  font-size: 0.76rem;
+}
+
+
+.shop-analytics__compare-popover-title {
+  font-weight: 700;
+  color: var(--color-text-soft, #475569);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+
+.shop-analytics__compare-popover-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+.shop-analytics__compare-popover-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+
+.shop-analytics__compare-popover-divider {
+  height: 1px;
+  background: var(--color-border, #e2e8f0);
+  margin: 4px 6px;
+}
+
+
+.shop-analytics__compare-popover-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 0.8rem;
+  color: var(--color-text, #1e293b);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease;
+}
+
+
+.shop-analytics__compare-popover-item:hover {
+  background: var(--color-surface-hover, #f1f5f9);
+}
+
+
+.shop-analytics__compare-popover-item input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--color-primary, #0284c7);
+}
+
+
+.shop-analytics__compare-popover-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
+.shop-analytics__legend-action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--color-primary, #0284c7);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+
+.shop-analytics__legend-action-btn:hover {
+  color: var(--color-primary-dark, #0369a1);
+}
+
+
+.shop-analytics__legend-action-divider {
+  color: var(--color-muted, #94a3b8);
+  font-size: 0.75rem;
+}
+
+
+.shop-analytics__legend-indicator {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+
+.shop-analytics__legend-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--color-surface-subtle, #f1f5f9);
+  color: var(--color-muted-strong, #64748b);
+  border: 1px solid var(--color-border, #e2e8f0);
+}
+
+
 .shop-analytics__insight-stack {
   display: grid;
   gap: var(--space-4);

@@ -76,14 +76,28 @@ const useShopAnalyticsData = ({
           });
           const results = await Promise.allSettled(eligibleShops.map((shop) => loadShopRange(shop.id)));
           if (controller.signal.aborted) return;
-          const snapshots = results
-            .filter((result) => result.status === 'fulfilled' && result.value)
-            .map((result) => result.value);
+          const snapshots = [];
+          const shopSeries = [];
+          results.forEach((result, index) => {
+            if (result.status === 'fulfilled' && result.value) {
+              const snap = result.value;
+              snapshots.push(snap);
+              const shop = eligibleShops[index];
+              shopSeries.push({
+                shopId: String(shop.id),
+                shopName: shop.name || `Shop ${shop.id}`,
+                shopCode: shop.code || '',
+                region: shop.region || '',
+                intervals: Array.isArray(snap?.metrics?.intervals) ? snap.metrics.intervals : [],
+              });
+            }
+          });
           nextSnapshot = combineShopAnalyticsSnapshots(snapshots, currency);
           if (!nextSnapshot) {
             const firstError = results.find((result) => result.status === 'rejected');
             throw firstError?.reason || new Error(t('shopAnalytics.noData'));
           }
+          nextSnapshot.shopSeries = shopSeries;
         } else {
           nextSnapshot = await loadShopRange(selectedShopId);
         }
@@ -112,13 +126,29 @@ const useShopAnalyticsData = ({
   );
   const totals = useMemo(() => totalsFor(intervals), [intervals]);
   const comparisonTotals = useMemo(() => totalsFor(comparisonIntervals), [comparisonIntervals]);
-  const chartData = useMemo(() => intervals.map((row) => ({
-    date: row.start_date,
-    gmv: moneyValue(row.gmv),
-    orders: numericValue(row.orders),
-    unitsSold: numericValue(row.units_sold),
-    buyers: numericValue(row.buyers),
-  })), [intervals]);
+  const shopSeries = useMemo(
+    () => (Array.isArray(snapshot?.shopSeries) ? snapshot.shopSeries : []),
+    [snapshot],
+  );
+  const chartData = useMemo(() => intervals.map((row) => {
+    const entry = {
+      date: row.start_date,
+      gmv: moneyValue(row.gmv),
+      orders: numericValue(row.orders),
+      unitsSold: numericValue(row.units_sold),
+      buyers: numericValue(row.buyers),
+    };
+    if (shopSeries.length > 0) {
+      shopSeries.forEach((s) => {
+        const match = s.intervals.find((i) => i.start_date === row.start_date);
+        entry[`shop_${s.shopId}_gmv`] = match ? moneyValue(match.gmv) : 0;
+        entry[`shop_${s.shopId}_orders`] = match ? numericValue(match.orders) : 0;
+        entry[`shop_${s.shopId}_unitsSold`] = match ? numericValue(match.units_sold) : 0;
+        entry[`shop_${s.shopId}_buyers`] = match ? numericValue(match.buyers) : 0;
+      });
+    }
+    return entry;
+  }), [intervals, shopSeries]);
 
   return {
     analyticsLoading,
@@ -128,6 +158,7 @@ const useShopAnalyticsData = ({
     hasData: intervals.length > 0,
     intervals,
     setSnapshot,
+    shopSeries,
     snapshot,
     totals,
   };

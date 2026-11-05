@@ -224,3 +224,40 @@ test('data hooks are guarded when scope, date range or selection is invalid', ()
     videoOnly: true,
   }), true);
 });
+
+test('chart data formats multi-shop series for line comparison', () => {
+  const shopSeries = [
+    {
+      shopId: '12',
+      shopName: 'Shop A',
+      intervals: [{ start_date: '2026-10-01', gmv: { amount: 50, currency: 'USD' }, orders: 5, units_sold: 8, buyers: 4 }],
+    },
+    {
+      shopId: '15',
+      shopName: 'Shop B',
+      intervals: [{ start_date: '2026-10-01', gmv: { amount: 80, currency: 'USD' }, orders: 10, units_sold: 12, buyers: 9 }],
+    },
+  ];
+  const intervals = [{ start_date: '2026-10-01', gmv: { amount: 130, currency: 'USD' }, orders: 15, units_sold: 20, buyers: 13 }];
+
+  const entry = {
+    date: intervals[0].start_date,
+    gmv: intervals[0].gmv.amount,
+    orders: intervals[0].orders,
+    unitsSold: intervals[0].units_sold,
+    buyers: intervals[0].buyers,
+  };
+  shopSeries.forEach((s) => {
+    const match = s.intervals.find((i) => i.start_date === intervals[0].start_date);
+    entry[`shop_${s.shopId}_gmv`] = match ? match.gmv.amount : 0;
+    entry[`shop_${s.shopId}_orders`] = match ? match.orders : 0;
+    entry[`shop_${s.shopId}_unitsSold`] = match ? match.units_sold : 0;
+    entry[`shop_${s.shopId}_buyers`] = match ? match.buyers : 0;
+  });
+
+  assert.equal(entry.gmv, 130);
+  assert.equal(entry.shop_12_gmv, 50);
+  assert.equal(entry.shop_15_gmv, 80);
+  assert.equal(entry.shop_12_orders, 5);
+  assert.equal(entry.shop_15_orders, 10);
+});

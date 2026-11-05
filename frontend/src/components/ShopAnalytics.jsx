@@ -73,7 +73,7 @@ const ShopAnalytics = ({
   });
   const {
     analyticsLoading, chartData, comparisonTotals, hasComparison, hasData,
-    intervals, setSnapshot, snapshot, totals,
+    intervals, setSnapshot, shopSeries, snapshot, totals,
   } = analytics;
   const video = useShopVideoAnalytics({
     currency, endDate, invalidRange, locale, managementOnly, missingAnalyticsScope,
@@ -342,7 +342,7 @@ const ShopAnalytics = ({
                 t={t}
               />
 
-<AnalyticsCharts
+              <AnalyticsCharts
                 analyticsLoading={analyticsLoading}
                 breakdownTotal={breakdownTotal}
                 breakdowns={breakdowns}
@@ -358,6 +358,7 @@ const ShopAnalytics = ({
                 hasData={hasData}
                 locale={locale}
                 onMetricChange={setChartMetric}
+                shopSeries={shopSeries}
                 sourceLabel={sourceLabel}
                 t={t}
                 totals={totals}
