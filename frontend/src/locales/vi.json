@@ -1591,6 +1591,8 @@
     "compareCount": "So sánh ({{visible}}/{{total}} shop)",
     "totalAllShops": "Tổng",
     "total": "Tổng",
+    "crossBorderNotice": "Dữ liệu đa quốc gia",
+    "crossBorderNoticeMeta": "Các shop thuộc nhiều khu vực tiền tệ khác nhau được chuẩn hóa sang USD theo tỷ giá TikTok để tổng hợp.",
     "metric": "Chỉ số",
     "loadingAnalytics": "Đang tải Shop Analytics",
     "noData": "Chưa có dữ liệu cho phạm vi này.",

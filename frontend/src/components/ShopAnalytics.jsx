@@ -66,7 +66,16 @@ const ShopAnalytics = ({
     missingAnalyticsScope, selectedShop, selectedShopId, shops, tokenExpired,
   } = inventory;
   const allShopsSelected = selectedShopId === 'all';
-  const currency = allShopsSelected ? 'USD' : 'LOCAL';
+  const isCrossBorder = useMemo(() => {
+    if (!allShopsSelected || !shops.length) return false;
+    const regions = new Set(
+      shops
+        .map((shop) => String(shop.region || shop.authorization?.app?.region || 'VN').trim().toUpperCase())
+        .filter(Boolean),
+    );
+    return regions.size > 1;
+  }, [allShopsSelected, shops]);
+  const currency = isCrossBorder ? 'USD' : 'LOCAL';
   const analytics = useShopAnalyticsData({
     currency, endDate, invalidRange, managementOnly, missingAnalyticsScope,
     onError: setError, selectedShopId, shops, startDate, t, tokenExpired, videoOnly,
@@ -124,10 +133,12 @@ const ShopAnalytics = ({
   const formatDate = (value) => formatDateOnly(value, t('common.noData'));
   const formatDateTime = (value) => formatDisplayDateTime(value, t('common.noData'));
 
-  const displayCurrency = intervals.find((row) => row?.gmv?.currency)?.gmv?.currency
-    || videoRows.find((row) => row?.gmv?.currency)?.gmv?.currency
-    || 'VND';
-  const formatMoney = (value, currencyCode = displayCurrency) => formatPreferredMoney(value, currencyCode);
+  const displayCurrency = intervals.find((row) => row?.gmv?.currency && row?.gmv?.currency !== 'LOCAL')?.gmv?.currency
+    || videoRows.find((row) => row?.gmv?.currency && row?.gmv?.currency !== 'LOCAL')?.gmv?.currency
+    || (selectedShop?.region === 'MY' ? 'MYR' : 'VND');
+  const formatMoney = (value, currencyCode = displayCurrency) => (
+    formatPreferredMoney(value, currencyCode === 'LOCAL' ? displayCurrency : currencyCode)
+  );
   const formatVideoMoney = (value) => formatMoney(moneyValue(value), value?.currency || displayCurrency);
   const formatRate = (value) => {
     const rate = numericValue(value);

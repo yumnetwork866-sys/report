@@ -934,6 +934,13 @@
 }
 
 
+.shop-analytics__permission-banner--info {
+  border-color: rgba(2, 132, 199, 0.2);
+  background: rgba(2, 132, 199, 0.06);
+  color: var(--color-primary);
+}
+
+
 .shop-analytics__permission-banner > div {
   display: grid;
   gap: 3px;

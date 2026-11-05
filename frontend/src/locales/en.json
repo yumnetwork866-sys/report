@@ -1592,6 +1592,8 @@
     "compareCount": "Compare ({{visible}}/{{total}} shops)",
     "totalAllShops": "Total",
     "total": "Total",
+    "crossBorderNotice": "Cross-border data",
+    "crossBorderNoticeMeta": "Shops from multiple currency regions are standardized to USD using TikTok exchange rates for aggregation.",
     "metric": "Metric",
     "loadingAnalytics": "Loading Shop Analytics",
     "noData": "No data has been synchronized for this range.",

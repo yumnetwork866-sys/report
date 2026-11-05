@@ -104,6 +104,44 @@ test('combineShopAnalyticsSnapshots aggregates shops by day in one currency', ()
   });
 });
 
+test('combineShopAnalyticsSnapshots preserves local currency VND when currency is LOCAL', () => {
+  const snapshot = combineShopAnalyticsSnapshots([
+    {
+      synced_at: '2026-09-22T01:00:00Z',
+      latest_available_date: '2026-09-21',
+      metrics: {
+        intervals: [{
+          start_date: '2026-09-21', end_date: '2026-09-22',
+          gmv: { amount: '100000000', currency: 'VND' }, refunds: 0,
+          orders: 2, units_sold: 3, buyers: 2, product_impressions: 50, product_page_views: 20,
+          cancellations_and_returns: null,
+          gmv_breakdowns: [],
+        }],
+        comparison_intervals: [],
+      },
+    },
+    {
+      synced_at: '2026-09-22T02:00:00Z',
+      latest_available_date: '2026-09-21',
+      metrics: {
+        intervals: [{
+          start_date: '2026-09-21', end_date: '2026-09-22',
+          gmv: { amount: '50000000', currency: 'VND' }, refunds: 0,
+          orders: 1, units_sold: 1, buyers: 1, product_impressions: 25, product_page_views: 10,
+          cancellations_and_returns: null,
+          gmv_breakdowns: [],
+        }],
+        comparison_intervals: [],
+      },
+    },
+  ], 'LOCAL');
+
+  assert.equal(snapshot.shop_count, 2);
+  assert.equal(snapshot.currency, 'VND');
+  assert.equal(snapshot.metrics.intervals[0].gmv.amount, 150000000);
+  assert.equal(snapshot.metrics.intervals[0].gmv.currency, 'VND');
+});
+
 test('productsForVideo merges embedded products with catalog metadata', () => {
   assert.deepEqual(productsForVideo({
     product_id: 'p1,p2',

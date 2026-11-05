@@ -180,6 +180,12 @@ const mergeAnalyticsIntervals = (intervalGroups = [], currency = 'USD') => {
 export const combineShopAnalyticsSnapshots = (snapshots = [], currency = 'USD') => {
   const valid = snapshots.filter((snapshot) => snapshot?.metrics);
   if (!valid.length) return null;
+  const rawIntervalCurrency = valid
+    .map((s) => s.metrics?.intervals?.find((i) => i?.gmv?.currency)?.gmv?.currency)
+    .find(Boolean);
+  const targetCurrency = currency === 'LOCAL' || !currency
+    ? (rawIntervalCurrency && rawIntervalCurrency !== 'LOCAL' ? rawIntervalCurrency : 'VND')
+    : currency;
   const latestAvailableDate = valid
     .map((snapshot) => snapshot.latest_available_date)
     .filter(Boolean)
@@ -192,15 +198,15 @@ export const combineShopAnalyticsSnapshots = (snapshots = [], currency = 'USD') 
     .at(-1) || null;
   return {
     id: 'all-shops',
-    currency,
+    currency: targetCurrency,
     latest_available_date: latestAvailableDate,
     synced_at: syncedAt,
     shop_count: valid.length,
     metrics: {
-      intervals: mergeAnalyticsIntervals(valid.map((snapshot) => snapshot.metrics.intervals || []), currency),
+      intervals: mergeAnalyticsIntervals(valid.map((snapshot) => snapshot.metrics.intervals || []), targetCurrency),
       comparison_intervals: mergeAnalyticsIntervals(
         valid.map((snapshot) => snapshot.metrics.comparison_intervals || []),
-        currency,
+        targetCurrency,
       ),
     },
   };
