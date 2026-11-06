@@ -10,7 +10,7 @@ const {
   sequelize,
 } = require('../models');
 const { getOrSetCache, delByPattern } = require('../lib/redis');
-const { localMidnightToUtc } = require('../lib/tiktokShopDateTime');
+const { localMidnightToUtc } = require('../lib/dateTimeUtils');
 
 const videoDetailInclude = [
   { model: TikTokChannel, as: 'channel' },

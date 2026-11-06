@@ -162,6 +162,12 @@ test('orderRangeForPeriod formats all, custom, and monthly periods', () => {
   assert.equal(monthly.startDate, '2026-08-01');
   assert.equal(monthly.endDate, '2026-08-31');
   assert.equal(monthly.windowType, 'CUSTOM');
+
+  const myNovember = orderRangeForPeriod('2026-11', null, 'MY');
+  const vnNovember = orderRangeForPeriod('2026-11', null, 'VN');
+  assert.equal(myNovember.startTime, 1793462400);
+  assert.equal(vnNovember.startTime, 1793466000);
+  assert.equal(vnNovember.startTime - myNovember.startTime, 3600);
 });
 
 test('currentBookingMonth formats YYYY-MM correctly for dates', () => {

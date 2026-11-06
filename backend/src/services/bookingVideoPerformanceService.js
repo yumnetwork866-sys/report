@@ -15,7 +15,7 @@ const {
 const {
   dateOnlyInTimezone,
   localMidnightToUtc,
-} = require('../lib/tiktokShopDateTime');
+} = require('../lib/dateTimeUtils');
 
 const dateOnly = (value = new Date()) => new Date(value).toISOString().slice(0, 10);
 const shiftDate = (value, days) => {

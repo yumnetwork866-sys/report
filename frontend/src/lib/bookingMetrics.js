@@ -277,11 +277,19 @@ export const countPaidBookingKocs = (bookings = [], isInPeriod = () => true) => 
     .map(bookingCreatorKey),
 ).size;
 
+export const resolveTimezoneOffset = (regionOrTimezone = 'MY') => {
+  const str = String(regionOrTimezone || '').trim().toUpperCase();
+  if (['VN', 'TH', 'ID', 'ASIA/HO_CHI_MINH', 'ASIA/BANGKOK', 'ASIA/JAKARTA'].includes(str)) {
+    return '+07:00';
+  }
+  return '+08:00';
+};
+
 export const orderRangeForPeriod = (period, customRange, region = 'MY') => {
   if (!period || period === 'all') {
     return { startTime: null, endTime: null, windowType: 'LIFETIME' };
   }
-  const timezoneOffset = ['VN', 'TH', 'ID'].includes(String(region || '').toUpperCase()) ? '+07:00' : '+08:00';
+  const timezoneOffset = resolveTimezoneOffset(region);
   const shopMidnightUnix = (value) => Math.floor(new Date(`${value}T00:00:00${timezoneOffset}`).getTime() / 1000);
   if (period === 'custom') {
     if (!customRange?.start || !customRange?.end) {
@@ -819,13 +827,44 @@ export const bookingVideoSocialMetrics = (snapshot) => {
   };
 };
 
-export const formatOrderTimestamp = (value) => {
+export const formatOrderTimestamp = (value, timezoneOrRegion) => {
   if (!value) return { date: '—', time: '' };
   const num = Number(value);
   const date = !Number.isNaN(num) && num > 0
     ? new Date(num > 1e11 ? num : num * 1000)
     : new Date(value);
   if (Number.isNaN(date.getTime())) return { date: String(value), time: '' };
+
+  if (timezoneOrRegion) {
+    const tzMap = {
+      MY: 'Asia/Kuala_Lumpur',
+      VN: 'Asia/Ho_Chi_Minh',
+      SG: 'Asia/Singapore',
+      TH: 'Asia/Bangkok',
+      PH: 'Asia/Manila',
+      ID: 'Asia/Jakarta',
+    };
+    const tz = tzMap[String(timezoneOrRegion).toUpperCase()] || timezoneOrRegion;
+    try {
+      const parts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: tz,
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(date);
+      const m = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+      return {
+        date: `${m.day}/${m.month}/${m.year}`,
+        time: `${m.hour}:${m.minute}`,
+      };
+    } catch {
+      // fallback below
+    }
+  }
+
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();

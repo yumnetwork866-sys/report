@@ -11,7 +11,7 @@ const {
 } = require('../models');
 const { delByPattern } = require('../lib/redis');
 const { getAppCredentials } = require('../services/tiktokAppService');
-const { dateOnlyInTimezone } = require('../lib/tiktokShopDateTime');
+const { dateOnlyInTimezone } = require('../lib/dateTimeUtils');
 
 const DEFAULT_CHANNEL_SCOPES = 'user.info.basic,user.info.profile,user.info.stats,video.list';
 

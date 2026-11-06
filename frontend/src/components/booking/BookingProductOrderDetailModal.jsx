@@ -504,7 +504,7 @@ const BookingProductOrderDetailModal = ({
                         </td>
                         <td>
                           {(() => {
-                            const formatted = formatOrderTimestamp(row.orderTime);
+                            const formatted = formatOrderTimestamp(row.orderTime, booking?.target_shop?.region || 'MY');
                             return (
                               <div className="booking-product-order-modal__time-cell">
                                 <span className="booking-product-order-modal__time-date">{formatted.date}</span>

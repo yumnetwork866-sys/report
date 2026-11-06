@@ -7,6 +7,7 @@ test('formats date-only values without applying a timezone', () => {
   assert.equal(formatDateOnly('2026-08-10'), '10/08/2026');
   assert.equal(formatDateOnly('2026-08-10T23:30:00Z'), '10/08/2026');
   assert.equal(formatDateOnly('2026-09-21T22:05:25.000Z'), '21/09/2026');
+  assert.equal(formatDateOnly('2026-10-31T17:04:00.000Z', '—', 'MY'), '01/11/2026');
 });
 
 test('returns the requested fallback for missing or invalid dates', () => {

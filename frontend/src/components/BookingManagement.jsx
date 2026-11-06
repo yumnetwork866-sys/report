@@ -1245,7 +1245,7 @@ const BookingManagement = ({
           formatNumber={formatNumber}
           t={t}
           currency={productOrderDetailModal.booking?.currency || selectedCurrency}
-          dateRange={orderRangeForPeriod(selectedMonth, customRange)}
+          dateRange={orderRangeForPeriod(selectedMonth, customRange, productOrderDetailModal?.booking?.target_shop?.region || activeShop?.region || 'MY')}
         />
       ) : null}
     </div>

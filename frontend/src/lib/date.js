@@ -1,5 +1,42 @@
-export function parseDateOnly(value) {
-  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
+const REGION_TIMEZONES = Object.freeze({
+  MY: 'Asia/Kuala_Lumpur',
+  VN: 'Asia/Ho_Chi_Minh',
+  SG: 'Asia/Singapore',
+  TH: 'Asia/Bangkok',
+  PH: 'Asia/Manila',
+  ID: 'Asia/Jakarta',
+});
+
+export function resolveRegionTimezone(regionOrTimezone) {
+  if (!regionOrTimezone) return null;
+  const upper = String(regionOrTimezone).trim().toUpperCase();
+  if (REGION_TIMEZONES[upper]) return REGION_TIMEZONES[upper];
+  return String(regionOrTimezone).trim();
+}
+
+export function parseDateOnly(value, timezoneOrRegion) {
+  if (!value) return null;
+  const str = String(value || '').trim();
+  if (timezoneOrRegion && (/[zZ]|[+-]\d\d:\d\d$/.test(str) || value instanceof Date)) {
+    const tz = resolveRegionTimezone(timezoneOrRegion) || 'Asia/Ho_Chi_Minh';
+    const date = value instanceof Date ? value : new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      try {
+        const parts = new Intl.DateTimeFormat('en-CA', {
+          timeZone: tz,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).formatToParts(date);
+        const map = Object.fromEntries(parts.filter((p) => p.type !== 'literal').map((p) => [p.type, p.value]));
+        return { year: map.year, month: map.month, day: map.day };
+      } catch {
+        // fallback to standard regex extraction below
+      }
+    }
+  }
+
+  const match = str.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|[T\s])/);
   if (!match) return null;
 
   const [, year, month, day] = match;
@@ -14,8 +51,8 @@ export function parseDateOnly(value) {
   return { year, month, day };
 }
 
-export function formatDateOnly(value, fallback = '') {
-  const parts = parseDateOnly(value);
+export function formatDateOnly(value, fallback = '', timezoneOrRegion) {
+  const parts = parseDateOnly(value, timezoneOrRegion);
   return parts ? `${parts.day}/${parts.month}/${parts.year}` : fallback;
 }
 

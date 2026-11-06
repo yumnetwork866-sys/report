@@ -45,7 +45,7 @@ const BookingVideoMatchDrawer = ({
                 >
                   <span>
                     <strong>{candidate.title || candidate.id}</strong>
-                    <small>@{candidate.username} · {formatDateOnly(candidate.post_date || candidate.video_post_time || candidate.posted_at, '—')}</small>
+                    <small>@{candidate.username} · {formatDateOnly(candidate.post_date || candidate.video_post_time || candidate.posted_at, '—', videoMatchDialog.booking?.target_shop?.region || 'MY')}</small>
                   </span>
                   <span>
                     <strong>{formatMoney(candidate.gmv?.amount, candidate.gmv?.currency)}</strong>

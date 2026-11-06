@@ -10,7 +10,7 @@ const {
 } = require('../services/bookingVideoPerformanceService');
 const { loadShopProducts } = require('../services/shopProductCatalogService');
 const bookingRepository = require('../repositories/bookingRepository');
-const { dateOnlyInTimezone } = require('../lib/tiktokShopDateTime');
+const { dateOnlyInTimezone } = require('../lib/dateTimeUtils');
 
 const normalizedUsername = (value) => String(value || '').trim().replace(/^@+/, '').toLowerCase();
 

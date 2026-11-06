@@ -1189,8 +1189,8 @@ const getKpis = async (req, res) => {
     const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
       const roleFilterSql = role === 'koc' ? 'WHERE role = :role' : '';
       const userFilterSql = role === 'koc' ? 'WHERE u.role = :role' : '';
-      const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
-      const topVideoDateSql = `${startDate ? ' AND v_top.published_at::date >= :startDate' : ''}${endDate ? ' AND v_top.published_at::date <= :endDate' : ''}`;
+      const videoDateSql = `${startDate ? " AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= :startDate" : ''}${endDate ? " AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= :endDate" : ''}`;
+      const topVideoDateSql = `${startDate ? " AND (v_top.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= :startDate" : ''}${endDate ? " AND (v_top.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= :endDate" : ''}`;
       const statsDateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
       const replacements = { ...(role === 'koc' ? { role } : {}), ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
 
@@ -1244,7 +1244,7 @@ const getKpis = async (req, res) => {
           GROUP BY video_id
         ),
         period_bounds AS (
-          SELECT MAX(published_at::date) AS max_date
+          SELECT MAX((published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date) AS max_date
           FROM videos
           WHERE published_at IS NOT NULL
         ),
@@ -1270,8 +1270,8 @@ const getKpis = async (req, res) => {
           COALESCE(SUM(v.shares), 0)::bigint AS "totalShares",
           COALESCE(ROUND(AVG(v.views)), 0)::bigint AS "avgViewsPerVideo",
           COALESCE(ROUND(100.0 * COUNT(*) FILTER (WHERE v.views >= 10000) / NULLIF(COUNT(v.id), 0)), 0)::int AS "over10kRate",
-          COALESCE(SUM(CASE WHEN p.current_start IS NOT NULL AND v.published_at::date BETWEEN p.current_start AND p.current_end THEN v.views ELSE 0 END), 0)::bigint AS "currentPeriodViews",
-          COALESCE(SUM(CASE WHEN p.previous_start IS NOT NULL AND v.published_at::date BETWEEN p.previous_start AND p.previous_end THEN v.views ELSE 0 END), 0)::bigint AS "previousPeriodViews",
+          COALESCE(SUM(CASE WHEN p.current_start IS NOT NULL AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p.current_start AND p.current_end THEN v.views ELSE 0 END), 0)::bigint AS "currentPeriodViews",
+          COALESCE(SUM(CASE WHEN p.previous_start IS NOT NULL AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date BETWEEN p.previous_start AND p.previous_end THEN v.views ELSE 0 END), 0)::bigint AS "previousPeriodViews",
           CASE WHEN top_video.id IS NULL THEN NULL ELSE json_build_object(
             'id', top_video.id,
             'title', top_video.title,
@@ -1437,7 +1437,7 @@ const getKocDetail = async (req, res) => {
 
     const { data: payload, hit } = await getOrSetCache(cacheKey, REPORT_CACHE_TTL_SECONDS, async () => {
       const dateSql = `${startDate ? ' AND vds.date >= :startDate' : ''}${endDate ? ' AND vds.date <= :endDate' : ''}`;
-      const videoDateSql = `${startDate ? ' AND v.published_at::date >= :startDate' : ''}${endDate ? ' AND v.published_at::date <= :endDate' : ''}`;
+      const videoDateSql = `${startDate ? " AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date >= :startDate" : ''}${endDate ? " AND (v.published_at AT TIME ZONE 'Asia/Ho_Chi_Minh')::date <= :endDate" : ''}`;
       const replacements = { creatorId, ...(startDate ? { startDate } : {}), ...(endDate ? { endDate } : {}) };
       const [dailyViews, videos, bookings, syncHistory] = await Promise.all([
         reportRepository.query(`
