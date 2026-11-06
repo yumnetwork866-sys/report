@@ -20,6 +20,7 @@ export const sidebarSections = [
         permission: ['shop.analytics.view', 'shop.videos.library.view', 'shop.videos.performance.view', 'shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view', 'shop.orders.view', 'shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view'],
         children: [
           { to: '/shop/analytics', labelKey: 'navigation.shopAnalytics', permission: 'shop.analytics.view' },
+          { to: '/shop/live', labelKey: 'navigation.live', permission: 'shop.analytics.view' },
           { to: '/shop/videos', labelKey: 'navigation.videos', permission: ['shop.videos.library.view', 'shop.videos.performance.view'] },
           { to: '/shop/affiliate', labelKey: 'navigation.affiliate', permission: ['shop.affiliate.open.view', 'shop.affiliate.discovery.view', 'shop.affiliate.performance.view', 'shop.affiliate.creators.view'] },
           { to: '/shop/orders', labelKey: 'navigation.orders', permission: 'shop.orders.view' },
@@ -117,6 +118,12 @@ export const protectedRouteCards = [
     props: { heroTitle: 'Shop analytics' },
   },
   {
+    path: '/shop/live',
+    component: 'LiveAnalytics',
+    permission: 'shop.analytics.view',
+    props: { heroTitle: 'LIVE' },
+  },
+  {
     path: '/shop/videos',
     component: 'ShopAnalytics',
     permission: ['shop.videos.library.view', 'shop.videos.performance.view'],
@@ -137,6 +144,7 @@ export const protectedRouteCards = [
 ];
 
 export const redirectRoutes = [
+  { path: '/live', to: '/shop/live' },
   { path: '/manage', to: '/manage/users' },
   { path: '/manage/koc', to: '/manage/koc-performance' },
   { path: '/manage/shop-analytics', to: '/shop/analytics' },

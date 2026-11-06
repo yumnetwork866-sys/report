@@ -73,6 +73,13 @@ const sidebarIcons = {
     'M6 9v11h12V9',
     'M8.5 16.5 11 14l2 1.5 3-4',
   ],
+  live: [
+    'M12 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z',
+    'M4.93 4.93a10 10 0 0 0 0 14.14',
+    'M19.07 4.93a10 10 0 0 1 0 14.14',
+    'M7.76 7.76a6 6 0 0 0 0 8.48',
+    'M16.24 7.76a6 6 0 0 1 0 8.48',
+  ],
   apps: [
     'M4 4h6v6H4z',
     'M14 4h6v6h-6z',
@@ -93,6 +100,7 @@ const routeIconMap = {
   '/manage/apps': 'apps',
   '/manage/koc-performance': 'koc',
   '/shop/analytics': 'shopAnalytics',
+  '/shop/live': 'live',
   '/shop/bookings': 'bookings',
   '/shop/orders': 'orders',
   '/channels/manage': 'channels',

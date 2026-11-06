@@ -24,13 +24,25 @@ test('shop and channel pages use consistent route namespaces', () => {
     protectedRouteCards
       .map((route) => route.path)
       .filter((path) => path.startsWith('/shop/')),
-    ['/shop/affiliate', '/shop/analytics', '/shop/videos', '/shop/bookings', '/shop/orders'],
+    ['/shop/affiliate', '/shop/analytics', '/shop/live', '/shop/videos', '/shop/bookings', '/shop/orders'],
   );
   assert.deepEqual(
     protectedRouteCards
       .map((route) => route.path)
       .filter((path) => path.startsWith('/channels/')),
     ['/channels/overview', '/channels/reports'],
+  );
+});
+
+test('live page has sidebar entry and legacy redirect', () => {
+  const shopItems = sidebarSections
+    .flatMap((section) => section.items || [])
+    .find((item) => item.id === 'tiktok-shop')?.children || [];
+  const liveLink = shopItems.find((item) => item.to === '/shop/live');
+  assert.equal(liveLink?.labelKey, 'navigation.live');
+  assert.deepEqual(
+    redirectRoutes.find((route) => route.path === '/live'),
+    { path: '/live', to: '/shop/live' },
   );
 });
 

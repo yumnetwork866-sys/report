@@ -18,6 +18,7 @@ import {
   SellerAffiliatePanel,
   OrderManagement,
   ShopAnalytics,
+  LiveAnalytics,
   TermsPage,
 } from './lazyRouteComponents';
 import { protectedRouteCards, redirectRoutes } from './navigation';
@@ -30,6 +31,7 @@ const componentMap = {
   SellerAffiliatePanel,
   OrderManagement,
   ShopAnalytics,
+  LiveAnalytics,
   ScheduleManagement,
   QueueManagement,
   AppManagement,

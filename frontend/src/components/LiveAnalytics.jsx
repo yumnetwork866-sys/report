@@ -1,0 +1,1493 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  Flame,
+  Package,
+  Radio,
+  Search,
+  ShoppingBag,
+  TrendingUp,
+  Users,
+  X,
+} from 'lucide-react';
+import { useI18n } from '../lib/language';
+import { useMoneyFormatter } from '../lib/currency';
+import { formatDateOnly } from '../lib/date';
+import { fetchTikTokSellerAffiliateOrders } from '../lib/api';
+import useShopInventory from './shop-analytics/hooks/useShopInventory';
+import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
+import ShopAnalyticsFilters from './shop-analytics/ShopAnalyticsFilters';
+import Pagination from './Pagination';
+import {
+  formatDisplayDateTime,
+  moneyValue,
+  numericValue,
+  percentageChange,
+  rangeForDays,
+  shiftDate,
+} from './shop-analytics/shopAnalyticsUtils';
+import '../styles/pages/live-analytics.css';
+
+const SHOP_PALETTE = [
+  '#0284c7', // Sky Blue
+  '#f97316', // Orange
+  '#10b981', // Emerald
+  '#8b5cf6', // Violet
+  '#ec4899', // Pink
+  '#eab308', // Amber
+  '#06b6d4', // Cyan
+  '#f43f5e', // Rose
+  '#6366f1', // Indigo
+  '#14b8a6', // Teal
+];
+const TOTAL_SERIES_ID = '__total__';
+const TOTAL_LINE_COLOR = '#0f172a';
+
+const extractLiveGmv = (row) => {
+  if (!row) return 0;
+  const breakdowns = Array.isArray(row.gmv_breakdowns) && row.gmv_breakdowns.length > 0
+    ? row.gmv_breakdowns
+    : (Array.isArray(row?.gmv?.breakdowns) ? row.gmv.breakdowns : []);
+  const liveItem = breakdowns.find((b) => b?.type === 'LIVE' || b?.content_type === 'LIVE');
+  if (!liveItem) return 0;
+  return moneyValue(liveItem?.amount ?? liveItem?.gmv?.amount ?? liveItem?.sales?.gmv?.amount ?? liveItem);
+};
+
+const CHART_TOOLTIP_STYLE = {
+  borderRadius: 8,
+  border: '1px solid #e2e9f3',
+  boxShadow: '0 8px 24px rgba(45, 70, 110, 0.12)',
+  color: '#17243d',
+  background: '#ffffff',
+  fontSize: '0.8125rem',
+  padding: '10px 14px',
+};
+
+const MultiShopLiveTooltip = ({ active, payload, label, formatMoney }) => {
+  if (!active || !payload?.length) return null;
+  const sorted = [...payload].sort((a, b) => {
+    if (a.dataKey === 'overallGmv') return -2;
+    if (a.dataKey === 'liveGmv') return -1;
+    if (b.dataKey === 'overallGmv' || b.dataKey === 'liveGmv') return 1;
+    return (Number(b.value) || 0) - (Number(a.value) || 0);
+  });
+
+  return (
+    <div
+      style={{
+        ...CHART_TOOLTIP_STYLE,
+        minWidth: 220,
+      }}
+    >
+      <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text-soft, #475569)', marginBottom: 8, borderBottom: '1px solid #f1f5f9', paddingBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {sorted.map((item) => {
+          const isTotal = item.dataKey === 'liveGmv' || item.dataKey === 'overallGmv';
+          return (
+            <div
+              key={item.dataKey || item.name}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                fontSize: '0.8125rem',
+                paddingBottom: isTotal && sorted.length > 1 ? 5 : undefined,
+                borderBottom: isTotal && sorted.length > 1 ? '1px dashed #e2e8f0' : undefined,
+                marginBottom: isTotal && sorted.length > 1 ? 2 : undefined,
+              }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: isTotal ? 'var(--color-text)' : 'var(--color-text-muted)' }}>
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: item.color || item.stroke,
+                    flexShrink: 0,
+                  }}
+                />
+                <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: isTotal ? 700 : 500 }}>
+                  {item.name}
+                </span>
+              </span>
+              <strong style={{ fontWeight: isTotal ? 700 : 600, color: 'var(--color-text)' }}>
+                {formatMoney ? formatMoney(item.value) : item.value}
+              </strong>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const LiveAnalytics = () => {
+  const { t, language } = useI18n();
+  const locale = language === 'vi' ? 'vi-VN' : 'en-US';
+  const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
+
+  // Filters & State
+  const initialRange = useMemo(() => rangeForDays(7), []);
+  const [startDate, setStartDate] = useState(initialRange.startDate);
+  const [endDate, setEndDate] = useState(initialRange.endDate);
+  const [periodPreset, setPeriodPreset] = useState('7d');
+  const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'products' | 'orders'
+  const [chartMode, setChartMode] = useState('live'); // 'live' | 'compare'
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [orderPage, setOrderPage] = useState(1);
+  const ordersPerPage = 15;
+  const sessionDrawerRef = useRef(null);
+
+  // Ensure drawer scrolls to top each time a session is opened or changed
+  useEffect(() => {
+    if (selectedSession) {
+      if (sessionDrawerRef.current) {
+        sessionDrawerRef.current.scrollTop = 0;
+      }
+      requestAnimationFrame(() => {
+        if (sessionDrawerRef.current) {
+          sessionDrawerRef.current.scrollTop = 0;
+        }
+      });
+    }
+  }, [selectedSession]);
+
+  // Lock body scroll and close on Escape key when drawer is active
+  useEffect(() => {
+    if (!selectedSession) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setSelectedSession(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [selectedSession]);
+
+  const invalidRange = !startDate || !endDate || startDate >= endDate;
+
+  // Shop inventory
+  const inventory = useShopInventory({
+    allowAll: true,
+    onError: setError,
+    t,
+  });
+  const {
+    changeSelectedShop,
+    loading: inventoryLoading,
+    missingAnalyticsScope,
+    selectedShop,
+    selectedShopId,
+    shops,
+    tokenExpired,
+  } = inventory;
+
+  const allShopsSelected = selectedShopId === 'all';
+  const isCrossBorder = useMemo(() => {
+    if (!allShopsSelected || !shops.length) return false;
+    const regions = new Set(
+      shops
+        .map((shop) => String(shop.region || shop.authorization?.app?.region || 'VN').trim().toUpperCase())
+        .filter(Boolean),
+    );
+    return regions.size > 1;
+  }, [allShopsSelected, shops]);
+
+  const currency = isCrossBorder ? 'USD' : 'LOCAL';
+
+  // Analytics Snapshot Data
+  const analytics = useShopAnalyticsData({
+    currency,
+    endDate,
+    invalidRange,
+    managementOnly: false,
+    missingAnalyticsScope,
+    onError: setError,
+    selectedShopId,
+    shops,
+    startDate,
+    t,
+    tokenExpired,
+    videoOnly: false,
+  });
+
+  const {
+    analyticsLoading,
+    hasComparison,
+    intervals,
+    shopSeries,
+    snapshot,
+    totals,
+  } = analytics;
+
+  const isMultiShop = allShopsSelected && Array.isArray(shopSeries) && shopSeries.length > 1;
+
+  // Multi-shop compare state
+  const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const compareWrapperRef = useRef(null);
+
+  useEffect(() => {
+    setToggledOffShopIds(new Set());
+  }, [selectedShopId]);
+
+  useEffect(() => {
+    if (!dropdownOpen) return undefined;
+    const handleClickOutside = (event) => {
+      if (
+        event.key === 'Escape'
+        || (event.type === 'pointerdown' && !compareWrapperRef.current?.contains(event.target))
+      ) {
+        setDropdownOpen(false);
+      }
+    };
+    window.addEventListener('pointerdown', handleClickOutside);
+    window.addEventListener('keydown', handleClickOutside);
+    return () => {
+      window.removeEventListener('pointerdown', handleClickOutside);
+      window.removeEventListener('keydown', handleClickOutside);
+    };
+  }, [dropdownOpen]);
+
+  const isVisible = useCallback((shopId) => !toggledOffShopIds.has(shopId), [toggledOffShopIds]);
+  const isTotalVisible = !toggledOffShopIds.has(TOTAL_SERIES_ID);
+
+  const toggleShop = useCallback((shopId) => {
+    setToggledOffShopIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shopId)) next.delete(shopId);
+      else next.add(shopId);
+      return next;
+    });
+  }, []);
+
+  const toggleTotal = useCallback(() => {
+    setToggledOffShopIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(TOTAL_SERIES_ID)) next.delete(TOTAL_SERIES_ID);
+      else next.add(TOTAL_SERIES_ID);
+      return next;
+    });
+  }, []);
+
+  const selectAllShops = useCallback(() => {
+    setToggledOffShopIds(new Set());
+  }, []);
+
+  const deselectAllShops = useCallback(() => {
+    setToggledOffShopIds(new Set([TOTAL_SERIES_ID, ...(shopSeries || []).map((s) => s.shopId)]));
+  }, [shopSeries]);
+
+  const totalCount = (shopSeries || []).length;
+  const visibleCount = (shopSeries || []).filter((s) => isVisible(s.shopId)).length;
+
+  // Currency & formatting
+  const displayCurrency = intervals.find((row) => row?.gmv?.currency && row?.gmv?.currency !== 'LOCAL')?.gmv?.currency
+    || (selectedShop?.region === 'MY' ? 'MYR' : 'VND');
+
+  const formatMoney = useCallback((value, currencyCode = displayCurrency) => (
+    formatPreferredMoney(value, currencyCode === 'LOCAL' ? displayCurrency : currencyCode)
+  ), [displayCurrency, formatPreferredMoney]);
+
+  const formatNumber = useCallback((value) => (
+    numericValue(value).toLocaleString(locale, { maximumFractionDigits: 0 })
+  ), [locale]);
+
+  const formatPercent = useCallback((value) => (
+    `${numericValue(value).toLocaleString(locale, { maximumFractionDigits: 1 })}%`
+  ), [locale]);
+
+  // Live Orders from Database
+  const [liveOrders, setLiveOrders] = useState([]);
+  const [liveOrdersLoading, setLiveOrdersLoading] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    const fetchOrders = async () => {
+      setLiveOrdersLoading(true);
+      try {
+        let results = [];
+        if (selectedShopId === 'all') {
+          const eligibleShops = shops.filter((s) => s.id);
+          const settled = await Promise.allSettled(
+            eligibleShops.map((shop) => (
+              fetchTikTokSellerAffiliateOrders(shop.id, {
+                source: 'db',
+                contentType: 'LIVE',
+                pageSize: 100,
+                signal: controller.signal,
+              })
+            )),
+          );
+          settled.forEach((res, index) => {
+            if (res.status === 'fulfilled' && Array.isArray(res.value?.orders)) {
+              const shopName = eligibleShops[index]?.name || '';
+              const shopOrders = res.value.orders.map((o) => ({ ...o, shopName }));
+              results.push(...shopOrders);
+            }
+          });
+        } else if (selectedShopId) {
+          const res = await fetchTikTokSellerAffiliateOrders(selectedShopId, {
+            source: 'db',
+            contentType: 'LIVE',
+            pageSize: 100,
+            signal: controller.signal,
+          });
+          if (Array.isArray(res?.orders)) {
+            const shopName = selectedShop?.name || '';
+            results = res.orders.map((o) => ({ ...o, shopName }));
+          }
+        }
+
+        if (active) {
+          setLiveOrders(results);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('[LiveAnalytics] Failed to fetch live orders:', err);
+        }
+      } finally {
+        if (active) setLiveOrdersLoading(false);
+      }
+    };
+
+    fetchOrders();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [selectedShopId, selectedShop, shops]);
+
+  // Period / Date filter handlers
+  const changeCustomDate = (setter, currentValue) => (nextValue) => {
+    if (nextValue === currentValue) return;
+    setter(nextValue);
+  };
+
+  const changeCustomEndDate = (selectedDate) => {
+    const nextEndDate = shiftDate(selectedDate, 1);
+    if (nextEndDate !== endDate) setEndDate(nextEndDate);
+  };
+
+  const changePeriodPreset = (eventOrValue) => {
+    const nextPreset = typeof eventOrValue === 'string' ? eventOrValue : eventOrValue?.target?.value;
+    setPeriodPreset(nextPreset);
+    if (nextPreset === 'custom') return;
+    const days = Number(nextPreset.replace(/d$/, ''));
+    if (!Number.isFinite(days) || days <= 0) return;
+    const nextRange = rangeForDays(days);
+    setStartDate(nextRange.startDate);
+    setEndDate(nextRange.endDate);
+  };
+
+  const periodOptions = useMemo(() => [
+    { value: '7d', label: t('shopAnalytics.period7d') },
+    { value: '30d', label: t('shopAnalytics.period30d') },
+    { value: '90d', label: t('shopAnalytics.period90d') },
+    { value: 'custom', label: t('shopAnalytics.periodCustom') },
+  ], [t]);
+
+  // Daily Trend Data from Snapshot Intervals
+  const liveIntervals = useMemo(() => {
+    return intervals.map((row) => {
+      const liveGmv = extractLiveGmv(row);
+      const overallGmv = moneyValue(row?.gmv);
+      const liveShare = overallGmv > 0 ? (liveGmv / overallGmv) * 100 : 0;
+      const breakdowns = Array.isArray(row?.gmv_breakdowns) && row.gmv_breakdowns.length > 0
+        ? row.gmv_breakdowns
+        : (Array.isArray(row?.gmv?.breakdowns) ? row.gmv.breakdowns : []);
+      const liveItem = breakdowns.find((b) => b?.type === 'LIVE' || b?.content_type === 'LIVE');
+
+      const entry = {
+        date: formatDateOnly(row.start_date, row.start_date),
+        rawDate: row.start_date,
+        liveGmv,
+        overallGmv,
+        liveShare,
+        orders: row.orders || 0,
+        unitsSold: row.units_sold || 0,
+        currency: liveItem?.currency || row.gmv?.currency || displayCurrency,
+      };
+
+      if (isMultiShop && Array.isArray(shopSeries)) {
+        shopSeries.forEach((s) => {
+          const match = Array.isArray(s.intervals)
+            ? s.intervals.find((i) => i.start_date === row.start_date || String(i.start_date).slice(0, 10) === String(row.start_date).slice(0, 10))
+            : null;
+          const sLiveGmv = match ? extractLiveGmv(match) : 0;
+          const sOverallGmv = match ? moneyValue(match.gmv) : 0;
+          entry[`shop_${s.shopId}_liveGmv`] = sLiveGmv;
+          entry[`shop_${s.shopId}_overallGmv`] = sOverallGmv;
+        });
+      }
+
+      return entry;
+    });
+  }, [intervals, displayCurrency, isMultiShop, shopSeries]);
+
+  // Comparison Live GMV from Previous Period
+  const comparisonLiveGmv = useMemo(() => {
+    const compIntervals = snapshot?.metrics?.comparison_intervals || [];
+    return compIntervals.reduce((sum, row) => sum + extractLiveGmv(row), 0);
+  }, [snapshot]);
+
+  // Aggregated Sessions and Top Products from Live Orders
+  const { sessionList, topProductsList, liveOrderRows } = useMemo(() => {
+    const sessions = {};
+    const productMap = {};
+    const flatRows = [];
+
+    liveOrders.forEach((order) => {
+      const skus = Array.isArray(order.skus) ? order.skus : [];
+      const liveSkus = skus.filter((s) => (
+        ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'].includes(String(s.content_type || '').toUpperCase())
+      ));
+
+      if (!liveSkus.length) return;
+
+      const orderCreateTime = order.create_time
+        ? (typeof order.create_time === 'number' ? order.create_time * 1000 : Date.parse(order.create_time))
+        : null;
+
+      flatRows.push({
+        orderId: order.id || order.order_id,
+        shopName: order.shopName,
+        createTime: orderCreateTime,
+        status: order.order_status || order.status || 'COMPLETED',
+        buyerEmail: order.buyer_email,
+        skus: liveSkus,
+        totalGmv: liveSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0),
+        currency: liveSkus[0]?.currency || order.currency || displayCurrency,
+      });
+
+      liveSkus.forEach((sku) => {
+        const cid = sku.content_id || sku.room_id || 'unknown';
+        const qty = Number(sku.quantity) || 1;
+        const gmv = (moneyValue(sku.price) || 0) * qty;
+        const creatorUsername = sku.creator_username || order.creator_username || 'shop';
+        const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname;
+        const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
+
+        // Group Session
+        if (!sessions[cid]) {
+          sessions[cid] = {
+            sessionId: cid,
+            creatorUsername,
+            creatorNickname,
+            creatorAvatar,
+            currency: sku.currency || displayCurrency,
+            orderIds: new Set(),
+            totalQuantity: 0,
+            totalGmv: 0,
+            products: {},
+            firstTime: orderCreateTime,
+            lastTime: orderCreateTime,
+            orders: [],
+          };
+        }
+
+        const s = sessions[cid];
+        s.orderIds.add(order.id || order.order_id);
+        s.totalQuantity += qty;
+        s.totalGmv += gmv;
+        if (orderCreateTime && (!s.firstTime || orderCreateTime < s.firstTime)) s.firstTime = orderCreateTime;
+        if (orderCreateTime && (!s.lastTime || orderCreateTime > s.lastTime)) s.lastTime = orderCreateTime;
+        if (!s.orders.some((o) => (o.id || o.order_id) === (order.id || order.order_id))) {
+          s.orders.push(order);
+        }
+
+        const pid = sku.product_id;
+        if (pid) {
+          if (!s.products[pid]) {
+            s.products[pid] = {
+              productId: pid,
+              name: sku.product_name,
+              imageUrl: sku.product_image || sku.image_url || sku.raw_data?.product_image || sku.raw_data?.sku_image,
+              quantity: 0,
+              gmv: 0,
+            };
+          }
+          s.products[pid].quantity += qty;
+          s.products[pid].gmv += gmv;
+        }
+
+        // Group Global Product
+        if (pid) {
+          if (!productMap[pid]) {
+            productMap[pid] = {
+              productId: pid,
+              name: sku.product_name,
+              imageUrl: sku.product_image || sku.image_url || sku.raw_data?.product_image || sku.raw_data?.sku_image,
+              quantity: 0,
+              gmv: 0,
+              orderIds: new Set(),
+              currency: sku.currency || displayCurrency,
+            };
+          }
+          productMap[pid].quantity += qty;
+          productMap[pid].gmv += gmv;
+          productMap[pid].orderIds.add(order.id || order.order_id);
+        }
+      });
+    });
+
+    const sessionArr = Object.values(sessions).map((sess) => ({
+      ...sess,
+      orderCount: sess.orderIds.size,
+      productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
+    })).sort((a, b) => b.totalGmv - a.totalGmv);
+
+    const productsArr = Object.values(productMap).map((p) => ({
+      ...p,
+      orderCount: p.orderIds.size,
+    })).sort((a, b) => b.gmv - a.gmv);
+
+    return {
+      sessionList: sessionArr,
+      topProductsList: productsArr,
+      liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
+    };
+  }, [liveOrders, displayCurrency]);
+
+  // Overall KPI totals
+  const totalSnapshotLiveGmv = useMemo(() => (
+    liveIntervals.reduce((sum, item) => sum + item.liveGmv, 0)
+  ), [liveIntervals]);
+
+  const ordersLiveGmv = useMemo(() => (
+    sessionList.reduce((sum, s) => sum + s.totalGmv, 0)
+  ), [sessionList]);
+
+  // Use snapshot live gmv if available, fallback to orders gmv
+  const liveGmv = totalSnapshotLiveGmv > 0 ? totalSnapshotLiveGmv : ordersLiveGmv;
+  const totalShopGmv = totals.gmv || 0;
+  const liveGmvShare = totalShopGmv > 0 ? (liveGmv / totalShopGmv) * 100 : 0;
+
+  const liveGmvChange = useMemo(() => (
+    percentageChange(totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison && comparisonLiveGmv > 0)
+  ), [totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison]);
+
+  // Live orders count (actual from DB or estimated proportional)
+  const actualLiveOrdersCount = liveOrderRows.length;
+  const estimatedLiveOrdersCount = totals.orders && liveGmvShare > 0
+    ? Math.round((totals.orders * liveGmvShare) / 100)
+    : actualLiveOrdersCount;
+  const displayLiveOrders = estimatedLiveOrdersCount || actualLiveOrdersCount;
+
+  // Live units sold
+  const actualLiveUnits = sessionList.reduce((sum, s) => sum + s.totalQuantity, 0);
+  const estimatedLiveUnits = totals.unitsSold && liveGmvShare > 0
+    ? Math.round((totals.unitsSold * liveGmvShare) / 100)
+    : actualLiveUnits;
+  const displayUnitsSold = estimatedLiveUnits || actualLiveUnits;
+
+  // Live AOV
+  const liveAov = displayLiveOrders > 0 ? liveGmv / displayLiveOrders : 0;
+
+  // Distinct hosts / creators
+  const distinctHosts = useMemo(() => {
+    const hosts = new Set(sessionList.map((s) => s.creatorUsername).filter(Boolean));
+    return hosts.size;
+  }, [sessionList]);
+
+  // Filtered sessions by search keyword
+  const filteredSessions = useMemo(() => {
+    if (!searchKeyword.trim()) return sessionList;
+    const term = searchKeyword.trim().toLowerCase();
+    return sessionList.filter((s) => (
+      s.sessionId.toLowerCase().includes(term)
+      || s.creatorUsername.toLowerCase().includes(term)
+      || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
+      || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
+    ));
+  }, [sessionList, searchKeyword]);
+
+  // Filtered orders by search keyword
+  const filteredOrders = useMemo(() => {
+    if (!searchKeyword.trim()) return liveOrderRows;
+    const term = searchKeyword.trim().toLowerCase();
+    return liveOrderRows.filter((o) => (
+      o.orderId.toLowerCase().includes(term)
+      || o.skus.some((s) => (
+        (s.creator_username && s.creator_username.toLowerCase().includes(term))
+        || (s.product_name && s.product_name.toLowerCase().includes(term))
+        || (s.content_id && s.content_id.toLowerCase().includes(term))
+      ))
+    ));
+  }, [liveOrderRows, searchKeyword]);
+
+  // Paginated live orders
+  const paginatedOrders = useMemo(() => {
+    const startIndex = (orderPage - 1) * ordersPerPage;
+    return filteredOrders.slice(startIndex, startIndex + ordersPerPage);
+  }, [filteredOrders, orderPage]);
+
+  const totalOrderPages = Math.ceil(filteredOrders.length / ordersPerPage) || 1;
+
+  // Chart Tooltip matching app theme
+  const renderChartTooltip = ({ active, payload, label }) => {
+    if (!active || !payload?.length) return null;
+    const liveItem = payload.find((p) => p.dataKey === 'liveGmv');
+    const totalItem = payload.find((p) => p.dataKey === 'overallGmv');
+    const itemLiveVal = Number(liveItem?.value) || 0;
+    const itemTotalVal = Number(totalItem?.value) || 0;
+    const itemShare = itemTotalVal > 0 ? (itemLiveVal / itemTotalVal) * 100 : 0;
+
+    return (
+      <div style={CHART_TOOLTIP_STYLE}>
+        <strong style={{ display: 'block', marginBottom: 6, color: '#17243d', fontSize: '0.875rem' }}>{label}</strong>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: 'var(--color-primary, #2f6fe4)', fontWeight: 700 }}>
+          <span>LIVE GMV:</span>
+          <span>{formatMoney(itemLiveVal)}</span>
+        </div>
+        {chartMode === 'compare' ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: 'var(--color-muted, #718096)', fontWeight: 600, marginTop: 4 }}>
+            <span>{t('liveAnalytics.total')}:</span>
+            <span>{formatMoney(itemTotalVal)}</span>
+          </div>
+        ) : null}
+        <div style={{ fontSize: '0.75rem', color: 'var(--color-muted, #718096)', marginTop: 6, paddingTop: 4, borderTop: '1px solid #e2e9f3' }}>
+          {t('liveAnalytics.liveShare')}: <strong>{formatPercent(itemShare)}</strong>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="page live-analytics">
+      {/* Global Filters */}
+      <ShopAnalyticsFilters
+        endDate={endDate}
+        invalidRange={invalidRange}
+        loading={inventoryLoading}
+        onEndDateChange={changeCustomEndDate}
+        onPeriodChange={changePeriodPreset}
+        onShopChange={changeSelectedShop}
+        onStartDateChange={changeCustomDate(setStartDate, startDate)}
+        periodOptions={periodOptions}
+        periodPreset={periodPreset}
+        selectedShopId={selectedShopId}
+        shops={shops}
+        startDate={startDate}
+        t={t}
+      />
+
+      {error ? (
+        <div className="section-card shop-analytics__error" role="alert">
+          {error}
+        </div>
+      ) : null}
+
+      {/* KPI Cards */}
+      <section className="live-analytics__stats" aria-label={t('liveAnalytics.title')}>
+        {/* KPI 1: Live GMV */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveGmv')}</span>
+            <span className="live-analytics__stat-icon">
+              <Flame size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {analyticsLoading ? '...' : formatMoney(liveGmv)}
+          </p>
+          <div className="live-analytics__stat-sub">
+            {liveGmvChange !== null ? (
+              <span className={`shop-analytics__change ${liveGmvChange >= 0 ? 'is-positive' : 'is-negative'}`}>
+                {liveGmvChange >= 0 ? '↑' : '↓'} {formatPercent(Math.abs(liveGmvChange))} {t('liveAnalytics.vsPrevious')}
+              </span>
+            ) : (
+              <span>{formatPercent(liveGmvShare)} {t('liveAnalytics.pctOfTotal')}</span>
+            )}
+          </div>
+        </article>
+
+        {/* KPI 2: Live Share % */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveShare')}</span>
+            <span className="live-analytics__stat-icon" style={{ background: '#f1edff', color: '#7657e9' }}>
+              <TrendingUp size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {analyticsLoading ? '...' : formatPercent(liveGmvShare)}
+          </p>
+          <div className="live-analytics__stat-sub">
+            <span>{t('liveAnalytics.pctOfTotal')} ({formatMoney(totalShopGmv)})</span>
+          </div>
+        </article>
+
+        {/* KPI 3: Live Orders */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveOrders')}</span>
+            <span className="live-analytics__stat-icon" style={{ background: '#edf4ff', color: '#2f6fe4' }}>
+              <ShoppingBag size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {analyticsLoading ? '...' : formatNumber(displayLiveOrders)}
+          </p>
+          <div className="live-analytics__stat-sub">
+            <span>{t('liveAnalytics.liveOrdersDesc')}</span>
+          </div>
+        </article>
+
+        {/* KPI 4: Units Sold */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveUnits')}</span>
+            <span className="live-analytics__stat-icon" style={{ background: 'var(--color-success-soft, #e9f9f0)', color: 'var(--color-success, #168a4d)' }}>
+              <Package size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {analyticsLoading ? '...' : formatNumber(displayUnitsSold)}
+          </p>
+          <div className="live-analytics__stat-sub">
+            <span>{t('liveAnalytics.liveUnitsDesc')}</span>
+          </div>
+        </article>
+
+        {/* KPI 5: AOV */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveAov')}</span>
+            <span className="live-analytics__stat-icon" style={{ background: 'var(--color-warning-soft, #fff7e8)', color: 'var(--color-warning, #b45309)' }}>
+              <ArrowUpRight size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {analyticsLoading ? '...' : formatMoney(liveAov)}
+          </p>
+          <div className="live-analytics__stat-sub">
+            <span>{t('liveAnalytics.liveAovDesc')}</span>
+          </div>
+        </article>
+
+        {/* KPI 6: Live Sessions & Hosts */}
+        <article className="live-analytics__stat">
+          <div className="live-analytics__stat-header">
+            <span className="live-analytics__stat-label">{t('liveAnalytics.liveSessions')}</span>
+            <span className="live-analytics__stat-icon" style={{ background: '#f1edff', color: '#7657e9' }}>
+              <Radio size={18} />
+            </span>
+          </div>
+          <p className="live-analytics__stat-value">
+            {sessionList.length}
+          </p>
+          <div className="live-analytics__stat-sub">
+            <Users size={14} />
+            <span>{distinctHosts} {t('liveAnalytics.liveHosts')}</span>
+          </div>
+        </article>
+      </section>
+
+      {/* Daily Live Revenue Chart Card */}
+      <section className="live-analytics__chart-card">
+        <div className="live-analytics__chart-header">
+          {isMultiShop ? (
+            <div className="shop-analytics__compare-wrapper" ref={compareWrapperRef}>
+              <button
+                type="button"
+                className={`shop-analytics__compare-btn ${dropdownOpen ? 'is-open' : ''}`}
+                onClick={() => setDropdownOpen((prev) => !prev)}
+                aria-expanded={dropdownOpen}
+              >
+                <span>{t('shopAnalytics.shopDropdownBtn', 'Shop')}</span>
+                <ChevronDown size={14} className={`shop-analytics__compare-chevron ${dropdownOpen ? 'is-open' : ''}`} />
+              </button>
+              {dropdownOpen ? (
+                <div className="shop-analytics__compare-popover">
+                  <div className="shop-analytics__compare-popover-header">
+                    <span className="shop-analytics__compare-popover-title">
+                      {visibleCount}/{totalCount}
+                    </span>
+                    <div className="shop-analytics__compare-popover-actions">
+                      <button type="button" onClick={selectAllShops} className="shop-analytics__legend-action-btn">
+                        {t('common.selectAll', 'Chọn tất cả')}
+                      </button>
+                      <span className="shop-analytics__legend-action-divider">·</span>
+                      <button type="button" onClick={deselectAllShops} className="shop-analytics__legend-action-btn">
+                        {t('common.deselectAll', 'Bỏ chọn')}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="shop-analytics__compare-popover-list">
+                    <label
+                      className={`shop-analytics__compare-popover-item ${isTotalVisible ? 'is-active' : ''}`}
+                      title={t('shopAnalytics.totalAllShops', 'Tổng')}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isTotalVisible}
+                        onChange={toggleTotal}
+                      />
+                      <span className="shop-analytics__legend-indicator" style={{ backgroundColor: TOTAL_LINE_COLOR }} />
+                      <span className="shop-analytics__compare-popover-name" style={{ fontWeight: 600 }}>
+                        {t('shopAnalytics.totalAllShops', 'Tổng')}
+                      </span>
+                    </label>
+                    <div className="shop-analytics__compare-popover-divider" />
+                    {shopSeries.map((shop, idx) => {
+                      const color = SHOP_PALETTE[idx % SHOP_PALETTE.length];
+                      const shopVisible = isVisible(shop.shopId);
+                      return (
+                        <label
+                          key={shop.shopId}
+                          className={`shop-analytics__compare-popover-item ${shopVisible ? 'is-active' : ''}`}
+                          title={shop.shopName}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={shopVisible}
+                            onChange={() => toggleShop(shop.shopId)}
+                          />
+                          <span className="shop-analytics__legend-indicator" style={{ backgroundColor: color }} />
+                          <span className="shop-analytics__compare-popover-name">{shop.shopName}</span>
+                          {shop.region ? (
+                            <span className="shop-analytics__legend-badge">{shop.region}</span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <div />
+          )}
+
+          <div className="live-analytics__chart-actions">
+            <button
+              type="button"
+              className={`live-analytics__toggle-btn ${chartMode === 'live' ? 'is-active' : ''}`}
+              onClick={() => setChartMode('live')}
+            >
+              <Radio size={14} />
+              {t('liveAnalytics.filterLive')}
+            </button>
+            <button
+              type="button"
+              className={`live-analytics__toggle-btn ${chartMode === 'compare' ? 'is-active' : ''}`}
+              onClick={() => setChartMode('compare')}
+            >
+              <TrendingUp size={14} />
+              {t('liveAnalytics.filterCompare')}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ width: '100%', height: 320 }}>
+          {liveIntervals.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              {isMultiShop ? (
+                <ComposedChart data={liveIntervals} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e9f3" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fill: '#718096', fontSize: 12 }}
+                    axisLine={{ stroke: '#cbd8e8' }}
+                    tickLine={false}
+                    minTickGap={26}
+                  />
+                  <YAxis
+                    tick={{ fill: '#718096', fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val)}
+                  />
+                  <Tooltip content={<MultiShopLiveTooltip formatMoney={formatMoney} />} />
+                  {chartMode === 'compare' && isTotalVisible ? (
+                    <Line
+                      type="monotone"
+                      dataKey="overallGmv"
+                      name={t('liveAnalytics.total', 'Tổng doanh thu')}
+                      stroke="#94a3b8"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      dot={false}
+                      activeDot={{ r: 5, strokeWidth: 2, fill: '#94a3b8' }}
+                    />
+                  ) : null}
+                  {isTotalVisible ? (
+                    <Line
+                      type="monotone"
+                      dataKey="liveGmv"
+                      name={t('shopAnalytics.totalAllShops', 'Tổng')}
+                      stroke={TOTAL_LINE_COLOR}
+                      strokeWidth={2.5}
+                      dot={liveIntervals.length <= 14 ? { r: 3, fill: '#ffffff', stroke: TOTAL_LINE_COLOR, strokeWidth: 2 } : false}
+                      activeDot={{ r: 5, strokeWidth: 2, fill: TOTAL_LINE_COLOR }}
+                    />
+                  ) : null}
+                  {shopSeries.map((shop, idx) => {
+                    if (!isVisible(shop.shopId)) return null;
+                    const color = SHOP_PALETTE[idx % SHOP_PALETTE.length];
+                    return (
+                      <Line
+                        key={shop.shopId}
+                        type="monotone"
+                        dataKey={`shop_${shop.shopId}_liveGmv`}
+                        name={shop.shopName}
+                        stroke={color}
+                        strokeWidth={2.5}
+                        dot={liveIntervals.length <= 14 ? { r: 3, fill: '#ffffff', stroke: color, strokeWidth: 2 } : false}
+                        activeDot={{ r: 5, strokeWidth: 2, fill: color }}
+                      />
+                    );
+                  })}
+                </ComposedChart>
+              ) : (
+                <AreaChart data={liveIntervals} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="liveGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#2f6fe4" stopOpacity={0.28} />
+                      <stop offset="95%" stopColor="#2f6fe4" stopOpacity={0.02} />
+                    </linearGradient>
+                    <linearGradient id="totalGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#94a3b8" stopOpacity={0.16} />
+                      <stop offset="95%" stopColor="#94a3b8" stopOpacity={0.01} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e9f3" />
+                  <XAxis dataKey="date" tick={{ fill: '#718096', fontSize: 12 }} axisLine={{ stroke: '#cbd8e8' }} />
+                  <YAxis
+                    tick={{ fill: '#718096', fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val)}
+                  />
+                  <Tooltip content={renderChartTooltip} />
+                  {chartMode === 'compare' ? (
+                    <Area
+                      type="monotone"
+                      dataKey="overallGmv"
+                      name={t('liveAnalytics.total')}
+                      stroke="#94a3b8"
+                      strokeWidth={2}
+                      strokeDasharray="4 4"
+                      fillOpacity={1}
+                      fill="url(#totalGradient)"
+                    />
+                  ) : null}
+                  <Area
+                    type="monotone"
+                    dataKey="liveGmv"
+                    name={t('liveAnalytics.liveGmv')}
+                    stroke="#2f6fe4"
+                    strokeWidth={2.5}
+                    fillOpacity={1}
+                    fill="url(#liveGradient)"
+                    activeDot={{ r: 6, fill: '#2f6fe4', stroke: '#ffffff', strokeWidth: 2 }}
+                  />
+                </AreaChart>
+              )}
+            </ResponsiveContainer>
+          ) : (
+            <div className="empty-state empty-state--compact" style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span>{t('shopAnalytics.noData')}</span>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Tabs & Search Toolbar */}
+      <div className="live-analytics__toolbar">
+        <div className="live-analytics__tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'overview'}
+            className={`live-analytics__tab ${activeTab === 'overview' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            <Radio size={15} />
+            <span>{t('liveAnalytics.tabOverview')}</span>
+            <span className="live-analytics__tab-count">{sessionList.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'products'}
+            className={`live-analytics__tab ${activeTab === 'products' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('products')}
+          >
+            <Package size={15} />
+            <span>{t('liveAnalytics.tabProducts')}</span>
+            <span className="live-analytics__tab-count">{topProductsList.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'orders'}
+            className={`live-analytics__tab ${activeTab === 'orders' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('orders')}
+          >
+            <ShoppingBag size={15} />
+            <span>{t('liveAnalytics.tabOrders')}</span>
+            <span className="live-analytics__tab-count">{liveOrderRows.length}</span>
+          </button>
+        </div>
+
+        <div className="live-analytics__search-input">
+          <Search size={15} color="var(--color-muted, #718096)" />
+          <input
+            type="text"
+            placeholder={t('liveAnalytics.searchPlaceholder')}
+            value={searchKeyword}
+            onChange={(e) => setSearchKeyword(e.target.value)}
+          />
+          {searchKeyword ? (
+            <button
+              type="button"
+              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+              onClick={() => setSearchKeyword('')}
+            >
+              <X size={14} color="var(--color-muted, #718096)" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Tab 1: Sessions & Hosts */}
+      {activeTab === 'overview' ? (
+        <section className="live-analytics__section">
+          <div className="live-analytics__section-header">
+            <h2 className="live-analytics__section-title">{t('liveAnalytics.sessionsTitle')}</h2>
+          </div>
+
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('liveAnalytics.colHost')}</th>
+                  <th>{t('liveAnalytics.colSessionId')}</th>
+                  <th>{t('liveAnalytics.colTime')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th>{t('liveAnalytics.colProducts')}</th>
+                  <th>{t('common.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveOrdersLoading && !sessionList.length ? (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        <span className="loading-dot" />
+                        {t('liveAnalytics.loading')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {!liveOrdersLoading && !filteredSessions.length ? (
+                  <tr>
+                    <td colSpan={8}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        {t('liveAnalytics.noSessions')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {filteredSessions.map((session) => (
+                  <tr key={session.sessionId}>
+                    <td>
+                      <div className="live-host-cell">
+                        {session.creatorAvatar ? (
+                          <img
+                            src={session.creatorAvatar}
+                            alt={session.creatorUsername}
+                            className="live-host-avatar"
+                          />
+                        ) : (
+                          <div className="live-host-avatar">
+                            {(session.creatorUsername || '?')[0].toUpperCase()}
+                          </div>
+                        )}
+                        <div className="live-host-meta">
+                          <span className="live-host-name">
+                            {session.creatorNickname || session.creatorUsername}
+                          </span>
+                          <span className="live-host-username">@{session.creatorUsername}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <span className="code-pill font-mono" title={session.sessionId}>
+                        {session.sessionId.length > 12 ? `${session.sessionId.slice(0, 12)}...` : session.sessionId}
+                      </span>
+                    </td>
+                    <td>
+                      {session.firstTime ? formatDisplayDateTime(session.firstTime, '—') : '—'}
+                    </td>
+                    <td className="cell-number">
+                      <strong>{formatNumber(session.orderCount)}</strong>
+                    </td>
+                    <td className="cell-number">
+                      {formatNumber(session.totalQuantity)}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                      {formatMoney(session.totalGmv, session.currency)}
+                    </td>
+                    <td>
+                      <div className="live-products-preview">
+                        {session.productsList.slice(0, 3).map((prod) => (
+                          prod.imageUrl ? (
+                            <img
+                              key={prod.productId}
+                              src={prod.imageUrl}
+                              alt={prod.name}
+                              title={prod.name}
+                              className="live-product-thumb"
+                            />
+                          ) : null
+                        ))}
+                        {session.productsList.length > 3 ? (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                            +{session.productsList.length - 3}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="live-action-btn"
+                        onClick={() => setSelectedSession(session)}
+                      >
+                        {t('liveAnalytics.viewSessionDetail')}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Tab 2: Top Products */}
+      {activeTab === 'products' ? (
+        <section className="live-analytics__section">
+          <div className="live-analytics__section-header">
+            <h2 className="live-analytics__section-title">{t('liveAnalytics.topProductsTitle')}</h2>
+          </div>
+
+          {!topProductsList.length ? (
+            <div className="empty-state empty-state--compact">
+              {t('liveAnalytics.noProducts')}
+            </div>
+          ) : (
+            <div className="live-products-grid">
+              {topProductsList.map((product) => (
+                <article className="live-product-card" key={product.productId}>
+                  {product.imageUrl ? (
+                    <img
+                      src={product.imageUrl}
+                      alt={product.name}
+                      className="live-product-card__image"
+                    />
+                  ) : (
+                    <div className="live-product-card__image" style={{ background: 'var(--color-surface-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Package size={24} color="var(--color-muted)" />
+                    </div>
+                  )}
+                  <div className="live-product-card__content">
+                    <h4 className="live-product-card__title" title={product.name}>
+                      {product.name || product.productId}
+                    </h4>
+                    <div className="live-product-card__metrics">
+                      <span className="live-product-card__revenue">
+                        {formatMoney(product.gmv, product.currency)}
+                      </span>
+                      <span className="live-product-card__units">
+                        {formatNumber(product.quantity)} {t('liveAnalytics.units')} · {formatNumber(product.orderCount)} {t('liveAnalytics.orders')}
+                      </span>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
+
+      {/* Tab 3: Live Orders List */}
+      {activeTab === 'orders' ? (
+        <section className="live-analytics__section">
+          <div className="live-analytics__section-header">
+            <h2 className="live-analytics__section-title">{t('liveAnalytics.ordersTitle')}</h2>
+          </div>
+
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('liveAnalytics.colOrderId')}</th>
+                  <th>{t('liveAnalytics.colOrderTime')}</th>
+                  <th>{t('liveAnalytics.colHost')}</th>
+                  <th>{t('liveAnalytics.colProducts')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colTotalAmount')}</th>
+                  <th>{t('liveAnalytics.colOrderStatus')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!filteredOrders.length ? (
+                  <tr>
+                    <td colSpan={6}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        {t('liveAnalytics.noOrders')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {paginatedOrders.map((order) => (
+                  <tr key={order.orderId}>
+                    <td>
+                      <span className="code-pill font-mono">{order.orderId}</span>
+                    </td>
+                    <td>
+                      {order.createTime ? formatDisplayDateTime(order.createTime, '—') : '—'}
+                    </td>
+                    <td>
+                      <span className="code-pill">
+                        @{order.skus[0]?.creator_username || 'shop'}
+                      </span>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 300 }}>
+                        {order.skus.map((sku, i) => (
+                          <span
+                            key={i}
+                            style={{
+                              fontSize: '0.8125rem',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                            }}
+                            title={sku.product_name}
+                          >
+                            • {sku.product_name} (x{sku.quantity || 1})
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                      {formatMoney(order.totalGmv, order.currency)}
+                    </td>
+                    <td>
+                      <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(order.status || '').toLowerCase()}`}>
+                        {order.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalOrderPages > 1 ? (
+            <Pagination
+              currentPage={orderPage}
+              totalPages={totalOrderPages}
+              onPageChange={setOrderPage}
+            />
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Session Details Drawer */}
+      {selectedSession ? (
+        <div className="live-drawer-backdrop" onClick={() => setSelectedSession(null)}>
+          <div
+            key={selectedSession.sessionId}
+            ref={(node) => {
+              sessionDrawerRef.current = node;
+              if (node) node.scrollTop = 0;
+            }}
+            className="live-drawer"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="live-drawer__header">
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="live-badge">
+                  <span className="live-badge__dot" />
+                  LIVE
+                </span>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 750, color: 'var(--color-text)' }}>
+                  {t('liveAnalytics.sessionDetails')}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="live-drawer__close"
+                onClick={() => setSelectedSession(null)}
+                aria-label={t('liveAnalytics.close')}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="live-drawer__body">
+              {/* Host & Session Card */}
+              <div className="live-analytics__stat" style={{ borderLeft: '4px solid var(--color-primary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {selectedSession.creatorAvatar ? (
+                    <img
+                      src={selectedSession.creatorAvatar}
+                      alt={selectedSession.creatorUsername}
+                      className="live-host-avatar"
+                      style={{ width: 44, height: 44 }}
+                    />
+                  ) : (
+                    <div className="live-host-avatar" style={{ width: 44, height: 44, fontSize: '1.125rem' }}>
+                      {(selectedSession.creatorUsername || '?')[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 750, color: 'var(--color-text)' }}>
+                      {selectedSession.creatorNickname || selectedSession.creatorUsername}
+                    </h4>
+                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-muted)' }}>
+                      @{selectedSession.creatorUsername}
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colSessionId')}:</span>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{selectedSession.sessionId}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
+                    <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
+                      {formatMoney(selectedSession.totalGmv, selectedSession.currency)}
+                    </p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(selectedSession.orderCount)}</p>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
+                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(selectedSession.totalQuantity)}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Products in this Session */}
+              <div className="section-card" style={{ padding: 16 }}>
+                <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
+                  {t('liveAnalytics.productsSold')} ({selectedSession.productsList.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selectedSession.productsList.map((prod) => (
+                    <div
+                      key={prod.productId}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: 10,
+                        border: '1px solid var(--color-border)',
+                        borderRadius: 'var(--radius-default)',
+                        background: 'var(--color-surface)',
+                      }}
+                    >
+                      {prod.imageUrl ? (
+                        <img
+                          src={prod.imageUrl}
+                          alt={prod.name}
+                          style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
+                        />
+                      ) : (
+                        <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Package size={20} color="var(--color-muted)" />
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={prod.name}>
+                          {prod.name}
+                        </p>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                          {formatNumber(prod.quantity)} {t('liveAnalytics.units')}
+                        </span>
+                      </div>
+                      <span style={{ fontWeight: 750, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
+                        {formatMoney(prod.gmv, selectedSession.currency)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Orders in this session */}
+              <div className="section-card" style={{ padding: 16 }}>
+                <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
+                  {t('liveAnalytics.ordersTitle')} ({selectedSession.orders.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {selectedSession.orders.map((ord) => (
+                    <div
+                      key={ord.id || ord.order_id}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '8px 12px',
+                        borderRadius: 'var(--radius-default)',
+                        background: 'var(--color-surface-subtle)',
+                        border: '1px solid var(--color-border)',
+                        fontSize: '0.8125rem',
+                      }}
+                    >
+                      <span className="font-mono" style={{ color: 'var(--color-text)' }}>{ord.id || ord.order_id}</span>
+                      <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(ord.order_status || ord.status || 'completed').toLowerCase()}`}>
+                        {ord.order_status || ord.status || 'COMPLETED'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+export default LiveAnalytics;

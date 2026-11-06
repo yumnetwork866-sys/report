@@ -21,6 +21,7 @@ export const KOCPerformance = lazyWithReload(() => import('../components/KOCPerf
 export const SellerAffiliatePanel = lazyWithReload(() => import('../components/SellerAffiliatePanel'));
 export const OrderManagement = lazyWithReload(() => import('../components/OrderManagement'));
 export const ShopAnalytics = lazyWithReload(() => import('../components/ShopAnalytics'));
+export const LiveAnalytics = lazyWithReload(() => import('../components/LiveAnalytics'));
 export const ScheduleManagement = lazyWithReload(() => import('../components/ScheduleManagement'));
 export const QueueManagement = lazyWithReload(() => import('../components/QueueManagement'));
 export const AppManagement = lazyWithReload(() => import('../components/AppManagement'));
