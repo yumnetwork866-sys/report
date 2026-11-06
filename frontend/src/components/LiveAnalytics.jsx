@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import {
   ChevronDown,
+  Menu,
   Package,
   Radio,
   Search,
@@ -32,6 +33,7 @@ import AnalyticsIcon from './shop-analytics/AnalyticsIcon';
 import Pagination from './Pagination';
 import { OrderDetailDrawer } from './SellerAffiliatePanel/components/AffiliatePresentation';
 import { shopDateUnix } from './SellerAffiliatePanel/utils/sellerAffiliateUtils';
+import { orderStatusLabel } from '../lib/sellerAffiliate';
 import {
   formatDisplayDateTime,
   moneyValue,
@@ -502,8 +504,8 @@ const LiveAnalytics = () => {
         const cid = sku.content_id || sku.room_id || 'unknown';
         const qty = Number(sku.quantity) || 1;
         const gmv = (moneyValue(sku.price) || 0) * qty;
-        const creatorUsername = sku.creator_username || order.creator_username || 'shop';
-        const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname;
+        const creatorUsername = sku.creator_username || order.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop');
+        const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname || order.shopName || 'Shop';
         const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
 
         // Group Session
@@ -1076,7 +1078,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
-                  <th>{t('common.actions')}</th>
+                  <th className="cell-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1161,13 +1163,15 @@ const LiveAnalytics = () => {
                         ) : null}
                       </div>
                     </td>
-                    <td>
+                    <td className="cell-actions">
                       <button
                         type="button"
                         className="live-action-btn"
                         onClick={() => setSelectedSession(session)}
+                        title={t('liveAnalytics.viewSessionDetail')}
+                        aria-label={t('liveAnalytics.viewSessionDetail')}
                       >
-                        {t('liveAnalytics.viewSessionDetail')}
+                        <Menu size={15} />
                       </button>
                     </td>
                   </tr>
@@ -1322,13 +1326,8 @@ const LiveAnalytics = () => {
                     </td>
                     <td>
                       <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(order.status || '').toLowerCase()}`}>
-                        {order.status}
+                        {orderStatusLabel(order.status, t)}
                       </span>
-                      {order.settlementStatus && order.settlementStatus !== '—' ? (
-                        <span className="chip" style={{ display: 'block', marginTop: 4, fontSize: '0.6875rem' }}>
-                          {order.settlementStatus}
-                        </span>
-                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1606,7 +1605,7 @@ const LiveSessionDrawer = ({
                           ) : null}
                         </div>
                         <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(ord.order_status || ord.status || 'completed').toLowerCase()}`}>
-                          {ord.order_status || ord.status || 'COMPLETED'}
+                          {orderStatusLabel(ord.order_status || ord.status || 'COMPLETED', t)}
                         </span>
                       </div>
 

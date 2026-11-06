@@ -295,3 +295,28 @@ test('shop order sync uses orderAuthorization (Custom App) when separate from pa
   assert.equal(result.orders[0].id, 'order-custom-1');
   assert.equal(searchOrdersAuth, customAuth);
 });
+
+test('shop order sync classifies orders with room_id as LIVE', async (t) => {
+  const service = loadService(t, async () => ({
+    data: { orders: [], next_page_token: null },
+  }), {}, {
+    searchShopOrders: async () => ({
+      data: {
+        orders: [{
+          id: 'order-live-1',
+          create_time: 1786554000,
+          line_items: [{ sku_id: 'sku-live-1', product_id: 'prod-1', sale_price: '100.00', room_id: 'room-778899' }],
+        }],
+        next_page_token: null,
+      },
+    }),
+  });
+
+  const result = await service.__test.loadOrderDay({
+    region: 'MY', cipher: 'cipher', authorization: { granted_scopes: ['seller.order.info'] },
+  }, '2026-08-13');
+
+  assert.equal(result.orders.length, 1);
+  assert.equal(result.orders[0].skus[0].content_type, 'LIVE');
+  assert.equal(result.orders[0].skus[0].content_id, 'room-778899');
+});

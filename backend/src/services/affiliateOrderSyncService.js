@@ -138,6 +138,19 @@ const normalizeShopOrderToAffiliateOrder = (order) => {
     }
     const productImage = item?.sku_image?.url || item?.product_image?.url
       || item?.sku_image || item?.product_image || item?.image_url || null;
+    const rawContentType = String(item?.content_type || '').trim().toUpperCase();
+    const roomId = String(item?.room_id || item?.raw_data?.room_id || '').trim();
+    const videoId = String(item?.video_id || item?.raw_data?.video_id || '').trim();
+    let contentType = rawContentType || 'DIRECT';
+    let contentId = item?.content_id ? String(item.content_id).trim() : null;
+    if (roomId || rawContentType === 'LIVE') {
+      contentType = 'LIVE';
+      contentId = roomId || contentId;
+    } else if (videoId || rawContentType === 'VIDEO') {
+      contentType = 'VIDEO';
+      contentId = videoId || contentId;
+    }
+
     skusById.set(normalizedSkuId, {
       sku_id: normalizedSkuId,
       product_id: item?.product_id ? String(item.product_id) : null,
@@ -148,8 +161,9 @@ const normalizeShopOrderToAffiliateOrder = (order) => {
       refunded_quantity: refundedQuantity,
       price: { amount: String(amount ?? 0), currency },
       currency,
-      creator_username: null,
-      content_type: 'DIRECT',
+      creator_username: item?.creator_username || null,
+      content_type: contentType,
+      content_id: contentId,
       settlement_status: directSettlementStatus,
       raw_data: item,
     });

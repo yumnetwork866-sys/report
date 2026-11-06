@@ -1,4 +1,5 @@
-const up = async ({ context: sequelize }) => {
+const up = async ({ sequelize: directSequelize, context, transaction }) => {
+  const sequelize = directSequelize || context;
   await sequelize.query(`
     INSERT INTO scheduled_jobs (job_key, name, description, enabled, timezone, run_times, created_at, updated_at)
     VALUES (
@@ -134,7 +135,8 @@ const up = async ({ context: sequelize }) => {
   }
 };
 
-const down = async ({ context: sequelize }) => {
+const down = async ({ sequelize: directSequelize, context }) => {
+  const sequelize = directSequelize || context;
   await sequelize.query(`DELETE FROM scheduled_jobs WHERE job_key = 'tiktok_auth';`);
 };
 

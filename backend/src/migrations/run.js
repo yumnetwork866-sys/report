@@ -122,6 +122,7 @@ const migrations = [
   require('./112_add_tiktok_auth_scheduled_job'),
   require('./113_remove_target_collaboration_permission'),
   require('./114_scope_shop_authorizations_to_app'),
+  require('./115_backfill_live_orders_from_room_id'),
 ];
 
 const createMigrationRunner = ({

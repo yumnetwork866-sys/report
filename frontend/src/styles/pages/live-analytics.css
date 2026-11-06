@@ -434,14 +434,14 @@
 .live-action-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-default);
   background: var(--color-surface);
-  color: var(--color-text);
-  font-size: 0.8125rem;
-  font-weight: 600;
+  color: var(--color-text-muted, #64748b);
   cursor: pointer;
   transition: all var(--motion-duration-fast) ease;
 }
