@@ -1185,10 +1185,6 @@ const LiveAnalytics = () => {
       {/* Tab 2: Top Products */}
       {activeTab === 'products' ? (
         <section className="live-analytics__section">
-          <div className="live-analytics__section-header">
-            <h2 className="live-analytics__section-title">{t('liveAnalytics.topProductsTitle')}</h2>
-          </div>
-
           {!topProductsList.length ? (
             <div className="empty-state empty-state--compact">
               {t('liveAnalytics.noProducts')}
@@ -1231,10 +1227,6 @@ const LiveAnalytics = () => {
       {/* Tab 3: Live Orders List */}
       {activeTab === 'orders' ? (
         <section className="live-analytics__section">
-          <div className="live-analytics__section-header">
-            <h2 className="live-analytics__section-title">{t('liveAnalytics.ordersTitle')}</h2>
-          </div>
-
           <div className="table-wrap">
             <table className="data-table">
               <thead>
