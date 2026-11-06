@@ -34,12 +34,16 @@ test('shop and channel pages use consistent route namespaces', () => {
   );
 });
 
-test('live page is hidden from sidebar while preserving route and legacy redirect', () => {
+test('live page is present in sidebar while preserving route and legacy redirect', () => {
   const shopItems = sidebarSections
     .flatMap((section) => section.items || [])
     .find((item) => item.id === 'tiktok-shop')?.children || [];
   const liveLink = shopItems.find((item) => item.to === '/shop/live');
-  assert.equal(liveLink, undefined);
+  assert.deepEqual(liveLink, {
+    to: '/shop/live',
+    labelKey: 'navigation.live',
+    permission: 'shop.analytics.view',
+  });
   assert.equal(protectedRouteCards.some((route) => route.path === '/shop/live'), true);
   assert.deepEqual(
     redirectRoutes.find((route) => route.path === '/live'),

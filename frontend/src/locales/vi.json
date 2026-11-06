@@ -1711,7 +1711,10 @@
     "increased": "tăng",
     "decreased": "giảm",
     "unchanged": "không đổi",
-    "close": "Đóng"
+    "close": "Đóng",
+    "units": "sản phẩm",
+    "orders": "đơn",
+    "productsSold": "Sản phẩm đã bán"
   },
   "channel": {
     "heroTitle": "Quản lý kênh",

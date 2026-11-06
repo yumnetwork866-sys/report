@@ -1276,7 +1276,7 @@ const LiveAnalytics = () => {
                     ) : null}
                     <td>
                       <span className="code-pill">
-                        @{order.skus[0]?.creator_username || 'shop'}
+                        @{order.skus[0]?.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop')}
                       </span>
                     </td>
                     <td>

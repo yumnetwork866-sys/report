@@ -1712,7 +1712,10 @@
     "increased": "up",
     "decreased": "down",
     "unchanged": "unchanged",
-    "close": "Close"
+    "close": "Close",
+    "units": "units",
+    "orders": "orders",
+    "productsSold": "Products sold"
   },
   "channel": {
     "heroTitle": "Channel management",
