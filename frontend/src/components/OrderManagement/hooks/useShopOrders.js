@@ -274,12 +274,15 @@ export const useShopOrders = () => {
     setError('');
 
     try {
+      const trimmedKeyword = String(orderRequestFilters.keyword || '').trim();
+      const isExactOrderId = /^\d{12,}$/.test(trimmedKeyword);
       const activeFilters = {
         ...orderRequestFilters,
         source: 'db',
         pageSize: PAGE_SIZE,
         pageToken: currentPageToken,
-        orderId: '',
+        orderId: isExactOrderId ? trimmedKeyword : '',
+        ...(isExactOrderId ? { startTime: undefined, endTime: undefined } : {}),
       };
       const result = await fetchTikTokSellerAffiliateOrders(shopId, { signal, ...activeFilters });
       if (!signal?.aborted) setData(result || {});

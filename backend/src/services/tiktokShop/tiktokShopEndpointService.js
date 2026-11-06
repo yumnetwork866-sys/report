@@ -1169,20 +1169,27 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   const endTime = unixTimeValue(req.query.create_time_lt);
 
   if (orderSource === 'db' || orderSource === 'database') {
+    const searchKeyword = String(req.query.keyword || '').trim();
+    const effectiveOrderId = orderId || (/^\d{12,}$/.test(searchKeyword) ? searchKeyword : '');
+    const isExactOrderId = Boolean(effectiveOrderId);
+
     const where = { shop_id: shop.id };
-    if (orderId) where.order_id = orderId;
+    if (effectiveOrderId) where.order_id = effectiveOrderId;
 
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
 
+    const filterQuery = isExactOrderId
+      ? { ...req.query, create_time_ge: undefined, create_time_lt: undefined }
+      : req.query;
+
     const skuConditions = [];
-    const { dateField } = addOrderDataFilters(where, skuConditions, req.query);
+    const { dateField } = addOrderDataFilters(where, skuConditions, filterQuery);
     const filterProductId = String(req.query.product_id || '').trim();
     const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
     const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
     const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
     const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
-    const searchKeyword = String(req.query.keyword || '').trim();
     if (filterProductId) skuConditions.push({ product_id: filterProductId });
     if (filterVideoId) skuConditions.push({ content_id: filterVideoId });
     if (filterCreator) skuConditions.push({ creator_username: { [Op.iLike]: filterCreator } });
@@ -1231,7 +1238,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       });
     }
 
-    if (searchKeyword && !orderId) {
+    if (searchKeyword && !effectiveOrderId) {
       const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
       const profiles = await tiktokShopRepository.findCreatorProfiles({
         where: {
@@ -1286,6 +1293,26 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const nextPageToken = nextOffset < count ? String(nextOffset) : '';
 
     if (!rows.length) {
+      let foundInShop = null;
+      if (isExactOrderId) {
+        const anyOrders = await tiktokShopRepository.findAffiliateOrders({
+          where: { order_id: effectiveOrderId },
+          attributes: ['shop_id', 'order_id'],
+          limit: 1,
+        });
+        if (anyOrders.length && anyOrders[0].shop_id !== shop.id) {
+          const matchedShop = typeof tiktokShopRepository.findShopById === 'function'
+            ? await tiktokShopRepository.findShopById(anyOrders[0].shop_id)
+            : null;
+          if (matchedShop) {
+            foundInShop = {
+              id: matchedShop.id,
+              name: matchedShop.name || `Shop #${matchedShop.id}`,
+            };
+          }
+        }
+      }
+
       return {
         code: 0,
         message: 'Success',
@@ -1293,6 +1320,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
           orders: [],
           next_page_token: '',
           total_count: count,
+          ...(foundInShop ? { found_in_shop: foundInShop } : {}),
         },
       };
     }

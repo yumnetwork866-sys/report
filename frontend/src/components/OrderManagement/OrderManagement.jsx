@@ -491,7 +491,34 @@ export const OrderManagement = () => {
                   ) : (
                     <tr>
                       <td colSpan={6}>
-                        <div className="empty-state">{t('sellerAffiliate.noData')}</div>
+                        <div className="empty-state">
+                          {data?.found_in_shop ? (
+                            <div className="order-management__found-other-shop">
+                              <p>
+                                {t('sellerAffiliate.orderFoundInAnotherShop', {
+                                  shopName: data.found_in_shop.name,
+                                  defaultValue: `Đơn hàng này được tìm thấy ở shop "${data.found_in_shop.name}".`,
+                                })}
+                              </p>
+                              <button
+                                type="button"
+                                className="button button--secondary button--sm"
+                                onClick={() => {
+                                  setShopId(String(data.found_in_shop.id));
+                                  setStoredSelectedShopId(String(data.found_in_shop.id));
+                                  setPageTokens([]);
+                                }}
+                              >
+                                {t('sellerAffiliate.switchToShop', {
+                                  shopName: data.found_in_shop.name,
+                                  defaultValue: `Chuyển sang shop ${data.found_in_shop.name}`,
+                                })}
+                              </button>
+                            </div>
+                          ) : (
+                            t('sellerAffiliate.noData')
+                          )}
+                        </div>
                       </td>
                     </tr>
                   )}

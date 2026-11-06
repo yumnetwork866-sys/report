@@ -12,9 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import {
-  ArrowUpRight,
   ChevronDown,
-  Flame,
   Package,
   Radio,
   Search,
@@ -30,8 +28,10 @@ import { fetchTikTokSellerAffiliateOrders } from '../lib/api';
 import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
 import ShopAnalyticsFilters from './shop-analytics/ShopAnalyticsFilters';
+import AnalyticsIcon from './shop-analytics/AnalyticsIcon';
 import Pagination from './Pagination';
 import { OrderDetailDrawer } from './SellerAffiliatePanel/components/AffiliatePresentation';
+import { shopDateUnix } from './SellerAffiliatePanel/utils/sellerAffiliateUtils';
 import {
   formatDisplayDateTime,
   moneyValue,
@@ -151,7 +151,6 @@ const LiveAnalytics = () => {
   const [periodPreset, setPeriodPreset] = useState('7d');
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'products' | 'orders'
-  const [chartMode, setChartMode] = useState('live'); // 'live' | 'compare'
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -310,21 +309,32 @@ const LiveAnalytics = () => {
     let active = true;
     const controller = new AbortController();
 
+    if (invalidRange) {
+      setLiveOrders([]);
+      setLiveOrdersLoading(false);
+      return () => controller.abort();
+    }
+
     const fetchOrders = async () => {
       setLiveOrdersLoading(true);
       try {
+        const effectiveEndExclusive = periodPreset === 'custom' ? endDate : shiftDate(endDate, 1);
         let results = [];
         if (selectedShopId === 'all') {
           const eligibleShops = shops.filter((s) => s.id);
           const settled = await Promise.allSettled(
-            eligibleShops.map((shop) => (
-              fetchTikTokSellerAffiliateOrders(shop.id, {
+            eligibleShops.map((shop) => {
+              const startTime = shopDateUnix(startDate, shop?.region);
+              const endTime = shopDateUnix(effectiveEndExclusive, shop?.region);
+              return fetchTikTokSellerAffiliateOrders(shop.id, {
                 source: 'db',
                 contentType: 'LIVE',
                 pageSize: 100,
+                ...(Number.isFinite(startTime) ? { startTime } : {}),
+                ...(Number.isFinite(endTime) ? { endTime } : {}),
                 signal: controller.signal,
-              })
-            )),
+              });
+            }),
           );
           settled.forEach((res, index) => {
             if (res.status === 'fulfilled' && Array.isArray(res.value?.orders)) {
@@ -335,10 +345,14 @@ const LiveAnalytics = () => {
             }
           });
         } else if (selectedShopId) {
+          const startTime = shopDateUnix(startDate, selectedShop?.region);
+          const endTime = shopDateUnix(effectiveEndExclusive, selectedShop?.region);
           const res = await fetchTikTokSellerAffiliateOrders(selectedShopId, {
             source: 'db',
             contentType: 'LIVE',
             pageSize: 100,
+            ...(Number.isFinite(startTime) ? { startTime } : {}),
+            ...(Number.isFinite(endTime) ? { endTime } : {}),
             signal: controller.signal,
           });
           if (Array.isArray(res?.orders)) {
@@ -365,7 +379,7 @@ const LiveAnalytics = () => {
       active = false;
       controller.abort();
     };
-  }, [selectedShopId, selectedShop, shops]);
+  }, [endDate, invalidRange, periodPreset, selectedShop, selectedShopId, shops, startDate]);
 
   // Period / Date filter handlers
   const changeCustomDate = (setter, currentValue) => (nextValue) => {
@@ -664,18 +678,33 @@ const LiveAnalytics = () => {
           <span>LIVE GMV:</span>
           <span>{formatMoney(itemLiveVal)}</span>
         </div>
-        {chartMode === 'compare' ? (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: 'var(--color-muted, #718096)', fontWeight: 600, marginTop: 4 }}>
-            <span>{t('liveAnalytics.total')}:</span>
-            <span>{formatMoney(itemTotalVal)}</span>
-          </div>
-        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, color: 'var(--color-muted, #718096)', fontWeight: 600, marginTop: 4 }}>
+          <span>{t('liveAnalytics.total')}:</span>
+          <span>{formatMoney(itemTotalVal)}</span>
+        </div>
         <div style={{ fontSize: '0.75rem', color: 'var(--color-muted, #718096)', marginTop: 6, paddingTop: 4, borderTop: '1px solid #e2e9f3' }}>
           {t('liveAnalytics.liveShare')}: <strong>{formatPercent(itemShare)}</strong>
         </div>
       </div>
     );
   };
+
+  const renderDelta = useCallback((change, fallbackText) => {
+    if (analyticsLoading) return <span className="shop-analytics__change is-muted">{t('common.loading')}</span>;
+    if (change === null || change === undefined) {
+      if (fallbackText) return <span className="shop-analytics__change is-muted">{fallbackText}</span>;
+      return <span className="shop-analytics__change is-muted">{t('shopAnalytics.noComparison')}</span>;
+    }
+    const favorable = change >= 0;
+    const tone = change === 0 ? 'is-neutral' : favorable ? 'is-positive' : 'is-negative';
+    const direction = change > 0 ? t('shopAnalytics.increased') : change < 0 ? t('shopAnalytics.decreased') : t('shopAnalytics.unchanged');
+    return (
+      <span className={`shop-analytics__change ${tone}`}>
+        <span aria-hidden="true">{change > 0 ? '↑' : change < 0 ? '↓' : '→'}</span>
+        {' '}{direction}{' '}{Math.abs(change).toLocaleString(locale, { maximumFractionDigits: 1 })}%{' '}{t('shopAnalytics.vsPrevious')}
+      </span>
+    );
+  }, [analyticsLoading, locale, t]);
 
   return (
     <div className="page live-analytics">
@@ -702,116 +731,108 @@ const LiveAnalytics = () => {
         </div>
       ) : null}
 
-      {/* KPI Cards */}
-      <section className="live-analytics__stats" aria-label={t('liveAnalytics.title')}>
+      {/* KPI Cards matching Overview Page */}
+      <section className="page__stats shop-analytics__stats" aria-label={t('liveAnalytics.title')}>
         {/* KPI 1: Live GMV */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveGmv')}</span>
-            <span className="live-analytics__stat-icon">
-              <Flame size={18} />
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--gmv">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveGmv')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true">
+              <AnalyticsIcon name="gmv" />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {analyticsLoading ? '...' : formatMoney(liveGmv)}
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveGmv)}
           </p>
-          <div className="live-analytics__stat-sub">
-            {liveGmvChange !== null ? (
-              <span className={`shop-analytics__change ${liveGmvChange >= 0 ? 'is-positive' : 'is-negative'}`}>
-                {liveGmvChange >= 0 ? '↑' : '↓'} {formatPercent(Math.abs(liveGmvChange))} {t('liveAnalytics.vsPrevious')}
-              </span>
-            ) : (
-              <span>{formatPercent(liveGmvShare)} {t('liveAnalytics.pctOfTotal')}</span>
-            )}
-          </div>
+          {renderDelta(liveGmvChange, `${formatPercent(liveGmvShare)} ${t('liveAnalytics.pctOfTotal')}`)}
         </article>
 
         {/* KPI 2: Live Share % */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveShare')}</span>
-            <span className="live-analytics__stat-icon" style={{ background: '#f1edff', color: '#7657e9' }}>
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--liveShare">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveShare')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#f1edff', color: '#7657e9' }}>
               <TrendingUp size={18} />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {analyticsLoading ? '...' : formatPercent(liveGmvShare)}
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatPercent(liveGmvShare)}
           </p>
-          <div className="live-analytics__stat-sub">
-            <span>{t('liveAnalytics.pctOfTotal')} ({formatMoney(totalShopGmv)})</span>
-          </div>
+          <span className="shop-analytics__change is-muted">
+            {t('liveAnalytics.pctOfTotal')} ({formatMoney(totalShopGmv)})
+          </span>
         </article>
 
         {/* KPI 3: Live Orders */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveOrders')}</span>
-            <span className="live-analytics__stat-icon" style={{ background: '#edf4ff', color: '#2f6fe4' }}>
-              <ShoppingBag size={18} />
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--orders">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveOrders')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true">
+              <AnalyticsIcon name="orders" />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {analyticsLoading ? '...' : formatNumber(displayLiveOrders)}
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatNumber(displayLiveOrders)}
           </p>
-          <div className="live-analytics__stat-sub">
-            <span>{t('liveAnalytics.liveOrdersDesc')}</span>
-          </div>
+          <span className="shop-analytics__change is-muted">
+            {t('liveAnalytics.liveOrdersDesc')}
+          </span>
         </article>
 
         {/* KPI 4: Units Sold */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveUnits')}</span>
-            <span className="live-analytics__stat-icon" style={{ background: 'var(--color-success-soft, #e9f9f0)', color: 'var(--color-success, #168a4d)' }}>
-              <Package size={18} />
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--unitsSold">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveUnits')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true">
+              <AnalyticsIcon name="unitsSold" />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {analyticsLoading ? '...' : formatNumber(displayUnitsSold)}
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatNumber(displayUnitsSold)}
           </p>
-          <div className="live-analytics__stat-sub">
-            <span>{t('liveAnalytics.liveUnitsDesc')}</span>
-          </div>
+          <span className="shop-analytics__change is-muted">
+            {t('liveAnalytics.liveUnitsDesc')}
+          </span>
         </article>
 
         {/* KPI 5: AOV */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveAov')}</span>
-            <span className="live-analytics__stat-icon" style={{ background: 'var(--color-warning-soft, #fff7e8)', color: 'var(--color-warning, #b45309)' }}>
-              <ArrowUpRight size={18} />
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--avgOrderValue">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveAov')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true">
+              <AnalyticsIcon name="avgOrderValue" />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {analyticsLoading ? '...' : formatMoney(liveAov)}
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveAov)}
           </p>
-          <div className="live-analytics__stat-sub">
-            <span>{t('liveAnalytics.liveAovDesc')}</span>
-          </div>
+          <span className="shop-analytics__change is-muted">
+            {t('liveAnalytics.liveAovDesc')}
+          </span>
         </article>
 
         {/* KPI 6: Live Sessions & Hosts */}
-        <article className="live-analytics__stat">
-          <div className="live-analytics__stat-header">
-            <span className="live-analytics__stat-label">{t('liveAnalytics.liveSessions')}</span>
-            <span className="live-analytics__stat-icon" style={{ background: '#f1edff', color: '#7657e9' }}>
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--sessions">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveSessions')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#f1edff', color: '#7657e9' }}>
               <Radio size={18} />
             </span>
           </div>
-          <p className="live-analytics__stat-value">
-            {sessionList.length}
+          <p className="stat-card__value">
+            {liveOrdersLoading && !sessionList.length ? <span className="shop-analytics__value-skeleton" /> : formatNumber(sessionList.length)}
           </p>
-          <div className="live-analytics__stat-sub">
-            <Users size={14} />
-            <span>{distinctHosts} {t('liveAnalytics.liveHosts')}</span>
-          </div>
+          <span className="shop-analytics__change is-muted">
+            <Users size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
+            {distinctHosts} {t('liveAnalytics.liveHosts')}
+          </span>
         </article>
       </section>
 
       {/* Daily Live Revenue Chart Card */}
       <section className="live-analytics__chart-card">
-        <div className="live-analytics__chart-header">
-          {isMultiShop ? (
+        {isMultiShop ? (
+          <div className="live-analytics__chart-header">
             <div className="shop-analytics__compare-wrapper" ref={compareWrapperRef}>
               <button
                 type="button"
@@ -880,29 +901,8 @@ const LiveAnalytics = () => {
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div />
-          )}
-
-          <div className="live-analytics__chart-actions">
-            <button
-              type="button"
-              className={`live-analytics__toggle-btn ${chartMode === 'live' ? 'is-active' : ''}`}
-              onClick={() => setChartMode('live')}
-            >
-              <Radio size={14} />
-              {t('liveAnalytics.filterLive')}
-            </button>
-            <button
-              type="button"
-              className={`live-analytics__toggle-btn ${chartMode === 'compare' ? 'is-active' : ''}`}
-              onClick={() => setChartMode('compare')}
-            >
-              <TrendingUp size={14} />
-              {t('liveAnalytics.filterCompare')}
-            </button>
           </div>
-        </div>
+        ) : null}
 
         <div style={{ width: '100%', height: 320 }}>
           {liveIntervals.length ? (
@@ -924,18 +924,6 @@ const LiveAnalytics = () => {
                     tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val)}
                   />
                   <Tooltip content={<MultiShopLiveTooltip formatMoney={formatMoney} />} />
-                  {chartMode === 'compare' && isTotalVisible ? (
-                    <Line
-                      type="monotone"
-                      dataKey="overallGmv"
-                      name={t('liveAnalytics.total', 'Tổng doanh thu')}
-                      stroke="#94a3b8"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      dot={false}
-                      activeDot={{ r: 5, strokeWidth: 2, fill: '#94a3b8' }}
-                    />
-                  ) : null}
                   {isTotalVisible ? (
                     <Line
                       type="monotone"
@@ -985,18 +973,16 @@ const LiveAnalytics = () => {
                     tickFormatter={(val) => (val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val)}
                   />
                   <Tooltip content={renderChartTooltip} />
-                  {chartMode === 'compare' ? (
-                    <Area
-                      type="monotone"
-                      dataKey="overallGmv"
-                      name={t('liveAnalytics.total')}
-                      stroke="#94a3b8"
-                      strokeWidth={2}
-                      strokeDasharray="4 4"
-                      fillOpacity={1}
-                      fill="url(#totalGradient)"
-                    />
-                  ) : null}
+                  <Area
+                    type="monotone"
+                    dataKey="overallGmv"
+                    name={t('liveAnalytics.total')}
+                    stroke="#94a3b8"
+                    strokeWidth={2}
+                    strokeDasharray="4 4"
+                    fillOpacity={1}
+                    fill="url(#totalGradient)"
+                  />
                   <Area
                     type="monotone"
                     dataKey="liveGmv"
@@ -1079,10 +1065,6 @@ const LiveAnalytics = () => {
       {/* Tab 1: Sessions & Hosts */}
       {activeTab === 'overview' ? (
         <section className="live-analytics__section">
-          <div className="live-analytics__section-header">
-            <h2 className="live-analytics__section-title">{t('liveAnalytics.sessionsTitle')}</h2>
-          </div>
-
           <div className="table-wrap">
             <table className="data-table">
               <thead>
