@@ -456,25 +456,29 @@
 .live-drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(2px);
-  z-index: 1000;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(3px);
+  z-index: 10000;
   display: flex;
   justify-content: flex-end;
+  animation: backdrop-enter var(--motion-duration-base) ease-out both;
 }
 
 .live-drawer {
+  position: relative;
   width: 100%;
   max-width: 580px;
   height: 100%;
+  max-height: 100vh;
   background: var(--color-surface);
-  box-shadow: var(--shadow-md);
+  box-shadow: -12px 0 36px rgba(15, 23, 42, 0.22);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scroll-behavior: auto;
   border-left: 1px solid var(--color-border);
-  animation: slideDrawer 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideDrawer 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 @keyframes slideDrawer {
@@ -496,6 +500,7 @@
   position: sticky;
   top: 0;
   z-index: 10;
+  flex-shrink: 0;
 }
 
 .live-drawer__body {
@@ -504,7 +509,7 @@
   flex-direction: column;
   gap: var(--space-5);
   background: var(--color-bg);
-  min-height: 100%;
+  flex: 1 1 auto;
 }
 
 .live-drawer__close {
@@ -525,4 +530,91 @@
   background: var(--color-surface-subtle);
   color: var(--color-text);
   border-color: var(--color-border-strong);
+}
+
+/* Session Order Card in Live Drawer */
+.live-session-order-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-default);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xs);
+  transition: all var(--motion-duration-fast) ease;
+}
+
+.live-session-order-card:hover {
+  border-color: var(--color-border-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.live-session-order-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.live-session-order-card__products {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.live-session-order-card__product-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.live-session-order-card__product-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.live-session-order-card__product-thumb-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+
+.live-session-order-card__product-name {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-session-order-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-border);
+}
+
+/* Ensure OrderDetailDrawer sits on top of LiveSessionDrawer */
+body > .koc-drawer-backdrop {
+  z-index: 11000;
 }

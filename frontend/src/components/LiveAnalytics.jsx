@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Area,
   AreaChart,
@@ -30,6 +31,7 @@ import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
 import ShopAnalyticsFilters from './shop-analytics/ShopAnalyticsFilters';
 import Pagination from './Pagination';
+import { OrderDetailDrawer } from './SellerAffiliatePanel/components/AffiliatePresentation';
 import {
   formatDisplayDateTime,
   moneyValue,
@@ -38,6 +40,7 @@ import {
   rangeForDays,
   shiftDate,
 } from './shop-analytics/shopAnalyticsUtils';
+import '../styles/features/order-management.css';
 import '../styles/pages/live-analytics.css';
 
 const SHOP_PALETTE = [
@@ -151,40 +154,9 @@ const LiveAnalytics = () => {
   const [chartMode, setChartMode] = useState('live'); // 'live' | 'compare'
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedSession, setSelectedSession] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderPage, setOrderPage] = useState(1);
   const ordersPerPage = 15;
-  const sessionDrawerRef = useRef(null);
-
-  // Ensure drawer scrolls to top each time a session is opened or changed
-  useEffect(() => {
-    if (selectedSession) {
-      if (sessionDrawerRef.current) {
-        sessionDrawerRef.current.scrollTop = 0;
-      }
-      requestAnimationFrame(() => {
-        if (sessionDrawerRef.current) {
-          sessionDrawerRef.current.scrollTop = 0;
-        }
-      });
-    }
-  }, [selectedSession]);
-
-  // Lock body scroll and close on Escape key when drawer is active
-  useEffect(() => {
-    if (!selectedSession) return undefined;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') setSelectedSession(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [selectedSession]);
 
   const invalidRange = !startDate || !endDate || startDate >= endDate;
 
@@ -319,6 +291,17 @@ const LiveAnalytics = () => {
     `${numericValue(value).toLocaleString(locale, { maximumFractionDigits: 1 })}%`
   ), [locale]);
 
+  const formatMoneyValues = useCallback((values) => {
+    const moneyValues = (Array.isArray(values) ? values : [values])
+      .filter((money) => money && (typeof money === 'object' ? money.amount !== undefined && money.amount !== null && money.amount !== '' : Number.isFinite(Number(money))));
+    if (!moneyValues.length) return '—';
+    return moneyValues.map((money) => {
+      const amount = Number(typeof money === 'object' ? money?.amount : money);
+      const curr = (typeof money === 'object' ? money?.currency : null) || displayCurrency;
+      return formatMoney(amount, curr);
+    }).join(' + ');
+  }, [formatMoney, displayCurrency]);
+
   // Live Orders from Database
   const [liveOrders, setLiveOrders] = useState([]);
   const [liveOrdersLoading, setLiveOrdersLoading] = useState(false);
@@ -346,7 +329,8 @@ const LiveAnalytics = () => {
           settled.forEach((res, index) => {
             if (res.status === 'fulfilled' && Array.isArray(res.value?.orders)) {
               const shopName = eligibleShops[index]?.name || '';
-              const shopOrders = res.value.orders.map((o) => ({ ...o, shopName }));
+              const shopId = eligibleShops[index]?.id;
+              const shopOrders = res.value.orders.map((o) => ({ ...o, shopName, shop_id: o.shop_id || shopId }));
               results.push(...shopOrders);
             }
           });
@@ -359,7 +343,7 @@ const LiveAnalytics = () => {
           });
           if (Array.isArray(res?.orders)) {
             const shopName = selectedShop?.name || '';
-            results = res.orders.map((o) => ({ ...o, shopName }));
+            results = res.orders.map((o) => ({ ...o, shopName, shop_id: o.shop_id || selectedShopId }));
           }
         }
 
@@ -474,14 +458,29 @@ const LiveAnalytics = () => {
         ? (typeof order.create_time === 'number' ? order.create_time * 1000 : Date.parse(order.create_time))
         : null;
 
+      const totalCommission = liveSkus.reduce((sum, s) => {
+        const comm = s.raw_data?.estimated_paid_commission?.amount || s.estimated_paid_commission?.amount || s.estimated_commission;
+        return sum + (moneyValue(comm) || 0);
+      }, 0);
+      const commSku = liveSkus.find((s) => s.raw_data?.commission_rate || s.commission_rate);
+      const commissionRate = commSku
+        ? (Number(commSku.raw_data?.commission_rate || commSku.commission_rate) / 100)
+        : 0;
+      const settlementStatus = liveSkus[0]?.settlement_status || liveSkus[0]?.raw_data?.settlement_status || '';
+
       flatRows.push({
+        rawOrder: order,
         orderId: order.id || order.order_id,
+        shopId: order.shop_id || order.shopId,
         shopName: order.shopName,
         createTime: orderCreateTime,
         status: order.order_status || order.status || 'COMPLETED',
         buyerEmail: order.buyer_email,
         skus: liveSkus,
         totalGmv: liveSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0),
+        totalCommission,
+        commissionRate,
+        settlementStatus,
         currency: liveSkus[0]?.currency || order.currency || displayCurrency,
       });
 
@@ -1256,16 +1255,18 @@ const LiveAnalytics = () => {
                 <tr>
                   <th>{t('liveAnalytics.colOrderId')}</th>
                   <th>{t('liveAnalytics.colOrderTime')}</th>
+                  {selectedShopId === 'all' ? <th>{t('liveAnalytics.shop')}</th> : null}
                   <th>{t('liveAnalytics.colHost')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
                   <th className="cell-number">{t('liveAnalytics.colTotalAmount')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colCommission')}</th>
                   <th>{t('liveAnalytics.colOrderStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {!filteredOrders.length ? (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={selectedShopId === 'all' ? 8 : 7}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noOrders')}
                       </div>
@@ -1276,41 +1277,76 @@ const LiveAnalytics = () => {
                 {paginatedOrders.map((order) => (
                   <tr key={order.orderId}>
                     <td>
-                      <span className="code-pill font-mono">{order.orderId}</span>
+                      <span
+                        className="code-pill font-mono"
+                        style={{ cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 650 }}
+                        onClick={() => setSelectedOrder(order.rawOrder || order)}
+                        title={order.orderId}
+                      >
+                        {order.orderId}
+                      </span>
                     </td>
                     <td>
                       {order.createTime ? formatDisplayDateTime(order.createTime, '—') : '—'}
                     </td>
+                    {selectedShopId === 'all' ? (
+                      <td>
+                        <span className="code-pill font-mono" style={{ fontSize: '0.75rem' }}>
+                          {order.shopName || `Shop ${order.shopId}`}
+                        </span>
+                      </td>
+                    ) : null}
                     <td>
                       <span className="code-pill">
                         @{order.skus[0]?.creator_username || 'shop'}
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxWidth: 300 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 300 }}>
                         {order.skus.map((sku, i) => (
-                          <span
-                            key={i}
-                            style={{
-                              fontSize: '0.8125rem',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                            }}
-                            title={sku.product_name}
-                          >
-                            • {sku.product_name} (x{sku.quantity || 1})
-                          </span>
+                          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem' }}>
+                            <span
+                              style={{
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                color: 'var(--color-text)',
+                              }}
+                              title={sku.product_name}
+                            >
+                              • {sku.product_name}
+                            </span>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)', flexShrink: 0 }}>
+                              x{sku.quantity || 1}
+                            </span>
+                          </div>
                         ))}
                       </div>
                     </td>
-                    <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                    <td className="cell-number" style={{ fontWeight: 750, color: 'var(--color-primary)' }}>
                       {formatMoney(order.totalGmv, order.currency)}
+                    </td>
+                    <td className="cell-number">
+                      {order.totalCommission > 0 ? (
+                        <div>
+                          <strong>{formatMoney(order.totalCommission, order.currency)}</strong>
+                          {order.commissionRate > 0 ? (
+                            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                              ({order.commissionRate}%)
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : '—'}
                     </td>
                     <td>
                       <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(order.status || '').toLowerCase()}`}>
                         {order.status}
                       </span>
+                      {order.settlementStatus && order.settlementStatus !== '—' ? (
+                        <span className="chip" style={{ display: 'block', marginTop: 4, fontSize: '0.6875rem' }}>
+                          {order.settlementStatus}
+                        </span>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1330,163 +1366,333 @@ const LiveAnalytics = () => {
 
       {/* Session Details Drawer */}
       {selectedSession ? (
-        <div className="live-drawer-backdrop" onClick={() => setSelectedSession(null)}>
-          <div
-            key={selectedSession.sessionId}
-            ref={(node) => {
-              sessionDrawerRef.current = node;
-              if (node) node.scrollTop = 0;
-            }}
-            className="live-drawer"
-            onClick={(e) => e.stopPropagation()}
+        <LiveSessionDrawer
+          session={selectedSession}
+          onClose={() => setSelectedSession(null)}
+          onSelectOrder={setSelectedOrder}
+          formatMoney={formatMoney}
+          formatNumber={formatNumber}
+          formatDisplayDateTime={formatDisplayDateTime}
+          t={t}
+        />
+      ) : null}
+
+      {/* TikTok Shop Order Detail Drawer */}
+      {selectedOrder ? (
+        <OrderDetailDrawer
+          order={selectedOrder}
+          shopId={selectedOrder.shop_id || selectedOrder.shopId || (selectedShopId !== 'all' ? selectedShopId : null)}
+          onClose={() => setSelectedOrder(null)}
+          formatTime={(val) => formatDisplayDateTime(val, '—')}
+          formatMoneyValues={formatMoneyValues}
+          t={t}
+        />
+      ) : null}
+    </div>
+  );
+};
+
+const LiveSessionDrawer = ({
+  session,
+  onClose,
+  onSelectOrder,
+  formatMoney,
+  formatNumber,
+  formatDisplayDateTime,
+  t,
+}) => {
+  const drawerRef = useRef(null);
+  const closeBtnRef = useRef(null);
+
+  // Scroll to top immediately on mount & whenever session changes
+  useEffect(() => {
+    if (drawerRef.current) {
+      drawerRef.current.scrollTop = 0;
+    }
+    const rafId = requestAnimationFrame(() => {
+      if (drawerRef.current) {
+        drawerRef.current.scrollTop = 0;
+      }
+      closeBtnRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [session?.sessionId]);
+
+  // Lock body scroll and close on Escape key when drawer is active
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [onClose]);
+
+  if (!session) return null;
+
+  const productsList = Array.isArray(session.productsList) ? session.productsList : [];
+  const ordersList = Array.isArray(session.orders) ? session.orders : [];
+
+  return createPortal(
+    <div
+      className="live-drawer-backdrop"
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <aside
+        ref={drawerRef}
+        key={session.sessionId}
+        className="live-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="live-drawer-title"
+      >
+        <div className="live-drawer__header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span className="live-badge">
+              <span className="live-badge__dot" />
+              LIVE
+            </span>
+            <h3 id="live-drawer-title" style={{ margin: 0, fontSize: '1.125rem', fontWeight: 750, color: 'var(--color-text)' }}>
+              {t('liveAnalytics.sessionDetails')}
+            </h3>
+          </div>
+          <button
+            ref={closeBtnRef}
+            type="button"
+            className="live-drawer__close"
+            onClick={onClose}
+            aria-label={t('liveAnalytics.close')}
           >
-            <div className="live-drawer__header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span className="live-badge">
-                  <span className="live-badge__dot" />
-                  LIVE
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="live-drawer__body">
+          {/* Host & Session Card */}
+          <div className="live-analytics__stat" style={{ borderLeft: '4px solid var(--color-primary)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {session.creatorAvatar ? (
+                <img
+                  src={session.creatorAvatar}
+                  alt={session.creatorUsername}
+                  className="live-host-avatar"
+                  style={{ width: 44, height: 44 }}
+                />
+              ) : (
+                <div className="live-host-avatar" style={{ width: 44, height: 44, fontSize: '1.125rem' }}>
+                  {(session.creatorUsername || '?')[0].toUpperCase()}
+                </div>
+              )}
+              <div>
+                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 750, color: 'var(--color-text)' }}>
+                  {session.creatorNickname || session.creatorUsername || '—'}
+                </h4>
+                <span style={{ fontSize: '0.8125rem', color: 'var(--color-muted)' }}>
+                  @{session.creatorUsername}
                 </span>
-                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 750, color: 'var(--color-text)' }}>
-                  {t('liveAnalytics.sessionDetails')}
-                </h3>
               </div>
-              <button
-                type="button"
-                className="live-drawer__close"
-                onClick={() => setSelectedSession(null)}
-                aria-label={t('liveAnalytics.close')}
-              >
-                <X size={18} />
-              </button>
             </div>
 
-            <div className="live-drawer__body">
-              {/* Host & Session Card */}
-              <div className="live-analytics__stat" style={{ borderLeft: '4px solid var(--color-primary)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {selectedSession.creatorAvatar ? (
-                    <img
-                      src={selectedSession.creatorAvatar}
-                      alt={selectedSession.creatorUsername}
-                      className="live-host-avatar"
-                      style={{ width: 44, height: 44 }}
-                    />
-                  ) : (
-                    <div className="live-host-avatar" style={{ width: 44, height: 44, fontSize: '1.125rem' }}>
-                      {(selectedSession.creatorUsername || '?')[0].toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 750, color: 'var(--color-text)' }}>
-                      {selectedSession.creatorNickname || selectedSession.creatorUsername}
-                    </h4>
-                    <span style={{ fontSize: '0.8125rem', color: 'var(--color-muted)' }}>
-                      @{selectedSession.creatorUsername}
-                    </span>
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colSessionId')}:</span>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{selectedSession.sessionId}</p>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
-                    <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
-                      {formatMoney(selectedSession.totalGmv, selectedSession.currency)}
-                    </p>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(selectedSession.orderCount)}</p>
-                  </div>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
-                    <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(selectedSession.totalQuantity)}</p>
-                  </div>
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colSessionId')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{session.sessionId}</p>
               </div>
-
-              {/* Products in this Session */}
-              <div className="section-card" style={{ padding: 16 }}>
-                <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
-                  {t('liveAnalytics.productsSold')} ({selectedSession.productsList.length})
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {selectedSession.productsList.map((prod) => (
-                    <div
-                      key={prod.productId}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: 10,
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-default)',
-                        background: 'var(--color-surface)',
-                      }}
-                    >
-                      {prod.imageUrl ? (
-                        <img
-                          src={prod.imageUrl}
-                          alt={prod.name}
-                          style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
-                        />
-                      ) : (
-                        <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <Package size={20} color="var(--color-muted)" />
-                        </div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={prod.name}>
-                          {prod.name}
-                        </p>
-                        <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
-                          {formatNumber(prod.quantity)} {t('liveAnalytics.units')}
-                        </span>
-                      </div>
-                      <span style={{ fontWeight: 750, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
-                        {formatMoney(prod.gmv, selectedSession.currency)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
+                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
+                  {formatMoney(session.totalGmv, session.currency)}
+                </p>
               </div>
-
-              {/* Orders in this session */}
-              <div className="section-card" style={{ padding: 16 }}>
-                <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
-                  {t('liveAnalytics.ordersTitle')} ({selectedSession.orders.length})
-                </h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {selectedSession.orders.map((ord) => (
-                    <div
-                      key={ord.id || ord.order_id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-default)',
-                        background: 'var(--color-surface-subtle)',
-                        border: '1px solid var(--color-border)',
-                        fontSize: '0.8125rem',
-                      }}
-                    >
-                      <span className="font-mono" style={{ color: 'var(--color-text)' }}>{ord.id || ord.order_id}</span>
-                      <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(ord.order_status || ord.status || 'completed').toLowerCase()}`}>
-                        {ord.order_status || ord.status || 'COMPLETED'}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.orderCount)}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.totalQuantity)}</p>
               </div>
             </div>
           </div>
+
+          {/* Products in this Session */}
+          <div className="section-card" style={{ padding: 16 }}>
+            <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
+              {t('liveAnalytics.productsSold')} ({productsList.length})
+            </h4>
+            {productsList.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-muted)' }}>—</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {productsList.map((prod, idx) => (
+                  <div
+                    key={prod.productId || idx}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: 10,
+                      border: '1px solid var(--color-border)',
+                      borderRadius: 'var(--radius-default)',
+                      background: 'var(--color-surface)',
+                    }}
+                  >
+                    {prod.imageUrl ? (
+                      <img
+                        src={prod.imageUrl}
+                        alt={prod.name}
+                        style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', objectFit: 'cover' }}
+                      />
+                    ) : (
+                      <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Package size={20} color="var(--color-muted)" />
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: 0, fontSize: '0.8125rem', fontWeight: 600, color: 'var(--color-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={prod.name}>
+                        {prod.name}
+                      </p>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                        {formatNumber(prod.quantity)} {t('liveAnalytics.units')}
+                      </span>
+                    </div>
+                    <span style={{ fontWeight: 750, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
+                      {formatMoney(prod.gmv, session.currency)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Orders in this session */}
+          <div className="section-card" style={{ padding: 16 }}>
+            <h4 style={{ fontSize: '0.9375rem', fontWeight: 750, color: 'var(--color-text)', margin: '0 0 12px 0' }}>
+              {t('liveAnalytics.ordersTitle')} ({ordersList.length})
+            </h4>
+            {ordersList.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-muted)' }}>—</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {ordersList.map((ord, idx) => {
+                  const ordSkus = Array.isArray(ord.skus) ? ord.skus : [];
+                  const ordCreateTime = ord.create_time
+                    ? (typeof ord.create_time === 'number' ? ord.create_time * 1000 : Date.parse(ord.create_time))
+                    : null;
+                  const ordCurrency = ordSkus[0]?.currency || ord.currency || session.currency;
+                  const ordTotalGmv = ordSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0);
+                  const ordCommission = ordSkus.reduce((sum, s) => {
+                    const comm = s.raw_data?.estimated_paid_commission?.amount || s.estimated_paid_commission?.amount || s.estimated_commission;
+                    return sum + (moneyValue(comm) || 0);
+                  }, 0);
+                  const commSku = ordSkus.find((s) => s.raw_data?.commission_rate || s.commission_rate);
+                  const ordCommissionRate = commSku
+                    ? (Number(commSku.raw_data?.commission_rate || commSku.commission_rate) / 100)
+                    : 0;
+                  const settlementStatus = ordSkus[0]?.settlement_status || ordSkus[0]?.raw_data?.settlement_status || '';
+
+                  return (
+                    <article
+                      key={ord.id || ord.order_id || idx}
+                      className="live-session-order-card"
+                    >
+                      <div className="live-session-order-card__header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span
+                            className="code-pill font-mono"
+                            style={{ cursor: 'pointer', color: 'var(--color-primary)', fontWeight: 650 }}
+                            onClick={() => onSelectOrder?.(ord)}
+                            title={ord.id || ord.order_id}
+                          >
+                            {ord.id || ord.order_id}
+                          </span>
+                          {ordCreateTime ? (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                              {formatDisplayDateTime(ordCreateTime, '—')}
+                            </span>
+                          ) : null}
+                        </div>
+                        <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(ord.order_status || ord.status || 'completed').toLowerCase()}`}>
+                          {ord.order_status || ord.status || 'COMPLETED'}
+                        </span>
+                      </div>
+
+                      {/* SKUs in this order */}
+                      <div className="live-session-order-card__products">
+                        {ordSkus.map((sku, sIdx) => {
+                          const img = sku.product_image || sku.image_url || sku.raw_data?.product_image || sku.raw_data?.sku_image;
+                          const qty = Number(sku.quantity) || 1;
+                          const unitPrice = moneyValue(sku.price);
+                          const rowGmv = unitPrice * qty;
+                          return (
+                            <div key={sku.sku_id || sIdx} className="live-session-order-card__product-row">
+                              {img ? (
+                                <img src={img} alt="" className="live-session-order-card__product-thumb" />
+                              ) : (
+                                <div className="live-session-order-card__product-thumb-placeholder">
+                                  <Package size={14} />
+                                </div>
+                              )}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p className="live-session-order-card__product-name" title={sku.product_name}>
+                                  {sku.product_name}
+                                </p>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                                  <span>x{qty}</span>
+                                  {unitPrice ? <span>({formatMoney(unitPrice, sku.currency || ordCurrency)})</span> : null}
+                                </div>
+                              </div>
+                              <span style={{ fontWeight: 650, fontSize: '0.8125rem', color: 'var(--color-text)' }}>
+                                {formatMoney(rowGmv, sku.currency || ordCurrency)}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Footer with total GMV and commission */}
+                      <div className="live-session-order-card__footer">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          {ordCommission > 0 ? (
+                            <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>
+                              {t('liveAnalytics.colCommission')}: <strong style={{ color: 'var(--color-text)' }}>{formatMoney(ordCommission, ordCurrency)}</strong>
+                              {ordCommissionRate > 0 ? ` (${ordCommissionRate}%)` : ''}
+                            </span>
+                          ) : null}
+                          {settlementStatus && settlementStatus !== '—' ? (
+                            <span className="chip" style={{ fontSize: '0.6875rem', padding: '2px 6px' }}>
+                              {settlementStatus}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colTotalAmount')}:</span>
+                          <strong style={{ fontSize: '0.9375rem', color: 'var(--color-primary)' }}>
+                            {formatMoney(ordTotalGmv, ordCurrency)}
+                          </strong>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      ) : null}
-    </div>
+      </aside>
+    </div>,
+    document.body,
   );
 };
 
