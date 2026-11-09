@@ -54,7 +54,6 @@ const JOB_APP_TAGS = {
   tiktok_shop_video_catalog: { label: 'Partner', type: 'partner' },
   tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
   tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
-  tiktok_booking_video_detail: { label: 'Partner', type: 'partner' },
   tiktok_auth: { label: 'Auth', type: 'auth' },
 };
 
@@ -315,6 +314,7 @@ const ScheduleManagement = () => {
   const triggerLabel = (trigger) => {
     const norm = String(trigger || 'SCHEDULED').toLowerCase();
     if (norm === 'oauth') return t('schedule.triggers.oauth', 'OAuth');
+    if (norm === 'catch_up') return t('schedule.triggers.catch_up', 'Chạy bù');
     return t(`schedule.triggers.${norm}`);
   };
   const resultLabel = (run) => {

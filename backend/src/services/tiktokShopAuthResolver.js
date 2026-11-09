@@ -45,7 +45,6 @@ const SYSTEM_CORE_SCOPES = [
       'tiktok_shop_video_catalog',
       'booking_video_performance',
       'tiktok_affiliate_video_performance',
-      'tiktok_booking_video_detail',
     ],
   },
   {
@@ -91,10 +90,6 @@ const JOB_SCOPE_MAPPINGS = {
     requiredScope: SELLER_ANALYTICS_SCOPE,
   },
   tiktok_affiliate_video_performance: {
-    capability: 'analytics',
-    requiredScope: SELLER_ANALYTICS_SCOPE,
-  },
-  tiktok_booking_video_detail: {
     capability: 'analytics',
     requiredScope: SELLER_ANALYTICS_SCOPE,
   },

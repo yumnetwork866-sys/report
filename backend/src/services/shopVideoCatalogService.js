@@ -13,10 +13,10 @@ const SHOP_VIDEO_ACCOUNT_TYPES = [
   'MARKETING_ACCOUNTS',
   'AFFILIATE_ACCOUNTS',
 ];
-// TikTok's shop video performance endpoint accepts at most 60 days. The
+// TikTok's shop video performance endpoint accepts at most 30 days. The
 // exclusive end date is tomorrow so that today's metrics are included, which
-// leaves room for 59 preceding lookback days.
-const MAX_VIDEO_LOOKBACK_DAYS = 59;
+// leaves room for 29 preceding lookback days.
+const MAX_VIDEO_LOOKBACK_DAYS = 29;
 const dateOnly = (value = new Date()) => new Date(value).toISOString().slice(0, 10);
 const shiftDate = (value, days) => {
   const date = new Date(`${dateOnly(value)}T00:00:00.000Z`);

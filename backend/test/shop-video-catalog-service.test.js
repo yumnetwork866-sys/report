@@ -82,7 +82,7 @@ test('shop video catalog follows every TikTok page and stores daily snapshots', 
     'AFFILIATE_ACCOUNTS',
   ]);
   assert.deepEqual([...new Set(requestedRanges.map(({ startDate, endDate }) => `${startDate}:${endDate}`))], [
-    '2026-05-26:2026-07-25',
+    '2026-06-25:2026-07-25',
   ]);
   assert.deepEqual(result.account_types, {
     OFFICIAL_ACCOUNTS: { total: 3, pages: 3 },

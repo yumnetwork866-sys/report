@@ -81,7 +81,7 @@ const ConnectionManagement = () => {
   return (
     <div className="page connection-management-page">
       {availableTabs.length > 1 ? (
-        <div className="connection-tabs" role="tablist" aria-label={t('connections.title') || 'Quản lý kết nối'}>
+        <div className="connection-tabs" role="tablist" aria-label={t('connections.title') || 'Kết nối'}>
           {availableTabs.map((tab) => {
             const Icon = tab.icon;
             const isSelected = activeTab === tab.key;

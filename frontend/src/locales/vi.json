@@ -239,9 +239,9 @@
     "reports": "Báo cáo",
     "chat": "Hội thoại",
     "users": "Người dùng",
-    "connections": "Quản lý kết nối",
+    "connections": "Kết nối",
     "manageShops": "Quản lý Shop",
-    "schedule": "Lịch đồng bộ",
+    "schedule": "Đồng bộ",
     "queues": "Hàng đợi (BullMQ)",
     "apps": "Quản lý App",
     "chatSettings": "Model LLM",
@@ -250,7 +250,7 @@
     "collapse": "Thu gọn thanh điều hướng"
   },
   "connections": {
-    "title": "Quản lý kết nối TikTok",
+    "title": "Kết nối",
     "tabs": {
       "shops": "Shop",
       "channels": "Kênh",
@@ -1617,7 +1617,7 @@
     "date": "Ngày",
     "lastSync": "Đồng bộ gần nhất",
     "latestDate": "TikTok thông báo dữ liệu đến",
-    "connections": "Quản lý kết nối Seller",
+    "connections": "Kết nối Seller",
     "connectionsMeta": "Kiểm tra token, quyền Shop Analytics và các Shop thuộc từng kết nối.",
     "connectedShops": "Shop đã kết nối",
     "status": "Trạng thái",
@@ -1900,7 +1900,8 @@
     "triggers": {
       "manual": "Thủ công",
       "scheduled": "Theo lịch",
-      "oauth": "OAuth"
+      "oauth": "OAuth",
+      "catch_up": "Chạy bù"
     },
     "groups": {
       "shop": {

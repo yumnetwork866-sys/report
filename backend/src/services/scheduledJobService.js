@@ -30,7 +30,6 @@ const { run: syncTikTokChannels } = require('../jobs/syncTiktokChannels');
 const { syncActiveBookingVideos } = require('./bookingVideoPerformanceService');
 const { syncShopVideoCatalog } = require('./shopVideoCatalogService');
 const {
-  syncBookingVideoDetails,
   syncVideoPerformanceApi,
 } = require('./tiktokVideoPerformanceService');
 const { syncChannelReportRevenue } = require('./channelReportRevenueSyncService');
@@ -45,7 +44,6 @@ const JOB_KEYS = new Set([
   'booking_video_performance',
   'tiktok_shop_video_catalog',
   'tiktok_affiliate_video_performance',
-  'tiktok_booking_video_detail',
   'tiktok_channel_report_revenue',
   'tiktok_affiliate_orders',
   'tiktok_auth',
@@ -729,38 +727,6 @@ const jobHandlers = {
     }
     return { windows };
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_affiliate_video_performance' }),
-  tiktok_booking_video_detail: ({ signal, shopId } = {}) => runForShops(async (shop) => (
-    withMonitorContext({ module_type: 'VIDEO_DETAIL', window_type: 'PAST_30_DAYS' }, async () => {
-      const { endDate } = scheduledAnalyticsRange(shop);
-      await recordRunEvent('VIDEO_DETAIL_BATCH_STARTED', {
-        status: 'PROCESSING', module_type: 'VIDEO_DETAIL', window_type: 'PAST_30_DAYS',
-      });
-      const detail = await syncBookingVideoDetails(shop, {
-        startDate: shiftLocalDate(endDate, -30),
-        endDate,
-        currency: 'LOCAL',
-        signal,
-      });
-      const status = detail.failed ? 'FAILED' : 'SUCCEEDED';
-      await recordRunEvent('VIDEO_DETAIL_BATCH_FINISHED', {
-        status,
-        module_type: 'VIDEO_DETAIL',
-        window_type: 'PAST_30_DAYS',
-        request_data: detail,
-        message: detail.rate_limited ? 'Stopped after TikTok rate limit; remaining videos were deferred.' : null,
-        next_retry_at: detail.cooldown_until,
-      });
-      return {
-        video_detail: detail,
-        windows: [{
-          module_type: 'DETAIL',
-          window_type: 'PAST_30_DAYS',
-          status,
-          ...detail,
-        }],
-      };
-    })
-  ), signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_booking_video_detail' }),
   tiktok_auth: async () => {
     const { checkTokenHealth } = require('./authLogService');
     return checkTokenHealth();
@@ -915,7 +881,7 @@ const enqueueScheduledJob = async (job, {
   }
   const { run, created } = await createScheduledJobRun(job, { triggerType, scheduledKey: effectiveScheduledKey });
   if (created) {
-    queueSyncJob(
+    await queueSyncJob(
       job.job_key,
       {
         runId: run.id,

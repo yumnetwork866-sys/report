@@ -1902,7 +1902,8 @@
     "triggers": {
       "manual": "Manual",
       "scheduled": "Scheduled",
-      "oauth": "OAuth"
+      "oauth": "OAuth",
+      "catch_up": "Catch-up"
     },
     "groups": {
       "shop": {

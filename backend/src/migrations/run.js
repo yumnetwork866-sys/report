@@ -123,6 +123,7 @@ const migrations = [
   require('./113_remove_target_collaboration_permission'),
   require('./114_scope_shop_authorizations_to_app'),
   require('./115_backfill_live_orders_from_room_id'),
+  require('./116_remove_tiktok_booking_video_detail_job'),
 ];
 
 const createMigrationRunner = ({

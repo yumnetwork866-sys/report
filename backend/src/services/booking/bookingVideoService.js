@@ -119,6 +119,23 @@ const bookingVideoDateRange = (booking, now = new Date()) => {
   return { startDate: dateOnly(start), endDate: dateOnly(end) };
 };
 
+const splitDateRangeIntoChunks = (startDate, endDate, maxSpanDays = 30) => {
+  const chunks = [];
+  let curEnd = new Date(`${endDate}T00:00:00.000Z`);
+  const targetStart = new Date(`${startDate}T00:00:00.000Z`);
+  while (curEnd > targetStart) {
+    const curStart = new Date(curEnd);
+    curStart.setUTCDate(curStart.getUTCDate() - maxSpanDays);
+    const windowStart = curStart < targetStart ? targetStart : curStart;
+    chunks.push({
+      startDate: dateOnly(windowStart),
+      endDate: dateOnly(curEnd),
+    });
+    curEnd = windowStart;
+  }
+  return chunks.length ? chunks : [{ startDate, endDate }];
+};
+
 const findBookingVideoCandidates = async (booking) => {
   const username = normalizedUsername(booking.creator_username);
   if (!username) {
@@ -167,36 +184,39 @@ const findBookingVideoCandidates = async (booking) => {
       }
   }
   const videos = [];
-  let pageToken = null;
   const configuredMaxPages = Number(process.env.BOOKING_VIDEO_MATCH_MAX_PAGES);
   const maxPages = Number.isInteger(configuredMaxPages)
     ? Math.min(500, Math.max(1, configuredMaxPages))
     : 200;
-  for (let page = 0; page < maxPages; page += 1) {
-    const payload = isDemoAuthorization(shop.authorization)
-      ? sellerAffiliateFixture('shop-video-performance', shop, {
-        account_type: 'AFFILIATE_ACCOUNTS',
-        currency: 'LOCAL',
-      })
-      : await getShopVideoPerformance({
-        authorization: shop.authorization,
-        shopCipher: shop.cipher,
-        startDate: range.startDate,
-        endDate: range.endDate,
-        currency: 'LOCAL',
-        accountType: 'AFFILIATE_ACCOUNTS',
-        sortField: 'gmv',
-        sortOrder: 'DESC',
-        pageSize: 100,
-        pageToken,
-      });
-    videos.push(...(payload.data?.videos || []));
-    pageToken = payload.data?.next_page_token || null;
-    if (!pageToken) break;
-    if (page === maxPages - 1) {
-      const error = new Error(`Booking video matching reached the safety limit of ${maxPages} pages before TikTok pagination ended.`);
-      error.status = 424;
-      throw error;
+  const windows = splitDateRangeIntoChunks(range.startDate, range.endDate, 30);
+  for (const window of windows) {
+    let pageToken = null;
+    for (let page = 0; page < maxPages; page += 1) {
+      const payload = isDemoAuthorization(shop.authorization)
+        ? sellerAffiliateFixture('shop-video-performance', shop, {
+          account_type: 'AFFILIATE_ACCOUNTS',
+          currency: 'LOCAL',
+        })
+        : await getShopVideoPerformance({
+          authorization: shop.authorization,
+          shopCipher: shop.cipher,
+          startDate: window.startDate,
+          endDate: window.endDate,
+          currency: 'LOCAL',
+          accountType: 'AFFILIATE_ACCOUNTS',
+          sortField: 'gmv',
+          sortOrder: 'DESC',
+          pageSize: 100,
+          pageToken,
+        });
+      videos.push(...(payload.data?.videos || []));
+      pageToken = payload.data?.next_page_token || null;
+      if (!pageToken) break;
+      if (page === maxPages - 1) {
+        const error = new Error(`Booking video matching reached the safety limit of ${maxPages} pages before TikTok pagination ended.`);
+        error.status = 424;
+        throw error;
+      }
     }
   }
 
