@@ -575,7 +575,7 @@ const LiveAnalytics = () => {
       ...sess,
       orderCount: sess.orderIds.size,
       productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
-    })).sort((a, b) => b.totalGmv - a.totalGmv);
+    })).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
 
     const productsArr = Object.values(productMap).map((p) => ({
       ...p,
