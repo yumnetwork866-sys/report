@@ -1,3 +1,5 @@
+import { parseDateOnly } from './date.js';
+
 export const DEFAULT_PERFORMANCE_WINDOW = 'LIFETIME';
 
 export const PRODUCT_ORDERS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -684,7 +686,7 @@ export const bookingVideosByRevenue = (videos = []) => videos
   .sort((left, right) => right.revenue - left.revenue || left.index - right.index)
   .map(({ video }) => video);
 
-export const filterVideosByPeriod = (videos = [], periodRange = null) => {
+export const filterVideosByPeriod = (videos = [], periodRange = null, region = null) => {
   const list = Array.isArray(videos) ? videos : [];
   if (!periodRange || (!periodRange.startDate && !periodRange.endDate)) {
     return list;
@@ -692,7 +694,13 @@ export const filterVideosByPeriod = (videos = [], periodRange = null) => {
   return list.filter((video) => {
     const rawPostDate = video?.post_date || video?.video_post_time || video?.posted_at || video?.post_time;
     if (!rawPostDate) return false;
-    const postDate = String(rawPostDate).slice(0, 10);
+    const effectiveRegion = video?.region || region;
+    const postDate = effectiveRegion && (/[zZ]|[+-]\d\d:\d\d$/.test(String(rawPostDate)) || rawPostDate instanceof Date)
+      ? (() => {
+        const parsed = parseDateOnly(rawPostDate, effectiveRegion);
+        return parsed ? `${parsed.year}-${parsed.month}-${parsed.day}` : String(rawPostDate).slice(0, 10);
+      })()
+      : String(rawPostDate).slice(0, 10);
     if (periodRange.startDate && postDate < periodRange.startDate) return false;
     if (periodRange.endDate && postDate > periodRange.endDate) return false;
     return true;

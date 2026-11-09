@@ -7,6 +7,7 @@ const {
   matchesBookingProducts,
   productIdsOfVideo,
   serializeBookingWithActual,
+  resolveBookingRegion,
 } = require('../services/bookingVideoPerformanceService');
 const { loadShopProducts } = require('../services/shopProductCatalogService');
 const bookingRepository = require('../repositories/bookingRepository');
@@ -244,8 +245,9 @@ const filterBookingVideosBySelectedProducts = (bookings) => bookings.map((bookin
     matchesBookingProducts(booking, video)
     && matchesBookingDateRange(booking, video)
   )).map((video) => {
-    const rawPostDate = video.posted_at || video.video_post_time;
-    const postDate = video.post_date || (rawPostDate ? dateOnlyInTimezone(rawPostDate, booking.target_shop?.region) : null);
+    const region = resolveBookingRegion(booking, video);
+    const rawPostDate = video.post_date || video.video_post_time || video.posted_at;
+    const postDate = video.post_date || (rawPostDate ? dateOnlyInTimezone(rawPostDate, region) : null);
     if (typeof video?.toJSON === 'function') {
       const json = video.toJSON();
       json.post_date = postDate;

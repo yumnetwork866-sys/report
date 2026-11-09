@@ -109,13 +109,38 @@ const videoMatchesStaffHashtags = (title, configuredHashtags = []) => {
     configured.includes(tag) || configured.some((conf) => conf && tag.endsWith(conf))
   ));
 };
+const CURRENCY_REGIONS = Object.freeze({
+  MYR: 'MY',
+  VND: 'VN',
+  SGD: 'SG',
+  THB: 'TH',
+  PHP: 'PH',
+  IDR: 'ID',
+});
+
+const resolveBookingRegion = (booking, video) => (
+  booking?.target_shop?.region
+  || booking?.shop?.region
+  || booking?.region
+  || video?.region
+  || video?.shop?.region
+  || video?.target_shop?.region
+  || CURRENCY_REGIONS[String(booking?.currency || video?.currency || video?.latest_currency || video?.raw_data?.gmv?.currency || '').toUpperCase()]
+  || (video?.raw_data?.creator?.creator_country && String(video.raw_data.creator.creator_country).toUpperCase())
+  || (video?.raw_data?.country && String(video.raw_data.country).toUpperCase())
+  || null
+);
+
 const matchesBookingDateRange = (booking, video, now = new Date()) => {
   if (!video) return false;
-  const rawPostDate = video.posted_at || video.video_post_time || video.post_date || video.post_time
-    || video.raw_data?.video_post_time || video.raw_data?.post_time;
+  const region = resolveBookingRegion(booking, video);
+  const rawPostDate = video.post_date
+    || video.video_post_time
+    || video.raw_data?.video_post_time
+    || video.post_time
+    || video.raw_data?.post_time
+    || video.posted_at;
   if (!rawPostDate) return true;
-  const region = booking?.target_shop?.region || booking?.shop?.region || booking?.region
-    || video?.region || video?.shop?.region || video?.target_shop?.region;
   const postDate = dateOnlyInTimezone(rawPostDate, region);
   const startDate = booking?.start_date ? dateOnly(booking.start_date) : null;
   if (startDate && postDate < startDate) return false;
@@ -147,13 +172,27 @@ const normalizeCachedVideoCandidate = (videoInstance, orderMetrics = null) => {
     ? numberOrZero(orderMetrics.net_gmv) : (refundedGmv !== null ? grossGmv - refundedGmv : null);
   const orders = hasOrderMetrics ? numberOrZero(orderMetrics.orders) : Number(latest.orders || 0);
   const itemsSold = hasOrderMetrics ? numberOrZero(orderMetrics.items_sold) : Number(latest.items_sold || 0);
-  const currency = (hasOrderMetrics ? orderMetrics.currency : null) || latest.currency || null;
+  const currency = (hasOrderMetrics ? orderMetrics.currency : null) || latest.currency || video.latest_currency || video.raw_data?.gmv?.currency || null;
+
+  const region = resolveBookingRegion(null, video);
+  const rawPostDate = video.post_date
+    || video.video_post_time
+    || video.raw_data?.video_post_time
+    || video.post_time
+    || video.raw_data?.post_time
+    || video.posted_at;
+  const postDate = video.post_date || (rawPostDate ? dateOnlyInTimezone(rawPostDate, region) : null);
 
   return {
     id: String(video.platform_video_id),
     title: video.title || video.platform_video_id,
     username: String(video.creator_username || '').trim().replace(/^@+/, '').toLowerCase(),
     posted_at: video.posted_at || null,
+    post_date: postDate,
+    video_post_time: video.raw_data?.video_post_time || video.video_post_time || null,
+    region,
+    shop_id: video.shop_id || null,
+    raw_data: video.raw_data || null,
     video_url: video.video_url || null,
     gmv: {
       amount: grossGmv,
@@ -851,7 +890,9 @@ const bookingVideoInclude = [{
 }];
 
 const recordBookingVideoMatch = async (booking, candidate, source, now = new Date()) => {
-  const attributionStart = dateOnly(candidate.posted_at || booking.created_at || now);
+  const region = resolveBookingRegion(booking, candidate);
+  const rawDate = candidate.post_date || candidate.video_post_time || candidate.posted_at || booking.created_at || now;
+  const attributionStart = (region ? dateOnlyInTimezone(rawDate, region) : null) || dateOnly(rawDate);
   const attributedProductIds = normalizedProductIds(candidate.attributed_product_ids);
   const detectedProductIds = productIdsOfVideo({ ...candidate, attributed_product_ids: [] });
   const attributionVerified = attributedProductIds.size > 0
@@ -1482,6 +1523,7 @@ module.exports = {
   applyBookingProductPerformance,
   normalizeBookingProducts,
   videoMatchesStaffHashtags,
+  resolveBookingRegion,
   __test: {
     dateOnly,
     shiftDate,
@@ -1503,5 +1545,6 @@ module.exports = {
     applyBookingProductPerformance,
     normalizeBookingProducts,
     attributedProductIdsForBooking,
+    resolveBookingRegion,
   },
 };

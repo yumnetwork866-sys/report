@@ -613,3 +613,21 @@ test('hashtag video filter does not require a configured booking product', async
   assert.equal(result.affiliate_gmv, 50);
   assert.equal(result.breakdown[0].id, 'any-product');
 });
+
+test('matchesBookingDateRange respects regional midnight when posted_at crosses UTC boundary', () => {
+  const booking = {
+    id: 521,
+    start_date: '2026-11-01',
+    currency: 'MYR',
+  };
+  const video = {
+    platform_video_id: '7702277583227882773',
+    posted_at: '2026-10-31T17:04:00.000Z', // 01:04 AM Nov 1 in Malaysia (UTC+8)
+    raw_data: {
+      creator: { creator_country: 'my' },
+      video_post_time: '2026-11-01 01:04:00',
+    },
+  };
+
+  assert.equal(matchesBookingDateRange(booking, video, new Date('2026-11-09T00:00:00Z')), true);
+});
