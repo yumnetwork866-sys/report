@@ -433,6 +433,11 @@
     "createRole": "Tạo vai trò"
   },
   "dashboard": {
+    "channelComparison": "So sánh hiệu quả theo kênh",
+    "channelComparisonHint": "Sắp xếp theo GMV giảm dần. Bấm một kênh để lọc toàn trang. Số liệu lũy kế của video đăng trong khoảng thời gian đã chọn.",
+    "gmvGrowth": "Tăng trưởng GMV",
+    "newGmv": "Phát sinh mới",
+    "noPreviousGmv": "Kỳ trước không có GMV; không tính phần trăm tăng trưởng.",
     "totalVideos": "Tổng video",
     "heroTitle": "Bảng tổng quan",
     "heroSubtitle": "Theo dõi hiệu suất video TikTok từ dữ liệu OAuth, import hoặc crawler.",
@@ -451,7 +456,7 @@
     "totalShares": "Tổng share",
     "totalComments": "Tổng bình luận",
     "channel": "Channel",
-    "allChannels": "Tất cả channel",
+    "allChannels": "Tất cả kênh",
     "user": "User",
     "allUsers": "Tất cả user",
     "video": "Video",

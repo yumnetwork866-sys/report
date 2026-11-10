@@ -438,6 +438,11 @@
     "createRole": "Create role"
   },
   "dashboard": {
+    "channelComparison": "Channel performance comparison",
+    "channelComparisonHint": "Sorted by GMV descending. Click a channel to filter the page. Lifetime metrics of videos published in the selected period.",
+    "gmvGrowth": "GMV growth",
+    "newGmv": "New GMV",
+    "noPreviousGmv": "No GMV in the previous period; percentage growth is unavailable.",
     "totalVideos": "Total videos",
     "heroTitle": "Dashboard",
     "heroSubtitle": "Track TikTok video performance from OAuth, import, or crawler data.",

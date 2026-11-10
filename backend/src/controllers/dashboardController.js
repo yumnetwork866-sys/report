@@ -202,7 +202,22 @@ const getDashboard = async (req, res) => {
       };
     })();
 
-    const [channels, users, totalsRows, previousTotalsRows, chartRows, topVideoRows, videos] = await Promise.all([
+    const channelPerformanceQuery = (periodStart, periodEnd) => sequelize.query(`
+      SELECT v.channel_id,
+        COALESCE(SUM(v.views), 0)::bigint AS views,
+        COALESCE(SUM(sales.gross_gmv), 0)::numeric AS gross_gmv,
+        COALESCE(SUM(sales.orders), 0)::bigint AS orders,
+        COALESCE(MAX(sales.currency), 'MYR') AS sales_currency
+      FROM videos v
+      ${LATEST_VIDEO_SALES_JOIN_SQL}
+      ${filterSql}
+      GROUP BY v.channel_id
+    `, {
+      type: QueryTypes.SELECT,
+      replacements: { ...replacements, startDate: periodStart, endDate: periodEnd },
+    });
+
+    const [channels, users, totalsRows, previousTotalsRows, chartRows, topVideoRows, videos, channelRows, previousChannelRows] = await Promise.all([
       sequelize.query(`
         SELECT
           channel.id,
@@ -399,6 +414,10 @@ const getDashboard = async (req, res) => {
           offset: (page - 1) * pageSize,
         },
       }),
+      channelId === null ? channelPerformanceQuery(startDate, endDate) : Promise.resolve([]),
+      channelId === null && prevPeriodInfo
+        ? channelPerformanceQuery(prevPeriodInfo.prevStartDate, prevPeriodInfo.prevEndDate)
+        : Promise.resolve([]),
     ]);
 
     const topVideos = await sequelize.query(`
@@ -491,8 +510,29 @@ const getDashboard = async (req, res) => {
       ? fillDailyDateSeries(startDate, endDate, chartRows.map(withNumbers), topVideoMap)
       : chartRows.map(withNumbers);
 
+    const currentChannels = new Map(channelRows.map((row) => [String(row.channel_id), withNumbers(row)]));
+    const previousChannels = new Map(previousChannelRows.map((row) => [String(row.channel_id), withNumbers(row)]));
+    const channelComparison = channelId === null ? channels.map((channel) => {
+      const current = currentChannels.get(String(channel.id));
+      const grossGmv = current?.gross_gmv || 0;
+      const views = current?.views || 0;
+      const previousGmv = previousChannels.get(String(channel.id))?.gross_gmv || 0;
+      return {
+        ...channel,
+        gross_gmv: grossGmv,
+        views,
+        orders: current?.orders || 0,
+        sales_currency: current?.sales_currency || totals.sales_currency,
+        rpm: views > 0 ? Number(((grossGmv / views) * 1000).toFixed(2)) : 0,
+        previous_gmv: prevPeriodInfo ? previousGmv : null,
+        gmv_growth: prevPeriodInfo && (previousGmv > 0 || grossGmv === 0)
+          ? calculateGrowthRate(grossGmv, previousGmv) : null,
+      };
+    }).sort((a, b) => b.gross_gmv - a.gross_gmv || b.views - a.views || Number(a.id) - Number(b.id)) : [];
+
     return {
       channels: channels.map(withNumbers),
+      channel_comparison: channelComparison,
       users,
       totals,
       chart,

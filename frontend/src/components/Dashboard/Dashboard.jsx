@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import VideoTable, { ChannelPicker } from '../VideoTable';
 import DatePickerInput from '../DatePickerInput';
+import AppAvatar from '../AppAvatar';
 
 import {
   ActiveDotGlow,
@@ -31,6 +32,7 @@ const Dashboard = () => {
     averageGmv,
     averageViews,
     channels,
+    channelComparison,
     chartData,
     chartMetric,
     dailyMetric,
@@ -143,6 +145,8 @@ const Dashboard = () => {
                 channels={channels}
                 value={selectedChannelId}
                 onChange={handleChannelChange}
+                includeAll
+                allLabel={t('dashboard.allChannels')}
                 disabled={loading}
               />
             </div>
@@ -209,14 +213,6 @@ const Dashboard = () => {
             ) : null}
           </div>
         </div>
-
-        {chartMetric === 'date' ? (
-          <div className="dashboard-chart-header-actions dashboard-chart-header-actions--end">
-            <div className="dashboard-sync-status">
-              {totals.last_synced_at ? t('dashboard.lastSynced', { time: new Date(totals.last_synced_at).toLocaleString(locale) }) : t('dashboard.notSynced')}
-            </div>
-          </div>
-        ) : null}
 
         {loading ? (
           <div className="empty-state"><div className="loading-dot" />{t('dashboard.loading')}</div>
@@ -361,8 +357,66 @@ const Dashboard = () => {
           <div className="empty-state">{t('dashboard.noVideoData')}</div>
         )}
       </section>
-
-
+      {selectedChannelId === 'all' ? (
+        <section className="section-card dashboard-channel-comparison" aria-busy={loading}>
+          {loading ? (
+            <div className="empty-state">{t('dashboard.loading')}</div>
+          ) : error ? (
+            <div className="empty-state">{t('dashboard.errorLoad')}</div>
+          ) : channelComparison.length ? (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t('dashboard.channel')}</th>
+                    <th scope="col">{t('dashboard.metric_gmv')}</th>
+                    <th scope="col">{t('dashboard.totalOrders')}</th>
+                    <th scope="col">{t('dashboard.totalViews')}</th>
+                    <th scope="col" title={t('dashboard.rpmFormula')}>RPM</th>
+                    <th scope="col">{t('dashboard.gmvGrowth')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelComparison.map((channel) => (
+                    <tr key={channel.id} onClick={() => handleChannelChange(String(channel.id))}>
+                      <th scope="row">
+                        <button className="dashboard-channel-comparison__channel" type="button" onClick={(event) => {
+                          event.stopPropagation();
+                          handleChannelChange(String(channel.id));
+                        }}>
+                          <AppAvatar
+                            sources={[channel.avatar_url, channel.avatar_large_url]}
+                            name={channel.display_name || channel.username || String(channel.id)}
+                            seed={channel.id}
+                            className="dashboard-channel-comparison__avatar"
+                            fallbackClassName="dashboard-channel-comparison__avatar--fallback"
+                            generated={false}
+                          />
+                          <span className="dashboard-channel-comparison__identity">
+                            {channel.display_name || channel.username || channel.id}
+                            {channel.username ? <small>@{channel.username}</small> : null}
+                          </span>
+                        </button>
+                      </th>
+                      <td>{formatGmvAmount(channel.gross_gmv, channel.sales_currency)}</td>
+                      <td>{formatNumber(channel.orders)}</td>
+                      <td>{formatNumber(channel.views)}</td>
+                      <td>{formatGmvAmount(channel.rpm, channel.sales_currency)}</td>
+                      <td>
+                        {channel.gmv_growth !== null ? (
+                          <GrowthBadge value={channel.gmv_growth} label={t('dashboard.vsPreviousPeriod')} />
+                        ) : channel.previous_gmv === 0 && channel.gross_gmv > 0 ? (
+                          <span title={t('dashboard.noPreviousGmv')}>{t('dashboard.newGmv')}</span>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="empty-state">{t('dashboard.noVideoData')}</div>}
+        </section>
+      ) : null}
 
       <VideoTable
         embedded

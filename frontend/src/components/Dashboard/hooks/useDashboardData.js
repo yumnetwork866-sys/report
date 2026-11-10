@@ -50,6 +50,7 @@ export const useDashboardData = () => {
   });
   const [chartRows, setChartRows] = useState([]);
   const [topVideos, setTopVideos] = useState([]);
+  const [channelComparison, setChannelComparison] = useState([]);
   const [videoPage, setVideoPage] = useState(1);
   const [videoPagination, setVideoPagination] = useState({
     page: 1,
@@ -107,7 +108,7 @@ export const useDashboardData = () => {
     async (nextPage) => {
       setVideoPage(nextPage);
       const videoParams = {
-        channelId: selectedChannelId || null,
+        channelId: selectedChannelId === 'all' ? null : selectedChannelId || null,
         userId: selectedUserId === 'all' ? null : selectedUserId,
         startDate: chartMetric === 'date' ? startDate : null,
         endDate: chartMetric === 'date' ? endDate : null,
@@ -158,7 +159,7 @@ export const useDashboardData = () => {
       setVideoPage(1);
   
       const videoParams = {
-        channelId: selectedChannelId || null,
+        channelId: selectedChannelId === 'all' ? null : selectedChannelId || null,
         userId: selectedUserId === 'all' ? null : selectedUserId,
         startDate: chartMetric === 'date' ? startDate : null,
         endDate: chartMetric === 'date' ? endDate : null,
@@ -214,7 +215,7 @@ export const useDashboardData = () => {
       }
   
       const params = {
-        channelId: selectedChannelId || null,
+        channelId: selectedChannelId === 'all' ? null : selectedChannelId || null,
         userId: selectedUserId === 'all' ? null : selectedUserId,
         startDate: chartMetric === 'date' ? startDate : null,
         endDate: chartMetric === 'date' ? endDate : null,
@@ -238,6 +239,7 @@ export const useDashboardData = () => {
         setTotals(cached.totals || {});
         setChartRows(cached.chart || []);
         setTopVideos(cached.top_videos || []);
+        setChannelComparison(cached.channel_comparison || []);
         if (hasDefaultVideoQuery()) {
           setVideoPagination(cached.video_pagination || {
             page: 1,
@@ -270,6 +272,7 @@ export const useDashboardData = () => {
         setTotals(payload.totals || {});
         setChartRows(payload.chart || []);
         setTopVideos(payload.top_videos || []);
+        setChannelComparison(payload.channel_comparison || []);
         if (hasDefaultVideoQuery()) {
           setVideoPagination(payload.video_pagination || {
             page: 1,
@@ -346,7 +349,7 @@ export const useDashboardData = () => {
     if (!channels.length) return;
     setSelectedChannelId((current) => {
       const preferred = current || getStoredSelectedChannelId();
-      const resolved = resolveSelectedChannelId(channels, preferred);
+      const resolved = preferred === 'all' ? 'all' : resolveSelectedChannelId(channels, preferred);
       if (resolved && resolved !== getStoredSelectedChannelId()) {
         setStoredSelectedChannelId(resolved);
       }
@@ -360,7 +363,7 @@ export const useDashboardData = () => {
       if (!nextId) return;
       setSelectedChannelId((current) => {
         if (String(nextId) === String(current)) return current;
-        if (channels.length && !channels.some((channel) => String(channel.id) === String(nextId))) return current;
+        if (nextId !== 'all' && channels.length && !channels.some((channel) => String(channel.id) === String(nextId))) return current;
         return String(nextId);
       });
     });
@@ -513,6 +516,7 @@ export const useDashboardData = () => {
     averageGmv,
     averageViews,
     channels,
+    channelComparison,
     chartData,
     chartMetric,
     chartType,
