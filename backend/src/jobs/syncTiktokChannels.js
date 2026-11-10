@@ -54,12 +54,18 @@ const run = async ({ closeConnection = true } = {}) => {
       const results = [];
 
       await runWithConcurrency(channels, SYNC_CONCURRENCY, async (channel) => {
+        const startedAt = Date.now();
+        const identity = () => ({
+          channelId: channel.id, channel_name: channel.display_name, channel_username: channel.username,
+          channel_avatar_url: channel.avatar_url || channel.avatar_large_url || null,
+          duration_ms: Date.now() - startedAt,
+        });
         try {
           const summary = await withMonitorContext({ channel_id: channel.id }, () => syncTiktokChannel(channel));
-          results.push({ channelId: channel.id, status: 'success', total: summary.total });
+          results.push({ ...identity(), status: 'success', total: summary.total, created: summary.created, updated: summary.updated, video_failed: 0, profile_updated: summary.profileUpdated });
           console.info('[TikTok Sync Job] Channel synced', { channelId: channel.id, ...summary });
         } catch (error) {
-          results.push({ channelId: channel.id, status: 'failed' });
+          results.push({ ...identity(), status: 'failed', ...error.videoSyncSummary, error: String(error.message || error).slice(0, 2000) });
           console.error('[TikTok Sync Job] Channel sync failed', {
             channelId: channel.id,
             message: error.message || String(error),

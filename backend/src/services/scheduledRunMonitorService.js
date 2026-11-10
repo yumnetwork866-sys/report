@@ -93,6 +93,11 @@ const recordRunEvent = (event_type, fields = {}) => {
   const safe = sanitizePayload(fields);
   return write({ status: 'INFO', completed_at: new Date(), ...safe.data, event_type, payload_truncated: safe.truncated });
 };
+const updateRunEvent = (id, fields = {}) => {
+  if (!id || !context.getStore()?.run_id) return Promise.resolve(null);
+  const safe = sanitizePayload(fields);
+  return write({ ...safe.data, payload_truncated: safe.truncated }, id);
+};
 const withRunMonitor = async (fields, operation) => {
   if (!fields.run_id || String(context.getStore()?.run_id) === String(fields.run_id)) return operation();
   return withMonitorContext(fields, async () => {
@@ -199,4 +204,4 @@ const monitoredFetch = async (input, options = {}, fetchImpl = fetch) => {
   });
 };
 
-module.exports = { withMonitorContext, withRunMonitor, recordRunEvent, monitoredFetch, sanitizePayload };
+module.exports = { withMonitorContext, withRunMonitor, recordRunEvent, updateRunEvent, monitoredFetch, sanitizePayload };

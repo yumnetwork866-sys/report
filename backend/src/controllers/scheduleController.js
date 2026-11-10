@@ -1,8 +1,8 @@
 const {
-  Op, fn, col, QueryTypes,
+  Op, fn, col, cast, QueryTypes,
 } = require('sequelize');
 const {
-  sequelize, ScheduledJob, ScheduledJobRun, ScheduledJobRunEvent, TikTokShop,
+  sequelize, ScheduledJob, ScheduledJobRun, ScheduledJobRunEvent, TikTokShop, TikTokChannel, Video,
 } = require('../models');
 const {
   JOB_KEYS,
@@ -194,7 +194,7 @@ const stopScheduleNow = async (req, res) => {
 const positiveId = (value) => /^[1-9]\d{0,18}$/.test(String(value || '')) && BigInt(value) <= 9223372036854775807n;
 const MONITOR_STATUSES = new Set(['IN_FLIGHT', 'RECEIVED', 'SUCCEEDED', 'FAILED', 'NETWORK_ERROR', 'INVALID_RESPONSE', 'RETRY_PENDING', 'INFO', 'PROCESSING', 'CANCELLED']);
 const monitorWhere = (runId, query) => {
-  const where = { run_id: runId };
+  const where = { run_id: runId, event_type: { [Op.ne]: 'VIDEO_SYNC' } };
   if (query.before_id) {
     if (!positiveId(query.before_id)) throw new Error('Invalid event cursor.');
     where.id = { [Op.lt]: String(query.before_id) };
@@ -214,6 +214,33 @@ const monitorWhere = (runId, query) => {
     where[Op.or] = ['request_id', 'task_id', 'endpoint', 'message'].map((field) => ({ [field]: { [Op.iLike]: search } }));
   }
   return where;
+};
+
+// Resolve identities for older logs without rewriting the stored run summary.
+const enrichMonitorChannels = async (run, events) => {
+  const results = run.summary?.results || [];
+  const ids = [...new Set([...results.map((item) => item.channelId || item.channel_id),
+    ...events.map((event) => event.channel_id)].filter(Boolean))];
+  if (!ids.length) return { run, events };
+  const channels = await TikTokChannel.findAll({
+    where: { id: { [Op.in]: ids } },
+    attributes: ['id', 'display_name', 'username', 'avatar_url', 'avatar_large_url'], raw: true,
+  });
+  const byId = new Map(channels.map((channel) => [String(channel.id), channel]));
+  const enrich = (item) => {
+    const value = item.toJSON ? item.toJSON() : item;
+    const channel = byId.get(String(value.channelId || value.channel_id));
+    return channel ? { ...value,
+      channel_name: value.channel_name || channel.display_name,
+      channel_username: value.channel_username || channel.username,
+      channel_avatar_url: value.channel_avatar_url || channel.avatar_url || channel.avatar_large_url,
+    } : value;
+  };
+  const value = run.toJSON ? run.toJSON() : run;
+  return {
+    run: { ...value, ...(value.summary ? { summary: { ...value.summary, results: results.map(enrich) } } : {}) },
+    events: events.map(enrich),
+  };
 };
 
 const listRunEvents = async (req, res) => {
@@ -246,7 +273,51 @@ const listRunEvents = async (req, res) => {
       else stats.failed += count;
     }
     const events = rows.slice(0, limit);
-    return res.json({ run, stats, events, next_cursor: rows.length > limit ? String(events.at(-1).id) : null });
+    return res.json({ ...await enrichMonitorChannels(run, events), stats, next_cursor: rows.length > limit ? String(events.at(-1).id) : null });
+  } catch (error) { return res.status(500).json({ message: error.message }); }
+};
+
+const listRunVideos = async (req, res) => {
+  if (!positiveId(req.params.runId) || !/^\d{1,10}$/.test(String(req.query.channel_id || ''))
+    || Number(req.query.channel_id) < 1 || Number(req.query.channel_id) > 2147483647) {
+    return res.status(400).json({ message: 'Invalid run or channel ID.' });
+  }
+  const outcomes = ['CREATED', 'UPDATED', 'FAILED', 'RECEIVED'];
+  if (req.query.outcome && !outcomes.includes(req.query.outcome)) return res.status(400).json({ message: 'Invalid video outcome.' });
+  if (req.query.before_id && !positiveId(req.query.before_id)) return res.status(400).json({ message: 'Invalid video cursor.' });
+  try {
+    const run = await ScheduledJobRun.findByPk(req.params.runId);
+    if (!run) return res.status(404).json({ message: 'Run not found.' });
+    const base = { run_id: run.id, channel_id: Number(req.query.channel_id), event_type: 'VIDEO_SYNC' };
+    const where = { ...base };
+    if (req.query.outcome) where.module_type = req.query.outcome;
+    if (req.query.before_id) where.id = { [Op.lt]: req.query.before_id };
+    if (req.query.q) {
+      const term = `%${String(req.query.q).slice(0, 200).replace(/[\\%_]/g, '\\$&')}%`;
+      where[Op.and] = sequelize.where(cast(col('response_data'), 'text'), { [Op.iLike]: term });
+    }
+    const limit = 50;
+    const [rows, counts] = await Promise.all([
+      ScheduledJobRunEvent.findAll({ where, order: [['id', 'DESC']], limit: limit + 1,
+        attributes: ['id', 'channel_id', 'module_type', 'status', 'started_at', 'completed_at', 'duration_ms', 'message', 'response_data'] }),
+      ScheduledJobRunEvent.findAll({ where: base, attributes: ['module_type', [fn('COUNT', col('id')), 'count']], group: ['module_type'], raw: true }),
+    ]);
+    const stats = { total: 0, created: 0, updated: 0, failed: 0, received: 0 };
+    counts.forEach((row) => { const key = String(row.module_type).toLowerCase(); const count = Number(row.count); stats.total += count; if (key in stats && key !== 'total') stats[key] += count; });
+    const page = rows.slice(0, limit);
+    const ids = [...new Set(page.map((row) => row.response_data?.video_id).filter(Boolean))];
+    // Logged signed URLs are intentionally redacted. Use the current media URL
+    // from the video library without changing historical log payloads.
+    const library = ids.length ? await Video.findAll({
+      where: { channel_id: base.channel_id, platform_video_id: { [Op.in]: ids } },
+      attributes: ['platform_video_id', 'thumbnail_url'], raw: true,
+    }) : [];
+    const thumbnails = new Map(library.map((video) => [String(video.platform_video_id), video.thumbnail_url]));
+    const videos = page.map((row) => ({
+      ...(row.toJSON ? row.toJSON() : row),
+      thumbnail_url: thumbnails.get(String(row.response_data?.video_id)) || null,
+    }));
+    return res.json({ videos, stats, next_cursor: rows.length > limit ? String(page.at(-1).id) : null });
   } catch (error) { return res.status(500).json({ message: error.message }); }
 };
 
@@ -266,6 +337,7 @@ module.exports = {
   stopScheduleNow,
   listRunEvents,
   getRunEvent,
+  listRunVideos,
   monitorWhere,
   findRecentRunsForJobs,
 };

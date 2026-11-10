@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { monitoredFetch } = require('../services/scheduledRunMonitorService');
+const { monitoredFetch, recordRunEvent, updateRunEvent } = require('../services/scheduledRunMonitorService');
 const { literal, Op } = require('sequelize');
 const { decryptToken, encryptToken } = require('../lib/tokenEncryption');
 const {
@@ -572,94 +572,121 @@ const syncTiktokVideosForChannel = async (channel, accessToken) => {
   let stoppedPrematurely = false;
   let reachedEnd = false;
 
-  while (pageCount < (Number.isFinite(TIKTOK_VIDEO_SYNC_MAX_PAGES) && TIKTOK_VIDEO_SYNC_MAX_PAGES > 0
-    ? TIKTOK_VIDEO_SYNC_MAX_PAGES
-    : 10)) {
-    pageCount += 1;
-    const payload = await fetchTiktokVideoList(accessToken, cursor);
-    const items = normalizeTiktokVideoItems(payload);
+  try {
+    while (pageCount < (Number.isFinite(TIKTOK_VIDEO_SYNC_MAX_PAGES) && TIKTOK_VIDEO_SYNC_MAX_PAGES > 0
+      ? TIKTOK_VIDEO_SYNC_MAX_PAGES
+      : 10)) {
+      pageCount += 1;
+      const payload = await fetchTiktokVideoList(accessToken, cursor);
+      const items = normalizeTiktokVideoItems(payload);
 
-    if (!items.length) {
-      reachedEnd = true;
-      break;
-    }
-
-    for (const item of items) {
-      returnedVideoPlatformIds.add(item.platform_video_id);
-      const [video, wasCreated] = await Video.findOrCreate({
-        where: { platform_video_id: item.platform_video_id },
-        defaults: {
-          ...item,
-          channel_id: channel.id,
-          status: 'active',
-          last_synced_at: new Date(),
-        },
-      });
-
-      if (!wasCreated) {
-        await video.update({
-          ...item,
-          channel_id: channel.id,
-          status: 'active',
-          last_synced_at: new Date(),
-        });
-      }
-
-      await VideoDailyStats.upsert({
-        video_id: video.id,
-        date: dateOnlyInTimezone(new Date(), 'Asia/Ho_Chi_Minh'),
-        views: item.views,
-        likes: item.likes,
-        comments: item.comments,
-        shares: item.shares,
-      });
-
-      if (wasCreated) {
-        created += 1;
-      } else {
-        updated += 1;
-      }
-    }
-
-    total += items.length;
-
-    const nextCursor = extractTiktokCursor(payload);
-    const hasMore = extractTiktokHasMore(payload);
-
-    if (nextCursor === null || nextCursor === undefined || String(nextCursor).trim() === '') {
-      if (hasMore === true) {
-        console.info('[TikTok OAuth] Video list has_more=true but no cursor was returned, stopping pagination');
-        stoppedPrematurely = true;
-      } else {
+      if (!items.length) {
         reachedEnd = true;
+        break;
       }
-      break;
-    }
 
-    cursor = nextCursor;
-
-    if (hasMore === false) {
-      reachedEnd = true;
-      break;
-    }
-  }
-
-  // When full channel sync finishes (meaning we fetched all available videos of the channel),
-  // any video in database for this channel that was not returned by TikTok is no longer available (deleted or set to private)
-  if (reachedEnd && !stoppedPrematurely) {
-    const [markedUnavailableCount] = await Video.update(
-      { status: 'unavailable' },
-      {
-        where: {
-          channel_id: channel.id,
-          platform_video_id: { [Op.notIn]: Array.from(returnedVideoPlatformIds) },
-          status: 'active',
+      total += items.length;
+      const receipts = await Promise.all(items.map((item) => recordRunEvent('VIDEO_SYNC', {
+        channel_id: channel.id, status: 'RECEIVED', module_type: 'RECEIVED',
+        started_at: new Date(), completed_at: null,
+        response_data: {
+          video_id: item.platform_video_id, title: item.title,
+          thumbnail_url: item.thumbnail_url, video_url: item.video_url,
         },
-      },
-    );
-    if (markedUnavailableCount > 0) {
-      console.info(`[TikTok Sync] Marked ${markedUnavailableCount} missing videos as unavailable for channel ${channel.id}`);
+      })));
+      for (const [index, item] of items.entries()) {
+        const started = Date.now();
+        try {
+          returnedVideoPlatformIds.add(item.platform_video_id);
+          const [video, wasCreated] = await Video.findOrCreate({
+            where: { platform_video_id: item.platform_video_id },
+            defaults: {
+              ...item,
+              channel_id: channel.id,
+              status: 'active',
+              last_synced_at: new Date(),
+            },
+          });
+
+          if (!wasCreated) {
+            await video.update({
+              ...item,
+              channel_id: channel.id,
+              status: 'active',
+              last_synced_at: new Date(),
+            });
+          }
+
+          await VideoDailyStats.upsert({
+            video_id: video.id,
+            date: dateOnlyInTimezone(new Date(), 'Asia/Ho_Chi_Minh'),
+            views: item.views,
+            likes: item.likes,
+            comments: item.comments,
+            shares: item.shares,
+          });
+
+          if (wasCreated) {
+            created += 1;
+          } else {
+            updated += 1;
+          }
+          await updateRunEvent(receipts[index], {
+            status: 'SUCCEEDED', module_type: wasCreated ? 'CREATED' : 'UPDATED',
+            completed_at: new Date(), duration_ms: Date.now() - started,
+          });
+        } catch (error) {
+          await updateRunEvent(receipts[index], {
+            status: 'FAILED', module_type: 'FAILED', message: String(error.message || error),
+            completed_at: new Date(), duration_ms: Date.now() - started,
+          });
+          error.videoSyncSummary = { total, created, updated, video_failed: 1 };
+          throw error;
+        }
+      }
+
+      const nextCursor = extractTiktokCursor(payload);
+      const hasMore = extractTiktokHasMore(payload);
+
+      if (nextCursor === null || nextCursor === undefined || String(nextCursor).trim() === '') {
+        if (hasMore === true) {
+          console.info('[TikTok OAuth] Video list has_more=true but no cursor was returned, stopping pagination');
+          stoppedPrematurely = true;
+        } else {
+          reachedEnd = true;
+        }
+        break;
+      }
+
+      cursor = nextCursor;
+
+      if (hasMore === false) {
+        reachedEnd = true;
+        break;
+      }
     }
+
+    // When full channel sync finishes (meaning we fetched all available videos of the channel),
+    // any video in database for this channel that was not returned by TikTok is no longer available (deleted or set to private)
+    if (reachedEnd && !stoppedPrematurely) {
+      const [markedUnavailableCount] = await Video.update(
+        { status: 'unavailable' },
+        {
+          where: {
+            channel_id: channel.id,
+            platform_video_id: { [Op.notIn]: Array.from(returnedVideoPlatformIds) },
+            status: 'active',
+          },
+        },
+      );
+      if (markedUnavailableCount > 0) {
+        console.info(`[TikTok Sync] Marked ${markedUnavailableCount} missing videos as unavailable for channel ${channel.id}`);
+      }
+    }
+
+  } catch (error) {
+    error.videoSyncSummary ||= { total, created, updated, video_failed: 0 };
+    throw error;
   }
 
   return {

@@ -10,7 +10,7 @@ test('TikTok sync job processes channels with mocked dependencies', async (t) =>
   process.env.TIKTOK_SYNC_CONCURRENCY = '2';
 
   const channels = [
-    { id: 11, sync_source: 'oauth' },
+    { id: 11, sync_source: 'oauth', display_name: 'Channel Eleven', username: 'eleven', avatar_url: '/eleven.jpg' },
     { id: 12, sync_source: 'oauth' },
   ];
 
@@ -47,7 +47,8 @@ test('TikTok sync job processes channels with mocked dependencies', async (t) =>
       maxActive = Math.max(maxActive, active);
       await new Promise((resolve) => setTimeout(resolve, 15));
       active -= 1;
-      return { total: channel.id * 10 };
+      if (channel.id === 12) throw new Error('Token expired');
+      return { total: channel.id * 10, profileUpdated: true };
     },
   });
 
@@ -59,7 +60,15 @@ test('TikTok sync job processes channels with mocked dependencies', async (t) =>
 
   const { run } = require('../src/jobs/syncTiktokChannels');
 
-  await run();
+  const summary = await run({ closeConnection: false });
+  const success = summary.results.find((item) => item.channelId === 11);
+  assert.equal(success.channel_name, 'Channel Eleven');
+  assert.equal(success.channel_username, 'eleven');
+  assert.equal(success.total, 110);
+  assert.equal(success.profile_updated, true);
+  assert.ok(success.duration_ms >= 0);
+  assert.equal(summary.results.find((item) => item.channelId === 12).error, 'Token expired');
+  assert.equal(summary.failed, 1);
 
   assert.deepEqual(syncCalls.sort(), [11, 12]);
   assert.equal(maxActive >= 2, true);

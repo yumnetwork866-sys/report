@@ -329,6 +329,11 @@ export function fetchScheduleRunEvents(runId, filters = {}, signal) {
   return apiRequest(`/schedules/runs/${encodeURIComponent(runId)}/events?${query}`, { signal });
 }
 
+export function fetchScheduleRunVideos(runId, filters = {}, signal) {
+  const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value !== '' && value != null));
+  return apiRequest(`/schedules/runs/${encodeURIComponent(runId)}/videos?${query}`, { signal });
+}
+
 export function fetchScheduleRunEvent(runId, eventId, signal) {
   return apiRequest(`/schedules/runs/${encodeURIComponent(runId)}/events/${encodeURIComponent(eventId)}`, { signal });
 }

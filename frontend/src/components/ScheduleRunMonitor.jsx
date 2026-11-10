@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Copy, ListFilter, Search, Store } from 'lucide-react';
 import { fetchScheduleRunEvents, fetchScheduleRunEvent } from '../lib/api';
 import { useI18n } from '../lib/language';
 import { formatMonitorDuration, isMonitorActive, mergeMonitorEvents } from '../lib/runMonitor';
 import SelectDropdown from './SelectDropdown';
+import ScheduleRunProgress from './ScheduleRunProgress';
+import ScheduleRunVideos from './ScheduleRunVideos';
 import '../styles/pages/run-monitor.css';
 
 const timestamp = (value, locale) => value ? new Date(value).toLocaleString(locale, { hour12: false }) : '—';
@@ -12,6 +14,8 @@ const json = (value) => value == null ? '' : JSON.stringify(value, null, 2);
 export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
+  const [videoChannel, setVideoChannel] = useState(null);
+  const closeVideos = useCallback(() => setVideoChannel(null), []);
   const [run, setRun] = useState(initialRun);
   const [stats, setStats] = useState({});
   const [events, setEvents] = useState([]);
@@ -111,6 +115,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
   const runElapsed = new Date(run.completed_at || Date.now()) - new Date(run.started_at);
 
   return <div className="run-monitor">
+    {videoChannel ? <ScheduleRunVideos key={`${runId}-${videoChannel.channelId || videoChannel.channel_id}`} runId={runId} channel={videoChannel} t={t} locale={locale} onClose={closeVideos} /> : null}
     <header className="run-monitor__header">
       <button type="button" className="button button--ghost" onClick={onBack} aria-label={t('schedule.monitor.back')} title={t('schedule.monitor.back')}><ArrowLeft size={16} aria-hidden="true" /></button>
       <div className="run-monitor__heading">
@@ -125,39 +130,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
     {run.next_retry_at ? <div className="run-monitor__activity">
       <strong>{t('schedule.nextRetry')}: {timestamp(run.next_retry_at, locale)}</strong>
     </div> : null}
-    {run.summary?.results?.length ? <details className="run-monitor__shops" open>
-      <summary>{t('schedule.monitor.progress')}</summary>
-      <div>{run.summary.results.map((shop, index) => <article key={shop.shop_id || shop.channelId || index}>
-        <header><strong>{shop.shop_name || (shop.shop_id ? `Shop #${shop.shop_id}` : `Channel #${shop.channelId || index + 1}`)}</strong><span className={`monitor-status is-${String(shop.status).toLowerCase()}`}>{label(String(shop.status).toUpperCase() === 'SUCCESS' ? 'SUCCEEDED' : shop.status)}</span></header>
-        <div className="run-monitor__windows">{shop.windows?.map((window, wIdx) => {
-          const status = String(window.status || shop.status || 'SUCCEEDED');
-          const windowType = String(window.window_type || (window.days ? `PAST_${window.days}_DAYS` : '') || '');
-          const windowLabel = windowType ? windowType.replace('PAST_', '').replace('_DAYS', 'd') : (window.days ? `${window.days}d` : '');
-          const moduleType = window.module_type || (window.row_count !== undefined ? 'VIDEO' : '');
-          const detailInfo = moduleType === 'DETAIL' ? [
-            t('schedule.monitor.detailSelected', { count: window.selected ?? 0 }),
-            t('schedule.monitor.detailSucceeded', { count: window.succeeded ?? 0 }),
-            t('schedule.monitor.detailFailed', { count: window.failed ?? 0 }),
-            t('schedule.monitor.detailFresh', { count: window.skipped_fresh ?? 0 }),
-            window.deferred ? t('schedule.monitor.detailDeferred', { count: window.deferred }) : '',
-          ] : [];
-          const rowInfo = moduleType !== 'DETAIL' && window.row_count !== undefined ? `${window.row_count} rows` : '';
-          const parts = [moduleType, windowLabel, rowInfo, ...detailInfo, label(status)].filter(Boolean);
-          const titleParts = [moduleType, label(status), window.retry_count !== undefined ? `${t('schedule.monitor.retries')}: ${window.retry_count}` : ''].filter(Boolean);
-          return (
-            <span
-              key={`${moduleType}-${windowType || wIdx}`}
-              className={`monitor-status is-${status.toLowerCase()}`}
-              title={titleParts.join(' · ')}
-            >
-              {parts.join(' · ')}
-            </span>
-          );
-        })}</div>
-        {shop.next_retry_at ? <small>{t('schedule.nextRetry')}: {timestamp(shop.next_retry_at, locale)}</small> : null}
-        {shop.error ? <p>{shop.error}</p> : null}
-      </article>)}</div>
-    </details> : null}
+    {run.summary?.results?.length ? <ScheduleRunProgress key={runId} results={run.summary.results} onOpenVideos={setVideoChannel} t={t} locale={locale} /> : null}
     <div className="run-monitor__filters">
       <label className="run-monitor__search"><Search size={16} /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('schedule.monitor.search')} aria-label={t('schedule.monitor.search')} /></label>
       <div className="run-monitor__filter">
@@ -196,7 +169,7 @@ export default function ScheduleRunMonitor({ initialRun, shops, onBack }) {
             <td><time title={timestamp(event.started_at, locale)}>{new Date(event.started_at).toLocaleTimeString(locale, { hour12: false })}</time><small>#{event.id}</small></td>
             <td><button type="button" onClick={() => { setSelectedId(event.id); setTab(event.event_type === 'API_REQUEST' ? 'response_data' : 'request_data'); }}>
               <strong>{event.method ? `${event.method} ${event.endpoint?.replace(/^https?:\/\/[^/]+/, '')}` : t(`schedule.monitor.events.${String(event.event_type || 'API_REQUEST').toLowerCase()}`)}</strong>
-              <span>{[event.shop_name || (event.shop_id ? `Shop #${event.shop_id}` : event.channel_id ? `Channel #${event.channel_id}` : ''), event.module_type, event.window_type].filter(Boolean).join(' · ')}</span>
+              <span>{[event.shop_name || event.channel_name || event.channel_username || (event.shop_id ? `Shop #${event.shop_id}` : event.channel_id ? `Channel #${event.channel_id}` : ''), event.module_type, event.window_type].filter(Boolean).join(' · ')}</span>
               {event.request_id ? <code>{event.request_id}</code> : null}
             </button></td>
             <td><span className={`monitor-status is-${String(event.status || '').toLowerCase()}`}>{event.http_status ? `${event.http_status} · ` : ''}{label(event.status)}</span>{event.tiktok_code && event.tiktok_code !== '0' && event.tiktok_code !== 'ok' ? <small>Code {event.tiktok_code}</small> : null}</td>
