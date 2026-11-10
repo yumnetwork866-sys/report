@@ -175,6 +175,7 @@
     "deletionTitle": "Xóa dữ liệu"
   },
   "common": {
+    "save": "Lưu thay đổi",
     "views": "lượt xem",
     "videos": "video",
     "loading": "Đang tải",
@@ -1661,6 +1662,11 @@
     "loadingConnections": "Đang tải kết nối Seller"
   },
   "liveAnalytics": {
+    "colTikTokAccount": "Tài khoản TikTok",
+    "editHost": "Chỉnh sửa Host",
+    "appHost": "Host (User)",
+    "unassignedHost": "Chưa gắn Host",
+    "savingHost": "Đang lưu…",
     "title": "LIVE",
     "subtitle": "Phân tích doanh thu và hiệu quả Livestream TikTok Shop",
     "badge": "Livestream",

@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import {
   ChevronDown,
-  Menu,
+  Pencil,
   Package,
   Radio,
   Search,
@@ -25,7 +25,11 @@ import {
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
-import { fetchTikTokSellerAffiliateOrders } from '../lib/api';
+import { fetchLiveHosts, fetchTikTokSellerAffiliateOrders } from '../lib/api';
+import { useSession } from '../lib/useSession';
+import { hasPermission } from '../lib/session';
+import AppAvatar from './AppAvatar';
+import LiveHostEditor from './LiveHostEditor';
 import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
 import ShopAnalyticsFilters from './shop-analytics/ShopAnalyticsFilters';
@@ -155,6 +159,10 @@ const LiveAnalytics = () => {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'products' | 'orders'
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedSession, setSelectedSession] = useState(null);
+  const [editingSession, setEditingSession] = useState(null);
+  const [hostAssignments, setHostAssignments] = useState({});
+  const appSession = useSession();
+  const canEditHost = hasPermission(appSession, 'admin.shops.manage');
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderPage, setOrderPage] = useState(1);
   const ordersPerPage = 15;
@@ -216,6 +224,18 @@ const LiveAnalytics = () => {
   } = analytics;
 
   const isMultiShop = allShopsSelected && Array.isArray(shopSeries) && shopSeries.length > 1;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setHostAssignments({});
+    fetchLiveHosts(selectedShopId, controller.signal).then((rows) => {
+      if (controller.signal.aborted) return;
+      setHostAssignments(Object.fromEntries(rows.map((row) => [`${row.shop_id}:${row.session_id}`, row])));
+    }).catch((err) => {
+      if (!controller.signal.aborted) setError(err.message);
+    });
+    return () => controller.abort();
+  }, [selectedShopId]);
 
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
@@ -501,7 +521,9 @@ const LiveAnalytics = () => {
       });
 
       liveSkus.forEach((sku) => {
-        const cid = sku.content_id || sku.room_id || 'unknown';
+        const cid = String(sku.content_id || sku.room_id || 'unknown');
+        const shopId = order.shop_id || order.shopId;
+        const sessionKey = `${shopId}:${cid}`;
         const qty = Number(sku.quantity) || 1;
         const gmv = (moneyValue(sku.price) || 0) * qty;
         const creatorUsername = sku.creator_username || order.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop');
@@ -509,9 +531,11 @@ const LiveAnalytics = () => {
         const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
 
         // Group Session
-        if (!sessions[cid]) {
-          sessions[cid] = {
+        if (!sessions[sessionKey]) {
+          sessions[sessionKey] = {
             sessionId: cid,
+            sessionKey,
+            shopId,
             creatorUsername,
             creatorNickname,
             creatorAvatar,
@@ -526,7 +550,7 @@ const LiveAnalytics = () => {
           };
         }
 
-        const s = sessions[cid];
+        const s = sessions[sessionKey];
         s.orderIds.add(order.id || order.order_id);
         s.totalQuantity += qty;
         s.totalGmv += gmv;
@@ -573,6 +597,7 @@ const LiveAnalytics = () => {
 
     const sessionArr = Object.values(sessions).map((sess) => ({
       ...sess,
+      host: hostAssignments[sess.sessionKey] || null,
       orderCount: sess.orderIds.size,
       productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
     })).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
@@ -587,7 +612,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency]);
+  }, [liveOrders, displayCurrency, hostAssignments]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
@@ -626,7 +651,7 @@ const LiveAnalytics = () => {
 
   // Distinct hosts / creators
   const distinctHosts = useMemo(() => {
-    const hosts = new Set(sessionList.map((s) => s.creatorUsername).filter(Boolean));
+    const hosts = new Set(sessionList.map((s) => s.host ? `user:${s.host.id}` : s.creatorUsername).filter(Boolean));
     return hosts.size;
   }, [sessionList]);
 
@@ -638,6 +663,8 @@ const LiveAnalytics = () => {
       s.sessionId.toLowerCase().includes(term)
       || s.creatorUsername.toLowerCase().includes(term)
       || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
+      || s.host?.name?.toLowerCase().includes(term)
+      || s.host?.email?.toLowerCase().includes(term)
       || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
     ));
   }, [sessionList, searchKeyword]);
@@ -1071,7 +1098,8 @@ const LiveAnalytics = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>{t('liveAnalytics.colHost')}</th>
+                  <th>{t('liveAnalytics.colTikTokAccount')}</th>
+                  <th>{t('liveAnalytics.appHost')}</th>
                   <th>{t('liveAnalytics.colSessionId')}</th>
                   <th>{t('liveAnalytics.colTime')}</th>
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
@@ -1084,7 +1112,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1095,7 +1123,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={8}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1104,7 +1132,15 @@ const LiveAnalytics = () => {
                 ) : null}
 
                 {filteredSessions.map((session) => (
-                  <tr key={session.sessionId}>
+                  <tr key={session.sessionKey} className="live-session-row" tabIndex={0}
+                    aria-label={`${t('liveAnalytics.viewSessionDetail')}: ${session.sessionId}`}
+                    onClick={() => setSelectedSession(session)}
+                    onKeyDown={(event) => {
+                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+                        event.preventDefault();
+                        setSelectedSession(session);
+                      }
+                    }}>
                     <td>
                       <div className="live-host-cell">
                         {session.creatorAvatar ? (
@@ -1125,6 +1161,17 @@ const LiveAnalytics = () => {
                           <span className="live-host-username">@{session.creatorUsername}</span>
                         </div>
                       </div>
+                    </td>
+                    <td>
+                      {session.host ? (
+                        <div className="live-host-cell">
+                          <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
+                          <div className="live-host-meta">
+                            <span className="live-host-name">{session.host.name || session.host.email}</span>
+                            {session.host.email ? <span className="live-host-username">{session.host.email}</span> : null}
+                          </div>
+                        </div>
+                      ) : <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>}
                     </td>
                     <td>
                       <span className="code-pill font-mono" title={session.sessionId}>
@@ -1164,15 +1211,19 @@ const LiveAnalytics = () => {
                       </div>
                     </td>
                     <td className="cell-actions">
-                      <button
+                      {canEditHost ? <button
                         type="button"
                         className="live-action-btn"
-                        onClick={() => setSelectedSession(session)}
-                        title={t('liveAnalytics.viewSessionDetail')}
-                        aria-label={t('liveAnalytics.viewSessionDetail')}
+                        disabled={!session.shopId || session.sessionId === 'unknown'}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditingSession(session);
+                        }}
+                        title={t('liveAnalytics.editHost')}
+                        aria-label={t('liveAnalytics.editHost')}
                       >
-                        <Menu size={15} />
-                      </button>
+                        <Pencil size={15} />
+                      </button> : null}
                     </td>
                   </tr>
                 ))}
@@ -1338,6 +1389,17 @@ const LiveAnalytics = () => {
       ) : null}
 
       {/* Session Details Drawer */}
+      {editingSession ? (
+        <LiveHostEditor
+          session={editingSession}
+          onClose={() => setEditingSession(null)}
+          onSaved={(host) => {
+            setHostAssignments((current) => ({ ...current, [editingSession.sessionKey]: host }));
+            setSelectedSession((current) => current?.sessionKey === editingSession.sessionKey ? { ...current, host } : current);
+          }}
+          t={t}
+        />
+      ) : null}
       {selectedSession ? (
         <LiveSessionDrawer
           session={selectedSession}
@@ -1454,6 +1516,7 @@ const LiveSessionDrawer = ({
         <div className="live-drawer__body">
           {/* Host & Session Card */}
           <div className="live-analytics__stat" style={{ borderLeft: '4px solid var(--color-primary)' }}>
+            {session.host ? <p><strong>{t('liveAnalytics.appHost')}:</strong> {session.host.name || session.host.email}</p> : null}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               {session.creatorAvatar ? (
                 <img

@@ -70,6 +70,22 @@ export function fetchUsers(signal) {
   return apiRequest('/users', { signal });
 }
 
+export function fetchLiveHosts(shopId, signal) {
+  const params = new URLSearchParams();
+  if (shopId && shopId !== 'all') params.set('shop_id', shopId);
+  return apiRequest(`/tiktok-shop/live-hosts?${params}`, { signal });
+}
+
+export function fetchLiveHostUsers(signal) {
+  return apiRequest('/tiktok-shop/live-host-users', { signal });
+}
+
+export function saveLiveHost(shopId, sessionId, userId) {
+  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/live-sessions/${encodeURIComponent(sessionId)}/host`, {
+    method: 'PUT', body: { user_id: userId },
+  });
+}
+
 export function fetchUser(userId, signal) {
   return apiRequest(`/users/${encodeURIComponent(userId)}`, { signal });
 }

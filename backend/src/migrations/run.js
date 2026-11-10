@@ -124,6 +124,7 @@ const migrations = [
   require('./114_scope_shop_authorizations_to_app'),
   require('./115_backfill_live_orders_from_room_id'),
   require('./116_remove_tiktok_booking_video_detail_job'),
+  require('./117_create_live_session_hosts'),
 ];
 
 const createMigrationRunner = ({

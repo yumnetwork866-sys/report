@@ -1,4 +1,27 @@
 /* pages / live-analytics.css */
+.live-session-row { cursor: pointer; }
+.live-session-row:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.live-session-row:hover { background: var(--color-surface-muted); }
+.live-host-unassigned { color: var(--color-muted); font-size: .72rem; }
+.live-host-avatar--fallback { display: grid; place-items: center; }
+.live-host-editor {
+  overflow: visible;
+  width: min(480px, calc(100vw - 32px));
+  box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.live-host-editor .select-dropdown { width: 100%; }
+.live-host-editor::backdrop { background: rgba(15, 23, 42, .45); }
+.live-host-editor__header, .live-host-editor__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.live-host-editor__header h3 { margin: 0; }
+.live-host-editor p { overflow-wrap: anywhere; }
+.live-host-editor__actions { justify-content: flex-end; margin-top: 20px; }
+.live-host-editor__error { color: var(--color-danger); }
+
 .live-analytics {
   display: flex;
   flex-direction: column;

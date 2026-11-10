@@ -2,6 +2,10 @@ const express = require('express');
 const controller = require('../controllers/tiktokShopController');
 const { requireAnyPermission, requirePermission } = require('../lib/session');
 const { validateBody, validateParams, validateQuery } = require('../middleware/validateRequest');
+const { z } = require('zod');
+const { positiveId } = require('../schemas/commonSchemas');
+const { endpoint } = require('../controllers/controllerAdapter');
+const liveHostService = require('../services/liveHostService');
 const {
   applicationParamsSchema,
   authorizationParamsSchema,
@@ -16,6 +20,11 @@ const {
 } = require('../schemas/tiktokShopSchemas');
 
 const adminRouter = express.Router();
+adminRouter.get('/live-hosts', requirePermission('shop.analytics.view'), validateQuery(z.object({ shop_id: positiveId('shop ID').optional() })), endpoint(liveHostService, 'list'));
+adminRouter.get('/live-host-users', requirePermission('admin.shops.manage'), endpoint(liveHostService, 'users'));
+adminRouter.put('/shops/:shopId/live-sessions/:sessionId/host', requirePermission('admin.shops.manage'),
+  validateParams(z.object({ shopId: positiveId('shop ID'), sessionId: z.string().trim().min(1).max(128).refine((id) => id !== 'unknown') })),
+  validateBody(z.object({ user_id: positiveId('user ID').nullable() })), endpoint(liveHostService, 'save'));
 adminRouter.get('/exchange-rates', controller.getExchangeRates);
 adminRouter.get('/oauth/start', requirePermission('admin.shops.manage'), controller.startShopOauth);
 adminRouter.get('/connections', controller.listShopConnections);
