@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -27,6 +28,7 @@ import { CHART_TICK as chartTick } from './constants';
 import { useDashboardData } from './hooks/useDashboardData';
 import { compactVideoTitle, dateInputValue } from './utils/dashboardUtils';
 const Dashboard = () => {
+  const [activeTab, setActiveTab] = useState('overview');
   const {
     averageGmv,
     averageViews,
@@ -42,6 +44,7 @@ const Dashboard = () => {
     formatTopVideoMetric,
     handleChannelChange,
     handleChartClick,
+    handleDateClick,
     handleMetricChange,
     handlePageChange,
     loading,
@@ -49,6 +52,7 @@ const Dashboard = () => {
     metricLabel,
     periodPreset,
     selectedChannelId,
+    selectedChartDate,
     selectedUserId,
     setEndDate,
     setPeriodPreset,
@@ -70,6 +74,14 @@ const Dashboard = () => {
     videos,
     videosLoading,
   } = useDashboardData();
+  const tabs = [
+    { id: 'overview', label: t('dashboard.overviewTab') },
+    { id: 'videos', label: t('dashboard.videosTab') },
+  ];
+  const switchTab = (tab, focus = false) => {
+    setActiveTab(tab);
+    if (focus) document.getElementById(`dashboard-tab-${tab}`)?.focus();
+  };
   const metricPicker = (
     <MetricPicker
       id="dashboard-daily-metric"
@@ -149,6 +161,32 @@ const Dashboard = () => {
         </div>
       </section>
 
+      <div className="koc-tabs dashboard-tabs" role="tablist" aria-label={t('dashboard.viewTabs')}>
+        {tabs.map((tab, index) => (
+          <button
+            key={tab.id}
+            id={`dashboard-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            className={activeTab === tab.id ? 'is-active' : ''}
+            aria-selected={activeTab === tab.id}
+            aria-controls={`dashboard-panel-${tab.id}`}
+            tabIndex={activeTab === tab.id ? 0 : -1}
+            onClick={() => switchTab(tab.id)}
+            onKeyDown={(event) => {
+              const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                  : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+              if (nextIndex !== null) {
+                event.preventDefault();
+                switchTab(tabs[nextIndex].id, true);
+              }
+            }}
+          >{tab.label}</button>
+        ))}
+      </div>
+
+      <div className="dashboard-tab-panel" id="dashboard-panel-overview" role="tabpanel" aria-labelledby="dashboard-tab-overview" hidden={activeTab !== 'overview'}>
       <section className="dashboard-hero__summary" aria-live="polite">
         <article className="stat-card stat-card--soft">
           <p className="stat-card__label">{t('dashboard.totalGmv')}</p>
@@ -234,7 +272,9 @@ const Dashboard = () => {
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+                <ComposedChart data={chartData} margin={{ top: 26, right: 16, bottom: 4, left: 4 }} onClick={(state, index) => {
+                  if (handleChartClick(state, index)) switchTab('videos', true);
+                }} style={{ cursor: 'pointer' }}>
                   <defs>
                     <linearGradient id="dashboardGmvGradient" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#f97316" stopOpacity={0.24} />
@@ -413,6 +453,15 @@ const Dashboard = () => {
         </section>
       ) : null}
 
+      </div>
+
+      <div className="dashboard-tab-panel" id="dashboard-panel-videos" role="tabpanel" aria-labelledby="dashboard-tab-videos" hidden={activeTab !== 'videos'}>
+      {selectedChartDate ? (
+        <button type="button" className="button button--ghost dashboard-date-chip" onClick={() => handleDateClick(selectedChartDate)}>
+          {t('dashboard.dateFilter', { date: selectedChartDate })} · {t('dashboard.clearDateFilter')} ×
+        </button>
+      ) : null}
+      {error ? <div className="section-card dashboard-alert" role="alert">{error}</div> : null}
       <VideoTable
         embedded
         data={{
@@ -435,6 +484,7 @@ const Dashboard = () => {
           setVideoSortDirection(nextDirection);
         }}
       />
+      </div>
     </div>
   );
 };

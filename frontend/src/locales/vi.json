@@ -433,6 +433,11 @@
     "createRole": "Tạo vai trò"
   },
   "dashboard": {
+    "overviewTab": "Tổng quan",
+    "videosTab": "Video",
+    "viewTabs": "Chế độ xem",
+    "dateFilter": "Ngày: {{date}}",
+    "clearDateFilter": "Bỏ lọc ngày",
     "averageRevenue": "Doanh thu TB",
     "averageViews": "Tổng view TB",
     "dailyAverageHint": "Trung bình mỗi ngày trong khoảng thời gian đã chọn",
@@ -461,8 +466,8 @@
     "totalComments": "Tổng bình luận",
     "channel": "Kênh",
     "allChannels": "Tất cả kênh",
-    "user": "Người phụ trách",
-    "allUsers": "Tất cả người phụ trách",
+    "user": "User",
+    "allUsers": "Tất cả user",
     "video": "Video",
     "views": "Lượt xem",
     "videoPerformance": "Hiệu suất video",

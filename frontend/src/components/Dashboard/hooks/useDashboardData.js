@@ -506,6 +506,7 @@ export const useDashboardData = () => {
       if (rawDate) {
         handleDateClick(rawDate);
       }
+      return rawDate || null;
     },
     [chartData, handleDateClick],
   );
@@ -528,6 +529,7 @@ export const useDashboardData = () => {
     formatTopVideoMetric,
     handleChannelChange,
     handleChartClick,
+    handleDateClick,
     handleMetricChange,
     handlePageChange,
     loading,

@@ -438,6 +438,11 @@
     "createRole": "Create role"
   },
   "dashboard": {
+    "overviewTab": "Overview",
+    "videosTab": "Videos",
+    "viewTabs": "View",
+    "dateFilter": "Date: {{date}}",
+    "clearDateFilter": "Clear date filter",
     "averageRevenue": "Avg. revenue",
     "averageViews": "Avg. views",
     "dailyAverageHint": "Daily average over the selected period",

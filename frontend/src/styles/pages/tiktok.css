@@ -636,6 +636,20 @@
   padding-top: 18px;
 }
 
+.dashboard-tabs {
+  justify-self: start;
+}
+
+.dashboard-tab-panel:not([hidden]) {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.dashboard-date-chip {
+  justify-self: start;
+}
+
 .dashboard-channel-comparison .data-table {
   min-width: 760px;
 }
