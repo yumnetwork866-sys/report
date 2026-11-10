@@ -28,7 +28,6 @@ import { useDashboardData } from './hooks/useDashboardData';
 import { compactVideoTitle, dateInputValue } from './utils/dashboardUtils';
 const Dashboard = () => {
   const {
-    averageChartValue,
     averageGmv,
     averageViews,
     channels,
@@ -224,21 +223,12 @@ const Dashboard = () => {
           <div className="dashboard-chart-shell">
             <div className="dashboard-chart-toolbar">
               {metricPicker}
-              <div className="dashboard-chart-summary" aria-hidden="true">
-                <span>
-                  {dailyMetric === 'gmv' ? (
-                    <>
-                      <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
-                      {' · '}
-                      <span>{t('dashboard.totalViews')} <strong>{formatNumber(Math.round(averageViews))}</strong></span>
-                    </>
-                  ) : (
-                    <>
-                      <span>{metricLabel} <strong>{formatNumber(Math.round(averageChartValue))}</strong></span>
-                      {' · '}
-                      <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
-                    </>
-                  )}
+              <div className="dashboard-chart-summary">
+                <span title={t('dashboard.dailyAverageHint')}>
+                  {t('dashboard.averageRevenue')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong>
+                </span>
+                <span title={t('dashboard.dailyAverageHint')}>
+                  {t('dashboard.averageViews')} <strong>{formatNumber(Math.round(averageViews))}</strong>
                 </span>
               </div>
             </div>

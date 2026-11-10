@@ -438,6 +438,9 @@
     "createRole": "Create role"
   },
   "dashboard": {
+    "averageRevenue": "Avg. revenue",
+    "averageViews": "Avg. views",
+    "dailyAverageHint": "Daily average over the selected period",
     "pageFilters": "Page filters",
     "channelComparison": "Channel performance comparison",
     "channelComparisonHint": "Sorted by GMV descending. Click a channel to filter the page. Lifetime metrics of videos published in the selected period.",

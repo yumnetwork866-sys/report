@@ -433,6 +433,9 @@
     "createRole": "Tạo vai trò"
   },
   "dashboard": {
+    "averageRevenue": "Doanh thu TB",
+    "averageViews": "Tổng view TB",
+    "dailyAverageHint": "Trung bình mỗi ngày trong khoảng thời gian đã chọn",
     "pageFilters": "Bộ lọc toàn trang",
     "channelComparison": "So sánh hiệu quả theo kênh",
     "channelComparisonHint": "Sắp xếp theo GMV giảm dần. Bấm một kênh để lọc toàn trang. Số liệu lũy kế của video đăng trong khoảng thời gian đã chọn.",
