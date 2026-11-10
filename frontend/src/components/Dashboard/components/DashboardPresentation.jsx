@@ -152,6 +152,7 @@ export const MetricPicker = ({ id, value, onChange, t }) => {
         id={id}
         className="channel-picker__trigger"
         type="button"
+        aria-label={`${t('dashboard.metric')}: ${t(selectedOption.labelKey)}`}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}

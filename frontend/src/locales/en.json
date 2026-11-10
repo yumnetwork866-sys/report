@@ -438,6 +438,7 @@
     "createRole": "Create role"
   },
   "dashboard": {
+    "pageFilters": "Page filters",
     "channelComparison": "Channel performance comparison",
     "channelComparisonHint": "Sorted by GMV descending. Click a channel to filter the page. Lifetime metrics of videos published in the selected period.",
     "gmvGrowth": "GMV growth",

@@ -433,6 +433,7 @@
     "createRole": "Tạo vai trò"
   },
   "dashboard": {
+    "pageFilters": "Bộ lọc toàn trang",
     "channelComparison": "So sánh hiệu quả theo kênh",
     "channelComparisonHint": "Sắp xếp theo GMV giảm dần. Bấm một kênh để lọc toàn trang. Số liệu lũy kế của video đăng trong khoảng thời gian đã chọn.",
     "gmvGrowth": "Tăng trưởng GMV",
@@ -455,10 +456,10 @@
     "totalLikes": "Tổng like",
     "totalShares": "Tổng share",
     "totalComments": "Tổng bình luận",
-    "channel": "Channel",
+    "channel": "Kênh",
     "allChannels": "Tất cả kênh",
-    "user": "User",
-    "allUsers": "Tất cả user",
+    "user": "Người phụ trách",
+    "allUsers": "Tất cả người phụ trách",
     "video": "Video",
     "views": "Lượt xem",
     "videoPerformance": "Hiệu suất video",

@@ -71,8 +71,85 @@ const Dashboard = () => {
     videos,
     videosLoading,
   } = useDashboardData();
+  const metricPicker = (
+    <MetricPicker
+      id="dashboard-daily-metric"
+      value={dailyMetric}
+      onChange={handleMetricChange}
+      t={t}
+    />
+  );
   return (
     <div className="page dashboard-page">
+      <section className="section-card dashboard-global-filters" aria-label={t('dashboard.pageFilters')}>
+        <div className={`dashboard-chart-filters${chartMetric === 'date' ? ` dashboard-chart-filters--date${periodPreset === 'custom' ? ' dashboard-chart-filters--custom' : ''}` : ''}`}>
+          <div className="field dashboard-channel-filter">
+            <label htmlFor="dashboard-channel">{t('dashboard.channel')}</label>
+            <ChannelPicker
+              id="dashboard-channel"
+              channels={channels}
+              value={selectedChannelId}
+              onChange={handleChannelChange}
+              includeAll
+              allLabel={t('dashboard.allChannels')}
+              disabled={loading}
+            />
+          </div>
+          <div className="field dashboard-user-filter">
+            <label htmlFor="dashboard-user">{t('dashboard.user')}</label>
+            <UserPicker
+              id="dashboard-user"
+              users={users}
+              value={selectedUserId}
+              onChange={setSelectedUserId}
+              allLabel={t('dashboard.allUsers')}
+              disabled={loading && !users.length}
+            />
+          </div>
+          {chartMetric === 'date' ? (
+            <div className="field dashboard-period-filter">
+              <label htmlFor="dashboard-period">{t('dashboard.period')}</label>
+              <select id="dashboard-period" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}>
+                <option value="7d">{t('dashboard.period_7d')}</option>
+                <option value="30d">{t('dashboard.period_30d')}</option>
+                <option value="90d">{t('dashboard.period_90d')}</option>
+                <option value="today">{t('dashboard.period_today')}</option>
+                <option value="yesterday">{t('dashboard.period_yesterday')}</option>
+                <option value="this_week">{t('dashboard.period_this_week')}</option>
+                <option value="this_month">{t('dashboard.period_this_month')}</option>
+                <option value="last_month">{t('dashboard.period_last_month')}</option>
+                <option value="custom">{t('dashboard.period_custom')}</option>
+              </select>
+            </div>
+          ) : null}
+          {chartMetric === 'date' && periodPreset === 'custom' ? (
+            <>
+              <div className="field dashboard-date-filter">
+                <label htmlFor="dashboard-start-date">{t('dashboard.startDate')}</label>
+                <DatePickerInput
+                  id="dashboard-start-date"
+                  label={t('dashboard.startDate')}
+                  value={startDate}
+                  max={endDate || dateInputValue(new Date())}
+                  onChange={setStartDate}
+                />
+              </div>
+              <div className="field dashboard-date-filter">
+                <label htmlFor="dashboard-end-date">{t('dashboard.endDate')}</label>
+                <DatePickerInput
+                  id="dashboard-end-date"
+                  label={t('dashboard.endDate')}
+                  value={endDate}
+                  min={startDate || undefined}
+                  max={dateInputValue(new Date())}
+                  onChange={setEndDate}
+                />
+              </div>
+            </>
+          ) : null}
+        </div>
+      </section>
+
       <section className="dashboard-hero__summary" aria-live="polite">
         <article className="stat-card stat-card--soft">
           <p className="stat-card__label">{t('dashboard.totalGmv')}</p>
@@ -136,106 +213,34 @@ const Dashboard = () => {
       ) : null}
 
       <section className="section-card dashboard-chart-card">
-        <div className="section-card__header dashboard-chart-card__header">
-          <div className={`dashboard-chart-filters${chartMetric === 'date' ? ` dashboard-chart-filters--date${periodPreset === 'custom' ? ' dashboard-chart-filters--custom' : ''}` : ''}`}>
-            <div className="field dashboard-channel-filter">
-              <label htmlFor="dashboard-channel">{t('dashboard.channel')}</label>
-              <ChannelPicker
-                id="dashboard-channel"
-                channels={channels}
-                value={selectedChannelId}
-                onChange={handleChannelChange}
-                includeAll
-                allLabel={t('dashboard.allChannels')}
-                disabled={loading}
-              />
-            </div>
-            <div className="field dashboard-user-filter">
-              <label htmlFor="dashboard-user">{t('dashboard.user')}</label>
-              <UserPicker
-                id="dashboard-user"
-                users={users}
-                value={selectedUserId}
-                onChange={setSelectedUserId}
-                allLabel={t('dashboard.allUsers')}
-                disabled={loading && !users.length}
-              />
-            </div>
-            <div className="field dashboard-metric-filter">
-              <label htmlFor="dashboard-daily-metric">{t('dashboard.metric')}</label>
-              <MetricPicker
-                id="dashboard-daily-metric"
-                value={dailyMetric}
-                onChange={handleMetricChange}
-                t={t}
-              />
-            </div>
-            {chartMetric === 'date' ? (
-              <div className="field dashboard-period-filter">
-                <label htmlFor="dashboard-period">{t('dashboard.period')}</label>
-                <select id="dashboard-period" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}>
-                  <option value="7d">{t('dashboard.period_7d')}</option>
-                  <option value="30d">{t('dashboard.period_30d')}</option>
-                  <option value="90d">{t('dashboard.period_90d')}</option>
-                  <option value="today">{t('dashboard.period_today')}</option>
-                  <option value="yesterday">{t('dashboard.period_yesterday')}</option>
-                  <option value="this_week">{t('dashboard.period_this_week')}</option>
-                  <option value="this_month">{t('dashboard.period_this_month')}</option>
-                  <option value="last_month">{t('dashboard.period_last_month')}</option>
-                  <option value="custom">{t('dashboard.period_custom')}</option>
-                </select>
-              </div>
-            ) : null}
-            {chartMetric === 'date' && periodPreset === 'custom' ? (
-              <>
-                <div className="field dashboard-date-filter">
-                  <label htmlFor="dashboard-start-date">{t('dashboard.startDate')}</label>
-                  <DatePickerInput
-                    id="dashboard-start-date"
-                    label={t('dashboard.startDate')}
-                    value={startDate}
-                    max={endDate || dateInputValue(new Date())}
-                    onChange={setStartDate}
-                  />
-                </div>
-                <div className="field dashboard-date-filter">
-                  <label htmlFor="dashboard-end-date">{t('dashboard.endDate')}</label>
-                  <DatePickerInput
-                    id="dashboard-end-date"
-                    label={t('dashboard.endDate')}
-                    value={endDate}
-                    min={startDate || undefined}
-                    max={dateInputValue(new Date())}
-                    onChange={setEndDate}
-                  />
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
+        {loading || !chartData.length ? (
+          <div className="dashboard-chart-toolbar">{metricPicker}</div>
+        ) : null}
 
         {loading ? (
           <div className="empty-state"><div className="loading-dot" />{t('dashboard.loading')}</div>
         ) : chartData.length ? (
           <div className="dashboard-analytics-grid">
           <div className="dashboard-chart-shell">
-            <div className="dashboard-chart-summary" aria-hidden="true">
-              <span><i className="dashboard-chart-summary__dot" />{t('dashboard.resultsShown')} <strong>{chartData.length}</strong></span>
-              <span>
-                {dailyMetric === 'gmv' ? (
-                  <>
-                    <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
-                    {' · '}
-                    <span>{t('dashboard.totalViews')} <strong>{formatNumber(Math.round(averageViews))}</strong></span>
-                  </>
-                ) : (
-                  <>
-                    <span>{metricLabel} <strong>{formatNumber(Math.round(averageChartValue))}</strong></span>
-                    {' · '}
-                    <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
-                  </>
-                )}
-              </span>
+            <div className="dashboard-chart-toolbar">
+              {metricPicker}
+              <div className="dashboard-chart-summary" aria-hidden="true">
+                <span>
+                  {dailyMetric === 'gmv' ? (
+                    <>
+                      <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
+                      {' · '}
+                      <span>{t('dashboard.totalViews')} <strong>{formatNumber(Math.round(averageViews))}</strong></span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{metricLabel} <strong>{formatNumber(Math.round(averageChartValue))}</strong></span>
+                      {' · '}
+                      <span>{t('dashboard.metric_gmv')} <strong>{formatGmvAmount(Math.round(averageGmv), totals.sales_currency)}</strong></span>
+                    </>
+                  )}
+                </span>
+              </div>
             </div>
             <div className="dashboard-chart" role="img" aria-label={t('dashboard.videoPerformance')}>
               <ResponsiveContainer width="100%" height="100%">
