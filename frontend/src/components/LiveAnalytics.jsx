@@ -599,9 +599,18 @@ const LiveAnalytics = () => {
         : 0;
       const settlementStatus = liveSkus[0]?.settlement_status || liveSkus[0]?.raw_data?.settlement_status || '';
       const currentShop = shopsById.get(String(order.shop_id || order.shopId)) || selectedShop;
-      const orderCreatorUsername = liveSkus[0]?.creator_username || order.creator_username || '';
+      const rawSessionId = String(liveSkus[0]?.content_id || liveSkus[0]?.room_id || 'unknown');
+      const shopId = order.shop_id || order.shopId;
+      const orderSessionKey = `${shopId}:${rawSessionId}`;
+      const matchedOrderLive = livePerformanceByShopSession.get(orderSessionKey)
+        || findLivePerformanceForSession(livePerformancesByShop.get(String(shopId)), { sessionId: rawSessionId });
+      const orderCreatorUsername = matchedOrderLive?.creator_username
+        || liveSkus[0]?.creator_username
+        || order.creator_username
+        || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : '');
       const orderIsExternal = resolveLiveSessionSource({
         creatorUsername: orderCreatorUsername,
+        authorType: matchedOrderLive?.author_type,
         shopName: order.shopName || currentShop?.name,
         avatarChannelUsername: currentShop?.avatar_channel?.username,
         internalChannelUsernames,
@@ -620,7 +629,7 @@ const LiveAnalytics = () => {
         skus: liveSkus,
         creatorUsername: orderCreatorUsername,
         isExternal: orderIsExternal,
-        sessionId: String(liveSkus[0]?.content_id || liveSkus[0]?.room_id || 'unknown'),
+        sessionId: rawSessionId,
         totalGmv: liveSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0),
         totalCommission,
         commissionRate,
@@ -630,16 +639,29 @@ const LiveAnalytics = () => {
 
       liveSkus.forEach((sku) => {
         const cid = String(sku.content_id || sku.room_id || 'unknown');
-        const shopId = order.shop_id || order.shopId;
         const sessionKey = `${shopId}:${cid}`;
         const qty = Number(sku.quantity) || 1;
         const gmv = (moneyValue(sku.price) || 0) * qty;
-        const creatorUsername = sku.creator_username || order.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop');
-        const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname || order.shopName || 'Shop';
-        const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
+        const matchedSkuLive = livePerformanceByShopSession.get(sessionKey)
+          || findLivePerformanceForSession(livePerformancesByShop.get(String(shopId)), { sessionId: cid });
+        const creatorUsername = matchedSkuLive?.creator_username
+          || sku.creator_username
+          || order.creator_username
+          || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop');
+        const creatorNickname = matchedSkuLive?.creator_nickname
+          || sku.creator_nickname
+          || sku.raw_data?.creator_nickname
+          || sku.raw_data?.creator?.nickname
+          || order.shopName
+          || 'Shop';
+        const creatorAvatar = matchedSkuLive?.creator_avatar
+          || sku.creator_avatar_url
+          || sku.raw_data?.creator_avatar_url
+          || sku.raw_data?.creator?.avatar_url;
 
         const isExternal = resolveLiveSessionSource({
           creatorUsername,
+          authorType: matchedSkuLive?.author_type,
           shopName: order.shopName || currentShop?.name,
           avatarChannelUsername: currentShop?.avatar_channel?.username,
           internalChannelUsernames,
@@ -779,8 +801,11 @@ const LiveAnalytics = () => {
       );
       const totalComments = extractSessionComments(performance, sess);
       const currentShop = shopsById.get(String(sess.shopId)) || selectedShop;
+      const creatorUsername = performance?.creator_username || sess.creatorUsername;
+      const creatorNickname = performance?.creator_nickname || sess.creatorNickname;
+      const creatorAvatar = performance?.creator_avatar || sess.creatorAvatar;
       const isExternal = resolveLiveSessionSource({
-        creatorUsername: sess.creatorUsername,
+        creatorUsername,
         authorType: performance?.author_type,
         shopName: currentShop?.name,
         avatarChannelUsername: currentShop?.avatar_channel?.username,
@@ -790,6 +815,10 @@ const LiveAnalytics = () => {
 
       return {
         ...sess,
+        creatorUsername,
+        creatorNickname,
+        creatorAvatar,
+        authorType: performance?.author_type || null,
         isExternal,
         firstTime,
         lastTime,
