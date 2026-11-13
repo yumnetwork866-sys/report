@@ -123,6 +123,9 @@ const defaultMigrationNames = [
   '114_scope_shop_authorizations_to_app',
   '115_backfill_live_orders_from_room_id',
   '116_remove_tiktok_booking_video_detail_job',
+  '117_create_live_session_hosts',
+  '118_add_comment_to_live_session_hosts',
+  '119_remove_comment_from_live_session_hosts',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

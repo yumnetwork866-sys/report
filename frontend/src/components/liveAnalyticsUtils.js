@@ -10,6 +10,31 @@ export const extractLiveGmv = (row) => {
   return moneyValue(liveItem?.amount ?? liveItem?.gmv?.amount ?? liveItem?.sales?.gmv?.amount ?? liveItem);
 };
 
+export const findLivePerformanceForSession = (performances, session) => {
+  const list = Array.isArray(performances) ? performances : [];
+  if (!session) return null;
+  const sessionId = String(session.sessionId || '');
+  const exact = list.find((performance) => String(performance?.live_id || '') === sessionId);
+  if (exact) return exact;
+  const username = String(session.creatorUsername || '').trim().toLowerCase();
+  const firstTime = Number(session.firstTime) || 0;
+  const lastTime = Number(session.lastTime) || firstTime;
+  if (!username || !firstTime) return null;
+  const candidates = list.filter((performance) => {
+    if (String(performance?.creator_username || '').trim().toLowerCase() !== username) return false;
+    const startTime = Number(performance?.start_time) || 0;
+    const endTime = Number(performance?.end_time) || startTime;
+    return startTime > 0 && startTime <= lastTime && endTime >= firstTime;
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+};
+
+export const resolveLiveSessionHost = (manualHost, autoHost) => {
+  if (manualHost?.id) return { host: manualHost, hostSource: 'manual' };
+  if (autoHost?.id) return { host: autoHost, hostSource: 'auto_hashtag' };
+  return { host: null, hostSource: null };
+};
+
 export const calculateDurationSeconds = (firstTime, lastTime) => {
   if (!firstTime || !lastTime) return 0;
   const startMs = typeof firstTime === 'number' ? firstTime : Date.parse(firstTime);

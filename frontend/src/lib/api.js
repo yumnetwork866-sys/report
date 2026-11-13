@@ -80,10 +80,9 @@ export function fetchLiveHostUsers(signal) {
   return apiRequest('/tiktok-shop/live-host-users', { signal });
 }
 
-export function saveLiveHost(shopId, sessionId, userId, comment) {
+export function saveLiveHost(shopId, sessionId, userId) {
   const body = {};
   if (userId !== undefined) body.user_id = userId;
-  if (comment !== undefined) body.comment = comment;
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/live-sessions/${encodeURIComponent(sessionId)}/host`, {
     method: 'PUT', body,
   });
@@ -290,6 +289,15 @@ export function fetchTikTokShopVideoAnalytics(shopId, filters = {}) {
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/video-analytics?${params.toString()}`, {
     signal: filters.signal,
   });
+}
+
+export function fetchTikTokShopLivePerformance(shopId, { signal, startDate, endDate, currency } = {}) {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (currency) params.set('currency', currency);
+  const query = params.toString();
+  return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/live-performance${query ? `?${query}` : ''}`, { signal });
 }
 
 export function syncTikTokShopVideoPerformance(shopId, payload = {}, signal) {

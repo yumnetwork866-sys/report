@@ -26,7 +26,7 @@ import {
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
-import { fetchLiveHosts, fetchTikTokSellerAffiliateOrders } from '../lib/api';
+import { fetchLiveHosts, fetchTikTokSellerAffiliateOrders, fetchTikTokShopLivePerformance } from '../lib/api';
 import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import AppAvatar from './AppAvatar';
@@ -66,8 +66,10 @@ const SHOP_PALETTE = [
 import {
   calculateDurationSeconds,
   extractLiveGmv,
+  findLivePerformanceForSession,
   formatLiveDuration,
   formatTotalDuration,
+  resolveLiveSessionHost,
 } from './liveAnalyticsUtils.js';
 
 const TOTAL_SERIES_ID = '__total__';
@@ -167,6 +169,8 @@ const LiveAnalytics = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [orderPage, setOrderPage] = useState(1);
   const ordersPerPage = 15;
+  const [sessionPage, setSessionPage] = useState(1);
+  const sessionsPerPage = 20;
 
   const invalidRange = !startDate || !endDate || startDate >= endDate;
 
@@ -329,6 +333,7 @@ const LiveAnalytics = () => {
   // Live Orders from Database
   const [liveOrders, setLiveOrders] = useState([]);
   const [liveOrdersLoading, setLiveOrdersLoading] = useState(false);
+  const [livePerformances, setLivePerformances] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -405,6 +410,67 @@ const LiveAnalytics = () => {
       controller.abort();
     };
   }, [endDate, invalidRange, periodPreset, selectedShop, selectedShopId, shops, startDate]);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    if (invalidRange) {
+      setLivePerformances([]);
+      return () => controller.abort();
+    }
+
+    const fetchPerformance = async () => {
+      const effectiveEndExclusive = periodPreset === 'custom' ? endDate : shiftDate(endDate, 1);
+      const eligibleShops = selectedShopId === 'all'
+        ? shops.filter((shop) => shop.id)
+        : (selectedShop?.id ? [selectedShop] : []);
+      try {
+        const settled = await Promise.allSettled(eligibleShops.map(async (shop) => {
+          const payload = await fetchTikTokShopLivePerformance(shop.id, {
+            startDate,
+            endDate: effectiveEndExclusive,
+            currency,
+            signal: controller.signal,
+          });
+          return (Array.isArray(payload?.lives) ? payload.lives : []).map((live) => ({
+            ...live,
+            shopId: shop.id,
+          }));
+        }));
+        if (!active) return;
+        setLivePerformances(settled.flatMap((result) => (
+          result.status === 'fulfilled' ? result.value : []
+        )));
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          console.error('[LiveAnalytics] Failed to fetch live performance:', err);
+        }
+      }
+    };
+
+    fetchPerformance();
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [currency, endDate, invalidRange, periodPreset, selectedShop, selectedShopId, shops, startDate]);
+
+  const { livePerformanceByShopSession, livePerformancesByShop } = useMemo(() => {
+    const bySession = new Map();
+    const byShop = new Map();
+    livePerformances.forEach((live) => {
+      if (!live?.live_id) return;
+      bySession.set(`${live.shopId}:${live.live_id}`, live);
+      if (!live.shopId) return;
+      const shopKey = String(live.shopId);
+      const shopLives = byShop.get(shopKey) || [];
+      shopLives.push(live);
+      byShop.set(shopKey, shopLives);
+    });
+    return { livePerformanceByShopSession: bySession, livePerformancesByShop: byShop };
+  }, [livePerformances]);
 
   // Period / Date filter handlers
   const changeCustomDate = (setter, currentValue) => (nextValue) => {
@@ -611,13 +677,24 @@ const LiveAnalytics = () => {
     });
 
     const sessionArr = Object.values(sessions).map((sess) => {
-      const durationSec = calculateDurationSeconds(sess.firstTime, sess.lastTime);
-      const hostRecord = hostAssignments[sess.sessionKey] || null;
+      const performance = livePerformanceByShopSession.get(sess.sessionKey)
+        || findLivePerformanceForSession(livePerformancesByShop.get(String(sess.shopId)), sess);
+      const firstTime = performance?.start_time || sess.firstTime;
+      const lastTime = performance?.end_time || sess.lastTime;
+      const durationSec = calculateDurationSeconds(firstTime, lastTime);
+      const { host, hostSource } = resolveLiveSessionHost(
+        hostAssignments[sess.sessionKey] || null,
+        performance?.auto_host || null,
+      );
       return {
         ...sess,
+        firstTime,
+        lastTime,
         durationSec,
-        host: hostRecord,
-        comment: hostRecord?.comment || null,
+        host,
+        hostSource,
+        liveTitle: performance?.title || '',
+        hashtags: performance?.hashtags || [],
         orderCount: sess.orderIds.size,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
       };
@@ -633,7 +710,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency, hostAssignments]);
+  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
@@ -743,7 +820,7 @@ const LiveAnalytics = () => {
     });
   }, [sessionList, sourceType, selectedChannel]);
 
-  // Filtered sessions by search keyword (including comments)
+  // Filtered sessions by search keyword
   const filteredSessions = useMemo(() => {
     if (!searchKeyword.trim()) return sourceFilteredSessions;
     const term = searchKeyword.trim().toLowerCase();
@@ -753,10 +830,24 @@ const LiveAnalytics = () => {
       || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
       || s.host?.name?.toLowerCase().includes(term)
       || s.host?.email?.toLowerCase().includes(term)
-      || (s.comment && s.comment.toLowerCase().includes(term))
       || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
     ));
   }, [sourceFilteredSessions, searchKeyword]);
+
+  // Paginated live sessions
+  const totalSessionPages = Math.ceil(filteredSessions.length / sessionsPerPage) || 1;
+  const paginatedSessions = useMemo(() => {
+    const startIndex = (sessionPage - 1) * sessionsPerPage;
+    return filteredSessions.slice(startIndex, startIndex + sessionsPerPage);
+  }, [filteredSessions, sessionPage]);
+
+  useEffect(() => {
+    setSessionPage(1);
+  }, [endDate, searchKeyword, selectedChannel, selectedShopId, sourceType, startDate]);
+
+  useEffect(() => {
+    setSessionPage((page) => Math.min(page, totalSessionPages));
+  }, [totalSessionPages]);
 
   // Filtered products by source, channel & search keyword
   const filteredProducts = useMemo(() => {
@@ -1255,7 +1346,6 @@ const LiveAnalytics = () => {
                   <th>{t('liveAnalytics.appHost')}</th>
                   <th>{t('liveAnalytics.colSessionId')}</th>
                   <th>{t('liveAnalytics.colTime')}</th>
-                  <th>{t('liveAnalytics.colComment')}</th>
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
@@ -1266,7 +1356,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1277,7 +1367,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1285,7 +1375,7 @@ const LiveAnalytics = () => {
                   </tr>
                 ) : null}
 
-                {filteredSessions.map((session) => (
+                {paginatedSessions.map((session) => (
                   <tr key={session.sessionKey} className="live-session-row" tabIndex={0}
                     aria-label={`${t('liveAnalytics.viewSessionDetail')}: ${session.sessionId}`}
                     onClick={() => setSelectedSession(session)}
@@ -1326,7 +1416,18 @@ const LiveAnalytics = () => {
                         <div className="live-host-cell">
                           <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
                           <div className="live-host-meta">
-                            <span className="live-host-name">{session.host.name || session.host.email}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span className="live-host-name">{session.host.name || session.host.email}</span>
+                              {session.hostSource === 'auto_hashtag' ? (
+                                <span
+                                  className="chip chip--neutral"
+                                  style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
+                                  title={t('liveAnalytics.autoHostTitle')}
+                                >
+                                  {t('liveAnalytics.autoHost')}
+                                </span>
+                              ) : null}
+                            </div>
                             {session.host.email ? <span className="live-host-username">{session.host.email}</span> : null}
                           </div>
                         </div>
@@ -1352,26 +1453,6 @@ const LiveAnalytics = () => {
                           </span>
                         ) : null}
                       </div>
-                    </td>
-                    <td>
-                      {session.comment ? (
-                        <span
-                          className="code-pill"
-                          style={{
-                            maxWidth: 160,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                            display: 'inline-block',
-                            fontSize: '0.75rem',
-                          }}
-                          title={session.comment}
-                        >
-                          {session.comment}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--color-muted)', fontSize: '0.75rem' }}>—</span>
-                      )}
                     </td>
                     <td className="cell-number">
                       <strong>{formatNumber(session.orderCount)}</strong>
@@ -1422,6 +1503,14 @@ const LiveAnalytics = () => {
               </tbody>
             </table>
           </div>
+
+          {totalSessionPages > 1 ? (
+            <Pagination
+              currentPage={sessionPage}
+              totalPages={totalSessionPages}
+              onPageChange={setSessionPage}
+            />
+          ) : null}
         </section>
       ) : null}
 
@@ -1707,19 +1796,17 @@ const LiveAnalytics = () => {
           onClose={() => setEditingSession(null)}
           onSaved={(saved) => {
             const hostObj = saved?.host || null;
-            const commentStr = saved?.comment || null;
             setHostAssignments((current) => ({
               ...current,
               [editingSession.sessionKey]: {
                 shop_id: editingSession.shopId,
                 session_id: editingSession.sessionId,
                 host: hostObj,
-                comment: commentStr,
               },
             }));
             setSelectedSession((current) => (
               current?.sessionKey === editingSession.sessionKey
-                ? { ...current, host: hostObj, comment: commentStr }
+                ? { ...current, host: hostObj }
                 : current
             ));
           }}
@@ -1859,6 +1946,15 @@ const LiveSessionDrawer = ({
                     {t('liveAnalytics.unassignedHost')}
                   </span>
                 )}
+                {session.hostSource === 'auto_hashtag' ? (
+                  <span
+                    className="chip chip--neutral"
+                    style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
+                    title={t('liveAnalytics.autoHostTitle')}
+                  >
+                    {t('liveAnalytics.autoHost')}
+                  </span>
+                ) : null}
                 <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
                   {session.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
                 </span>
@@ -1898,13 +1994,6 @@ const LiveSessionDrawer = ({
                 </span>
               </div>
             </div>
-
-            {session.comment ? (
-              <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--color-primary)', fontSize: '0.8125rem' }}>
-                <strong style={{ color: 'var(--color-text)', display: 'block', marginBottom: 2 }}>{t('liveAnalytics.colComment')}:</strong>
-                <span style={{ color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>{session.comment}</span>
-              </div>
-            ) : null}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
               <div>

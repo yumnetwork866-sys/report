@@ -26,7 +26,6 @@ adminRouter.put('/shops/:shopId/live-sessions/:sessionId/host', requirePermissio
   validateParams(z.object({ shopId: positiveId('shop ID'), sessionId: z.string().trim().min(1).max(128).refine((id) => id !== 'unknown') })),
   validateBody(z.object({
     user_id: positiveId('user ID').nullable().optional(),
-    comment: z.string().max(2000).nullable().optional(),
   })), endpoint(liveHostService, 'save'));
 adminRouter.get('/exchange-rates', controller.getExchangeRates);
 adminRouter.get('/oauth/start', requirePermission('admin.shops.manage'), controller.startShopOauth);
@@ -37,6 +36,7 @@ adminRouter.delete('/shops/:shopId', requirePermission('admin.shops.manage'), va
 adminRouter.get('/shops/:shopId/analytics', requirePermission('shop.analytics.view'), validateParams(shopParamsSchema), validateQuery(shopAnalyticsQuerySchema), controller.getShopAnalytics);
 adminRouter.post('/shops/:shopId/analytics/sync', requirePermission('admin.shops.manage'), validateParams(shopParamsSchema), validateBody(shopAnalyticsBodySchema), controller.syncShopAnalytics);
 adminRouter.get('/shops/:shopId/video-analytics', requirePermission('shop.videos.performance.view'), validateParams(shopParamsSchema), validateQuery(shopAnalyticsQuerySchema), controller.listShopVideoPerformance);
+adminRouter.get('/shops/:shopId/live-performance', requirePermission('shop.analytics.view'), validateParams(shopParamsSchema), validateQuery(shopAnalyticsQuerySchema), controller.listShopLivePerformance);
 adminRouter.post('/shops/:shopId/video-performance/sync', requirePermission('admin.shops.manage'), validateParams(shopParamsSchema), validateBody(shopAnalyticsBodySchema), controller.syncVideoPerformanceApi);
 adminRouter.get('/shops/:shopId/video-performance', requirePermission('shop.videos.performance.view'), validateParams(shopParamsSchema), validateQuery(shopAnalyticsQuerySchema), controller.listVideoPerformanceApi);
 adminRouter.post('/shops/:shopId/video-export/import', requirePermission('admin.shops.manage'), validateParams(shopParamsSchema), controller.importVideoPerformanceExport);

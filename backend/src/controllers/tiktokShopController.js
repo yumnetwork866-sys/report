@@ -4,7 +4,7 @@ const { endpoint } = require('./controllerAdapter');
 const actions = [
   'startShopOauth', 'handleShopOauthCallback', 'listShopConnections', 'listShops', 'updateShopAvatarChannel',
   'getShopAnalytics', 'syncShopAnalytics', 'disconnectShopAuthorization', 'disconnectShop',
-  'listShopVideoPerformance', 'getShopVideoThumbnail', 'listOpenCollaborations',
+  'listShopVideoPerformance', 'listShopLivePerformance', 'getShopVideoThumbnail', 'listOpenCollaborations',
   'listCreatorInvitations', 'listAffiliateOrders', 'listAffiliateOrderOverview',
   'showOpenCollaborationSettings', 'listAffiliateCreators', 'showAffiliateCreatorFulfillments',
   'getOrderTracking', 'listMarketplaceCreators', 'showMarketplaceCreator', 'createMarketplaceCreatorInvitation',

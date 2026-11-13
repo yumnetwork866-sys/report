@@ -7,6 +7,7 @@ const {
   SHOP_PERFORMANCE_PATH,
   SHOP_VIDEO_PERFORMANCE_PATH,
   SHOP_VIDEO_PERFORMANCE_DETAIL_PATH,
+  SHOP_LIVE_PERFORMANCE_PATH,
   OPEN_COLLABORATIONS_PATH,
   TARGET_COLLABORATIONS_PATH,
   TARGET_COLLABORATION_DETAIL_PATH,
@@ -33,6 +34,7 @@ const {
   getShopPerformance,
   getShopVideoPerformance,
   getShopVideoPerformanceDetails,
+  getShopLivePerformance,
   normalizeShopPerformance,
   searchOpenCollaborations,
   searchTargetCollaborations,
@@ -383,6 +385,61 @@ test('shop video performance returns per-video GMV with analytics filters', asyn
     };
   });
   assert.equal(payload.data.videos[0].gmv.amount, '123');
+});
+
+test('shop live performance requests the 202609 list endpoint with the required account type', async (t) => {
+  configure(t);
+  const authorization = {
+    granted_scopes: ['data.shop_analytics.public.read'],
+    access_token_encrypted: encryptPartnerToken('seller-token'),
+    access_token_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+  };
+  const payload = await getShopLivePerformance({
+    authorization,
+    shopCipher: 'cipher-1',
+    startDate: '2026-07-01',
+    endDate: '2026-07-08',
+    currency: 'LOCAL',
+    accountType: 'OFFICIAL_ACCOUNTS',
+    pageSize: 100,
+    pageToken: 'next-page',
+  }, async (url, options) => {
+    assert.equal(url.pathname, SHOP_LIVE_PERFORMANCE_PATH);
+    assert.equal(url.searchParams.get('shop_cipher'), 'cipher-1');
+    assert.equal(url.searchParams.get('start_date_ge'), '2026-07-01');
+    assert.equal(url.searchParams.get('end_date_lt'), '2026-07-08');
+    assert.equal(url.searchParams.get('account_type'), 'OFFICIAL_ACCOUNTS');
+    assert.equal(url.searchParams.get('page_size'), '100');
+    assert.equal(url.searchParams.get('page_token'), 'next-page');
+    assert.equal(options.headers['x-tts-access-token'], 'seller-token');
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        code: 0,
+        data: { live_stream_sessions: [{ id: 'live-1', title: 'Live #host' }] },
+      }),
+    };
+  });
+  assert.equal(payload.data.live_stream_sessions[0].id, 'live-1');
+});
+
+test('shop live performance rejects unsupported account types', async (t) => {
+  configure(t);
+  const authorization = {
+    granted_scopes: ['data.shop_analytics.public.read'],
+    access_token_encrypted: encryptPartnerToken('seller-token'),
+    access_token_expires_at: new Date(Date.now() + 60 * 60 * 1000),
+  };
+  await assert.rejects(getShopLivePerformance({
+    authorization,
+    shopCipher: 'cipher-1',
+    startDate: '2026-07-01',
+    endDate: '2026-07-08',
+    accountType: 'ALL',
+  }, async () => {
+    throw new Error('should not call fetch');
+  }), /account_type/);
 });
 
 test('shop video performance details returns commerce and engagement metrics for one video', async (t) => {

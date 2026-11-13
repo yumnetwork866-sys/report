@@ -203,6 +203,43 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
       request_id: requestId,
     };
   }
+  if (namespace === 'shop-live-performance') {
+    const currency = query.currency === 'USD' ? 'USD' : 'VND';
+    const multiplier = currency === 'USD' ? 1 : 25000;
+    const accountType = String(query.account_type || '');
+    const now = Math.floor(Date.now() / 1000);
+    const sessions = Array.from({ length: 9 }, (_, index) => {
+      const authorType = ['OFFICIAL', 'MARKETING', 'AFFILIATE'][index % 3];
+      const start = now - 86400 * (index + 1);
+      return {
+        id: `${7600000000000000000n + BigInt(index)}`,
+        title: `${['Live sale serum', 'Deal hôm nay', 'Chốt đơn cùng host'][index % 3]} #demo${(index % 5) + 1} · ${shopName}`,
+        creator: {
+          user_name: `demo.creator.${(index % 5) + 1}`,
+          nick_name: `Demo Creator ${(index % 5) + 1}`,
+          author_type: authorType,
+        },
+        start_time: String(start),
+        end_time: String(start + 3600 + index * 600),
+        interaction_performance: authorType !== 'AFFILIATE'
+          ? { comments: 40 + index * 8, comment_rate: 0.004 + index * 0.0002 }
+          : undefined,
+        sales_performance: {
+          live_attributed_gmv: { amount: String((820 - index * 37) * multiplier), currency },
+        },
+        traffic: { viewers: 1800 + index * 240, views: 12000 + index * 1600 },
+      };
+    }).filter((session) => {
+      if (accountType === 'OFFICIAL_ACCOUNTS') return session.creator.author_type === 'OFFICIAL';
+      if (accountType === 'MARKETING_ACCOUNTS') return session.creator.author_type === 'MARKETING';
+      if (accountType === 'AFFILIATE_ACCOUNTS') return session.creator.author_type === 'AFFILIATE';
+      return true;
+    });
+    return {
+      data: { total_count: sessions.length, next_page_token: null, live_stream_sessions: sessions },
+      request_id: requestId,
+    };
+  }
   if (namespace === 'shop-video-performance-detail') {
     const video = query.video || {};
     const match = String(query.video_id || video.id || '').match(/(\d{1,2})$/);

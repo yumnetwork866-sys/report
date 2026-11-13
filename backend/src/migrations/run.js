@@ -126,6 +126,7 @@ const migrations = [
   require('./116_remove_tiktok_booking_video_detail_job'),
   require('./117_create_live_session_hosts'),
   require('./118_add_comment_to_live_session_hosts'),
+  require('./119_remove_comment_from_live_session_hosts'),
 ];
 
 const createMigrationRunner = ({

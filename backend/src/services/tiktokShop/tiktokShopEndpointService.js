@@ -47,6 +47,7 @@ const {
   startVideoPerformanceApiSync,
 } = require('../tiktokVideoPerformanceService');
 const { getShopCapabilitiesStatus, getShopScopeAudit } = require('../tiktokShopAuthResolver');
+const { buildLiveSessions, loadShopLivePerformance } = require('../livePerformanceService');
 const { createTtlPromiseCache } = require('../../lib/ttlPromiseCache');
 const { isDemoAuthorization, sellerAffiliateFixture } = require('../../lib/tiktokDemoFixtures');
 const {
@@ -984,6 +985,46 @@ const listShopVideoPerformance = async (req, res) => {
     );
     res.set('X-Shop-Video-Analytics-Cache', hit ? 'HIT' : 'MISS');
     res.json({ ...payload.data, request_id: payload.request_id || null });
+  } catch (error) {
+    const permissionError = /grant data\.shop_analytics\.public\.read/i.test(error.message);
+    res.status(permissionError ? 403 : 502).json({
+      message: error.message,
+      ...(error.tiktokCode !== undefined && error.tiktokCode !== null ? { tiktok_code: Number(error.tiktokCode) } : {}),
+      ...(error.requestId ? { request_id: error.requestId } : {}),
+    });
+  }
+};
+
+const listShopLivePerformance = async (req, res) => {
+  try {
+    const shop = await loadAffiliateShop(req, res);
+    if (!shop) return;
+    const startDate = dateValue(req.query.start_date);
+    const endDate = dateValue(req.query.end_date);
+    if (!startDate || !endDate || startDate >= endDate) {
+      return res.status(400).json({ message: 'A valid start_date and exclusive end_date are required.' });
+    }
+    const currency = req.query.currency === 'USD' ? 'USD' : 'LOCAL';
+    const load = async () => {
+      if (isDemoAuthorization(shop.authorization)) {
+        const payload = sellerAffiliateFixture('shop-live-performance', shop, {
+          ...req.query,
+          ...req.params,
+          currency,
+        });
+        return {
+          lives: await buildLiveSessions(payload?.data?.live_stream_sessions),
+          request_id: payload?.request_id || null,
+        };
+      }
+      return loadShopLivePerformance({ shop, startDate, endDate, currency });
+    };
+    const { value: payload, hit } = await sellerAffiliateCache.getOrLoad(
+      affiliateCacheKey('shop-live-performance', shop, req),
+      load,
+    );
+    res.set('X-Shop-Live-Performance-Cache', hit ? 'HIT' : 'MISS');
+    res.json(payload);
   } catch (error) {
     const permissionError = /grant data\.shop_analytics\.public\.read/i.test(error.message);
     res.status(permissionError ? 403 : 502).json({
@@ -2650,7 +2691,7 @@ const getExchangeRates = async (_req, res) => {
 const service = {
   startShopOauth, handleShopOauthCallback, listShopConnections, listShops, updateShopAvatarChannel,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
-  listShopVideoPerformance, getShopVideoThumbnail,
+  listShopVideoPerformance, listShopLivePerformance, getShopVideoThumbnail,
   listOpenCollaborations, listCreatorInvitations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
   listAffiliateCreators, showAffiliateCreatorFulfillments, getOrderTracking, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
