@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   calculateDurationSeconds,
+  extractSessionComments,
   formatLiveDuration,
   formatTotalDuration,
 } from '../src/components/liveAnalyticsUtils.js';
@@ -44,4 +45,14 @@ test('formatTotalDuration formats aggregated channel broadcast time', () => {
   assert.equal(formatTotalDuration(3600, 'en'), '1 hours');
   assert.equal(formatTotalDuration(1800, 'vi'), '30 phút');
   assert.equal(formatTotalDuration(0, 'vi'), '—');
+});
+
+test('extractSessionComments extracts total comments from performance or session object', () => {
+  assert.equal(extractSessionComments({ total_comments: 120 }), 120);
+  assert.equal(extractSessionComments({ comments: 85 }), 85);
+  assert.equal(extractSessionComments({ interaction_performance: { comments: 534 } }), 534);
+  assert.equal(extractSessionComments(null, { totalComments: 42 }), 42);
+  assert.equal(extractSessionComments(null, { total_comments: '99' }), 99);
+  assert.equal(extractSessionComments(null, null), null);
+  assert.equal(extractSessionComments({}, {}), null);
 });

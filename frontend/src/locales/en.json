@@ -1727,6 +1727,7 @@
     "colOrders": "Orders",
     "colUnits": "Units",
     "colRevenue": "LIVE Revenue",
+    "colComments": "Total Comments",
     "colProducts": "Products",
     "colSettlement": "Status",
     "colOrderId": "Order ID",

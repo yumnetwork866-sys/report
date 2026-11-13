@@ -221,9 +221,7 @@ const sellerAffiliateFixture = (namespace, shop, query = {}) => {
         },
         start_time: String(start),
         end_time: String(start + 3600 + index * 600),
-        interaction_performance: authorType !== 'AFFILIATE'
-          ? { comments: 40 + index * 8, comment_rate: 0.004 + index * 0.0002 }
-          : undefined,
+        interaction_performance: { comments: 40 + index * 8, comment_rate: 0.004 + index * 0.0002 },
         sales_performance: {
           live_attributed_gmv: { amount: String((820 - index * 37) * multiplier), currency },
         },

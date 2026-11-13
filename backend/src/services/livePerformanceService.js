@@ -49,13 +49,21 @@ const mergeSessions = (sessionGroups = []) => {
       sessionsById.set(id, session);
       return;
     }
+    const merged = { ...existing };
     if (!existing.title && session.title) {
-      sessionsById.set(id, { ...existing, ...session });
-      return;
+      merged.title = session.title;
     }
     if (!existing.interaction_performance && session.interaction_performance) {
-      sessionsById.set(id, { ...existing, interaction_performance: session.interaction_performance });
+      merged.interaction_performance = session.interaction_performance;
+    } else if (existing.interaction_performance && session.interaction_performance) {
+      merged.interaction_performance = {
+        ...session.interaction_performance,
+        ...existing.interaction_performance,
+        comments: existing.interaction_performance.comments ?? session.interaction_performance.comments,
+        comment_rate: existing.interaction_performance.comment_rate ?? session.interaction_performance.comment_rate,
+      };
     }
+    sessionsById.set(id, merged);
   });
   return [...sessionsById.values()];
 };
@@ -101,6 +109,13 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
   return (Array.isArray(rawSessions) ? rawSessions : [])
     .map((session) => {
       const title = String(session?.title || '').trim();
+      const interactionPerformance = session?.interaction_performance;
+      const rawComments = interactionPerformance?.comments
+        ?? session?.total_comments
+        ?? session?.comments;
+      const totalComments = rawComments !== undefined && rawComments !== null && Number.isFinite(Number(rawComments))
+        ? Number(rawComments)
+        : (interactionPerformance ? 0 : null);
       return {
         live_id: String(session?.id || '').trim(),
         title,
@@ -110,6 +125,8 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
         end_time: toEpochMs(session?.end_time),
         hashtags: extractHashtags(title),
         auto_host: resolveAutoHost(title, hosts),
+        total_comments: totalComments,
+        interaction_performance: interactionPerformance || null,
       };
     })
     .filter((session) => session.live_id);

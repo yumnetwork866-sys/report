@@ -134,4 +134,30 @@ test('fetchShopLiveSessions queries all account types, paginates, and deduplicat
   assert.ok(calls.every((call) => call.startDate === '2026-07-01' && call.endDate === '2026-07-08'));
   assert.equal(sessions.length, 3);
   assert.equal(sessions.find((session) => session.id === 'live-1').title, 'Official');
+  assert.equal(sessions.find((session) => session.id === 'live-1').interaction_performance?.comments, 5);
+});
+
+test('buildLiveSessions extracts total_comments from interaction_performance or direct fields', async () => {
+  const db = fakeDb([]);
+  const lives = await buildLiveSessions([
+    {
+      id: 'live-comment-1',
+      title: 'Live with interaction',
+      interaction_performance: { comments: 534, comment_rate: '0.0047' },
+    },
+    {
+      id: 'live-comment-2',
+      title: 'Live with total_comments',
+      total_comments: 89,
+    },
+    {
+      id: 'live-comment-3',
+      title: 'Live without comments',
+    },
+  ], { db });
+
+  assert.equal(lives[0].total_comments, 534);
+  assert.equal(lives[0].interaction_performance?.comments, 534);
+  assert.equal(lives[1].total_comments, 89);
+  assert.equal(lives[2].total_comments, null);
 });

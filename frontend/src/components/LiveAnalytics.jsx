@@ -14,6 +14,7 @@ import {
 import {
   ChevronDown,
   Clock,
+  MessageSquare,
   Pencil,
   Package,
   Radio,
@@ -66,6 +67,7 @@ const SHOP_PALETTE = [
 import {
   calculateDurationSeconds,
   extractLiveGmv,
+  extractSessionComments,
   findLivePerformanceForSession,
   formatLiveDuration,
   formatTotalDuration,
@@ -676,6 +678,38 @@ const LiveAnalytics = () => {
       });
     });
 
+    livePerformances.forEach((live) => {
+      if (!live?.live_id || !live.shopId) return;
+      const sessionKey = `${live.shopId}:${live.live_id}`;
+      if (!sessions[sessionKey]) {
+        const alreadyMatched = Object.values(sessions).some((s) => {
+          const matchedPerf = livePerformanceByShopSession.get(s.sessionKey)
+            || findLivePerformanceForSession(livePerformancesByShop.get(String(s.shopId)), s);
+          return matchedPerf?.live_id === live.live_id;
+        });
+        if (!alreadyMatched) {
+          sessions[sessionKey] = {
+            sessionId: live.live_id,
+            sessionKey,
+            shopId: live.shopId,
+            creatorUsername: live.creator_username || 'shop',
+            creatorNickname: live.creator_nickname || live.creator_username || 'Shop',
+            creatorAvatar: null,
+            currency: displayCurrency,
+            orderIds: new Set(),
+            totalQuantity: 0,
+            totalGmv: 0,
+            totalCommission: 0,
+            isExternal: false,
+            products: {},
+            firstTime: live.start_time,
+            lastTime: live.end_time,
+            orders: [],
+          };
+        }
+      }
+    });
+
     const sessionArr = Object.values(sessions).map((sess) => {
       const performance = livePerformanceByShopSession.get(sess.sessionKey)
         || findLivePerformanceForSession(livePerformancesByShop.get(String(sess.shopId)), sess);
@@ -686,6 +720,7 @@ const LiveAnalytics = () => {
         hostAssignments[sess.sessionKey] || null,
         performance?.auto_host || null,
       );
+      const totalComments = extractSessionComments(performance, sess);
       return {
         ...sess,
         firstTime,
@@ -696,6 +731,7 @@ const LiveAnalytics = () => {
         liveTitle: performance?.title || '',
         hashtags: performance?.hashtags || [],
         orderCount: sess.orderIds.size,
+        totalComments,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
       };
     }).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
@@ -753,6 +789,11 @@ const LiveAnalytics = () => {
     return hosts.size;
   }, [sessionList]);
 
+  // Total comments across all sessions
+  const totalLiveComments = useMemo(() => (
+    sessionList.reduce((sum, s) => sum + (s.totalComments || 0), 0)
+  ), [sessionList]);
+
   // Channel aggregation (Kênh Live)
   const channelList = useMemo(() => {
     const channelMap = {};
@@ -770,6 +811,7 @@ const LiveAnalytics = () => {
           totalQuantity: 0,
           totalGmv: 0,
           totalCommission: 0,
+          totalComments: 0,
           currency: sess.currency,
           sessions: [],
         };
@@ -781,6 +823,9 @@ const LiveAnalytics = () => {
       c.totalQuantity += (sess.totalQuantity || 0);
       c.totalGmv += (sess.totalGmv || 0);
       c.totalCommission += (sess.totalCommission || 0);
+      if (sess.totalComments !== null && sess.totalComments !== undefined) {
+        c.totalComments += sess.totalComments;
+      }
       if (sess.isExternal) c.isExternal = true;
       c.sessions.push(sess);
     });
@@ -1061,6 +1106,12 @@ const LiveAnalytics = () => {
           <span className="shop-analytics__change is-muted">
             <Users size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
             {distinctHosts} {t('liveAnalytics.liveHosts')}
+            {totalLiveComments > 0 ? (
+              <span style={{ marginLeft: 6 }}>
+                · <MessageSquare size={12} style={{ display: 'inline', verticalAlign: -1, marginRight: 2 }} />
+                {formatNumber(totalLiveComments)} {t('comments', 'bình luận')}
+              </span>
+            ) : null}
           </span>
         </article>
       </section>
@@ -1349,6 +1400,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
                   <th className="cell-actions">{t('common.actions')}</th>
                 </tr>
@@ -1356,7 +1408,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1367,7 +1419,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1463,6 +1515,11 @@ const LiveAnalytics = () => {
                     <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
                       {formatMoney(session.totalGmv, session.currency)}
                     </td>
+                    <td className="cell-number">
+                      {session.totalComments !== null && session.totalComments !== undefined
+                        ? formatNumber(session.totalComments)
+                        : '—'}
+                    </td>
                     <td>
                       <div className="live-products-preview">
                         {session.productsList.slice(0, 3).map((prod) => (
@@ -1527,6 +1584,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAvgGmvPerSession')}</th>
                   <th className="cell-number">{t('liveAnalytics.channelGmvShare')}</th>
                   <th className="cell-actions">{t('common.actions')}</th>
@@ -1535,7 +1593,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1546,7 +1604,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noChannels')}
                       </div>
@@ -1609,6 +1667,9 @@ const LiveAnalytics = () => {
                       <td className="cell-number">{formatNumber(ch.totalQuantity)}</td>
                       <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
                         {formatMoney(ch.totalGmv, ch.currency)}
+                      </td>
+                      <td className="cell-number">
+                        {ch.totalComments ? formatNumber(ch.totalComments) : '—'}
                       </td>
                       <td className="cell-number">{formatMoney(avgGmv, ch.currency)}</td>
                       <td className="cell-number">{formatPercent(share)}</td>
@@ -2025,6 +2086,12 @@ const LiveSessionDrawer = ({
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.totalQuantity)}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colComments')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.totalComments !== null && session.totalComments !== undefined ? formatNumber(session.totalComments) : '—'}
+                </p>
               </div>
             </div>
           </div>

@@ -10,6 +10,20 @@ export const extractLiveGmv = (row) => {
   return moneyValue(liveItem?.amount ?? liveItem?.gmv?.amount ?? liveItem?.sales?.gmv?.amount ?? liveItem);
 };
 
+export const extractSessionComments = (performance, session) => {
+  const value = performance?.total_comments
+    ?? performance?.comments
+    ?? performance?.interaction_performance?.comments
+    ?? session?.totalComments
+    ?? session?.total_comments
+    ?? session?.comments;
+  if (value !== undefined && value !== null) {
+    const num = Number(value);
+    if (Number.isFinite(num)) return num;
+  }
+  return null;
+};
+
 export const findLivePerformanceForSession = (performances, session) => {
   const list = Array.isArray(performances) ? performances : [];
   if (!session) return null;
