@@ -82,6 +82,11 @@ test('resolveAutoHost ignores empty titles and empty host lists', () => {
   assert.equal(resolveAutoHost('', [{ user: { id: 1 }, hashtags: ['sale'] }]), null);
   assert.equal(resolveAutoHost('Live #sale', []), null);
   assert.equal(toEpochMs('not-a-number'), null);
+  assert.equal(toEpochMs(null), null);
+  assert.equal(toEpochMs(''), null);
+  assert.equal(toEpochMs('0'), null);
+  assert.equal(toEpochMs('1700000000'), 1700000000000);
+  assert.equal(toEpochMs('2026-11-03 14:00:00'), Date.parse('2026-11-03 14:00:00'));
 });
 
 test('fetchShopLiveSessions queries all account types, paginates, and deduplicates sessions', async () => {
@@ -165,4 +170,35 @@ test('buildLiveSessions extracts total_comments and author_type from creator or 
   assert.equal(lives[1].author_type, 'AFFILIATE');
   assert.equal(lives[2].total_comments, null);
   assert.equal(lives[2].author_type, null);
+});
+
+test('buildLiveSessions extracts duration and synthesizes end_time when missing', async () => {
+  const db = fakeDb([]);
+  const lives = await buildLiveSessions([
+    {
+      id: 'live-dur-1',
+      title: 'Live with duration',
+      start_time: '1700000000',
+      duration: 3600,
+    },
+    {
+      id: 'live-dur-2',
+      title: 'Live with traffic duration',
+      start_time: '1700000000',
+      traffic: { duration: 7200 },
+    },
+    {
+      id: 'live-dur-3',
+      title: 'Live with start and end',
+      start_time: '1700000000',
+      end_time: '1700001800',
+    },
+  ], { db });
+
+  assert.equal(lives[0].duration, 3600);
+  assert.equal(lives[0].end_time, 1700000000000 + 3600000);
+  assert.equal(lives[1].duration, 7200);
+  assert.equal(lives[1].end_time, 1700000000000 + 7200000);
+  assert.equal(lives[2].duration, 1800);
+  assert.equal(lives[2].end_time, 1700001800000);
 });

@@ -734,6 +734,12 @@ const LiveAnalytics = () => {
             avatarChannelUsername: currentShop?.avatar_channel?.username,
             internalChannelUsernames,
           });
+          const explicitDuration = live.duration ?? live.duration_seconds;
+          const startMs = live.start_time;
+          let endMs = live.end_time;
+          if (startMs && explicitDuration && (!endMs || endMs <= startMs)) {
+            endMs = startMs + explicitDuration * 1000;
+          }
           sessions[sessionKey] = {
             sessionId: live.live_id,
             sessionKey,
@@ -748,8 +754,9 @@ const LiveAnalytics = () => {
             totalCommission: 0,
             isExternal,
             products: {},
-            firstTime: live.start_time,
-            lastTime: live.end_time,
+            firstTime: startMs,
+            lastTime: endMs,
+            durationSec: explicitDuration || calculateDurationSeconds(startMs, endMs),
             orders: [],
           };
         }
@@ -759,9 +766,13 @@ const LiveAnalytics = () => {
     const sessionArr = Object.values(sessions).map((sess) => {
       const performance = livePerformanceByShopSession.get(sess.sessionKey)
         || findLivePerformanceForSession(livePerformancesByShop.get(String(sess.shopId)), sess);
+      const explicitDuration = performance?.duration ?? performance?.duration_seconds ?? sess.durationSec;
       const firstTime = performance?.start_time || sess.firstTime;
-      const lastTime = performance?.end_time || sess.lastTime;
-      const durationSec = calculateDurationSeconds(firstTime, lastTime);
+      let lastTime = performance?.end_time || sess.lastTime;
+      if (firstTime && explicitDuration && (!lastTime || lastTime <= firstTime)) {
+        lastTime = firstTime + explicitDuration * 1000;
+      }
+      const durationSec = calculateDurationSeconds(firstTime, lastTime, explicitDuration);
       const { host, hostSource } = resolveLiveSessionHost(
         hostAssignments[sess.sessionKey] || null,
         performance?.auto_host || null,
@@ -1564,7 +1575,7 @@ const LiveAnalytics = () => {
                             title={session.lastTime && session.lastTime > session.firstTime ? `${formatDisplayDateTime(session.firstTime)} → ${formatDisplayDateTime(session.lastTime)}` : ''}
                           >
                             <Clock size={12} />
-                            {formatLiveDuration(session.firstTime, session.lastTime, language)}
+                            {formatLiveDuration(session.firstTime, session.lastTime, language, session.durationSec, session.orderCount)}
                           </span>
                         ) : null}
                       </div>
@@ -2138,7 +2149,7 @@ const LiveSessionDrawer = ({
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colDuration')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
-                  {formatLiveDuration(session.firstTime, session.lastTime, language)}
+                  {formatLiveDuration(session.firstTime, session.lastTime, language, session.durationSec, session.orderCount)}
                 </p>
               </div>
               <div>

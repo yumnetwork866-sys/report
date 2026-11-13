@@ -7,9 +7,23 @@ const LIVE_ACCOUNT_TYPES = ['OFFICIAL_ACCOUNTS', 'MARKETING_ACCOUNTS', 'AFFILIAT
 const MAX_PAGES = 20;
 
 const toEpochMs = (value) => {
-  const number = Number(value);
-  if (!Number.isFinite(number) || number <= 0) return null;
-  return number > 1e12 ? number : number * 1000;
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value > 1e12 ? value : Math.round(value * 1000);
+  }
+  const str = String(value).trim();
+  if (!str) return null;
+  const num = Number(str);
+  if (Number.isFinite(num)) {
+    if (num <= 0) return null;
+    return num > 1e12 ? num : Math.round(num * 1000);
+  }
+  const parsed = Date.parse(str);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return null;
 };
 
 const loadHashtagHosts = async (db = sequelize) => {
@@ -72,6 +86,10 @@ const mergeSessions = (sessionGroups = []) => {
         comment_rate: existing.interaction_performance.comment_rate ?? session.interaction_performance.comment_rate,
       };
     }
+    if (!existing.start_time && session.start_time) merged.start_time = session.start_time;
+    if (!existing.end_time && session.end_time) merged.end_time = session.end_time;
+    if (!existing.duration && session.duration) merged.duration = session.duration;
+    if (!existing.traffic && session.traffic) merged.traffic = session.traffic;
     sessionsById.set(id, merged);
   });
   return [...sessionsById.values()];
@@ -125,6 +143,29 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
       const totalComments = rawComments !== undefined && rawComments !== null && Number.isFinite(Number(rawComments))
         ? Number(rawComments)
         : (interactionPerformance ? 0 : null);
+
+      const rawDuration = session?.duration
+        ?? session?.duration_seconds
+        ?? session?.live_duration
+        ?? session?.traffic?.duration
+        ?? session?.traffic?.live_duration
+        ?? session?.performance?.overall?.duration
+        ?? session?.overall?.duration;
+      let durationSec = rawDuration !== undefined && rawDuration !== null && Number.isFinite(Number(rawDuration)) && Number(rawDuration) > 0
+        ? Math.round(Number(rawDuration))
+        : null;
+
+      const startTimeMs = toEpochMs(session?.start_time);
+      let endTimeMs = toEpochMs(session?.end_time);
+
+      if (startTimeMs && endTimeMs && endTimeMs > startTimeMs) {
+        if (!durationSec) {
+          durationSec = Math.floor((endTimeMs - startTimeMs) / 1000);
+        }
+      } else if (startTimeMs && durationSec && (!endTimeMs || endTimeMs <= startTimeMs)) {
+        endTimeMs = startTimeMs + durationSec * 1000;
+      }
+
       return {
         live_id: String(session?.id || '').trim(),
         title,
@@ -132,8 +173,10 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
         creator_nickname: session?.creator?.nick_name || null,
         author_type: session?.creator?.author_type || session?.author_type || null,
         creator_author_type: session?.creator?.author_type || session?.author_type || null,
-        start_time: toEpochMs(session?.start_time),
-        end_time: toEpochMs(session?.end_time),
+        start_time: startTimeMs,
+        end_time: endTimeMs,
+        duration: durationSec,
+        duration_seconds: durationSec,
         hashtags: extractHashtags(title),
         auto_host: resolveAutoHost(title, hosts),
         total_comments: totalComments,

@@ -114,7 +114,11 @@ export const resolveLiveSessionSource = ({
   return false;
 };
 
-export const calculateDurationSeconds = (firstTime, lastTime) => {
+export const calculateDurationSeconds = (firstTime, lastTime, explicitDuration = null) => {
+  if (explicitDuration !== null && explicitDuration !== undefined) {
+    const num = Number(explicitDuration);
+    if (Number.isFinite(num) && num > 0) return Math.floor(num);
+  }
   if (!firstTime || !lastTime) return 0;
   const startMs = typeof firstTime === 'number' ? firstTime : Date.parse(firstTime);
   const endMs = typeof lastTime === 'number' ? lastTime : Date.parse(lastTime);
@@ -122,15 +126,25 @@ export const calculateDurationSeconds = (firstTime, lastTime) => {
   return Math.floor((endMs - startMs) / 1000);
 };
 
-export const formatLiveDuration = (firstTime, lastTime, language = 'vi') => {
-  if (!firstTime) return '—';
-  const startMs = typeof firstTime === 'number' ? firstTime : Date.parse(firstTime);
-  const endMs = typeof lastTime === 'number' ? lastTime : Date.parse(lastTime);
-  if (!Number.isFinite(startMs)) return '—';
-  if (!Number.isFinite(endMs) || endMs <= startMs) {
-    return language === 'vi' ? '< 1 phút (1 đơn)' : '< 1 min (1 order)';
+export const formatLiveDuration = (firstTime, lastTime, language = 'vi', explicitDuration = null, orderCount = null) => {
+  let diffSec = null;
+  if (explicitDuration !== null && explicitDuration !== undefined) {
+    const num = Number(explicitDuration);
+    if (Number.isFinite(num) && num > 0) {
+      diffSec = Math.floor(num);
+    }
   }
-  const diffSec = Math.floor((endMs - startMs) / 1000);
+  if (diffSec === null) {
+    if (!firstTime) return '—';
+    const startMs = typeof firstTime === 'number' ? firstTime : Date.parse(firstTime);
+    const endMs = typeof lastTime === 'number' ? lastTime : Date.parse(lastTime);
+    if (!Number.isFinite(startMs)) return '—';
+    if (!Number.isFinite(endMs) || endMs <= startMs) {
+      if (orderCount === 0) return '—';
+      return language === 'vi' ? '< 1 phút (1 đơn)' : '< 1 min (1 order)';
+    }
+    diffSec = Math.floor((endMs - startMs) / 1000);
+  }
   const hours = Math.floor(diffSec / 3600);
   const mins = Math.floor((diffSec % 3600) / 60);
 

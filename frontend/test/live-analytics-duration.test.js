@@ -9,7 +9,7 @@ import {
   resolveLiveSessionSource,
 } from '../src/components/liveAnalyticsUtils.js';
 
-test('calculateDurationSeconds calculates difference between start and end timestamps', () => {
+test('calculateDurationSeconds calculates difference between start and end timestamps or uses explicit duration', () => {
   const start = 1700000000000;
   const end = start + 3 * 3600 * 1000 + 15 * 60 * 1000; // 3h 15m
   assert.equal(calculateDurationSeconds(start, end), 3 * 3600 + 15 * 60);
@@ -17,9 +17,11 @@ test('calculateDurationSeconds calculates difference between start and end times
   assert.equal(calculateDurationSeconds(null, end), 0);
   assert.equal(calculateDurationSeconds(start, null), 0);
   assert.equal(calculateDurationSeconds(end, start), 0);
+  assert.equal(calculateDurationSeconds(start, null, 7200), 7200);
+  assert.equal(calculateDurationSeconds(null, null, 3600), 3600);
 });
 
-test('formatLiveDuration formats duration in Vietnamese and English', () => {
+test('formatLiveDuration formats duration in Vietnamese and English with explicit duration and orderCount', () => {
   const start = 1700000000000;
   const threeHours = start + 3 * 3600 * 1000;
   const threeHoursFifteen = start + (3 * 3600 + 15 * 60) * 1000;
@@ -30,6 +32,8 @@ test('formatLiveDuration formats duration in Vietnamese and English', () => {
   assert.equal(formatLiveDuration(start, threeHoursFifteen, 'vi'), '3 tiếng 15 phút');
   assert.equal(formatLiveDuration(start, fortyFiveMins, 'vi'), '45 phút');
   assert.equal(formatLiveDuration(start, start, 'vi'), '< 1 phút (1 đơn)');
+  assert.equal(formatLiveDuration(start, start, 'vi', null, 0), '—');
+  assert.equal(formatLiveDuration(start, null, 'vi', 7200), '2 tiếng');
   assert.equal(formatLiveDuration(null, null, 'vi'), '—');
 
   // English
@@ -37,6 +41,8 @@ test('formatLiveDuration formats duration in Vietnamese and English', () => {
   assert.equal(formatLiveDuration(start, threeHoursFifteen, 'en'), '3h 15m');
   assert.equal(formatLiveDuration(start, fortyFiveMins, 'en'), '45 mins');
   assert.equal(formatLiveDuration(start, start, 'en'), '< 1 min (1 order)');
+  assert.equal(formatLiveDuration(start, start, 'en', null, 0), '—');
+  assert.equal(formatLiveDuration(start, null, 'en', 7200), '2 hours');
 });
 
 test('formatTotalDuration formats aggregated channel broadcast time', () => {
