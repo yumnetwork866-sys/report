@@ -24,7 +24,10 @@ adminRouter.get('/live-hosts', requirePermission('shop.analytics.view'), validat
 adminRouter.get('/live-host-users', requirePermission('admin.shops.manage'), endpoint(liveHostService, 'users'));
 adminRouter.put('/shops/:shopId/live-sessions/:sessionId/host', requirePermission('admin.shops.manage'),
   validateParams(z.object({ shopId: positiveId('shop ID'), sessionId: z.string().trim().min(1).max(128).refine((id) => id !== 'unknown') })),
-  validateBody(z.object({ user_id: positiveId('user ID').nullable() })), endpoint(liveHostService, 'save'));
+  validateBody(z.object({
+    user_id: positiveId('user ID').nullable().optional(),
+    comment: z.string().max(2000).nullable().optional(),
+  })), endpoint(liveHostService, 'save'));
 adminRouter.get('/exchange-rates', controller.getExchangeRates);
 adminRouter.get('/oauth/start', requirePermission('admin.shops.manage'), controller.startShopOauth);
 adminRouter.get('/connections', controller.listShopConnections);

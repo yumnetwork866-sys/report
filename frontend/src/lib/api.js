@@ -80,9 +80,12 @@ export function fetchLiveHostUsers(signal) {
   return apiRequest('/tiktok-shop/live-host-users', { signal });
 }
 
-export function saveLiveHost(shopId, sessionId, userId) {
+export function saveLiveHost(shopId, sessionId, userId, comment) {
+  const body = {};
+  if (userId !== undefined) body.user_id = userId;
+  if (comment !== undefined) body.comment = comment;
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/live-sessions/${encodeURIComponent(sessionId)}/host`, {
-    method: 'PUT', body: { user_id: userId },
+    method: 'PUT', body,
   });
 }
 

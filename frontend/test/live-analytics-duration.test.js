@@ -1,0 +1,47 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  calculateDurationSeconds,
+  formatLiveDuration,
+  formatTotalDuration,
+} from '../src/components/liveAnalyticsUtils.js';
+
+test('calculateDurationSeconds calculates difference between start and end timestamps', () => {
+  const start = 1700000000000;
+  const end = start + 3 * 3600 * 1000 + 15 * 60 * 1000; // 3h 15m
+  assert.equal(calculateDurationSeconds(start, end), 3 * 3600 + 15 * 60);
+  assert.equal(calculateDurationSeconds(start, start), 0);
+  assert.equal(calculateDurationSeconds(null, end), 0);
+  assert.equal(calculateDurationSeconds(start, null), 0);
+  assert.equal(calculateDurationSeconds(end, start), 0);
+});
+
+test('formatLiveDuration formats duration in Vietnamese and English', () => {
+  const start = 1700000000000;
+  const threeHours = start + 3 * 3600 * 1000;
+  const threeHoursFifteen = start + (3 * 3600 + 15 * 60) * 1000;
+  const fortyFiveMins = start + 45 * 60 * 1000;
+
+  // Vietnamese
+  assert.equal(formatLiveDuration(start, threeHours, 'vi'), '3 tiếng');
+  assert.equal(formatLiveDuration(start, threeHoursFifteen, 'vi'), '3 tiếng 15 phút');
+  assert.equal(formatLiveDuration(start, fortyFiveMins, 'vi'), '45 phút');
+  assert.equal(formatLiveDuration(start, start, 'vi'), '< 1 phút (1 đơn)');
+  assert.equal(formatLiveDuration(null, null, 'vi'), '—');
+
+  // English
+  assert.equal(formatLiveDuration(start, threeHours, 'en'), '3 hours');
+  assert.equal(formatLiveDuration(start, threeHoursFifteen, 'en'), '3h 15m');
+  assert.equal(formatLiveDuration(start, fortyFiveMins, 'en'), '45 mins');
+  assert.equal(formatLiveDuration(start, start, 'en'), '< 1 min (1 order)');
+});
+
+test('formatTotalDuration formats aggregated channel broadcast time', () => {
+  // 12 hours 30 mins = 45000 seconds
+  assert.equal(formatTotalDuration(45000, 'vi'), '12 tiếng 30 phút');
+  assert.equal(formatTotalDuration(45000, 'en'), '12h 30m');
+  assert.equal(formatTotalDuration(3600, 'vi'), '1 tiếng');
+  assert.equal(formatTotalDuration(3600, 'en'), '1 hours');
+  assert.equal(formatTotalDuration(1800, 'vi'), '30 phút');
+  assert.equal(formatTotalDuration(0, 'vi'), '—');
+});

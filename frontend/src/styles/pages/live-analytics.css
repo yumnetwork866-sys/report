@@ -637,6 +637,41 @@
   border-top: 1px dashed var(--color-border);
 }
 
+/* Live Duration Pill */
+.live-duration-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: var(--color-primary);
+  background: var(--color-accent-soft, rgba(47, 111, 228, 0.08));
+  border: 1px solid color-mix(in srgb, var(--color-primary) 18%, transparent);
+  border-radius: var(--radius-sm, 4px);
+  padding: 2px 7px;
+  width: fit-content;
+  white-space: nowrap;
+}
+
+.live-analytics__filter-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.live-channel-select {
+  min-width: 220px;
+}
+
+.live-channel-row {
+  cursor: pointer;
+  transition: background-color var(--motion-duration-fast) ease;
+}
+.live-channel-row:hover {
+  background: var(--color-surface-muted);
+}
+
 /* Ensure OrderDetailDrawer sits on top of LiveSessionDrawer */
 body > .koc-drawer-backdrop {
   z-index: 11000;

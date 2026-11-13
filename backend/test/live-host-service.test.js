@@ -57,3 +57,19 @@ test('host directory exposes only active users and assignments support shop filt
   assert.deepEqual(calls[1].replacements, { shopId: 2 });
   assert.deepEqual(calls[2].replacements, { shopId: null });
 });
+
+test('session notes and comments can be persisted and listed', async () => {
+  const calls = [];
+  const service = createLiveHostService({ query: async (sql, options) => {
+    calls.push({ sql, ...options });
+    if (sql.includes('FROM tiktok_shops')) return [{ id: 2 }];
+    return [];
+  } });
+  const result = await service.execute('save', {
+    params: { shopId: 2, sessionId: 'room-123' },
+    body: { comment: 'KOC live nhiệt tình, chốt 50 đơn' },
+  });
+  assert.deepEqual(result, { body: { host: null, comment: 'KOC live nhiệt tình, chốt 50 đơn' } });
+  assert.match(calls[1].sql, /INSERT INTO live_session_hosts.*comment/);
+  assert.equal(calls[1].replacements.comment, 'KOC live nhiệt tình, chốt 50 đơn');
+});

@@ -9,6 +9,7 @@ export default function LiveHostEditor({ session, onClose, onSaved, t }) {
   const dialogRef = useRef(null);
   const [users, setUsers] = useState([]);
   const [userId, setUserId] = useState(String(session.host?.id || ''));
+  const [comment, setComment] = useState(session.host?.comment || session.comment || '');
   const [loading, setLoading] = useState(true);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,8 +49,8 @@ export default function LiveHostEditor({ session, onClose, onSaved, t }) {
     setSaving(true);
     setError('');
     try {
-      const result = await saveLiveHost(session.shopId, session.sessionId, userId ? Number(userId) : null);
-      onSaved(result.host);
+      const result = await saveLiveHost(session.shopId, session.sessionId, userId ? Number(userId) : null, comment.trim());
+      onSaved({ host: result.host, comment: result.comment !== undefined ? result.comment : comment.trim() });
       onClose();
     } catch (err) {
       setError(err.message);
@@ -84,6 +85,19 @@ export default function LiveHostEditor({ session, onClose, onSaved, t }) {
                 : []),
               ...users.map((user) => ({ value: String(user.id), label: user.name || user.email, subtitle: user.email, icon: userAvatar(user) })),
             ]}
+          />
+        </div>
+        <div className="field" style={{ marginTop: 14 }}>
+          <label htmlFor="live-session-comment">{t('liveAnalytics.colComment', 'Ghi chú / Comment')}</label>
+          <textarea
+            id="live-session-comment"
+            className="input"
+            rows={3}
+            style={{ width: '100%', resize: 'vertical', fontSize: '0.8125rem' }}
+            placeholder={t('liveAnalytics.commentPlaceholder', 'Nhập ghi chú hoặc nhận xét về phiên live này...')}
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            disabled={saving}
           />
         </div>
         {loading ? <p>{t('liveAnalytics.loading')}</p> : null}

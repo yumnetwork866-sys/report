@@ -125,6 +125,7 @@ const migrations = [
   require('./115_backfill_live_orders_from_room_id'),
   require('./116_remove_tiktok_booking_video_detail_job'),
   require('./117_create_live_session_hosts'),
+  require('./118_add_comment_to_live_session_hosts'),
 ];
 
 const createMigrationRunner = ({

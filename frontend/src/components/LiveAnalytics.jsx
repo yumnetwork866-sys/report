@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import {
   ChevronDown,
+  Clock,
   Pencil,
   Package,
   Radio,
@@ -30,6 +31,7 @@ import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import AppAvatar from './AppAvatar';
 import LiveHostEditor from './LiveHostEditor';
+import SelectDropdown from './SelectDropdown';
 import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
 import ShopAnalyticsFilters from './shop-analytics/ShopAnalyticsFilters';
@@ -61,18 +63,15 @@ const SHOP_PALETTE = [
   '#6366f1', // Indigo
   '#14b8a6', // Teal
 ];
+import {
+  calculateDurationSeconds,
+  extractLiveGmv,
+  formatLiveDuration,
+  formatTotalDuration,
+} from './liveAnalyticsUtils.js';
+
 const TOTAL_SERIES_ID = '__total__';
 const TOTAL_LINE_COLOR = '#0f172a';
-
-const extractLiveGmv = (row) => {
-  if (!row) return 0;
-  const breakdowns = Array.isArray(row.gmv_breakdowns) && row.gmv_breakdowns.length > 0
-    ? row.gmv_breakdowns
-    : (Array.isArray(row?.gmv?.breakdowns) ? row.gmv.breakdowns : []);
-  const liveItem = breakdowns.find((b) => b?.type === 'LIVE' || b?.content_type === 'LIVE');
-  if (!liveItem) return 0;
-  return moneyValue(liveItem?.amount ?? liveItem?.gmv?.amount ?? liveItem?.sales?.gmv?.amount ?? liveItem);
-};
 
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 8,
@@ -156,8 +155,10 @@ const LiveAnalytics = () => {
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [periodPreset, setPeriodPreset] = useState('7d');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'products' | 'orders'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'channels' | 'products' | 'orders'
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [selectedChannel, setSelectedChannel] = useState('all');
+  const [sourceType, setSourceType] = useState('all'); // 'all' | 'external' | 'shop'
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
@@ -244,6 +245,8 @@ const LiveAnalytics = () => {
 
   useEffect(() => {
     setToggledOffShopIds(new Set());
+    setSelectedChannel('all');
+    setSourceType('all');
   }, [selectedShopId]);
 
   useEffect(() => {
@@ -530,6 +533,14 @@ const LiveAnalytics = () => {
         const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname || order.shopName || 'Shop';
         const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
 
+        const shopNameSlug = (order.shopName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const creatorSlug = (creatorUsername || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const isExternal = Boolean(
+          totalCommission > 0
+          || commSku
+          || (creatorSlug && shopNameSlug && !shopNameSlug.includes(creatorSlug) && !creatorSlug.includes(shopNameSlug))
+        );
+
         // Group Session
         if (!sessions[sessionKey]) {
           sessions[sessionKey] = {
@@ -543,6 +554,8 @@ const LiveAnalytics = () => {
             orderIds: new Set(),
             totalQuantity: 0,
             totalGmv: 0,
+            totalCommission: 0,
+            isExternal,
             products: {},
             firstTime: orderCreateTime,
             lastTime: orderCreateTime,
@@ -554,6 +567,8 @@ const LiveAnalytics = () => {
         s.orderIds.add(order.id || order.order_id);
         s.totalQuantity += qty;
         s.totalGmv += gmv;
+        s.totalCommission += totalCommission;
+        if (isExternal) s.isExternal = true;
         if (orderCreateTime && (!s.firstTime || orderCreateTime < s.firstTime)) s.firstTime = orderCreateTime;
         if (orderCreateTime && (!s.lastTime || orderCreateTime > s.lastTime)) s.lastTime = orderCreateTime;
         if (!s.orders.some((o) => (o.id || o.order_id) === (order.id || order.order_id))) {
@@ -595,12 +610,18 @@ const LiveAnalytics = () => {
       });
     });
 
-    const sessionArr = Object.values(sessions).map((sess) => ({
-      ...sess,
-      host: hostAssignments[sess.sessionKey] || null,
-      orderCount: sess.orderIds.size,
-      productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
-    })).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
+    const sessionArr = Object.values(sessions).map((sess) => {
+      const durationSec = calculateDurationSeconds(sess.firstTime, sess.lastTime);
+      const hostRecord = hostAssignments[sess.sessionKey] || null;
+      return {
+        ...sess,
+        durationSec,
+        host: hostRecord,
+        comment: hostRecord?.comment || null,
+        orderCount: sess.orderIds.size,
+        productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
+      };
+    }).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
 
     const productsArr = Object.values(productMap).map((p) => ({
       ...p,
@@ -655,25 +676,120 @@ const LiveAnalytics = () => {
     return hosts.size;
   }, [sessionList]);
 
-  // Filtered sessions by search keyword
-  const filteredSessions = useMemo(() => {
-    if (!searchKeyword.trim()) return sessionList;
+  // Channel aggregation (Kênh Live)
+  const channelList = useMemo(() => {
+    const channelMap = {};
+    sessionList.forEach((sess) => {
+      const username = (sess.creatorUsername || 'unknown').toLowerCase();
+      if (!channelMap[username]) {
+        channelMap[username] = {
+          username: sess.creatorUsername || 'unknown',
+          nickname: sess.creatorNickname || sess.creatorUsername || '—',
+          avatar: sess.creatorAvatar,
+          isExternal: Boolean(sess.isExternal),
+          sessionsCount: 0,
+          totalDurationSec: 0,
+          orderCount: 0,
+          totalQuantity: 0,
+          totalGmv: 0,
+          totalCommission: 0,
+          currency: sess.currency,
+          sessions: [],
+        };
+      }
+      const c = channelMap[username];
+      c.sessionsCount += 1;
+      c.totalDurationSec += (sess.durationSec || 0);
+      c.orderCount += (sess.orderCount || 0);
+      c.totalQuantity += (sess.totalQuantity || 0);
+      c.totalGmv += (sess.totalGmv || 0);
+      c.totalCommission += (sess.totalCommission || 0);
+      if (sess.isExternal) c.isExternal = true;
+      c.sessions.push(sess);
+    });
+
+    return Object.values(channelMap).sort((a, b) => b.totalGmv - a.totalGmv);
+  }, [sessionList]);
+
+  // Source type options
+  const sourceTypeOptions = useMemo(() => [
+    { value: 'all', label: t('liveAnalytics.allSources', 'Tất cả nguồn live') },
+    { value: 'external', label: t('liveAnalytics.externalKoc', 'Người ngoài live (KOC / Affiliate)') },
+    { value: 'shop', label: t('liveAnalytics.shopInternal', 'Kênh nội bộ Shop') },
+  ], [t]);
+
+  // Filtered channel list by source & search
+  const filteredChannelList = useMemo(() => {
+    let list = channelList;
+    if (sourceType === 'external') list = list.filter((c) => c.isExternal);
+    else if (sourceType === 'shop') list = list.filter((c) => !c.isExternal);
+    if (!searchKeyword.trim()) return list;
     const term = searchKeyword.trim().toLowerCase();
-    return sessionList.filter((s) => (
+    return list.filter((c) => (
+      c.username.toLowerCase().includes(term)
+      || (c.nickname && c.nickname.toLowerCase().includes(term))
+    ));
+  }, [channelList, sourceType, searchKeyword]);
+
+  // Filtered sessions by sourceType & channel
+  const sourceFilteredSessions = useMemo(() => {
+    return sessionList.filter((s) => {
+      if (sourceType === 'external' && !s.isExternal) return false;
+      if (sourceType === 'shop' && s.isExternal) return false;
+      if (selectedChannel && selectedChannel !== 'all') {
+        if ((s.creatorUsername || '').toLowerCase() !== selectedChannel.toLowerCase()) return false;
+      }
+      return true;
+    });
+  }, [sessionList, sourceType, selectedChannel]);
+
+  // Filtered sessions by search keyword (including comments)
+  const filteredSessions = useMemo(() => {
+    if (!searchKeyword.trim()) return sourceFilteredSessions;
+    const term = searchKeyword.trim().toLowerCase();
+    return sourceFilteredSessions.filter((s) => (
       s.sessionId.toLowerCase().includes(term)
       || s.creatorUsername.toLowerCase().includes(term)
       || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
       || s.host?.name?.toLowerCase().includes(term)
       || s.host?.email?.toLowerCase().includes(term)
+      || (s.comment && s.comment.toLowerCase().includes(term))
       || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
     ));
-  }, [sessionList, searchKeyword]);
+  }, [sourceFilteredSessions, searchKeyword]);
 
-  // Filtered orders by search keyword
-  const filteredOrders = useMemo(() => {
-    if (!searchKeyword.trim()) return liveOrderRows;
+  // Filtered products by source, channel & search keyword
+  const filteredProducts = useMemo(() => {
+    let prods = topProductsList;
+    if (sourceType !== 'all' || (selectedChannel && selectedChannel !== 'all')) {
+      const allowedProductIds = new Set(sourceFilteredSessions.flatMap((s) => s.productsList.map((p) => p.productId)));
+      prods = prods.filter((p) => allowedProductIds.has(p.productId));
+    }
+    if (!searchKeyword.trim()) return prods;
     const term = searchKeyword.trim().toLowerCase();
-    return liveOrderRows.filter((o) => (
+    return prods.filter((p) => p.name && p.name.toLowerCase().includes(term));
+  }, [sourceFilteredSessions, searchKeyword, selectedChannel, sourceType, topProductsList]);
+
+  // Filtered orders by source, channel & search keyword
+  const channelFilteredOrders = useMemo(() => {
+    let orders = liveOrderRows;
+    if (sourceType !== 'all') {
+      const allowedSessionIds = new Set(sourceFilteredSessions.map((s) => s.sessionId));
+      orders = orders.filter((o) => o.skus.some((s) => allowedSessionIds.has(String(s.content_id || ''))));
+    } else if (selectedChannel && selectedChannel !== 'all') {
+      const target = selectedChannel.toLowerCase();
+      orders = orders.filter((o) => (
+        o.skus.some((s) => (s.creator_username || '').toLowerCase() === target)
+        || (o.rawOrder?.creator_username || '').toLowerCase() === target
+      ));
+    }
+    return orders;
+  }, [liveOrderRows, selectedChannel, sourceFilteredSessions, sourceType]);
+
+  const filteredOrders = useMemo(() => {
+    if (!searchKeyword.trim()) return channelFilteredOrders;
+    const term = searchKeyword.trim().toLowerCase();
+    return channelFilteredOrders.filter((o) => (
       o.orderId.toLowerCase().includes(term)
       || o.skus.some((s) => (
         (s.creator_username && s.creator_username.toLowerCase().includes(term))
@@ -681,7 +797,7 @@ const LiveAnalytics = () => {
         || (s.content_id && s.content_id.toLowerCase().includes(term))
       ))
     ));
-  }, [liveOrderRows, searchKeyword]);
+  }, [channelFilteredOrders, searchKeyword]);
 
   // Paginated live orders
   const paginatedOrders = useMemo(() => {
@@ -1045,7 +1161,18 @@ const LiveAnalytics = () => {
           >
             <Radio size={15} />
             <span>{t('liveAnalytics.tabOverview')}</span>
-            <span className="live-analytics__tab-count">{sessionList.length}</span>
+            <span className="live-analytics__tab-count">{filteredSessions.length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'channels'}
+            className={`live-analytics__tab ${activeTab === 'channels' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('channels')}
+          >
+            <Users size={15} />
+            <span>{t('liveAnalytics.tabChannels')}</span>
+            <span className="live-analytics__tab-count">{filteredChannelList.length}</span>
           </button>
           <button
             type="button"
@@ -1056,7 +1183,7 @@ const LiveAnalytics = () => {
           >
             <Package size={15} />
             <span>{t('liveAnalytics.tabProducts')}</span>
-            <span className="live-analytics__tab-count">{topProductsList.length}</span>
+            <span className="live-analytics__tab-count">{filteredProducts.length}</span>
           </button>
           <button
             type="button"
@@ -1067,27 +1194,53 @@ const LiveAnalytics = () => {
           >
             <ShoppingBag size={15} />
             <span>{t('liveAnalytics.tabOrders')}</span>
-            <span className="live-analytics__tab-count">{liveOrderRows.length}</span>
+            <span className="live-analytics__tab-count">{filteredOrders.length}</span>
           </button>
         </div>
 
-        <div className="live-analytics__search-input">
-          <Search size={15} color="var(--color-muted, #718096)" />
-          <input
-            type="text"
-            placeholder={t('liveAnalytics.searchPlaceholder')}
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-          />
-          {searchKeyword ? (
+        <div className="live-analytics__filter-group">
+          <div className="live-channel-select" style={{ minWidth: 175 }} title={t('liveAnalytics.filterSource')}>
+            <SelectDropdown
+              id="live-source-select"
+              options={sourceTypeOptions}
+              value={sourceType}
+              onChange={setSourceType}
+              placeholder={t('liveAnalytics.allSources')}
+              icon={<Radio size={14} />}
+            />
+          </div>
+
+          {selectedChannel !== 'all' ? (
             <button
               type="button"
-              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
-              onClick={() => setSearchKeyword('')}
+              className="chip chip--primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '6px 10px', fontSize: '0.8125rem', height: 36 }}
+              onClick={() => setSelectedChannel('all')}
+              title={t('common.clearFilter', 'Bỏ lọc kênh')}
             >
-              <X size={14} color="var(--color-muted, #718096)" />
+              <span>@{selectedChannel}</span>
+              <X size={14} />
             </button>
           ) : null}
+
+          <div className="live-analytics__search-input">
+            <Search size={15} color="var(--color-muted, #718096)" />
+            <input
+              type="text"
+              placeholder={t('liveAnalytics.searchPlaceholder')}
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+            />
+            {searchKeyword ? (
+              <button
+                type="button"
+                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
+                onClick={() => setSearchKeyword('')}
+              >
+                <X size={14} color="var(--color-muted, #718096)" />
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -1102,6 +1255,7 @@ const LiveAnalytics = () => {
                   <th>{t('liveAnalytics.appHost')}</th>
                   <th>{t('liveAnalytics.colSessionId')}</th>
                   <th>{t('liveAnalytics.colTime')}</th>
+                  <th>{t('liveAnalytics.colComment')}</th>
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
@@ -1112,7 +1266,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1123,7 +1277,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1155,9 +1309,14 @@ const LiveAnalytics = () => {
                           </div>
                         )}
                         <div className="live-host-meta">
-                          <span className="live-host-name">
-                            {session.creatorNickname || session.creatorUsername}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            <span className="live-host-name">
+                              {session.creatorNickname || session.creatorUsername}
+                            </span>
+                            <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                              {session.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
+                            </span>
+                          </div>
                           <span className="live-host-username">@{session.creatorUsername}</span>
                         </div>
                       </div>
@@ -1179,7 +1338,40 @@ const LiveAnalytics = () => {
                       </span>
                     </td>
                     <td>
-                      {session.firstTime ? formatDisplayDateTime(session.firstTime, '—') : '—'}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        <span style={{ fontWeight: 600, fontSize: '0.8125rem', color: 'var(--color-text)' }}>
+                          {session.firstTime ? formatDisplayDateTime(session.firstTime, '—') : '—'}
+                        </span>
+                        {session.firstTime ? (
+                          <span
+                            className="live-duration-pill"
+                            title={session.lastTime && session.lastTime > session.firstTime ? `${formatDisplayDateTime(session.firstTime)} → ${formatDisplayDateTime(session.lastTime)}` : ''}
+                          >
+                            <Clock size={12} />
+                            {formatLiveDuration(session.firstTime, session.lastTime, language)}
+                          </span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td>
+                      {session.comment ? (
+                        <span
+                          className="code-pill"
+                          style={{
+                            maxWidth: 160,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            display: 'inline-block',
+                            fontSize: '0.75rem',
+                          }}
+                          title={session.comment}
+                        >
+                          {session.comment}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--color-muted)', fontSize: '0.75rem' }}>—</span>
+                      )}
                     </td>
                     <td className="cell-number">
                       <strong>{formatNumber(session.orderCount)}</strong>
@@ -1233,16 +1425,136 @@ const LiveAnalytics = () => {
         </section>
       ) : null}
 
-      {/* Tab 2: Top Products */}
+      {/* Tab 2: Channels (Kênh Live) */}
+      {activeTab === 'channels' ? (
+        <section className="live-analytics__section">
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>{t('liveAnalytics.colTikTokAccount')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colSessionsCount')}</th>
+                  <th>{t('liveAnalytics.colDuration')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colAvgGmvPerSession')}</th>
+                  <th className="cell-number">{t('liveAnalytics.channelGmvShare')}</th>
+                  <th className="cell-actions">{t('common.actions')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveOrdersLoading && !filteredChannelList.length ? (
+                  <tr>
+                    <td colSpan={9}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        <span className="loading-dot" />
+                        {t('liveAnalytics.loading')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {!liveOrdersLoading && !filteredChannelList.length ? (
+                  <tr>
+                    <td colSpan={9}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        {t('liveAnalytics.noChannels')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {filteredChannelList.map((ch) => {
+                  const avgGmv = ch.sessionsCount > 0 ? ch.totalGmv / ch.sessionsCount : 0;
+                  const totalLiveSales = channelList.reduce((sum, c) => sum + c.totalGmv, 0);
+                  const share = totalLiveSales > 0 ? (ch.totalGmv / totalLiveSales) * 100 : 0;
+
+                  return (
+                    <tr
+                      key={ch.username}
+                      className="live-channel-row"
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedChannel(ch.username);
+                        setActiveTab('overview');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedChannel(ch.username);
+                          setActiveTab('overview');
+                        }
+                      }}
+                    >
+                      <td>
+                        <div className="live-host-cell">
+                          {ch.avatar ? (
+                            <img src={ch.avatar} alt={ch.username} className="live-host-avatar" />
+                          ) : (
+                            <div className="live-host-avatar">
+                              {(ch.username || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div className="live-host-meta">
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span className="live-host-name">{ch.nickname || ch.username}</span>
+                              <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                                {ch.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
+                              </span>
+                            </div>
+                            <span className="live-host-username">@{ch.username}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="cell-number">
+                        <strong>{formatNumber(ch.sessionsCount)}</strong>
+                      </td>
+                      <td>
+                        <span className="live-duration-pill">
+                          <Clock size={12} />
+                          {formatTotalDuration(ch.totalDurationSec, language)}
+                        </span>
+                      </td>
+                      <td className="cell-number">{formatNumber(ch.orderCount)}</td>
+                      <td className="cell-number">{formatNumber(ch.totalQuantity)}</td>
+                      <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                        {formatMoney(ch.totalGmv, ch.currency)}
+                      </td>
+                      <td className="cell-number">{formatMoney(avgGmv, ch.currency)}</td>
+                      <td className="cell-number">{formatPercent(share)}</td>
+                      <td className="cell-actions">
+                        <button
+                          type="button"
+                          className="button button--secondary button--sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedChannel(ch.username);
+                            setActiveTab('overview');
+                          }}
+                        >
+                          {t('liveAnalytics.viewChannelSessions')}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
+      {/* Tab 3: Top Products */}
       {activeTab === 'products' ? (
         <section className="live-analytics__section">
-          {!topProductsList.length ? (
+          {!filteredProducts.length ? (
             <div className="empty-state empty-state--compact">
               {t('liveAnalytics.noProducts')}
             </div>
           ) : (
             <div className="live-products-grid">
-              {topProductsList.map((product) => (
+              {filteredProducts.map((product) => (
                 <article className="live-product-card" key={product.productId}>
                   {product.imageUrl ? (
                     <img
@@ -1393,9 +1705,23 @@ const LiveAnalytics = () => {
         <LiveHostEditor
           session={editingSession}
           onClose={() => setEditingSession(null)}
-          onSaved={(host) => {
-            setHostAssignments((current) => ({ ...current, [editingSession.sessionKey]: host }));
-            setSelectedSession((current) => current?.sessionKey === editingSession.sessionKey ? { ...current, host } : current);
+          onSaved={(saved) => {
+            const hostObj = saved?.host || null;
+            const commentStr = saved?.comment || null;
+            setHostAssignments((current) => ({
+              ...current,
+              [editingSession.sessionKey]: {
+                shop_id: editingSession.shopId,
+                session_id: editingSession.sessionId,
+                host: hostObj,
+                comment: commentStr,
+              },
+            }));
+            setSelectedSession((current) => (
+              current?.sessionKey === editingSession.sessionKey
+                ? { ...current, host: hostObj, comment: commentStr }
+                : current
+            ));
           }}
           t={t}
         />
@@ -1405,9 +1731,12 @@ const LiveAnalytics = () => {
           session={selectedSession}
           onClose={() => setSelectedSession(null)}
           onSelectOrder={setSelectedOrder}
+          onEditHost={setEditingSession}
+          canEditHost={canEditHost}
           formatMoney={formatMoney}
           formatNumber={formatNumber}
           formatDisplayDateTime={formatDisplayDateTime}
+          language={language}
           t={t}
         />
       ) : null}
@@ -1431,9 +1760,12 @@ const LiveSessionDrawer = ({
   session,
   onClose,
   onSelectOrder,
+  onEditHost,
+  canEditHost,
   formatMoney,
   formatNumber,
   formatDisplayDateTime,
+  language = 'vi',
   t,
 }) => {
   const drawerRef = useRef(null);
@@ -1516,7 +1848,34 @@ const LiveSessionDrawer = ({
         <div className="live-drawer__body">
           {/* Host & Session Card */}
           <div className="live-analytics__stat" style={{ borderLeft: '4px solid var(--color-primary)' }}>
-            {session.host ? <p><strong>{t('liveAnalytics.appHost')}:</strong> {session.host.name || session.host.email}</p> : null}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {session.host ? (
+                  <p style={{ margin: 0, fontSize: '0.875rem' }}>
+                    <strong>{t('liveAnalytics.appHost')}:</strong> {session.host.name || session.host.email}
+                  </p>
+                ) : (
+                  <span style={{ fontSize: '0.8125rem', color: 'var(--color-muted)' }}>
+                    {t('liveAnalytics.unassignedHost')}
+                  </span>
+                )}
+                <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                  {session.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
+                </span>
+              </div>
+              {canEditHost && session.sessionId !== 'unknown' ? (
+                <button
+                  type="button"
+                  className="button button--secondary button--sm"
+                  onClick={() => onEditHost?.(session)}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                >
+                  <Pencil size={13} />
+                  <span>{t('liveAnalytics.editHost')}</span>
+                </button>
+              ) : null}
+            </div>
+
             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
               {session.creatorAvatar ? (
                 <img
@@ -1540,10 +1899,29 @@ const LiveSessionDrawer = ({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+            {session.comment ? (
+              <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--color-surface-subtle)', borderRadius: 'var(--radius-sm)', borderLeft: '3px solid var(--color-primary)', fontSize: '0.8125rem' }}>
+                <strong style={{ color: 'var(--color-text)', display: 'block', marginBottom: 2 }}>{t('liveAnalytics.colComment')}:</strong>
+                <span style={{ color: 'var(--color-text)', whiteSpace: 'pre-wrap' }}>{session.comment}</span>
+              </div>
+            ) : null}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colSessionId')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{session.sessionId}</p>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.sessionStartTime')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.firstTime ? formatDisplayDateTime(session.firstTime, '—') : '—'}
+                </p>
+              </div>
+              <div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colDuration')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
+                  {formatLiveDuration(session.firstTime, session.lastTime, language)}
+                </p>
               </div>
               <div>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
