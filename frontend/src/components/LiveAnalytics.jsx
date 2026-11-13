@@ -71,7 +71,9 @@ import {
   findLivePerformanceForSession,
   formatLiveDuration,
   formatTotalDuration,
+  isInternalLiveChannel,
   resolveLiveSessionHost,
+  resolveLiveSessionSource,
 } from './liveAnalyticsUtils.js';
 
 const TOTAL_SERIES_ID = '__total__';
@@ -184,6 +186,7 @@ const LiveAnalytics = () => {
   });
   const {
     changeSelectedShop,
+    channels: internalChannels = [],
     loading: inventoryLoading,
     missingAnalyticsScope,
     selectedShop,
@@ -191,6 +194,27 @@ const LiveAnalytics = () => {
     shops,
     tokenExpired,
   } = inventory;
+
+  const internalChannelUsernames = useMemo(() => {
+    const set = new Set();
+    (Array.isArray(internalChannels) ? internalChannels : []).forEach((c) => {
+      const u = String(c.username || '').trim().toLowerCase().replace(/^@+/, '');
+      if (u) set.add(u);
+    });
+    (Array.isArray(shops) ? shops : []).forEach((s) => {
+      const u = String(s.avatar_channel?.username || '').trim().toLowerCase().replace(/^@+/, '');
+      if (u) set.add(u);
+    });
+    return set;
+  }, [internalChannels, shops]);
+
+  const shopsById = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(shops) ? shops : []).forEach((s) => {
+      if (s?.id) map.set(String(s.id), s);
+    });
+    return map;
+  }, [shops]);
 
   const allShopsSelected = selectedShopId === 'all';
   const isCrossBorder = useMemo(() => {
@@ -574,6 +598,16 @@ const LiveAnalytics = () => {
         ? (Number(commSku.raw_data?.commission_rate || commSku.commission_rate) / 100)
         : 0;
       const settlementStatus = liveSkus[0]?.settlement_status || liveSkus[0]?.raw_data?.settlement_status || '';
+      const currentShop = shopsById.get(String(order.shop_id || order.shopId)) || selectedShop;
+      const orderCreatorUsername = liveSkus[0]?.creator_username || order.creator_username || '';
+      const orderIsExternal = resolveLiveSessionSource({
+        creatorUsername: orderCreatorUsername,
+        shopName: order.shopName || currentShop?.name,
+        avatarChannelUsername: currentShop?.avatar_channel?.username,
+        internalChannelUsernames,
+        totalCommission,
+        commissionRate,
+      });
 
       flatRows.push({
         rawOrder: order,
@@ -584,6 +618,9 @@ const LiveAnalytics = () => {
         status: order.order_status || order.status || 'COMPLETED',
         buyerEmail: order.buyer_email,
         skus: liveSkus,
+        creatorUsername: orderCreatorUsername,
+        isExternal: orderIsExternal,
+        sessionId: String(liveSkus[0]?.content_id || liveSkus[0]?.room_id || 'unknown'),
         totalGmv: liveSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0),
         totalCommission,
         commissionRate,
@@ -601,13 +638,14 @@ const LiveAnalytics = () => {
         const creatorNickname = sku.creator_nickname || sku.raw_data?.creator_nickname || sku.raw_data?.creator?.nickname || order.shopName || 'Shop';
         const creatorAvatar = sku.creator_avatar_url || sku.raw_data?.creator_avatar_url || sku.raw_data?.creator?.avatar_url;
 
-        const shopNameSlug = (order.shopName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const creatorSlug = (creatorUsername || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const isExternal = Boolean(
-          totalCommission > 0
-          || commSku
-          || (creatorSlug && shopNameSlug && !shopNameSlug.includes(creatorSlug) && !creatorSlug.includes(shopNameSlug))
-        );
+        const isExternal = resolveLiveSessionSource({
+          creatorUsername,
+          shopName: order.shopName || currentShop?.name,
+          avatarChannelUsername: currentShop?.avatar_channel?.username,
+          internalChannelUsernames,
+          totalCommission,
+          commissionRate,
+        });
 
         // Group Session
         if (!sessions[sessionKey]) {
@@ -688,6 +726,14 @@ const LiveAnalytics = () => {
           return matchedPerf?.live_id === live.live_id;
         });
         if (!alreadyMatched) {
+          const currentShop = shopsById.get(String(live.shopId)) || selectedShop;
+          const isExternal = resolveLiveSessionSource({
+            creatorUsername: live.creator_username,
+            authorType: live.author_type,
+            shopName: currentShop?.name,
+            avatarChannelUsername: currentShop?.avatar_channel?.username,
+            internalChannelUsernames,
+          });
           sessions[sessionKey] = {
             sessionId: live.live_id,
             sessionKey,
@@ -700,7 +746,7 @@ const LiveAnalytics = () => {
             totalQuantity: 0,
             totalGmv: 0,
             totalCommission: 0,
-            isExternal: false,
+            isExternal,
             products: {},
             firstTime: live.start_time,
             lastTime: live.end_time,
@@ -721,8 +767,19 @@ const LiveAnalytics = () => {
         performance?.auto_host || null,
       );
       const totalComments = extractSessionComments(performance, sess);
+      const currentShop = shopsById.get(String(sess.shopId)) || selectedShop;
+      const isExternal = resolveLiveSessionSource({
+        creatorUsername: sess.creatorUsername,
+        authorType: performance?.author_type,
+        shopName: currentShop?.name,
+        avatarChannelUsername: currentShop?.avatar_channel?.username,
+        internalChannelUsernames,
+        totalCommission: sess.totalCommission,
+      });
+
       return {
         ...sess,
+        isExternal,
         firstTime,
         lastTime,
         durationSec,
@@ -746,7 +803,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop]);
+  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
@@ -911,11 +968,17 @@ const LiveAnalytics = () => {
     let orders = liveOrderRows;
     if (sourceType !== 'all') {
       const allowedSessionIds = new Set(sourceFilteredSessions.map((s) => s.sessionId));
-      orders = orders.filter((o) => o.skus.some((s) => allowedSessionIds.has(String(s.content_id || ''))));
-    } else if (selectedChannel && selectedChannel !== 'all') {
+      orders = orders.filter((o) => (
+        allowedSessionIds.has(String(o.sessionId || ''))
+        || o.skus.some((s) => allowedSessionIds.has(String(s.content_id || s.room_id || '')))
+        || (sourceType === 'external' ? o.isExternal : !o.isExternal)
+      ));
+    }
+    if (selectedChannel && selectedChannel !== 'all') {
       const target = selectedChannel.toLowerCase();
       orders = orders.filter((o) => (
-        o.skus.some((s) => (s.creator_username || '').toLowerCase() === target)
+        (o.creatorUsername || '').toLowerCase() === target
+        || o.skus.some((s) => (s.creator_username || '').toLowerCase() === target)
         || (o.rawOrder?.creator_username || '').toLowerCase() === target
       ));
     }
@@ -1788,9 +1851,14 @@ const LiveAnalytics = () => {
                       </td>
                     ) : null}
                     <td>
-                      <span className="code-pill">
-                        @{order.skus[0]?.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop')}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span className="code-pill">
+                          @{order.creatorUsername || order.skus[0]?.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop')}
+                        </span>
+                        <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
+                          {order.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 300 }}>

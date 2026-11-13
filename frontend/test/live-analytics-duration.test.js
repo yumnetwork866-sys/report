@@ -5,6 +5,8 @@ import {
   extractSessionComments,
   formatLiveDuration,
   formatTotalDuration,
+  isInternalLiveChannel,
+  resolveLiveSessionSource,
 } from '../src/components/liveAnalyticsUtils.js';
 
 test('calculateDurationSeconds calculates difference between start and end timestamps', () => {
@@ -55,4 +57,64 @@ test('extractSessionComments extracts total comments from performance or session
   assert.equal(extractSessionComments(null, { total_comments: '99' }), 99);
   assert.equal(extractSessionComments(null, null), null);
   assert.equal(extractSessionComments({}, {}), null);
+});
+
+test('isInternalLiveChannel recognizes official and marketing author types, internal channels, and shop slug match', () => {
+  assert.equal(isInternalLiveChannel({ authorType: 'OFFICIAL' }), true);
+  assert.equal(isInternalLiveChannel({ authorType: 'MARKETING' }), true);
+  assert.equal(isInternalLiveChannel({ authorType: 'AFFILIATE' }), false);
+
+  assert.equal(isInternalLiveChannel({
+    creatorUsername: 'yum.official',
+    internalChannelUsernames: new Set(['yum.official']),
+  }), true);
+
+  assert.equal(isInternalLiveChannel({
+    creatorUsername: 'aurabeauty',
+    avatarChannelUsername: 'aurabeauty',
+  }), true);
+
+  assert.equal(isInternalLiveChannel({
+    creatorUsername: 'aurabeauty',
+    shopName: 'Aura Beauty Official',
+  }), true);
+
+  assert.equal(isInternalLiveChannel({
+    creatorUsername: 'koc_ngoctrinh',
+    shopName: 'Aura Beauty Official',
+  }), false);
+});
+
+test('resolveLiveSessionSource returns false for shop internal and true for external KOC', () => {
+  // Official account is always internal (isExternal = false)
+  assert.equal(resolveLiveSessionSource({
+    creatorUsername: 'creator_1',
+    authorType: 'OFFICIAL',
+    totalCommission: 500,
+  }), false);
+
+  // Marketing account is internal (isExternal = false)
+  assert.equal(resolveLiveSessionSource({
+    creatorUsername: 'creator_2',
+    authorType: 'MARKETING',
+  }), false);
+
+  // Affiliate author type is external (isExternal = true)
+  assert.equal(resolveLiveSessionSource({
+    creatorUsername: 'koc_affiliate',
+    authorType: 'AFFILIATE',
+  }), true);
+
+  // Internal channel in system is internal (isExternal = false)
+  assert.equal(resolveLiveSessionSource({
+    creatorUsername: 'my.shop.channel',
+    internalChannelUsernames: ['my.shop.channel'],
+  }), false);
+
+  // Unknown creator with commission is external (isExternal = true)
+  assert.equal(resolveLiveSessionSource({
+    creatorUsername: 'unknown_koc',
+    shopName: 'My Brand',
+    totalCommission: 1000,
+  }), true);
 });

@@ -53,6 +53,15 @@ const mergeSessions = (sessionGroups = []) => {
     if (!existing.title && session.title) {
       merged.title = session.title;
     }
+    if (!existing.creator && session.creator) {
+      merged.creator = session.creator;
+    } else if (existing.creator && session.creator) {
+      merged.creator = {
+        ...session.creator,
+        ...existing.creator,
+        author_type: existing.creator.author_type || session.creator.author_type,
+      };
+    }
     if (!existing.interaction_performance && session.interaction_performance) {
       merged.interaction_performance = session.interaction_performance;
     } else if (existing.interaction_performance && session.interaction_performance) {
@@ -121,6 +130,8 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
         title,
         creator_username: session?.creator?.user_name || null,
         creator_nickname: session?.creator?.nick_name || null,
+        author_type: session?.creator?.author_type || session?.author_type || null,
+        creator_author_type: session?.creator?.author_type || session?.author_type || null,
         start_time: toEpochMs(session?.start_time),
         end_time: toEpochMs(session?.end_time),
         hashtags: extractHashtags(title),

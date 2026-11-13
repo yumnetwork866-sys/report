@@ -137,17 +137,19 @@ test('fetchShopLiveSessions queries all account types, paginates, and deduplicat
   assert.equal(sessions.find((session) => session.id === 'live-1').interaction_performance?.comments, 5);
 });
 
-test('buildLiveSessions extracts total_comments from interaction_performance or direct fields', async () => {
+test('buildLiveSessions extracts total_comments and author_type from creator or direct fields', async () => {
   const db = fakeDb([]);
   const lives = await buildLiveSessions([
     {
       id: 'live-comment-1',
       title: 'Live with interaction',
+      creator: { user_name: 'shop.official', nick_name: 'Official Shop', author_type: 'OFFICIAL' },
       interaction_performance: { comments: 534, comment_rate: '0.0047' },
     },
     {
       id: 'live-comment-2',
       title: 'Live with total_comments',
+      creator: { user_name: 'creator.koc', author_type: 'AFFILIATE' },
       total_comments: 89,
     },
     {
@@ -157,7 +159,10 @@ test('buildLiveSessions extracts total_comments from interaction_performance or 
   ], { db });
 
   assert.equal(lives[0].total_comments, 534);
+  assert.equal(lives[0].author_type, 'OFFICIAL');
   assert.equal(lives[0].interaction_performance?.comments, 534);
   assert.equal(lives[1].total_comments, 89);
+  assert.equal(lives[1].author_type, 'AFFILIATE');
   assert.equal(lives[2].total_comments, null);
+  assert.equal(lives[2].author_type, null);
 });

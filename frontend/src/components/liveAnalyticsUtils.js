@@ -49,6 +49,71 @@ export const resolveLiveSessionHost = (manualHost, autoHost) => {
   return { host: null, hostSource: null };
 };
 
+export const isInternalLiveChannel = ({
+  creatorUsername,
+  authorType,
+  shopName,
+  avatarChannelUsername,
+  internalChannelUsernames,
+} = {}) => {
+  const normType = String(authorType || '').trim().toUpperCase();
+  if (normType === 'OFFICIAL' || normType === 'MARKETING') return true;
+  if (normType === 'AFFILIATE') return false;
+
+  const username = String(creatorUsername || '').trim().toLowerCase().replace(/^@+/, '');
+  if (!username) return false;
+
+  const internalSet = internalChannelUsernames instanceof Set
+    ? internalChannelUsernames
+    : new Set(Array.isArray(internalChannelUsernames) ? internalChannelUsernames.map((u) => String(u || '').trim().toLowerCase().replace(/^@+/, '')) : []);
+
+  if (internalSet.has(username)) return true;
+
+  const avatar = String(avatarChannelUsername || '').trim().toLowerCase().replace(/^@+/, '');
+  if (avatar && avatar === username) return true;
+
+  const shopSlug = String(shopName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const creatorSlug = username.replace(/[^a-z0-9]/g, '');
+  if (creatorSlug && shopSlug) {
+    if (shopSlug.includes(creatorSlug) || creatorSlug.includes(shopSlug)) return true;
+  }
+
+  return false;
+};
+
+export const resolveLiveSessionSource = ({
+  creatorUsername,
+  authorType,
+  shopName,
+  avatarChannelUsername,
+  internalChannelUsernames,
+  totalCommission = 0,
+  commissionRate = 0,
+} = {}) => {
+  const isInternal = isInternalLiveChannel({
+    creatorUsername,
+    authorType,
+    shopName,
+    avatarChannelUsername,
+    internalChannelUsernames,
+  });
+  if (isInternal) return false; // false = Kênh Shop (not external)
+
+  const normType = String(authorType || '').trim().toUpperCase();
+  if (normType === 'AFFILIATE') return true; // true = KOC Ngoài
+
+  if (Number(totalCommission) > 0 || Number(commissionRate) > 0) return true;
+
+  const username = String(creatorUsername || '').trim().toLowerCase().replace(/^@+/, '');
+  const shopSlug = String(shopName || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const creatorSlug = username.replace(/[^a-z0-9]/g, '');
+  if (creatorSlug && shopSlug && !shopSlug.includes(creatorSlug) && !creatorSlug.includes(shopSlug)) {
+    return true;
+  }
+
+  return false;
+};
+
 export const calculateDurationSeconds = (firstTime, lastTime) => {
   if (!firstTime || !lastTime) return 0;
   const startMs = typeof firstTime === 'number' ? firstTime : Date.parse(firstTime);

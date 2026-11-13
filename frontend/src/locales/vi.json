@@ -1711,6 +1711,7 @@
     "colAvgGmvPerSession": "GMV TB/Phiên",
     "allChannels": "Tất cả kênh Live",
     "filterChannel": "Kênh Live",
+    "filterSource": "Nguồn phát LIVE",
     "allSources": "Tất cả nguồn live",
     "externalKoc": "Người ngoài live (KOC / Affiliate)",
     "shopInternal": "Kênh nội bộ Shop",

@@ -1712,6 +1712,7 @@
     "colAvgGmvPerSession": "Avg GMV/Session",
     "allChannels": "All Live Channels",
     "filterChannel": "Live Channel",
+    "filterSource": "LIVE Broadcast Source",
     "allSources": "All Live Sources",
     "externalKoc": "External KOCs (Affiliate)",
     "shopInternal": "Shop Channels",
