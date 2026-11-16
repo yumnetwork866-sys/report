@@ -1505,13 +1505,12 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
-                  <th className="cell-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1522,7 +1521,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1627,21 +1626,6 @@ const LiveAnalytics = () => {
                         ) : null}
                       </div>
                     </td>
-                    <td className="cell-actions">
-                      {canEditHost ? <button
-                        type="button"
-                        className="live-action-btn"
-                        disabled={!session.shopId || session.sessionId === 'unknown'}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setEditingSession(session);
-                        }}
-                        title={t('liveAnalytics.editHost')}
-                        aria-label={t('liveAnalytics.editHost')}
-                      >
-                        <Pencil size={15} />
-                      </button> : null}
-                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1731,12 +1715,7 @@ const LiveAnalytics = () => {
                             </div>
                           )}
                           <div className="live-host-meta">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span className="live-host-name">{ch.nickname || ch.username}</span>
-                              <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
-                                {ch.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
-                              </span>
-                            </div>
+                            <span className="live-host-name">{ch.nickname || ch.username}</span>
                             <span className="live-host-username">@{ch.username}</span>
                           </div>
                         </div>
@@ -1875,14 +1854,9 @@ const LiveAnalytics = () => {
                       </td>
                     ) : null}
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span className="code-pill">
-                          @{order.creatorUsername || order.skus[0]?.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop')}
-                        </span>
-                        <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
-                          {order.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
-                        </span>
-                      </div>
+                      <span className="code-pill">
+                        @{order.creatorUsername || order.skus[0]?.creator_username || (order.shopName ? order.shopName.toLowerCase().replace(/\s+/g, '.') : 'shop')}
+                      </span>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 300 }}>
@@ -2099,18 +2073,6 @@ const LiveSessionDrawer = ({
                     {t('liveAnalytics.unassignedHost')}
                   </span>
                 )}
-                {session.hostSource === 'auto_hashtag' ? (
-                  <span
-                    className="chip chip--neutral"
-                    style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
-                    title={t('liveAnalytics.autoHostTitle')}
-                  >
-                    {t('liveAnalytics.autoHost')}
-                  </span>
-                ) : null}
-                <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
-                  {session.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
-                </span>
               </div>
               {canEditHost && session.sessionId !== 'unknown' ? (
                 <button
