@@ -490,7 +490,7 @@
 .live-drawer {
   position: relative;
   width: 100%;
-  max-width: 580px;
+  max-width: 720px;
   height: 100%;
   max-height: 100vh;
   background: var(--color-surface);

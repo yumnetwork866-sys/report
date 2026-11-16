@@ -2148,38 +2148,40 @@ const LiveSessionDrawer = ({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
-              <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', rowGap: 14, columnGap: 24, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colSessionId')}:</span>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{session.sessionId}</p>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)', wordBreak: 'break-all', fontFamily: 'monospace' }}>
+                  {session.sessionId}
+                </p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.sessionStartTime')}:</span>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)', whiteSpace: 'nowrap' }}>
                   {session.firstTime ? formatDisplayDateTime(session.firstTime, '—') : '—'}
                 </p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colDuration')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-primary)' }}>
                   {formatLiveDuration(session.firstTime, session.lastTime, language, session.durationSec, session.orderCount)}
                 </p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
                 <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
                   {formatMoney(session.totalGmv, session.currency)}
                 </p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.orderCount)}</p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.totalQuantity)}</p>
               </div>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colComments')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
                   {session.totalComments !== null && session.totalComments !== undefined ? formatNumber(session.totalComments) : '—'}
