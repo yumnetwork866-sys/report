@@ -1,4 +1,4 @@
-const up = async ({ sequelize: directSequelize, context, transaction }) => {
+const up = async ({ sequelize: directSequelize, context }) => {
   const sequelize = directSequelize || context;
   await sequelize.query(`
     INSERT INTO scheduled_jobs (job_key, name, description, enabled, timezone, run_times, created_at, updated_at)

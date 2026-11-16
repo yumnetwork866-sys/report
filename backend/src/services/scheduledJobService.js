@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { runResumableCompassSync } = require('./tiktokCompassSyncService');
 const { withRunMonitor, withMonitorContext, recordRunEvent } = require('./scheduledRunMonitorService');
+const { isTransientNetworkError } = require('../lib/networkUtils');
 const cron = require('node-cron');
 const { Op } = require('sequelize');
 const {
@@ -219,38 +220,63 @@ const runForShops = async (operation, signal, targetShopId = null, { shopDelayMs
       await sleep(shopDelayMs);
       throwIfAborted(signal);
     }
-    try {
-      if (jobKey) {
-        const matchingAuth = resolveShopAuthorization(shop, { jobKey });
-        if (matchingAuth) {
-          if (JOB_SCOPE_MAPPINGS[jobKey]?.capability === 'orders') {
-            shop.orderAuthorization = matchingAuth;
-          } else {
-            shop.authorization = matchingAuth;
+    const maxShopAttempts = 2;
+    let shopSucceeded = false;
+    let lastShopError = null;
+    for (let shopAttempt = 0; shopAttempt < maxShopAttempts; shopAttempt += 1) {
+      throwIfAborted(signal);
+      if (shopAttempt > 0) {
+        const retryDelay = process.env.NODE_ENV === 'test' ? 10 : 3000;
+        console.warn(`[Schedule Manager] Retrying shop ${shop.name} (#${shop.id}) after network error in ${retryDelay}ms...`);
+        await sleep(retryDelay);
+        throwIfAborted(signal);
+      }
+      try {
+        if (jobKey) {
+          const matchingAuth = resolveShopAuthorization(shop, { jobKey });
+          if (matchingAuth) {
+            if (JOB_SCOPE_MAPPINGS[jobKey]?.capability === 'orders') {
+              shop.orderAuthorization = matchingAuth;
+            } else {
+              shop.authorization = matchingAuth;
+            }
           }
         }
-      }
-      results.push({
-        shop_id: shop.id,
-        shop_name: shop.name,
-        shop_code: shop.code,
-        status: 'SUCCEEDED',
-        ...(await withMonitorContext({ shop_id: shop.id, shop_name: shop.name }, async () => {
+        const shopResult = await withMonitorContext({ shop_id: shop.id, shop_name: shop.name }, async () => {
           await recordRunEvent('SHOP_STARTED', { status: 'PROCESSING' });
           const result = await operation(shop);
           await recordRunEvent('SHOP_FINISHED', { status: 'SUCCEEDED' });
           return result;
-        })),
-      });
-    } catch (error) {
-      if (signal?.aborted || error.name === 'AbortError') throw error;
+        });
+        results.push({
+          shop_id: shop.id,
+          shop_name: shop.name,
+          shop_code: shop.code,
+          status: 'SUCCEEDED',
+          ...shopResult,
+        });
+        shopSucceeded = true;
+        break;
+      } catch (error) {
+        if (signal?.aborted || error.name === 'AbortError') throw error;
+        lastShopError = error;
+        if (!isTransientNetworkError(error)) {
+          break;
+        }
+      }
+    }
+    if (!shopSucceeded && lastShopError) {
       results.push({
         shop_id: shop.id,
         shop_name: shop.name,
         shop_code: shop.code,
         status: 'FAILED',
-        error: error.message,
+        error: lastShopError.message,
       });
+      if (isTransientNetworkError(lastShopError) && index < shops.length - 1) {
+        const interShopDelay = process.env.NODE_ENV === 'test' ? 10 : 3000;
+        await sleep(interShopDelay);
+      }
     }
   }
   const summary = {
@@ -1075,4 +1101,5 @@ module.exports = {
   resolveCreatorPerformanceEndDayOffset,
   cleanupOldScheduledRunEvents,
   DEFAULT_RUN_EVENTS_RETENTION_DAYS,
+  runForShops,
 };

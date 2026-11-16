@@ -304,6 +304,32 @@ test('shop API errors retain HTTP and Retry-After diagnostics', async (t) => {
   assert.equal(parseRetryAfterMs('120'), 120000);
 });
 
+test('requestShopApi retries transient network errors and succeeds when connection recovers', async (t) => {
+  configure(t);
+  let attempts = 0;
+  const payload = await requestShopApi({
+    path: '/product/202502/products/search',
+    accessToken: 'seller-token',
+    method: 'POST',
+    fetchImpl: async () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const netErr = new TypeError('fetch failed');
+        netErr.cause = { code: 'ENOTFOUND' };
+        throw netErr;
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => ({ code: 0, message: 'Success', data: { products: [] } }),
+      };
+    },
+  });
+  assert.equal(attempts, 3);
+  assert.deepEqual(payload.data.products, []);
+});
+
 test('authorized shops request uses the seller token and returns the shop list', async (t) => {
   configure(t);
   const shops = await getAuthorizedShops('seller-token', async (url, options) => {

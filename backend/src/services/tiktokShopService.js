@@ -3,6 +3,7 @@ const { monitoredFetch } = require('./scheduledRunMonitorService');
 const { runCompassApiRequest, CREATE_ENDPOINT, LIST_ENDPOINT, DOWNLOAD_ENDPOINT } = require('./tiktokCompassRequestService');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 const { getAppCredentials, getCandidateSecrets } = require('./tiktokAppService');
+const { isTransientNetworkError, networkRetryDelayMs } = require('../lib/networkUtils');
 
 const STATE_TTL_MS = 10 * 60 * 1000;
 const TOKEN_SKEW_MS = 5 * 60 * 1000;
@@ -327,57 +328,72 @@ const requestShopApi = async ({
   const credentials = resolveAppCredentials(appType, config, { region, appId });
   const appKey = explicitAppKey || credentials.appKey;
   const appSecret = explicitAppSecret || credentials.appSecret;
-  const signed = { ...query, app_key: appKey, timestamp: Math.floor(Date.now() / 1000) };
-  const bodyString = body && Object.keys(body).length ? JSON.stringify(body) : '';
-  signed.sign = signature({ path, query: signed, body: bodyString, appSecret });
-  const url = new URL(`${config.apiBaseUrl}${path}`);
-  Object.entries(signed).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value)); });
-  let response;
-  let requestSignal = signal;
-  if (typeof AbortSignal !== 'undefined') {
-    if (signal && AbortSignal.any && AbortSignal.timeout) {
-      requestSignal = AbortSignal.any([signal, AbortSignal.timeout(config.requestTimeoutMs)]);
-    } else if (!signal && AbortSignal.timeout) {
-      requestSignal = AbortSignal.timeout(config.requestTimeoutMs);
+
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    if (signal?.aborted) {
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
     }
+    const signed = { ...query, app_key: appKey, timestamp: Math.floor(Date.now() / 1000) };
+    const bodyString = body && Object.keys(body).length ? JSON.stringify(body) : '';
+    signed.sign = signature({ path, query: signed, body: bodyString, appSecret });
+    const url = new URL(`${config.apiBaseUrl}${path}`);
+    Object.entries(signed).forEach(([key, value]) => { if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value)); });
+    let response;
+    let requestSignal = signal;
+    if (typeof AbortSignal !== 'undefined') {
+      if (signal && AbortSignal.any && AbortSignal.timeout) {
+        requestSignal = AbortSignal.any([signal, AbortSignal.timeout(config.requestTimeoutMs)]);
+      } else if (!signal && AbortSignal.timeout) {
+        requestSignal = AbortSignal.timeout(config.requestTimeoutMs);
+      }
+    }
+    try {
+      response = await monitoredFetch(url, {
+        method,
+        headers: { 'content-type': contentType, 'x-tts-access-token': accessToken },
+        ...(bodyString ? { body: bodyString } : {}),
+        ...(requestSignal ? { signal: requestSignal } : {}),
+      }, fetchImpl);
+    } catch (error) {
+      if (error.name === 'AbortError' || signal?.aborted) throw error;
+      error.endpoint = path;
+      error.httpMethod = method;
+      error.requestOutcomeUnknown = true;
+      if (isTransientNetworkError(error) && attempt < maxRetries) {
+        const delay = networkRetryDelayMs(attempt);
+        console.warn(`[TikTok Shop API] Network error on ${method} ${path}: ${error.message}. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || Number(payload?.code) !== 0) {
+      const retryAfter = response.headers?.get?.('retry-after') || null;
+      const details = [
+        payload?.message || response.statusText || response.status,
+        response.status ? `http_status=${response.status}` : null,
+        `endpoint=${method} ${path}`,
+        retryAfter ? `retry_after=${retryAfter}` : null,
+        payload?.code !== undefined ? `code=${payload.code}` : null,
+        payload?.request_id ? `request_id=${payload.request_id}` : null,
+      ].filter(Boolean).join(', ');
+      const error = new Error(`TikTok Shop API error: ${details}`);
+      error.tiktokCode = payload?.code ?? null;
+      error.requestId = payload?.request_id || null;
+      error.httpStatus = Number(response.status) || null;
+      error.endpoint = path;
+      error.httpMethod = method;
+      error.retryAfter = retryAfter;
+      error.retryAfterMs = parseRetryAfterMs(retryAfter);
+      error.requestOutcomeUnknown = response.status >= 500 || (response.ok && !payload);
+      throw error;
+    }
+    return payload;
   }
-  try {
-    response = await monitoredFetch(url, {
-      method,
-      headers: { 'content-type': contentType, 'x-tts-access-token': accessToken },
-      ...(bodyString ? { body: bodyString } : {}),
-      ...(requestSignal ? { signal: requestSignal } : {}),
-    }, fetchImpl);
-  } catch (error) {
-    if (error.name === 'AbortError' || signal?.aborted) throw error;
-    error.endpoint = path;
-    error.httpMethod = method;
-    error.requestOutcomeUnknown = true;
-    throw error;
-  }
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || Number(payload?.code) !== 0) {
-    const retryAfter = response.headers?.get?.('retry-after') || null;
-    const details = [
-      payload?.message || response.statusText || response.status,
-      response.status ? `http_status=${response.status}` : null,
-      `endpoint=${method} ${path}`,
-      retryAfter ? `retry_after=${retryAfter}` : null,
-      payload?.code !== undefined ? `code=${payload.code}` : null,
-      payload?.request_id ? `request_id=${payload.request_id}` : null,
-    ].filter(Boolean).join(', ');
-    const error = new Error(`TikTok Shop API error: ${details}`);
-    error.tiktokCode = payload?.code ?? null;
-    error.requestId = payload?.request_id || null;
-    error.httpStatus = Number(response.status) || null;
-    error.endpoint = path;
-    error.httpMethod = method;
-    error.retryAfter = retryAfter;
-    error.retryAfterMs = parseRetryAfterMs(retryAfter);
-    error.requestOutcomeUnknown = response.status >= 500 || (response.ok && !payload);
-    throw error;
-  }
-  return payload;
 };
 
 const sumBreakdownMetric = (breakdowns, key) => (Array.isArray(breakdowns) ? breakdowns : [])
@@ -1314,4 +1330,5 @@ module.exports = {
   listCompassExportTasks,
   downloadCompassExportFile,
   getOrderTracking,
+  isTransientNetworkError,
 };

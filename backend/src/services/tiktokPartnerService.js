@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { monitoredFetch } = require('./scheduledRunMonitorService');
 const { encryptPartnerToken, decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
+const { isTransientNetworkError, networkRetryDelayMs } = require('../lib/networkUtils');
 
 const DEFAULT_API_BASE_URL = 'https://open-api.tiktokglobalshop.com';
 const DEFAULT_AUTHORIZE_URL = 'https://shop.tiktok.com/alliance/creator/auth';
@@ -174,22 +175,36 @@ const generateSignature = ({ path, query, body, appSecret }) => {
 const requestTikTokPartner = async ({ path, method = 'GET', query = {}, body, accessToken, fetchImpl = fetch }) => {
   const config = getConfig();
   assertAppConfigured(config);
-  const signedQuery = { ...query, app_key: config.appKey, timestamp: Math.floor(Date.now() / 1000) };
-  signedQuery.sign = generateSignature({ path, query: signedQuery, body, appSecret: config.appSecret });
-  const url = new URL(`${config.apiBaseUrl}${path}`);
-  for (const [key, value] of Object.entries(signedQuery)) {
-    if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+  const maxRetries = 3;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const signedQuery = { ...query, app_key: config.appKey, timestamp: Math.floor(Date.now() / 1000) };
+    signedQuery.sign = generateSignature({ path, query: signedQuery, body, appSecret: config.appSecret });
+    const url = new URL(`${config.apiBaseUrl}${path}`);
+    for (const [key, value] of Object.entries(signedQuery)) {
+      if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
+    }
+    let response;
+    try {
+      response = await monitoredFetch(url, {
+        method,
+        headers: { 'content-type': 'application/json', 'x-tts-access-token': accessToken },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      }, fetchImpl);
+    } catch (error) {
+      if (isTransientNetworkError(error) && attempt < maxRetries) {
+        const delay = networkRetryDelayMs(attempt);
+        console.warn(`[TikTok Partner API] Network error on ${method} ${path}: ${error.message}. Retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload || Number(payload.code) !== 0) {
+      throw new Error(`TikTok Partner API error: ${payload?.message || response.statusText || `HTTP ${response.status}`}`);
+    }
+    return payload;
   }
-  const response = await monitoredFetch(url, {
-    method,
-    headers: { 'content-type': 'application/json', 'x-tts-access-token': accessToken },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  }, fetchImpl);
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload || Number(payload.code) !== 0) {
-    throw new Error(`TikTok Partner API error: ${payload?.message || response.statusText || `HTTP ${response.status}`}`);
-  }
-  return payload;
 };
 
 const searchTargetCollaborations = async ({ authorization, accessToken, shopId, pageToken, pageSize, keyword } = {}, dependencies = {}) => {
