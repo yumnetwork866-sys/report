@@ -811,6 +811,300 @@ const getBookings = async (req, res) => {
   }
 };
 
+const exportBookingOrders = async (req, res) => {
+  try {
+    const startDate = String(req.query?.start_date || '').trim();
+    const endDate = String(req.query?.end_date || '').trim();
+    const requestedMonth = String(req.query?.month || '').trim();
+    const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
+    const requestedOpenId = String(req.query?.creator_open_id || '').trim();
+    const requestedStaffId = req.query?.staff_id ? Number(req.query.staff_id) : null;
+    const format = String(req.query?.format || 'csv').trim().toLowerCase();
+
+    const session = req.session;
+    const canViewAllUsers = session?.role === 'admin'
+      || (Array.isArray(session?.permissions) && (
+        session.permissions.includes('users.view') || session.permissions.includes('shop.bookings.manage')
+      ));
+
+    const effectiveStaffId = canViewAllUsers
+      ? (Number.isInteger(requestedStaffId) && requestedStaffId > 0 ? requestedStaffId : null)
+      : (session?.sub ? Number(session.sub) : null);
+
+    let creatorWhere = {};
+    if (requestedOpenId) {
+      creatorWhere = { creator_open_id: requestedOpenId };
+    } else if (requestedUsername) {
+      creatorWhere = { creator_username: { [Op.iLike]: requestedUsername } };
+    }
+    const staffWhere = Number.isInteger(effectiveStaffId) && effectiveStaffId > 0
+      ? { staff_id: effectiveStaffId }
+      : {};
+
+    let monthWhere = {};
+    if (requestedMonth === 'custom' && startDate && endDate && parseDateOnly(startDate) && parseDateOnly(endDate)) {
+      const rangeStart = startDate <= endDate ? startDate : endDate;
+      const rangeEnd = startDate <= endDate ? endDate : startDate;
+      monthWhere = {
+        [Op.or]: [
+          { start_date: { [Op.between]: [rangeStart, rangeEnd] } },
+          {
+            start_date: null,
+            created_at: { [Op.between]: [`${rangeStart}T00:00:00.000Z`, `${rangeEnd}T23:59:59.999Z`] },
+          },
+          creatorVideoActivityInRange(rangeStart, rangeEnd),
+        ],
+      };
+    } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+      const monthStart = `${requestedMonth}-01`;
+      const [y, m] = requestedMonth.split('-').map(Number);
+      const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      const monthEnd = `${requestedMonth}-${String(lastDay).padStart(2, '0')}`;
+      monthWhere = {
+        [Op.or]: [
+          { start_date: { [Op.between]: [monthStart, monthEnd] } },
+          {
+            start_date: null,
+            created_at: { [Op.between]: [`${monthStart}T00:00:00.000Z`, `${monthEnd}T23:59:59.999Z`] },
+          },
+          creatorVideoActivityInRange(monthStart, monthEnd),
+        ],
+      };
+    }
+
+    const bookings = await bookingRepository.findBookings({
+      where: {
+        evaluation_snapshot: { [Op.not]: null },
+        ...monthWhere,
+        ...creatorWhere,
+        ...staffWhere,
+      },
+      order: [['created_at', 'DESC'], ['id', 'DESC']],
+    });
+
+    const videoMap = new Map();
+    for (const booking of bookings) {
+      const videos = booking.booking_videos || booking.get?.('booking_videos') || [];
+      const staff = booking.staff || booking.get?.('staff') || null;
+      const targetShop = booking.target_shop || booking.get?.('target_shop') || null;
+
+      for (const video of videos) {
+        const platformVideoId = String(video.platform_video_id || video.id || '').trim();
+        if (!platformVideoId) continue;
+        videoMap.set(platformVideoId, {
+          bookingId: booking.id,
+          staffName: staff?.name || booking.staff_name || '',
+          staffEmail: staff?.email || '',
+          creatorName: booking.creator_name || '',
+          creatorUsername: String(booking.creator_username || '').replace(/^@+/, ''),
+          shopName: targetShop?.name || '',
+          currency: booking.currency || 'MYR',
+          videoTitle: video.title || video.item_title || '',
+          videoPostedAt: video.posted_at || null,
+        });
+      }
+    }
+
+    const videoIds = [...videoMap.keys()];
+    let orderRows = [];
+
+    if (videoIds.length > 0) {
+      const { sequelize } = require('../../models');
+      const skus = await sequelize.query(`
+        SELECT 
+          sku.order_id,
+          o.create_time AS order_time,
+          sku.content_id AS video_id,
+          sku.creator_username,
+          sku.product_id,
+          sku.product_name,
+          sku.sku_id,
+          sku.quantity,
+          sku.refunded_quantity,
+          sku.price,
+          sku.currency,
+          sku.settlement_status,
+          sku.raw_data AS sku_raw_data,
+          o.raw_data AS order_raw_data,
+          ts.name AS shop_name
+        FROM tiktok_affiliate_order_skus sku
+        JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
+        LEFT JOIN tiktok_shops ts ON ts.id = sku.shop_id
+        WHERE sku.content_id IN (:videoIds)
+          AND UPPER(sku.content_type) = 'VIDEO'
+        ORDER BY o.create_time DESC
+      `, {
+        replacements: { videoIds },
+        type: QueryTypes.SELECT,
+      });
+
+      orderRows = skus;
+    }
+
+    if (format === 'json') {
+      return res.json({
+        ok: true,
+        count: orderRows.length,
+        orders: orderRows.map((row) => {
+          const meta = videoMap.get(String(row.video_id)) || {};
+          const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
+          const videoUrl = cleanCreator && row.video_id
+            ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
+            : '';
+          const rawPrice = Number(row.price || 0);
+          const rawQty = Number(row.quantity || 0);
+          const rawRefundQty = Number(row.refunded_quantity || 0);
+          const gmv = rawPrice * rawQty;
+          const rawCommRate = Number(row.sku_raw_data?.creator_commission_rate || row.sku_raw_data?.commission_rate || 0);
+          const commRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
+          const commission = row.sku_raw_data?.commission_amount !== undefined
+            ? Number(row.sku_raw_data.commission_amount)
+            : (row.sku_raw_data?.estimated_commission !== undefined
+              ? Number(row.sku_raw_data.estimated_commission)
+              : (rawPrice * Math.max(0, rawQty - rawRefundQty) * commRate));
+
+          const rawStatus = String(row.order_raw_data?.order_status || row.sku_raw_data?.item_status || 'COMPLETED').toUpperCase();
+
+          return {
+            orderId: row.order_id || '',
+            orderTime: row.order_time,
+            staffName: meta.staffName || '',
+            staffEmail: meta.staffEmail || '',
+            bookingId: meta.bookingId || '',
+            creatorName: meta.creatorName || '',
+            creatorUsername: cleanCreator ? `@${cleanCreator}` : '',
+            videoId: row.video_id || '',
+            videoTitle: meta.videoTitle || '',
+            videoUrl,
+            productId: row.product_id || '',
+            productName: row.product_name || '',
+            skuName: row.sku_raw_data?.sku_name || row.sku_id || '',
+            quantity: rawQty,
+            refundedQuantity: rawRefundQty,
+            price: rawPrice,
+            gmv,
+            commission,
+            orderStatus: rawStatus,
+            settlementStatus: row.settlement_status || '',
+            shopName: row.shop_name || meta.shopName || '',
+            currency: row.currency || meta.currency || 'MYR',
+          };
+        }),
+      });
+    }
+
+    const escapeCell = (val) => {
+      if (val === null || val === undefined) return '""';
+      const str = String(val).replace(/"/g, '""');
+      return `"${str}"`;
+    };
+
+    const ORDER_STATUS_MAP = {
+      COMPLETED: 'Hoàn thành',
+      DELIVERED: 'Đã giao',
+      SHIPPED: 'Đang giao',
+      IN_TRANSIT: 'Đang vận chuyển',
+      AWAITING_SHIPMENT: 'Chờ giao hàng',
+      AWAITING_COLLECTION: 'Chờ lấy hàng',
+      PARTIALLY_SHIPPING: 'Giao một phần',
+      UNPAID: 'Chưa thanh toán',
+      ON_HOLD: 'Tạm giữ',
+    };
+
+    const headers = [
+      'Mã đơn hàng',
+      'Thời gian đặt',
+      'Nhân sự phụ trách',
+      'Email nhân sự',
+      'Mã Booking',
+      'Tên KOC',
+      'TikTok KOC',
+      'Mã Video TikTok',
+      'Tiêu đề Video',
+      'Link Video TikTok',
+      'Mã sản phẩm',
+      'Tên sản phẩm',
+      'Phân loại (SKU)',
+      'Số lượng đặt',
+      'Số lượng hoàn hủy',
+      'Đơn giá',
+      'Thành tiền (GMV)',
+      'Hoa hồng ước tính',
+      'Trạng thái đơn hàng',
+      'Trạng thái quyết toán',
+      'Shop',
+      'Tiền tệ',
+    ];
+
+    const lines = orderRows.map((row) => {
+      const meta = videoMap.get(String(row.video_id)) || {};
+      const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
+      const videoUrl = cleanCreator && row.video_id
+        ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
+        : '';
+      const rawPrice = Number(row.price || 0);
+      const rawQty = Number(row.quantity || 0);
+      const rawRefundQty = Number(row.refunded_quantity || 0);
+      const gmv = rawPrice * rawQty;
+
+      const rawCommRate = Number(row.sku_raw_data?.creator_commission_rate || row.sku_raw_data?.commission_rate || 0);
+      const commRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
+      const commission = row.sku_raw_data?.commission_amount !== undefined
+        ? Number(row.sku_raw_data.commission_amount)
+        : (row.sku_raw_data?.estimated_commission !== undefined
+          ? Number(row.sku_raw_data.estimated_commission)
+          : (rawPrice * Math.max(0, rawQty - rawRefundQty) * commRate));
+
+      const rawStatus = String(row.order_raw_data?.order_status || row.sku_raw_data?.item_status || 'COMPLETED').toUpperCase();
+      const statusLabel = ORDER_STATUS_MAP[rawStatus] ? `${ORDER_STATUS_MAP[rawStatus]} (${rawStatus})` : rawStatus;
+
+      let formattedDate = '';
+      if (row.order_time) {
+        const d = new Date(row.order_time);
+        formattedDate = !Number.isNaN(d.getTime())
+          ? d.toISOString().replace('T', ' ').slice(0, 19)
+          : String(row.order_time);
+      }
+
+      return [
+        row.order_id || '',
+        formattedDate,
+        meta.staffName || '',
+        meta.staffEmail || '',
+        meta.bookingId || '',
+        meta.creatorName || '',
+        cleanCreator ? `@${cleanCreator}` : '',
+        row.video_id || '',
+        meta.videoTitle || '',
+        videoUrl,
+        row.product_id || '',
+        row.product_name || '',
+        row.sku_raw_data?.sku_name || row.sku_id || '',
+        rawQty,
+        rawRefundQty,
+        rawPrice,
+        gmv,
+        commission ? Number(commission.toFixed(2)) : 0,
+        statusLabel,
+        row.settlement_status || '',
+        row.shop_name || meta.shopName || '',
+        row.currency || meta.currency || 'MYR',
+      ].map(escapeCell).join(',');
+    });
+
+    const csvContent = '\uFEFF' + [headers.map(escapeCell).join(','), ...lines].join('\r\n');
+    const periodLabel = requestedMonth && requestedMonth !== 'all' ? requestedMonth : (startDate && endDate ? `${startDate}_${endDate}` : 'all');
+    const filename = `don_hang_booking_${periodLabel}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return res.send(csvContent);
+  } catch (error) {
+    console.error('Failed to export booking orders:', error);
+    return res.status(500).json({ message: 'Không thể xuất danh sách đơn hàng booking', error: error.message });
+  }
+};
+
 const getBookingProductPerformance = async (req, res) => {
   try {
     res.json(await bookingPerformanceService.getBookingProductPerformance(req.query, {
@@ -1206,6 +1500,7 @@ const disconnectTikTokPartner = async (req, res) => {
 
 const service = {
   getBookings,
+  exportBookingOrders,
   getBookingById,
   getBookingProductPerformance,
   createBooking,

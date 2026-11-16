@@ -20,8 +20,10 @@ const {
   disconnectTikTokPartner,
   getTikTokPartnerCreatorOverview,
   getBookingProductPerformance,
+  exportBookingOrders,
 } = require('../controllers/bookingController');
 router.get('/', requireAnyPermission(['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view']), validateQuery(bookingListQuerySchema), getBookings);
+router.get('/export-orders', requireAnyPermission(['shop.bookings.video.view', 'shop.bookings.product_performance.view', 'shop.bookings.by_product.view']), validateQuery(bookingListQuerySchema), exportBookingOrders);
 router.get('/product-performance', requirePermission('shop.bookings.product_performance.view'), validateQuery(bookingListQuerySchema), getBookingProductPerformance);
 router.post('/product-performance', requirePermission('shop.bookings.product_performance.view'), validateQuery(bookingListQuerySchema), validateBody(bookingProductPerformanceFilterSchema), getBookingProductPerformance);
 router.get('/target-kocs', getTargetKocs);

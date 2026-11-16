@@ -1,4 +1,5 @@
 import React from 'react';
+import { Download } from 'lucide-react';
 import DatePickerInput from '../DatePickerInput';
 import BookingStaffSelect from './BookingStaffSelect';
 
@@ -15,6 +16,8 @@ const BookingListControls = ({
   monthOptions,
   customRange,
   onCustomRangeChange,
+  onExportOrders,
+  isExportingOrders,
   t,
 }) => (
   <div className="section-card__header booking-evaluation-list-header">
@@ -85,6 +88,21 @@ const BookingListControls = ({
             />
           </div>
         </>
+      ) : null}
+      {onExportOrders ? (
+        <div className="field booking-export-field">
+          <label style={{ visibility: 'hidden' }} aria-hidden="true">Export</label>
+          <button
+            type="button"
+            className="button button--secondary booking-export-orders-btn"
+            onClick={onExportOrders}
+            disabled={isExportingOrders}
+            title={t('booking.exportOrdersTooltip', { defaultValue: 'Xuất chi tiết toàn bộ đơn hàng video trong kỳ ra CSV (Excel)' })}
+          >
+            <Download size={14} />
+            <span>{isExportingOrders ? (t('booking.exportingOrders') || 'Đang xuất…') : (t('booking.exportOrders') || 'Xuất CSV đơn hàng')}</span>
+          </button>
+        </div>
       ) : null}
     </div>
   </div>

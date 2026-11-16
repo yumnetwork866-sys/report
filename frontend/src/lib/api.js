@@ -143,6 +143,56 @@ export function fetchBookings(signal, {
   return apiRequest(`/bookings${query ? `?${query}` : ''}`, { signal });
 }
 
+export async function downloadBookingOrdersCsv({
+  month,
+  startDate,
+  endDate,
+  staffId,
+  signal,
+} = {}) {
+  const sessionToken = getStoredSession()?.token || null;
+  const params = new URLSearchParams();
+  if (month && month !== 'all') params.set('month', month);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (staffId) params.set('staff_id', String(staffId));
+  params.set('format', 'csv');
+
+  const query = params.toString();
+  const url = `${API_BASE_URL}/bookings/export-orders${query ? `?${query}` : ''}`;
+  const response = await fetch(url, {
+    headers: {
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    let msg = `Tải file thất bại (${response.status})`;
+    try {
+      const err = await response.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const periodLabel = month && month !== 'all' ? month : (startDate && endDate ? `${startDate}_${endDate}` : 'all');
+  const filename = match ? match[1] : `don_hang_booking_${periodLabel}.csv`;
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(downloadUrl);
+  return true;
+}
+
 export function fetchBookingById(bookingId, signal) {
   return apiRequest(`/bookings/${encodeURIComponent(bookingId)}`, { signal });
 }

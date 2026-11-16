@@ -3,6 +3,11 @@ const sendServiceResult = (res, result = {}) => {
     res.setHeader(name, value);
   }
   if (result.redirect) return res.redirect(result.redirect);
+  const status = result.status || 200;
+  const contentType = String(result.headers?.['Content-Type'] || result.headers?.['content-type'] || '');
+  if ((typeof result.body === 'string' || Buffer.isBuffer(result.body)) && contentType.includes('text/')) {
+    return res.status(status).send(result.body);
+  }
   if (!result.status || result.status === 200) return res.json(result.body);
   return res.status(result.status).json(result.body);
 };

@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { Download } from 'lucide-react';
 import { fetchTikTokShopVideoThumbnail, fetchTikTokSellerAffiliateOrders } from '../../lib/api';
 import { cachedThumbnail, thumbnailFrom } from '../../lib/bookingVideoThumbnails';
 import { formatDateOnly } from '../../lib/date';
+import { exportBookingModalOrdersToCsv } from '../../lib/bookingExport';
 import {
   bookingProductsOf,
   extractProductOrderRows,
@@ -415,13 +417,25 @@ const BookingProductOrderDetailModal = ({
                 </button>
               </div>
             ) : <div />}
-            <input
-              type="search"
-              className="booking-product-order-modal__search"
-              placeholder={product ? 'Tìm mã đơn, phân loại...' : 'Tìm mã đơn, sản phẩm, phân loại...'}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+            <div className="booking-product-order-modal__filter-actions">
+              <input
+                type="search"
+                className="booking-product-order-modal__search"
+                placeholder={product ? 'Tìm mã đơn, phân loại...' : 'Tìm mã đơn, sản phẩm, phân loại...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+              <button
+                type="button"
+                className="button button--secondary button--compact booking-order-export-btn"
+                onClick={() => exportBookingModalOrdersToCsv(filteredRows, { booking, video, product })}
+                disabled={!filteredRows.length}
+                title="Xuất danh sách đơn hàng ra file CSV (Excel)"
+              >
+                <Download size={14} />
+                <span>Xuất CSV ({filteredRows.length})</span>
+              </button>
+            </div>
           </div>
 
           {isEffectiveLoading ? (

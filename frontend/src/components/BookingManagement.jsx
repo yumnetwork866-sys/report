@@ -8,6 +8,7 @@ import {
   fetchBookingTargetKocs,
   fetchBookingProductPerformance,
   fetchBookings,
+  downloadBookingOrdersCsv,
   fetchTikTokSellerOpenCollaborations,
   fetchTikTokShops,
   fetchUser,
@@ -171,7 +172,29 @@ const BookingManagement = ({
   ));
   const [productPerformanceError, setProductPerformanceError] = useState('');
   const [error, setError] = useState('');
+  const [isExportingOrders, setIsExportingOrders] = useState(false);
   const productOrdersByShop = emptyProductOrdersByShop;
+
+  const handleExportOrders = useCallback(async () => {
+    try {
+      setIsExportingOrders(true);
+      setError('');
+      const staffId = selectedManagerKey && selectedManagerKey.startsWith('id:')
+        ? selectedManagerKey.slice(3)
+        : undefined;
+
+      await downloadBookingOrdersCsv({
+        month: selectedMonth === 'custom' ? undefined : selectedMonth,
+        startDate: selectedMonth === 'custom' ? customRange.start : undefined,
+        endDate: selectedMonth === 'custom' ? customRange.end : undefined,
+        staffId,
+      });
+    } catch (err) {
+      setError(err.message || 'Không thể xuất danh sách đơn hàng');
+    } finally {
+      setIsExportingOrders(false);
+    }
+  }, [customRange.end, customRange.start, selectedManagerKey, selectedMonth]);
 
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
@@ -1086,6 +1109,8 @@ const BookingManagement = ({
           monthOptions={monthOptions}
           customRange={customRange}
           onCustomRangeChange={setCustomRange}
+          onExportOrders={handleExportOrders}
+          isExportingOrders={isExportingOrders}
           t={t}
         />
         {productPerformanceError && bookingTab === 'product' ? <p className="form-error" role="alert">{productPerformanceError}</p> : null}

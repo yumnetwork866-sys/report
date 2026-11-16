@@ -9,6 +9,10 @@ const captureServiceResult = async (handler, request) => {
       result.body = body;
       return result;
     },
+    send(body) {
+      result.body = body;
+      return result;
+    },
     setHeader(name, value) {
       result.headers[name] = value;
       return response;

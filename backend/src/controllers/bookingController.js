@@ -3,6 +3,7 @@ const { endpoint } = require('./controllerAdapter');
 
 module.exports = {
   getBookings: endpoint(bookingService, 'getBookings'),
+  exportBookingOrders: endpoint(bookingService, 'exportBookingOrders'),
   getBookingById: endpoint(bookingService, 'getBookingById'),
   getBookingProductPerformance: endpoint(bookingService, 'getBookingProductPerformance'),
   createBooking: endpoint(bookingService, 'createBooking'),
