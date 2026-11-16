@@ -147,23 +147,46 @@ export async function downloadBookingOrdersCsv({
   month,
   startDate,
   endDate,
+  startTime,
+  endTime,
   staffId,
+  videoIds,
   signal,
 } = {}) {
   const sessionToken = getStoredSession()?.token || null;
+  const hasVideoIds = Array.isArray(videoIds);
+  const method = hasVideoIds ? 'POST' : 'GET';
+  const headers = {
+    ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    ...(hasVideoIds ? { 'Content-Type': 'application/json' } : {}),
+  };
+
+  const bodyPayload = hasVideoIds ? JSON.stringify({
+    month: month && month !== 'all' ? month : undefined,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    staffId,
+    videoIds,
+    format: 'csv',
+  }) : undefined;
+
   const params = new URLSearchParams();
   if (month && month !== 'all') params.set('month', month);
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
+  if (startTime) params.set('start_time', String(startTime));
+  if (endTime) params.set('end_time', String(endTime));
   if (staffId) params.set('staff_id', String(staffId));
   params.set('format', 'csv');
 
-  const query = params.toString();
-  const url = `${API_BASE_URL}/bookings/export-orders${query ? `?${query}` : ''}`;
+  const query = hasVideoIds ? '' : `?${params.toString()}`;
+  const url = `${API_BASE_URL}/bookings/export-orders${query}`;
   const response = await fetch(url, {
-    headers: {
-      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-    },
+    method,
+    headers,
+    body: bodyPayload,
     signal,
   });
 

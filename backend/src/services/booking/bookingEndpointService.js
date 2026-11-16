@@ -813,13 +813,25 @@ const getBookings = async (req, res) => {
 
 const exportBookingOrders = async (req, res) => {
   try {
-    const startDate = String(req.query?.start_date || '').trim();
-    const endDate = String(req.query?.end_date || '').trim();
-    const requestedMonth = String(req.query?.month || '').trim();
-    const requestedUsername = String(req.query?.creator_username || '').trim().replace(/^@+/, '');
-    const requestedOpenId = String(req.query?.creator_open_id || '').trim();
-    const requestedStaffId = req.query?.staff_id ? Number(req.query.staff_id) : null;
-    const format = String(req.query?.format || 'csv').trim().toLowerCase();
+    const body = req.body || {};
+    const query = req.query || {};
+    const startDate = String(body.start_date || query.start_date || body.startDate || query.startDate || '').trim();
+    const endDate = String(body.end_date || query.end_date || body.endDate || query.endDate || '').trim();
+    const startTime = body.start_time || query.start_time || body.startTime || query.startTime || null;
+    const endTime = body.end_time || query.end_time || body.endTime || query.endTime || null;
+    const requestedMonth = String(body.month || query.month || '').trim();
+    const requestedUsername = String(body.creator_username || query.creator_username || '').trim().replace(/^@+/, '');
+    const requestedOpenId = String(body.creator_open_id || query.creator_open_id || '').trim();
+    const requestedStaffId = body.staff_id || query.staff_id || body.staffId || query.staffId || null;
+    const format = String(body.format || query.format || 'csv').trim().toLowerCase();
+
+    const rawExplicitVideoIds = body.video_ids || body.videoIds || query.video_ids || query.videoIds || null;
+    const hasExplicitVideoIds = rawExplicitVideoIds !== null && rawExplicitVideoIds !== undefined;
+    const explicitVideoIds = Array.isArray(rawExplicitVideoIds)
+      ? rawExplicitVideoIds.map((id) => String(id).trim()).filter(Boolean)
+      : (typeof rawExplicitVideoIds === 'string' && rawExplicitVideoIds.length
+        ? rawExplicitVideoIds.split(',').map((id) => id.trim()).filter(Boolean)
+        : (hasExplicitVideoIds ? [] : null));
 
     const session = req.session;
     const canViewAllUsers = session?.role === 'admin'
@@ -828,7 +840,7 @@ const exportBookingOrders = async (req, res) => {
       ));
 
     const effectiveStaffId = canViewAllUsers
-      ? (Number.isInteger(requestedStaffId) && requestedStaffId > 0 ? requestedStaffId : null)
+      ? (Number.isInteger(Number(requestedStaffId)) && Number(requestedStaffId) > 0 ? Number(requestedStaffId) : null)
       : (session?.sub ? Number(session.sub) : null);
 
     let creatorWhere = {};
@@ -905,10 +917,44 @@ const exportBookingOrders = async (req, res) => {
       }
     }
 
-    const videoIds = [...videoMap.keys()];
+    const videoIds = hasExplicitVideoIds
+      ? explicitVideoIds
+      : [...videoMap.keys()];
+
     let orderRows = [];
 
     if (videoIds.length > 0) {
+      const dateClauses = [];
+      const replacements = { videoIds };
+
+      if (startTime) {
+        replacements.startDateTime = new Date(Number(startTime) * (Number(startTime) < 1e12 ? 1000 : 1)).toISOString();
+        dateClauses.push('o.create_time >= :startDateTime');
+      } else if (startDate) {
+        replacements.startDateTime = `${startDate}T00:00:00.000Z`;
+        dateClauses.push('o.create_time >= :startDateTime');
+      } else if (requestedMonth && requestedMonth !== 'all' && /^\d{4}-\d{2}$/.test(requestedMonth)) {
+        const [y, m] = requestedMonth.split('-').map(Number);
+        const nextMonth = m === 12 ? 1 : m + 1;
+        const nextYear = m === 12 ? y + 1 : y;
+        replacements.startDateTime = `${requestedMonth}-01T00:00:00.000Z`;
+        replacements.endDateTime = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01T00:00:00.000Z`;
+        dateClauses.push('o.create_time >= :startDateTime');
+        dateClauses.push('o.create_time < :endDateTime');
+      }
+
+      if (endTime) {
+        replacements.endDateTime = new Date(Number(endTime) * (Number(endTime) < 1e12 ? 1000 : 1)).toISOString();
+        dateClauses.push('o.create_time < :endDateTime');
+      } else if (endDate && !replacements.endDateTime) {
+        const d = new Date(`${endDate}T00:00:00.000Z`);
+        d.setUTCDate(d.getUTCDate() + 1);
+        replacements.endDateTime = d.toISOString();
+        dateClauses.push('o.create_time < :endDateTime');
+      }
+
+      const dateWhere = dateClauses.length ? `AND ${dateClauses.join(' AND ')}` : '';
+
       const { sequelize } = require('../../models');
       const skus = await sequelize.query(`
         SELECT 
@@ -932,9 +978,10 @@ const exportBookingOrders = async (req, res) => {
         LEFT JOIN tiktok_shops ts ON ts.id = sku.shop_id
         WHERE sku.content_id IN (:videoIds)
           AND UPPER(sku.content_type) = 'VIDEO'
+          ${dateWhere}
         ORDER BY o.create_time DESC
       `, {
-        replacements: { videoIds },
+        replacements,
         type: QueryTypes.SELECT,
       });
 

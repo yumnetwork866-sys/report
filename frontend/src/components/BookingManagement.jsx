@@ -175,27 +175,6 @@ const BookingManagement = ({
   const [isExportingOrders, setIsExportingOrders] = useState(false);
   const productOrdersByShop = emptyProductOrdersByShop;
 
-  const handleExportOrders = useCallback(async () => {
-    try {
-      setIsExportingOrders(true);
-      setError('');
-      const staffId = selectedManagerKey && selectedManagerKey.startsWith('id:')
-        ? selectedManagerKey.slice(3)
-        : undefined;
-
-      await downloadBookingOrdersCsv({
-        month: selectedMonth === 'custom' ? undefined : selectedMonth,
-        startDate: selectedMonth === 'custom' ? customRange.start : undefined,
-        endDate: selectedMonth === 'custom' ? customRange.end : undefined,
-        staffId,
-      });
-    } catch (err) {
-      setError(err.message || 'Không thể xuất danh sách đơn hàng');
-    } finally {
-      setIsExportingOrders(false);
-    }
-  }, [customRange.end, customRange.start, selectedManagerKey, selectedMonth]);
-
   const closeCreateBooking = useCallback(() => {
     setIsCreateBookingOpen(false);
     setSelectedShopId('');
@@ -840,6 +819,47 @@ const BookingManagement = ({
     convertAmount,
     t,
   });
+
+  const handleExportOrders = useCallback(async () => {
+    try {
+      setIsExportingOrders(true);
+      setError('');
+      const staffId = selectedManagerKey && selectedManagerKey.startsWith('id:')
+        ? selectedManagerKey.slice(3)
+        : undefined;
+
+      const range = orderRangeForPeriod(selectedMonth, customRange);
+
+      const visibleVideoIds = [];
+      const targetGroups = sortedBookingGroupsToRender || [];
+      for (const group of targetGroups) {
+        const groupBookings = sortedBookingsOfGroup ? sortedBookingsOfGroup(group.bookings) : group.bookings;
+        for (const booking of groupBookings || []) {
+          const videoData = videoPerformanceByBooking.get(String(booking.id));
+          const videos = videoData?.videos || [];
+          for (const v of videos) {
+            const vId = String(v.platform_video_id || v.id || '').trim();
+            if (vId) visibleVideoIds.push(vId);
+          }
+        }
+      }
+      const uniqueVideoIds = [...new Set(visibleVideoIds)];
+
+      await downloadBookingOrdersCsv({
+        month: selectedMonth === 'custom' ? undefined : selectedMonth,
+        startDate: range.startDate,
+        endDate: range.endDate,
+        startTime: range.startTime,
+        endTime: range.endTime,
+        staffId,
+        videoIds: uniqueVideoIds,
+      });
+    } catch (err) {
+      setError(err.message || 'Không thể xuất danh sách đơn hàng');
+    } finally {
+      setIsExportingOrders(false);
+    }
+  }, [customRange, selectedManagerKey, selectedMonth, sortedBookingGroupsToRender, sortedBookingsOfGroup, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canViewUsers && bookingGroups.length === 1) {
