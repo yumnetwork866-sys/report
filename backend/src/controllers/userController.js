@@ -253,15 +253,47 @@ const updateUser = async (req, res) => {
 // Delete user
 const deleteUser = async (req, res) => {
   try {
-    const deleted = await User.destroy({
-      where: { id: req.params.id }
+    const bookingAction = req.body?.booking_action ?? 'keep';
+    if (!['keep', 'delete'].includes(bookingAction)) {
+      return res.status(400).json({ message: 'Invalid booking action' });
+    }
+    const deleted = await sequelize.transaction(async (transaction) => {
+      // Prevent new assignments while this user's existing bookings are detached.
+      const user = await User.findByPk(req.params.id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!user) return 0;
+
+      if (bookingAction === 'delete') {
+        // Booking videos and their performance history cascade in the database.
+        await Booking.destroy({ where: { staff_id: user.id }, transaction });
+      } else {
+        await Booking.update({
+          staff_id: null,
+          staff_name: null,
+          updated_at: new Date(),
+        }, { where: { staff_id: user.id }, transaction });
+      }
+
+      return User.destroy({ where: { id: user.id }, transaction });
     });
     if (deleted) {
+      await Promise.all([
+        delByPattern('bookings:*'),
+        delByPattern('dashboard:*'),
+        delByPattern('report:*'),
+      ]).catch(() => {});
       res.json({ message: 'User deleted successfully' });
     } else {
       res.status(404).json({ message: 'User not found' });
     }
   } catch (error) {
+    if (error.name === 'SequelizeForeignKeyConstraintError') {
+      return res.status(409).json({
+        message: 'Không thể xóa người dùng vì vẫn còn dữ liệu liên quan. Hãy vô hiệu hóa tài khoản hoặc chuyển dữ liệu trước khi xóa.',
+      });
+    }
     res.status(500).json({ message: error.message });
   }
 };

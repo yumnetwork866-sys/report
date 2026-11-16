@@ -125,6 +125,27 @@ export const EmployeeOverlays = ({
         <div className="modal-card confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title">
           <h2 id="confirm-modal-title" className="section-card__title">{confirm.title}</h2>
           <p className="confirm-modal__message">{confirm.message}</p>
+          {confirm.bookingAction !== undefined ? (
+            <div className="field">
+              <label htmlFor="delete-user-booking-action">{t('users.deleteBookingAction')}</label>
+              <select
+                id="delete-user-booking-action"
+                value={confirm.bookingAction}
+                disabled={confirmPending}
+                aria-describedby="delete-user-booking-hint"
+                onChange={(event) => {
+                  const bookingAction = event.target.value;
+                  setConfirm((current) => ({ ...current, bookingAction }));
+                }}
+              >
+                <option value="keep">{t('users.deleteKeepBookings')}</option>
+                <option value="delete">{t('users.deleteWithBookings')}</option>
+              </select>
+              <p id="delete-user-booking-hint" className="employee-table__field-hint">
+                {t(confirm.bookingAction === 'delete' ? 'users.deleteWithBookingsHint' : 'users.deleteKeepBookingsHint')}
+              </p>
+            </div>
+          ) : null}
           <div className="actions confirm-modal__actions">
             <button className="button button--ghost" type="button" onClick={() => setConfirm(null)} disabled={confirmPending}>
               {t('users.cancel')}

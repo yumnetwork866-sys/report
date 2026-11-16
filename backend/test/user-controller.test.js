@@ -20,6 +20,111 @@ const makeResponse = () => ({
   },
 });
 
+for (const scenario of ['success', 'missing', 'delete failure', 'unassign failure', 'remove bookings', 'remove bookings failure', 'invalid action']) {
+  test(`DELETE /users/:id handles ${scenario} atomically`, async (t) => {
+    const transaction = { LOCK: { UPDATE: 'UPDATE' } };
+    const events = [];
+    const invalidated = [];
+    const foreignKeyError = Object.assign(new Error('foreign key violation'), {
+      name: 'SequelizeForeignKeyConstraintError',
+    });
+    const restoreRedis = mockModule(require.resolve('../src/lib/redis'), {
+      delByPattern: async (pattern) => {
+        assert.equal(events.at(-1), 'commit');
+        invalidated.push(pattern);
+      },
+    });
+    const restoreModels = mockModule(modelsPath, {
+      sequelize: {
+        transaction: async (callback) => {
+          try {
+            const result = await callback(transaction);
+            events.push('commit');
+            return result;
+          } catch (error) {
+            events.push('rollback');
+            throw error;
+          }
+        },
+      },
+      User: {
+        findByPk: async (id, options) => {
+          assert.equal(id, '7');
+          assert.equal(options.transaction, transaction);
+          assert.equal(options.lock, 'UPDATE');
+          events.push('lock');
+          return scenario === 'missing' ? null : { id: 7 };
+        },
+        destroy: async (options) => {
+          assert.deepEqual(options, { where: { id: 7 }, transaction });
+          events.push('delete');
+          if (scenario === 'delete failure' || scenario === 'remove bookings failure') throw foreignKeyError;
+          return 1;
+        },
+      },
+      Booking: {
+        destroy: async (options) => {
+          assert.deepEqual(options, { where: { staff_id: 7 }, transaction });
+          events.push('remove bookings');
+          return 2;
+        },
+        update: async (payload, options) => {
+          assert.deepEqual(options, { where: { staff_id: 7 }, transaction });
+          assert.equal(payload.staff_id, null);
+          assert.equal(payload.staff_name, null);
+          assert.ok(payload.updated_at instanceof Date);
+          events.push('unassign');
+          if (scenario === 'unassign failure') throw new Error('Booking update failed');
+          return [2];
+        },
+      },
+    });
+    t.after(() => {
+      restoreModels();
+      restoreRedis();
+      delete require.cache[userControllerPath];
+    });
+    delete require.cache[userControllerPath];
+    const { deleteUser } = require('../src/controllers/userController');
+    const res = makeResponse();
+    const body = scenario.startsWith('remove bookings')
+      ? { booking_action: 'delete' }
+      : scenario === 'invalid action' ? { booking_action: 'DELETE' } : undefined;
+    await deleteUser({ params: { id: '7' }, body }, res);
+
+    if (scenario === 'remove bookings') {
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(events, ['lock', 'remove bookings', 'delete', 'commit']);
+      assert.deepEqual(invalidated, ['bookings:*', 'dashboard:*', 'report:*']);
+    } else if (scenario === 'remove bookings failure') {
+      assert.equal(res.statusCode, 409);
+      assert.deepEqual(events, ['lock', 'remove bookings', 'delete', 'rollback']);
+      assert.deepEqual(invalidated, []);
+    } else if (scenario === 'invalid action') {
+      assert.equal(res.statusCode, 400);
+      assert.deepEqual(events, []);
+      assert.deepEqual(invalidated, []);
+    } else if (scenario === 'success') {
+      assert.equal(res.statusCode, 200);
+      assert.deepEqual(events, ['lock', 'unassign', 'delete', 'commit']);
+      assert.deepEqual(invalidated, ['bookings:*', 'dashboard:*', 'report:*']);
+    } else {
+      assert.deepEqual(invalidated, []);
+      if (scenario === 'missing') {
+        assert.equal(res.statusCode, 404);
+        assert.deepEqual(events, ['lock', 'commit']);
+      } else if (scenario === 'delete failure') {
+        assert.equal(res.statusCode, 409);
+        assert.match(res.body.message, /vô hiệu hóa/);
+        assert.deepEqual(events, ['lock', 'unassign', 'delete', 'rollback']);
+      } else {
+        assert.equal(res.statusCode, 500);
+        assert.deepEqual(events, ['lock', 'unassign', 'rollback']);
+      }
+    }
+  });
+}
+
 test('PUT /users/:id updates user profile fields and password', async (t) => {
   const updateCalls = [];
   const restorePassword = mockModule(passwordPath, {

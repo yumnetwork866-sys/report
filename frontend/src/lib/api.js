@@ -751,9 +751,10 @@ export function updateUser(userId, payload) {
   });
 }
 
-export function deleteUser(userId) {
+export function deleteUser(userId, { bookingAction = 'keep' } = {}) {
   return apiRequest(`/users/${userId}`, {
     method: 'DELETE',
+    body: { booking_action: bookingAction },
   });
 }
 

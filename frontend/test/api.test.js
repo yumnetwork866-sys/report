@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   fetchTikTokSellerCreatorInvitations, fetchActiveTikTokApps, fetchBookingById, fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
-  fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
+  deleteUser, fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
 } from '../src/lib/api.js';
 import { getStoredSession, saveStoredSession } from '../src/lib/session.js';
 
@@ -595,5 +595,28 @@ test('creator invite picker uses its own endpoint after campaign management is r
     };
     const result = await fetchTikTokSellerCreatorInvitations(7);
     assert.equal(result.invitations[0].id, 'invitation-1');
+  });
+});
+
+
+test('deleteUser preserves booking history by default and sends an explicit deletion choice', async () => {
+  await withBrowser(async () => {
+    saveStoredSession(createSession('admin'));
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+      calls.push({ url, options });
+      return new Response(JSON.stringify({ message: 'User deleted successfully' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+    await deleteUser(7);
+    await deleteUser(8, { bookingAction: 'delete' });
+    assert.ok(calls[0].url.endsWith('/users/7'));
+    assert.ok(calls[1].url.endsWith('/users/8'));
+    assert.equal(calls[0].options.method, 'DELETE');
+    assert.equal(calls[1].options.method, 'DELETE');
+    assert.deepEqual(JSON.parse(calls[0].options.body), { booking_action: 'keep' });
+    assert.deepEqual(JSON.parse(calls[1].options.body), { booking_action: 'delete' });
   });
 });

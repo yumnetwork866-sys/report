@@ -325,7 +325,8 @@ export const useEmployeeManagement = () => {
       title: t('users.bulkDeleteTitle', { count }),
       message: t('users.bulkDeleteMessage', { count }),
       confirmLabel: t('users.delete'),
-      onConfirm: () => runBulk((userId) => deleteUser(userId), t('users.bulkDeleteDone', { count })),
+      bookingAction: 'keep',
+      onConfirm: (bookingAction) => runBulk((userId) => deleteUser(userId, { bookingAction }), t('users.bulkDeleteDone', { count })),
     });
   };
   
@@ -334,7 +335,7 @@ export const useEmployeeManagement = () => {
     if (!action) return;
     setConfirmPending(true);
     try {
-      await action();
+      await action(confirm.bookingAction);
     } finally {
       setConfirmPending(false);
       setConfirm(null);
@@ -614,11 +615,12 @@ export const useEmployeeManagement = () => {
       title: t('users.deleteTitle'),
       message: t('users.deleteConfirm', { name: user.name, email: user.email }),
       confirmLabel: t('users.delete'),
-      onConfirm: async () => {
+      bookingAction: 'keep',
+      onConfirm: async (bookingAction) => {
         try {
           setDeletingId(user.id);
           setError('');
-          await deleteUser(user.id);
+          await deleteUser(user.id, { bookingAction });
           await loadData();
           showToast(t('users.deleteDone', { name: user.name }));
         } catch (err) {
