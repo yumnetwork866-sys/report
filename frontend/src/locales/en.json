@@ -1670,7 +1670,7 @@
   "liveAnalytics": {
     "colTikTokAccount": "TikTok account",
     "editHost": "Edit Host",
-    "appHost": "Host (User)",
+    "appHost": "Host",
     "unassignedHost": "Unassigned Host",
     "autoHost": "Auto",
     "autoHostTitle": "Automatically assigned from the LIVE title hashtag",

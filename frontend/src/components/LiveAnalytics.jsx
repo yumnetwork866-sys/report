@@ -1566,7 +1566,6 @@ const LiveAnalytics = () => {
                           <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
                           <div className="live-host-meta">
                             <span className="live-host-name">{session.host.name || session.host.email}</span>
-                            {session.host.email ? <span className="live-host-username">{session.host.email}</span> : null}
                           </div>
                         </div>
                       ) : <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>}
