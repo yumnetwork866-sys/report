@@ -97,10 +97,10 @@ const BookingListControls = ({
             className="button button--secondary booking-export-orders-btn"
             onClick={onExportOrders}
             disabled={isExportingOrders}
-            title={t('booking.exportOrdersTooltip', { defaultValue: 'Xuất chi tiết toàn bộ đơn hàng video trong kỳ ra CSV (Excel)' })}
+            title={t('booking.exportOrdersTooltip', { defaultValue: 'Xuất chi tiết toàn bộ đơn hàng video trong kỳ ra file Excel (nhiều sheet theo từng nhân viên)' })}
           >
             <Download size={14} />
-            <span>{isExportingOrders ? (t('booking.exportingOrders') || 'Đang xuất…') : (t('booking.exportOrders') || 'Xuất CSV đơn hàng')}</span>
+            <span>{isExportingOrders ? (t('booking.exportingOrders') || 'Đang xuất…') : (t('booking.exportOrders') || 'Xuất Excel đơn hàng')}</span>
           </button>
         </div>
       ) : null}

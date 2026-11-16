@@ -151,6 +151,7 @@ export async function downloadBookingOrdersCsv({
   endTime,
   staffId,
   videoIds,
+  format = 'xlsx',
   signal,
 } = {}) {
   const sessionToken = getStoredSession()?.token || null;
@@ -169,7 +170,7 @@ export async function downloadBookingOrdersCsv({
     endTime,
     staffId,
     videoIds,
-    format: 'csv',
+    format,
   }) : undefined;
 
   const params = new URLSearchParams();
@@ -179,7 +180,7 @@ export async function downloadBookingOrdersCsv({
   if (startTime) params.set('start_time', String(startTime));
   if (endTime) params.set('end_time', String(endTime));
   if (staffId) params.set('staff_id', String(staffId));
-  params.set('format', 'csv');
+  if (format) params.set('format', format);
 
   const query = hasVideoIds ? '' : `?${params.toString()}`;
   const url = `${API_BASE_URL}/bookings/export-orders${query}`;
@@ -203,7 +204,8 @@ export async function downloadBookingOrdersCsv({
   const disposition = response.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="?([^"]+)"?/);
   const periodLabel = month && month !== 'all' ? month : (startDate && endDate ? `${startDate}_${endDate}` : 'all');
-  const filename = match ? match[1] : `don_hang_booking_${periodLabel}.csv`;
+  const ext = format === 'csv' ? 'csv' : 'xlsx';
+  const filename = match ? match[1] : `don_hang_booking_${periodLabel}.${ext}`;
 
   const downloadUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -215,6 +217,8 @@ export async function downloadBookingOrdersCsv({
   URL.revokeObjectURL(downloadUrl);
   return true;
 }
+
+export const downloadBookingOrdersExcel = downloadBookingOrdersCsv;
 
 export function fetchBookingById(bookingId, signal) {
   return apiRequest(`/bookings/${encodeURIComponent(bookingId)}`, { signal });

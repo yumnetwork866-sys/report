@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const XLSX = require('xlsx');
 const { Op, QueryTypes, literal } = require('sequelize');
 const bookingRepository = require('../../repositories/bookingRepository');
 const { getOrSetCache } = require('../../lib/redis');
@@ -823,7 +824,7 @@ const exportBookingOrders = async (req, res) => {
     const requestedUsername = String(body.creator_username || query.creator_username || '').trim().replace(/^@+/, '');
     const requestedOpenId = String(body.creator_open_id || query.creator_open_id || '').trim();
     const requestedStaffId = body.staff_id || query.staff_id || body.staffId || query.staffId || null;
-    const format = String(body.format || query.format || 'csv').trim().toLowerCase();
+    const format = String(body.format || query.format || 'xlsx').trim().toLowerCase();
 
     const rawExplicitVideoIds = body.video_ids || body.videoIds || query.video_ids || query.videoIds || null;
     const hasExplicitVideoIds = rawExplicitVideoIds !== null && rawExplicitVideoIds !== undefined;
@@ -1083,7 +1084,10 @@ const exportBookingOrders = async (req, res) => {
       'Tiền tệ',
     ];
 
-    const lines = orderRows.map((row) => {
+    const staffGroups = new Map();
+    const allRows = [];
+
+    for (const row of orderRows) {
       const meta = videoMap.get(String(row.video_id)) || {};
       const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
       const videoUrl = cleanCreator && row.video_id
@@ -1113,7 +1117,7 @@ const exportBookingOrders = async (req, res) => {
           : String(row.order_time);
       }
 
-      return [
+      const rowData = [
         row.order_id || '',
         formattedDate,
         meta.staffName || '',
@@ -1136,16 +1140,138 @@ const exportBookingOrders = async (req, res) => {
         row.settlement_status || '',
         row.shop_name || meta.shopName || '',
         row.currency || meta.currency || 'MYR',
-      ].map(escapeCell).join(',');
-    });
+      ];
 
-    const csvContent = '\uFEFF' + [headers.map(escapeCell).join(','), ...lines].join('\r\n');
+      allRows.push(rowData);
+
+      const staffKey = meta.staffName ? meta.staffName.trim() : 'Chưa phân công';
+      if (!staffGroups.has(staffKey)) {
+        staffGroups.set(staffKey, []);
+      }
+      staffGroups.get(staffKey).push(rowData);
+    }
+
     const periodLabel = requestedMonth && requestedMonth !== 'all' ? requestedMonth : (startDate && endDate ? `${startDate}_${endDate}` : 'all');
-    const filename = `don_hang_booking_${periodLabel}.csv`;
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    if (format === 'csv') {
+      const escapeCell = (val) => {
+        if (val === null || val === undefined) return '""';
+        const str = String(val).replace(/"/g, '""');
+        return `"${str}"`;
+      };
+      const lines = allRows.map((r) => r.map(escapeCell).join(','));
+      const csvContent = '\uFEFF' + [headers.map(escapeCell).join(','), ...lines].join('\r\n');
+      const filename = `don_hang_booking_${periodLabel}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(csvContent);
+    }
+
+    // Default: Multi-tab Excel (.xlsx) workbook
+    const workbook = XLSX.utils.book_new();
+
+    const minColWidths = [
+      22, // 0: Mã đơn hàng
+      20, // 1: Thời gian đặt
+      18, // 2: Nhân sự phụ trách
+      25, // 3: Email nhân sự
+      14, // 4: Mã Booking
+      20, // 5: Tên KOC
+      20, // 6: TikTok KOC
+      22, // 7: Mã Video TikTok
+      35, // 8: Tiêu đề Video
+      40, // 9: Link Video TikTok
+      22, // 10: Mã sản phẩm
+      35, // 11: Tên sản phẩm
+      22, // 12: Phân loại (SKU)
+      14, // 13: Số lượng đặt
+      16, // 14: Số lượng hoàn hủy
+      16, // 15: Đơn giá
+      18, // 16: Thành tiền (GMV)
+      18, // 17: Hoa hồng ước tính
+      24, // 18: Trạng thái đơn hàng
+      20, // 19: Trạng thái quyết toán
+      24, // 20: Shop
+      12, // 21: Tiền tệ
+    ];
+
+    const createWorksheet = (rows) => {
+      const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+      // Calculate column widths to prevent column clipping and '###' errors in Excel
+      sheet['!cols'] = headers.map((header, colIdx) => {
+        let maxLen = (header || '').length;
+        for (const row of rows) {
+          const val = row[colIdx];
+          if (val !== null && val !== undefined) {
+            const len = String(val).length;
+            if (len > maxLen) maxLen = len;
+          }
+        }
+        const minW = minColWidths[colIdx] || 12;
+        return { wch: Math.min(Math.max(maxLen + 3, minW), 60) };
+      });
+
+      const textColIndices = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 18, 19, 20, 21]);
+      const numberColIndices = new Set([13, 14, 15, 16, 17]);
+      const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
+
+      for (let R = 1; R <= range.e.r; ++R) {
+        for (let C = 0; C <= range.e.c; ++C) {
+          const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+          const cell = sheet[cellAddress];
+          if (!cell) continue;
+
+          if (textColIndices.has(C)) {
+            cell.t = 's';
+            cell.v = String(cell.v !== undefined && cell.v !== null ? cell.v : '');
+            cell.z = '@';
+          } else if (numberColIndices.has(C)) {
+            if (cell.v !== null && cell.v !== undefined && cell.v !== '') {
+              cell.t = 'n';
+              cell.v = Number(cell.v) || 0;
+              cell.z = '#,##0';
+            }
+          }
+        }
+      }
+
+      return sheet;
+    };
+
+    // 1. Tab 'all' with all orders
+    const allSheet = createWorksheet(allRows);
+    XLSX.utils.book_append_sheet(workbook, allSheet, 'all');
+
+    // 2. Tab for each staff member
+    const usedSheetNames = new Set(['all']);
+    for (const [staffName, staffRows] of staffGroups.entries()) {
+      let sheetName = staffName
+        .replace(/[:\\/?*[\]]/g, '')
+        .trim()
+        .slice(0, 31);
+      if (!sheetName) sheetName = 'Nhân viên';
+
+      let uniqueName = sheetName;
+      let counter = 1;
+      while (usedSheetNames.has(uniqueName.toLowerCase())) {
+        const suffix = `_${counter}`;
+        uniqueName = `${sheetName.slice(0, 31 - suffix.length)}${suffix}`;
+        counter += 1;
+      }
+      usedSheetNames.add(uniqueName.toLowerCase());
+
+      const staffSheet = createWorksheet(staffRows);
+      XLSX.utils.book_append_sheet(workbook, staffSheet, uniqueName);
+    }
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `don_hang_booking_${periodLabel}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    return res.send(csvContent);
+    return res.send(buffer);
   } catch (error) {
     console.error('Failed to export booking orders:', error);
     return res.status(500).json({ message: 'Không thể xuất danh sách đơn hàng booking', error: error.message });

@@ -4,8 +4,11 @@ const sendServiceResult = (res, result = {}) => {
   }
   if (result.redirect) return res.redirect(result.redirect);
   const status = result.status || 200;
+  if (Buffer.isBuffer(result.body)) {
+    return res.status(status).send(result.body);
+  }
   const contentType = String(result.headers?.['Content-Type'] || result.headers?.['content-type'] || '');
-  if ((typeof result.body === 'string' || Buffer.isBuffer(result.body)) && contentType.includes('text/')) {
+  if ((typeof result.body === 'string') && contentType.includes('text/')) {
     return res.status(status).send(result.body);
   }
   if (!result.status || result.status === 200) return res.json(result.body);

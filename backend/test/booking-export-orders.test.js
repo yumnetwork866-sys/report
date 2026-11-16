@@ -211,3 +211,148 @@ test('exportBookingOrders returns empty CSV when video_ids is empty array', asyn
   assert.ok(sentBody.startsWith('\uFEFF'));
   assert.ok(sentBody.includes('Mã đơn hàng'));
 });
+
+test('exportBookingOrders returns multi-tab Excel (.xlsx) by default with "all" and individual staff tabs', async (t) => {
+  const XLSX = require('xlsx');
+
+  const mockBookings = [
+    {
+      id: 101,
+      creator_name: 'Lan Anh',
+      creator_username: 'lananh.review',
+      staff: { name: 'Thanh Hằng', email: 'hang@yumnetwork.vn' },
+      target_shop: { name: 'Actiscar Official' },
+      booking_videos: [
+        { platform_video_id: 'vid-1', title: 'Video Hang' },
+      ],
+      currency: 'VND',
+    },
+    {
+      id: 102,
+      creator_name: 'Ngọc Mai',
+      creator_username: 'ngocmai.daily',
+      staff: { name: 'Mai', email: 'mai@yumnetwork.vn' },
+      target_shop: { name: 'Actiscar Official' },
+      booking_videos: [
+        { platform_video_id: 'vid-2', title: 'Video Mai' },
+      ],
+      currency: 'VND',
+    },
+  ];
+
+  const mockOrderSkus = [
+    {
+      order_id: 'ord-hang-1',
+      order_time: '2026-11-15T10:00:00.000Z',
+      video_id: 'vid-1',
+      creator_username: 'lananh.review',
+      product_id: 'prod-1',
+      product_name: 'Kem tri nam Actiscar',
+      sku_id: 'sku-1',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 250000,
+      currency: 'VND',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: 'Hop 30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Official',
+    },
+    {
+      order_id: 'ord-mai-1',
+      order_time: '2026-11-16T10:00:00.000Z',
+      video_id: 'vid-2',
+      creator_username: 'ngocmai.daily',
+      product_id: 'prod-2',
+      product_name: 'Serum Actiscar',
+      sku_id: 'sku-2',
+      quantity: 2,
+      refunded_quantity: 0,
+      price: 350000,
+      currency: 'VND',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: 'Chai 50ml', commission_rate: 12 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Official',
+    },
+  ];
+
+  const bookingEndpointService = loadWithMocks(t, '../src/services/booking/bookingEndpointService', {
+    '../src/repositories/bookingRepository': {
+      findBookings: async () => mockBookings,
+    },
+    '../src/models': {
+      sequelize: {
+        query: async () => mockOrderSkus,
+      },
+    },
+  });
+
+  const req = {
+    query: {
+      month: '2026-11',
+    },
+    session: {
+      role: 'admin',
+      sub: 1,
+    },
+  };
+
+  let responseStatus = 200;
+  const responseHeaders = {};
+  let sentBody = null;
+
+  const res = {
+    status(s) {
+      responseStatus = s;
+      return res;
+    },
+    setHeader(k, v) {
+      responseHeaders[k] = v;
+      return res;
+    },
+    send(body) {
+      sentBody = body;
+      return res;
+    },
+    json(body) {
+      sentBody = body;
+      return res;
+    },
+  };
+
+  await bookingEndpointService.exportBookingOrders(req, res);
+
+  assert.equal(responseStatus, 200);
+  assert.equal(responseHeaders['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  assert.ok(responseHeaders['Content-Disposition'].includes('attachment; filename="don_hang_booking_2026-11.xlsx"'));
+  assert.ok(Buffer.isBuffer(sentBody), 'Default export body must be a Buffer for Excel');
+
+  const workbook = XLSX.read(sentBody, { type: 'buffer', cellStyles: true });
+  assert.ok(workbook.SheetNames.includes('all'), 'Workbook must have "all" sheet');
+  assert.ok(workbook.SheetNames.includes('Thanh Hằng'), 'Workbook must have "Thanh Hằng" sheet');
+  assert.ok(workbook.SheetNames.includes('Mai'), 'Workbook must have "Mai" sheet');
+
+  const allRows = XLSX.utils.sheet_to_json(workbook.Sheets['all'], { header: 1 });
+  assert.equal(allRows.length, 3); // header + 2 order rows
+
+  const hangRows = XLSX.utils.sheet_to_json(workbook.Sheets['Thanh Hằng'], { header: 1 });
+  assert.equal(hangRows.length, 2); // header + 1 order row
+  assert.equal(hangRows[1][0], 'ord-hang-1');
+
+  const maiRows = XLSX.utils.sheet_to_json(workbook.Sheets['Mai'], { header: 1 });
+  assert.equal(maiRows.length, 2); // header + 1 order row
+  assert.equal(maiRows[1][0], 'ord-mai-1');
+
+  // Verify column widths (!cols) are configured so Excel does not clip or show ###
+  const allSheet = workbook.Sheets['all'];
+  assert.ok(Array.isArray(allSheet['!cols']), 'allSheet must have column width definitions');
+  assert.ok(allSheet['!cols'].length >= 20);
+  assert.ok(allSheet['!cols'][0].wch >= 22, 'Order ID column width should be at least 22');
+
+  // Verify Order ID and Video ID cells are strictly formatted as Text ('s')
+  assert.equal(allSheet['A2'].t, 's', 'Order ID must have string type');
+  assert.equal(allSheet['H2'].t, 's', 'Video ID must have string type');
+  assert.equal(allSheet['A2'].v, 'ord-hang-1');
+  assert.equal(allSheet['H2'].v, 'vid-1');
+});
