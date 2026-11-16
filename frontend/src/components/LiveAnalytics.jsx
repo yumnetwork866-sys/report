@@ -164,7 +164,7 @@ const LiveAnalytics = () => {
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'channels' | 'products' | 'orders'
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('all');
-  const [sourceType, setSourceType] = useState('all'); // 'all' | 'external' | 'shop'
+  const [sourceType, setSourceType] = useState('shop'); // 'all' | 'external' | 'shop'
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
@@ -276,7 +276,7 @@ const LiveAnalytics = () => {
   useEffect(() => {
     setToggledOffShopIds(new Set());
     setSelectedChannel('all');
-    setSourceType('all');
+    setSourceType('shop');
   }, [selectedShopId]);
 
   useEffect(() => {
@@ -1554,14 +1554,9 @@ const LiveAnalytics = () => {
                           </div>
                         )}
                         <div className="live-host-meta">
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                            <span className="live-host-name">
-                              {session.creatorNickname || session.creatorUsername}
-                            </span>
-                            <span className="chip chip--neutral" style={{ fontSize: '0.6875rem', padding: '1px 6px' }}>
-                              {session.isExternal ? t('liveAnalytics.badgeKoc') : t('liveAnalytics.badgeShop')}
-                            </span>
-                          </div>
+                          <span className="live-host-name">
+                            {session.creatorNickname || session.creatorUsername}
+                          </span>
                           <span className="live-host-username">@{session.creatorUsername}</span>
                         </div>
                       </div>
@@ -1571,18 +1566,7 @@ const LiveAnalytics = () => {
                         <div className="live-host-cell">
                           <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
                           <div className="live-host-meta">
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span className="live-host-name">{session.host.name || session.host.email}</span>
-                              {session.hostSource === 'auto_hashtag' ? (
-                                <span
-                                  className="chip chip--neutral"
-                                  style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
-                                  title={t('liveAnalytics.autoHostTitle')}
-                                >
-                                  {t('liveAnalytics.autoHost')}
-                                </span>
-                              ) : null}
-                            </div>
+                            <span className="live-host-name">{session.host.name || session.host.email}</span>
                             {session.host.email ? <span className="live-host-username">{session.host.email}</span> : null}
                           </div>
                         </div>
