@@ -1142,6 +1142,10 @@ const exportBookingOrders = async (req, res) => {
       const prodName = String(row.product_name || '').trim();
       const skuName = String(row.sku_raw_data?.sku_name || row.sku_id || '').trim();
 
+      const effectiveGmv = resolvedStatus === 'CANCELLED' ? 0 : gmv;
+      const effectiveCommission = resolvedStatus === 'CANCELLED' ? 0 : commission;
+      const effectiveQuantity = resolvedStatus === 'CANCELLED' ? 0 : rawQty;
+
       if (!uniqueOrdersMap.has(orderId)) {
         let formattedDate = '';
         if (row.order_time) {
@@ -1165,11 +1169,12 @@ const exportBookingOrders = async (req, res) => {
           productIds: new Set(row.product_id ? [String(row.product_id)] : []),
           productNames: new Set(prodName ? [prodName] : []),
           skuNames: new Set(skuName ? [skuName] : []),
-          quantity: rawQty,
+          quantity: effectiveQuantity,
+          rawQuantity: rawQty,
           refundedQuantity: rawRefundQty,
           price: rawPrice,
-          gmv,
-          commission,
+          gmv: effectiveGmv,
+          commission: effectiveCommission,
           orderStatus: resolvedStatus,
           settlementStatus: row.settlement_status || '',
           shopName: row.shop_name || meta.shopName || '',
@@ -1181,13 +1186,16 @@ const exportBookingOrders = async (req, res) => {
         if (row.product_id) existing.productIds.add(String(row.product_id));
         if (prodName) existing.productNames.add(prodName);
         if (skuName) existing.skuNames.add(skuName);
-        existing.quantity += rawQty;
-        existing.refundedQuantity += rawRefundQty;
-        existing.gmv += gmv;
-        existing.commission += commission;
-        if (existing.quantity > 0) {
-          existing.price = existing.gmv / existing.quantity;
+        if (existing.orderStatus !== 'CANCELLED' && resolvedStatus !== 'CANCELLED') {
+          existing.quantity += rawQty;
+          existing.gmv += gmv;
+          existing.commission += commission;
+          if (existing.quantity > 0) {
+            existing.price = existing.gmv / existing.quantity;
+          }
         }
+        existing.rawQuantity += rawQty;
+        existing.refundedQuantity += rawRefundQty;
       }
     }
 

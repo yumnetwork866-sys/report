@@ -655,11 +655,21 @@ export const bookingVideoOrderMetrics = (video, booking, orders = [], options = 
       const rawCommRate = finiteNumber(sku?.creator_commission_rate);
       const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
 
-      itemsSold += quantity;
+      const orderStatus = String(order?.order_status || order?.status || '').toUpperCase();
+      const itemStatus = String(sku?.item_status || '').toUpperCase();
+      const combinedStatus = `${orderStatus} ${itemStatus}`;
+      const isCancelled = /CANCEL/.test(combinedStatus);
+      const hasRefundStatus = /REFUND|RETURN/.test(combinedStatus);
+      const isFullyRefunded = quantity > 0 && (refundedQuantity >= quantity || hasRefundStatus);
+      const effectiveQuantity = isCancelled || isFullyRefunded
+        ? 0
+        : Math.max(quantity - refundedQuantity, 0);
+
+      itemsSold += effectiveQuantity;
       itemsRefunded += refundedQuantity;
-      gmv += price * quantity;
+      gmv += isCancelled || isFullyRefunded ? 0 : (price * effectiveQuantity);
       refundedGmv += price * refundedQuantity;
-      estimatedCommission += price * (quantity - refundedQuantity) * commissionRate;
+      estimatedCommission += isCancelled || isFullyRefunded ? 0 : (price * effectiveQuantity * commissionRate);
       currency = sku?.price?.currency || sku?.currency || currency;
       hasMatch = true;
       matchedInOrder = true;
@@ -1011,18 +1021,24 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
 
       const gmv = price * quantity;
       const refundedGmv = price * refundedQuantity;
-      const commission = finiteNumber(sku?.commission_amount ?? sku?.estimated_commission)
+      const effectiveGmv = isCancelled || isFullyRefunded
+        ? 0
+        : price * effectiveQuantity;
+      const rawCommission = finiteNumber(sku?.commission_amount ?? sku?.estimated_commission)
         || (price * (quantity - refundedQuantity) * commissionRate);
+      const commission = isCancelled || isFullyRefunded
+        ? 0
+        : rawCommission;
 
       const isVideoMatch = normVideoId ? String(sku?.content_id || '').trim() === normVideoId : false;
       const contentType = String(sku?.content_type || (sku?.content_id ? 'VIDEO' : 'OTHER')).toUpperCase();
 
-      totalItems += quantity;
+      totalItems += effectiveQuantity;
       totalRefundedItems += refundedQuantity;
-      totalGmv += gmv;
+      totalGmv += effectiveGmv;
       totalRefundedGmv += refundedGmv;
       totalCommission += commission;
-      if (orderId) orderIds.add(orderId);
+      if (orderId && effectiveQuantity > 0) orderIds.add(orderId);
 
       const rawProdName = sku?.product_name || sku?.title || '';
       const rawSkuName = sku?.sku_name || '';
@@ -1047,9 +1063,10 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
         quantity,
         refundedQuantity,
         price,
-        gmv,
-        refundedGmv,
+        gmv: effectiveGmv,
+        grossGmv: gmv,
         commission,
+        rawCommission,
         currency: skuCurrency,
         contentType,
         contentId: sku?.content_id || null,

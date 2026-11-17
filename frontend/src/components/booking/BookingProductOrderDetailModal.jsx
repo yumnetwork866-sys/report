@@ -267,8 +267,11 @@ const BookingProductOrderDetailModal = ({
       if (r.orderId && r.effectiveQuantity > 0) orderIds.add(r.orderId);
       items += r.effectiveQuantity;
       refundedItems += r.refundedQuantity;
-      gmv += r.gmv;
-      comm += r.commission;
+      // Do not add cancelled or fully refunded orders into GMV and commission
+      if (!r.isCancelled && !r.isFullyRefunded && r.effectiveQuantity > 0) {
+        gmv += r.gmv;
+        comm += r.commission;
+      }
     }
     return {
       orderCount: orderIds.size,
@@ -545,10 +548,22 @@ const BookingProductOrderDetailModal = ({
                           {formatMoney(row.price, row.currency)}
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 650 }}>
-                          {formatMoney(row.gmv, row.currency)}
+                          {row.isCancelled || row.isFullyRefunded ? (
+                            <span style={{ textDecoration: 'line-through', opacity: 0.6 }} title="Đơn đã hủy/hoàn - không tính vào GMV">
+                              {formatMoney(row.grossGmv || row.gmv, row.currency)}
+                            </span>
+                          ) : (
+                            formatMoney(row.gmv, row.currency)
+                          )}
                         </td>
-                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--color-accent-strong)' }}>
-                          {formatMoney(row.commission, row.currency)}
+                        <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: row.isCancelled || row.isFullyRefunded ? 'var(--color-text-muted)' : 'var(--color-accent-strong)' }}>
+                          {row.isCancelled || row.isFullyRefunded ? (
+                            <span style={{ textDecoration: 'line-through', opacity: 0.6 }} title="Đơn đã hủy/hoàn - không tính hoa hồng">
+                              {formatMoney(row.rawCommission !== undefined ? row.rawCommission : row.commission, row.currency)}
+                            </span>
+                          ) : (
+                            formatMoney(row.commission, row.currency)
+                          )}
                         </td>
                         <td>
                           <span className={`booking-product-order-modal__status booking-product-order-modal__status--${status.tone}`}>

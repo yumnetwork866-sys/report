@@ -557,6 +557,8 @@ test('exportBookingOrders deduplicates duplicate orders, filters out pending sta
 
   const orderCancelledRow = allRows.find((r) => r[0] === 'ord-cancelled-3');
   assert.ok(orderCancelledRow, 'ord-cancelled-3 must be present');
+  assert.equal(orderCancelledRow[16], 0, 'Cancelled order GMV should be 0');
+  assert.equal(orderCancelledRow[17], 0, 'Cancelled order commission should be 0');
   assert.equal(orderCancelledRow[18], 'Đã hủy (CANCELLED)');
 
   // ord-pending-4 and ord-transit-5 should NOT exist
