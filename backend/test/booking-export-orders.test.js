@@ -114,7 +114,7 @@ test('exportBookingOrders returns CSV attachment with UTF-8 BOM when called', as
   assert.ok(sentBody.includes('Thanh Hang'));
   assert.ok(sentBody.includes('7701234567890'));
   assert.ok(sentBody.includes('Kem tri nam Actiscar'));
-  assert.ok(sentBody.includes('Hoàn thành (COMPLETED)'));
+  assert.ok(sentBody.includes('Thành công (COMPLETED)'));
 
   // Verify date filter is applied in SQL query
   assert.ok(capturedSql.includes('o.create_time >= :startDateTime'));
@@ -355,4 +355,211 @@ test('exportBookingOrders returns multi-tab Excel (.xlsx) by default with "all" 
   assert.equal(allSheet['H2'].t, 's', 'Video ID must have string type');
   assert.equal(allSheet['A2'].v, 'ord-hang-1');
   assert.equal(allSheet['H2'].v, 'vid-1');
+});
+
+test('exportBookingOrders deduplicates duplicate orders, filters out pending statuses, and preserves decimal currency', async (t) => {
+  const XLSX = require('xlsx');
+
+  const mockBookings = [
+    {
+      id: 201,
+      creator_name: 'Huong Ly',
+      creator_username: 'huongly.beauty',
+      staff: { name: 'Thanh Hằng', email: 'hang@yumnetwork.vn' },
+      target_shop: { name: 'Actiscar Malaysia' },
+      booking_videos: [
+        { platform_video_id: 'vid-my-1', title: 'Video Malaysia' },
+      ],
+      currency: 'MYR',
+    },
+  ];
+
+  const mockOrderSkus = [
+    // Order 1 with 2 SKUs (should be combined into 1 unique order row with total GMV 25.50 * 2 + 10.25 = 61.25)
+    {
+      order_id: 'ord-multi-1',
+      order_time: '2026-11-15T10:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 2,
+      refunded_quantity: 0,
+      price: 25.50,
+      currency: 'MYR',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    {
+      order_id: 'ord-multi-1',
+      order_time: '2026-11-15T10:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-2',
+      product_name: 'Serum Actiscar',
+      sku_id: 'sku-2',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 10.25,
+      currency: 'MYR',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: '50ml', commission_rate: 10 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    // Duplicate of Order 1 SKU 1 (exact duplicate record, must be discarded)
+    {
+      order_id: 'ord-multi-1',
+      order_time: '2026-11-15T10:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 2,
+      refunded_quantity: 0,
+      price: 25.50,
+      currency: 'MYR',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    // Order 2: Status DELIVERED (must be included)
+    {
+      order_id: 'ord-delivered-2',
+      order_time: '2026-11-16T12:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 51.68,
+      currency: 'MYR',
+      settlement_status: 'UNSETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'DELIVERED' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    // Order 3: Status CANCELLED (must be included)
+    {
+      order_id: 'ord-cancelled-3',
+      order_time: '2026-11-16T14:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 30.00,
+      currency: 'MYR',
+      settlement_status: 'UNSETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'CANCELLED' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    // Order 4: Status AWAITING_SHIPMENT (pending, must be EXCLUDED)
+    {
+      order_id: 'ord-pending-4',
+      order_time: '2026-11-16T15:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 99.00,
+      currency: 'MYR',
+      settlement_status: 'UNSETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'AWAITING_SHIPMENT' },
+      shop_name: 'Actiscar Malaysia',
+    },
+    // Order 5: Status IN_TRANSIT (must be EXCLUDED)
+    {
+      order_id: 'ord-transit-5',
+      order_time: '2026-11-16T16:00:00.000Z',
+      video_id: 'vid-my-1',
+      creator_username: 'huongly.beauty',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 88.00,
+      currency: 'MYR',
+      settlement_status: 'UNSETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'IN_TRANSIT' },
+      shop_name: 'Actiscar Malaysia',
+    },
+  ];
+
+  const bookingEndpointService = loadWithMocks(t, '../src/services/booking/bookingEndpointService', {
+    '../src/repositories/bookingRepository': {
+      findBookings: async () => mockBookings,
+    },
+    '../src/models': {
+      sequelize: {
+        query: async () => mockOrderSkus,
+      },
+    },
+  });
+
+  const req = {
+    query: {
+      month: '2026-11',
+    },
+    session: {
+      role: 'admin',
+      sub: 1,
+    },
+  };
+
+  let sentBody = null;
+  const res = {
+    status() { return res; },
+    setHeader() { return res; },
+    send(body) { sentBody = body; return res; },
+    json(body) { sentBody = body; return res; },
+  };
+
+  await bookingEndpointService.exportBookingOrders(req, res);
+
+  const workbook = XLSX.read(sentBody, { type: 'buffer', cellStyles: true, cellNF: true });
+  const allSheet = workbook.Sheets['all'];
+  const allRows = XLSX.utils.sheet_to_json(allSheet, { header: 1 });
+
+  // Header row + exactly 3 unique orders (ord-multi-1, ord-delivered-2, ord-cancelled-3)
+  // ord-pending-4 and ord-transit-5 must be excluded!
+  assert.equal(allRows.length, 4, 'Expected header + 3 unique orders');
+
+  const orderMultiRow = allRows.find((r) => r[0] === 'ord-multi-1');
+  assert.ok(orderMultiRow, 'ord-multi-1 must be present');
+  // Quantity must be 2 + 1 = 3
+  assert.equal(orderMultiRow[13], 3, 'Combined quantity should be 3');
+  // GMV must be 25.50 * 2 + 10.25 = 61.25 (unrounded!)
+  assert.equal(orderMultiRow[16], 61.25, 'Combined GMV should be unrounded 61.25');
+  assert.equal(orderMultiRow[18], 'Thành công (COMPLETED)');
+
+  const orderDeliveredRow = allRows.find((r) => r[0] === 'ord-delivered-2');
+  assert.ok(orderDeliveredRow, 'ord-delivered-2 must be present');
+  assert.equal(orderDeliveredRow[15], 51.68, 'Price should be unrounded 51.68');
+  assert.equal(orderDeliveredRow[16], 51.68, 'GMV should be unrounded 51.68');
+  assert.equal(orderDeliveredRow[18], 'Đã giao (DELIVERED)');
+
+  const orderCancelledRow = allRows.find((r) => r[0] === 'ord-cancelled-3');
+  assert.ok(orderCancelledRow, 'ord-cancelled-3 must be present');
+  assert.equal(orderCancelledRow[18], 'Đã hủy (CANCELLED)');
+
+  // ord-pending-4 and ord-transit-5 should NOT exist
+  assert.ok(!allRows.some((r) => r[0] === 'ord-pending-4'), 'ord-pending-4 must be excluded');
+  assert.ok(!allRows.some((r) => r[0] === 'ord-transit-5'), 'ord-transit-5 must be excluded');
 });

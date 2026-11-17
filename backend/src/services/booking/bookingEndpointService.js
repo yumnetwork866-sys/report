@@ -1084,15 +1084,43 @@ const exportBookingOrders = async (req, res) => {
       'Tiền tệ',
     ];
 
-    const staffGroups = new Map();
-    const allRows = [];
+    const STATUS_MAP = {
+      COMPLETED: 'Thành công (COMPLETED)',
+      DELIVERED: 'Đã giao (DELIVERED)',
+      CANCELLED: 'Đã hủy (CANCELLED)',
+      CANCELED: 'Đã hủy (CANCELLED)',
+    };
+
+    const uniqueOrdersMap = new Map();
+    const seenOrderSkus = new Set();
 
     for (const row of orderRows) {
-      const meta = videoMap.get(String(row.video_id)) || {};
-      const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
-      const videoUrl = cleanCreator && row.video_id
-        ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
-        : '';
+      const orderId = String(row.order_id || '').trim();
+      if (!orderId) continue;
+
+      // Status check: only export unique orders with status Thành công (COMPLETED), Đã giao (DELIVERED), Đã hủy (CANCELLED)
+      const orderStatusStr = String(row.order_raw_data?.order_status || row.order_raw_data?.status || '').toUpperCase();
+      const itemStatusStr = String(row.sku_raw_data?.item_status || '').toUpperCase();
+      const settlementStr = String(row.settlement_status || '').toUpperCase();
+      const combinedStatus = `${orderStatusStr} ${itemStatusStr} ${settlementStr}`.trim();
+
+      const isCancelled = /CANCEL/.test(combinedStatus) || row.fully_return === true;
+      const isDelivered = /DELIVER/.test(combinedStatus);
+      const isCompleted = /COMPLET/.test(combinedStatus) || settlementStr === 'SETTLED' || (!orderStatusStr && !itemStatusStr);
+
+      if (!isCancelled && !isDelivered && !isCompleted) {
+        continue;
+      }
+
+      const resolvedStatus = isCancelled ? 'CANCELLED' : (isDelivered ? 'DELIVERED' : 'COMPLETED');
+
+      // Deduplicate identical order SKU records
+      const skuKey = `${orderId}:${String(row.sku_id || row.product_id || '')}`;
+      if (seenOrderSkus.has(skuKey)) {
+        continue;
+      }
+      seenOrderSkus.add(skuKey);
+
       const rawPrice = Number(row.price || 0);
       const rawQty = Number(row.quantity || 0);
       const rawRefundQty = Number(row.refunded_quantity || 0);
@@ -1106,45 +1134,105 @@ const exportBookingOrders = async (req, res) => {
           ? Number(row.sku_raw_data.estimated_commission)
           : (rawPrice * Math.max(0, rawQty - rawRefundQty) * commRate));
 
-      const rawStatus = String(row.order_raw_data?.order_status || row.sku_raw_data?.item_status || 'COMPLETED').toUpperCase();
-      const statusLabel = ORDER_STATUS_MAP[rawStatus] ? `${ORDER_STATUS_MAP[rawStatus]} (${rawStatus})` : rawStatus;
+      const meta = videoMap.get(String(row.video_id)) || {};
+      const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
+      const videoUrl = cleanCreator && row.video_id
+        ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
+        : '';
+      const prodName = String(row.product_name || '').trim();
+      const skuName = String(row.sku_raw_data?.sku_name || row.sku_id || '').trim();
 
-      let formattedDate = '';
-      if (row.order_time) {
-        const d = new Date(row.order_time);
-        formattedDate = !Number.isNaN(d.getTime())
-          ? d.toISOString().replace('T', ' ').slice(0, 19)
-          : String(row.order_time);
+      if (!uniqueOrdersMap.has(orderId)) {
+        let formattedDate = '';
+        if (row.order_time) {
+          const d = new Date(row.order_time);
+          formattedDate = !Number.isNaN(d.getTime())
+            ? d.toISOString().replace('T', ' ').slice(0, 19)
+            : String(row.order_time);
+        }
+
+        uniqueOrdersMap.set(orderId, {
+          orderId,
+          orderTime: formattedDate,
+          staffName: meta.staffName || '',
+          staffEmail: meta.staffEmail || '',
+          bookingId: meta.bookingId ? String(meta.bookingId) : '',
+          creatorName: meta.creatorName || '',
+          creatorUsername: cleanCreator ? `@${cleanCreator}` : '',
+          videoId: String(row.video_id || ''),
+          videoTitle: meta.videoTitle || '',
+          videoUrl,
+          productIds: new Set(row.product_id ? [String(row.product_id)] : []),
+          productNames: new Set(prodName ? [prodName] : []),
+          skuNames: new Set(skuName ? [skuName] : []),
+          quantity: rawQty,
+          refundedQuantity: rawRefundQty,
+          price: rawPrice,
+          gmv,
+          commission,
+          orderStatus: resolvedStatus,
+          settlementStatus: row.settlement_status || '',
+          shopName: row.shop_name || meta.shopName || '',
+          currency: row.currency || meta.currency || 'MYR',
+        });
+      } else {
+        // Aggregate subsequent items for this unique order so that order total GMV/qty matches the web exactly
+        const existing = uniqueOrdersMap.get(orderId);
+        if (row.product_id) existing.productIds.add(String(row.product_id));
+        if (prodName) existing.productNames.add(prodName);
+        if (skuName) existing.skuNames.add(skuName);
+        existing.quantity += rawQty;
+        existing.refundedQuantity += rawRefundQty;
+        existing.gmv += gmv;
+        existing.commission += commission;
+        if (existing.quantity > 0) {
+          existing.price = existing.gmv / existing.quantity;
+        }
       }
+    }
+
+    const staffGroups = new Map();
+    const allRows = [];
+
+    for (const order of uniqueOrdersMap.values()) {
+      const statusLabel = STATUS_MAP[order.orderStatus] || order.orderStatus;
+      const productIdsStr = [...order.productIds].join(', ');
+      const productNamesStr = [...order.productNames].join(' + ');
+      const skuNamesStr = [...order.skuNames].join(' + ');
+
+      // Preserve unrounded decimals without losing precision
+      const finalPrice = Math.round(order.price * 100) / 100;
+      const finalGmv = Math.round(order.gmv * 100) / 100;
+      const finalCommission = Math.round(order.commission * 100) / 100;
 
       const rowData = [
-        row.order_id || '',
-        formattedDate,
-        meta.staffName || '',
-        meta.staffEmail || '',
-        meta.bookingId || '',
-        meta.creatorName || '',
-        cleanCreator ? `@${cleanCreator}` : '',
-        row.video_id || '',
-        meta.videoTitle || '',
-        videoUrl,
-        row.product_id || '',
-        row.product_name || '',
-        row.sku_raw_data?.sku_name || row.sku_id || '',
-        rawQty,
-        rawRefundQty,
-        rawPrice,
-        gmv,
-        commission ? Number(commission.toFixed(2)) : 0,
+        order.orderId,
+        order.orderTime,
+        order.staffName,
+        order.staffEmail,
+        order.bookingId,
+        order.creatorName,
+        order.creatorUsername,
+        order.videoId,
+        order.videoTitle,
+        order.videoUrl,
+        productIdsStr,
+        productNamesStr,
+        skuNamesStr,
+        order.quantity,
+        order.refundedQuantity,
+        finalPrice,
+        finalGmv,
+        finalCommission,
         statusLabel,
-        row.settlement_status || '',
-        row.shop_name || meta.shopName || '',
-        row.currency || meta.currency || 'MYR',
+        order.settlementStatus,
+        order.shopName,
+        order.currency,
       ];
 
       allRows.push(rowData);
 
-      const staffKey = meta.staffName ? meta.staffName.trim() : 'Chưa phân công';
+      const staffKey = order.staffName ? order.staffName.trim() : 'Chưa phân công';
       if (!staffGroups.has(staffKey)) {
         staffGroups.set(staffKey, []);
       }
@@ -1229,9 +1317,18 @@ const exportBookingOrders = async (req, res) => {
             cell.z = '@';
           } else if (numberColIndices.has(C)) {
             if (cell.v !== null && cell.v !== undefined && cell.v !== '') {
+              const numVal = Number(cell.v) || 0;
               cell.t = 'n';
-              cell.v = Number(cell.v) || 0;
-              cell.z = '#,##0';
+              cell.v = numVal;
+              if (C === 13 || C === 14) {
+                // Quantity columns: integer format
+                cell.z = '#,##0';
+              } else {
+                // Price (15), GMV (16), Commission (17):
+                // Do NOT round to integer! Show 2 decimal places if there are cents or non-integer
+                const hasDecimals = Math.abs(numVal % 1) > 0.0001;
+                cell.z = hasDecimals ? '#,##0.00' : '#,##0';
+              }
             }
           }
         }
