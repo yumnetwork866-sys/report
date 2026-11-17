@@ -261,18 +261,37 @@ const exportDurationDays = (exportRecord) => {
   return Number.isFinite(start) && Number.isFinite(end) ? Math.round((end - start) / 86400000) : null;
 };
 
+const IS_NOT_CANCELLED_SQL = `
+  NOT (
+    COALESCE(s.fully_return, false) = true
+    OR NULLIF(TRIM(o.raw_data->>'cancel_reason'), '') IS NOT NULL
+    OR NULLIF(TRIM(o.raw_data->>'cancel_user'), '') IS NOT NULL
+    OR UPPER(CONCAT_WS(' ',
+      o.raw_data->>'order_status',
+      o.raw_data->>'status',
+      o.raw_data->>'order_status_string',
+      s.raw_data->>'item_status',
+      s.raw_data->>'order_status',
+      s.raw_data->>'status',
+      s.settlement_status
+    )) LIKE '%CANCEL%'
+  )
+`;
+
 const loadOrderMetricsForVideos = async ({
-  shopId,
+  shopId = null,
   shopIds = [],
   videoIds = [],
   startDate = null,
   endDate = null,
   startTime = null,
   endTime = null,
+  database = null,
 } = {}) => {
   const targetShopIds = [...new Set([...(shopId ? [shopId] : []), ...shopIds].map(Number).filter(Number.isInteger))];
   const targetVideoIds = [...new Set(videoIds.map((id) => String(id || '').trim()).filter(Boolean))];
-  if (!targetShopIds.length || !targetVideoIds.length || !sequelize?.query) {
+  const db = database || sequelize;
+  if (!targetShopIds.length || !targetVideoIds.length || !db?.query) {
     return new Map();
   }
   const dateClauses = [];
@@ -297,24 +316,26 @@ const loadOrderMetricsForVideos = async ({
   const dateWhere = dateClauses.length ? `AND ${dateClauses.join(' AND ')}` : '';
 
   try {
-    const rows = await sequelize.query(`
+    const rows = await db.query(`
       SELECT
         s.shop_id,
         s.content_id AS video_id,
         s.product_id,
         COALESCE(s.currency, 'VND') AS currency,
-        COUNT(DISTINCT s.order_id)::bigint AS orders,
-        SUM(s.quantity)::bigint AS items_sold,
-        SUM(s.refunded_quantity)::bigint AS refunded_quantity,
-        SUM(s.quantity * COALESCE(s.price, 0))::numeric AS gross_gmv,
-        SUM(s.refunded_quantity * COALESCE(s.price, 0))::numeric AS refunded_gmv,
+        COUNT(DISTINCT CASE WHEN ${IS_NOT_CANCELLED_SQL} THEN s.order_id END)::bigint AS orders,
+        SUM(CASE WHEN ${IS_NOT_CANCELLED_SQL} THEN s.quantity ELSE 0 END)::bigint AS items_sold,
+        SUM(CASE WHEN ${IS_NOT_CANCELLED_SQL} THEN s.refunded_quantity ELSE 0 END)::bigint AS refunded_quantity,
+        SUM(CASE WHEN ${IS_NOT_CANCELLED_SQL} THEN s.quantity * COALESCE(s.price, 0) ELSE 0 END)::numeric AS gross_gmv,
+        SUM(CASE WHEN ${IS_NOT_CANCELLED_SQL} THEN s.refunded_quantity * COALESCE(s.price, 0) ELSE 0 END)::numeric AS refunded_gmv,
         COUNT(*) FILTER (
-          WHERE TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
-            ~ '^-?[0-9]+([.][0-9]+)?$'
+          WHERE ${IS_NOT_CANCELLED_SQL}
+            AND TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
+              ~ '^-?[0-9]+([.][0-9]+)?$'
         )::bigint AS commission_rows,
         SUM(CASE
-          WHEN TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
-            ~ '^-?[0-9]+([.][0-9]+)?$'
+          WHEN ${IS_NOT_CANCELLED_SQL}
+            AND TRIM(COALESCE(s.raw_data->>'creator_commission_rate', s.raw_data->>'commission_rate', ''))
+              ~ '^-?[0-9]+([.][0-9]+)?$'
           THEN COALESCE(s.price, 0)
             * GREATEST(COALESCE(s.quantity, 0) - COALESCE(s.refunded_quantity, 0), 0)
             * CASE
@@ -504,7 +525,10 @@ const loadOrderMetricsForBookingProducts = async ({
         s.quantity,
         s.refunded_quantity,
         COALESCE(s.price, 0) AS price,
+        s.settlement_status,
+        s.fully_return,
         s.raw_data,
+        o.raw_data AS order_raw_data,
         o.create_time,
         COALESCE(video_snapshot.views, 0)::bigint AS video_views
       FROM tiktok_affiliate_order_skus s
@@ -595,6 +619,16 @@ const loadOrderMetricsForBookingProducts = async ({
           : String(row.ledger_sku_id);
         if (claimedLedgerRows.has(ledgerRowKey)) continue;
         claimedLedgerRows.add(ledgerRowKey);
+
+        const orderStatusStr = String(row.order_raw_data?.order_status || row.order_raw_data?.status || row.order_raw_data?.order_status_string || '').toUpperCase();
+        const skuStatusStr = String(row.raw_data?.item_status || row.raw_data?.order_status || row.raw_data?.status || '').toUpperCase();
+        const settlementStatus = String(row.settlement_status || '').toUpperCase();
+        const cancelReason = String(row.order_raw_data?.cancel_reason || '').trim();
+        const cancelUser = String(row.order_raw_data?.cancel_user || '').trim();
+        const combinedStatus = `${orderStatusStr} ${skuStatusStr} ${settlementStatus}`.trim();
+        const isCancelled = /CANCEL/.test(combinedStatus) || row.fully_return === true || Boolean(cancelReason) || Boolean(cancelUser);
+
+        if (isCancelled) continue;
 
         const quantity = Math.max(0, Number(row.quantity) || 0);
         const refundedQuantity = Math.min(quantity, Math.max(0, Number(row.refunded_quantity) || 0));
@@ -791,12 +825,13 @@ const metricOfAffiliateSnapshot = (snapshot, selectedProductIds = new Set(), ord
       currency = null;
     }
   } else {
-    grossGmv = numberOrZero(snapshot.creator_attributed_gmv);
-    orders = numberOrZero(snapshot.attributed_orders);
-    itemsSold = numberOrZero(snapshot.attributed_items_sold);
+    grossGmv = hasOrderMetrics ? numberOrZero(orderMetrics.gross_gmv) : numberOrZero(snapshot.creator_attributed_gmv);
+    orders = hasOrderMetrics ? numberOrZero(orderMetrics.orders) : numberOrZero(snapshot.attributed_orders);
+    itemsSold = hasOrderMetrics ? numberOrZero(orderMetrics.items_sold) : numberOrZero(snapshot.attributed_items_sold);
     refundedGmv = orderMetrics?.refunded_gmv !== null && orderMetrics?.refunded_gmv !== undefined ? numberOrZero(orderMetrics.refunded_gmv) : null;
     netGmv = refundedGmv !== null ? grossGmv - refundedGmv : null;
-    currency = snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
+    currency = (hasOrderMetrics ? orderMetrics.currency : null)
+      || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
       || snapshot.raw_metrics?.list?.gmv?.currency
       || orderMetrics?.currency
       || null;
@@ -967,6 +1002,7 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
   const breakdowns = snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.breakdowns || [];
   const scoped = scopedMetricsOfSnapshot(snapshot, selectedProductIds);
   const hasSelectedProducts = selectedProductIds.size > 0;
+  const hasOrderMetrics = orderMetrics && (orderMetrics.has_data || orderMetrics.orders > 0 || orderMetrics.gross_gmv > 0);
   const postedAt = postedAtOf({ video_post_time: snapshot.post_date, post_time: snapshot.post_date });
 
   let grossGmv;
@@ -992,10 +1028,12 @@ const affiliateCandidateFromSnapshot = (snapshot, selectedProductIds = new Set()
       currency = null;
     }
   } else {
-    grossGmv = numberOrZero(snapshot.creator_attributed_gmv);
-    orders = numberOrZero(snapshot.attributed_orders);
-    itemsSold = numberOrZero(snapshot.attributed_items_sold);
-    currency = scoped?.currency || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
+    grossGmv = hasOrderMetrics ? numberOrZero(orderMetrics.gross_gmv) : numberOrZero(snapshot.creator_attributed_gmv);
+    orders = hasOrderMetrics ? numberOrZero(orderMetrics.orders) : numberOrZero(snapshot.attributed_orders);
+    itemsSold = hasOrderMetrics ? numberOrZero(orderMetrics.items_sold) : numberOrZero(snapshot.attributed_items_sold);
+    currency = (hasOrderMetrics ? orderMetrics.currency : null)
+      || scoped?.currency
+      || snapshot.raw_metrics?.detail?.performance?.intervals?.[0]?.sales?.overall?.gmv?.currency
       || source.gmv?.currency
       || orderMetrics?.currency
       || null;

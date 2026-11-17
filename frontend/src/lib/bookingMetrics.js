@@ -655,10 +655,14 @@ export const bookingVideoOrderMetrics = (video, booking, orders = [], options = 
       const rawCommRate = finiteNumber(sku?.creator_commission_rate);
       const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
 
-      const orderStatus = String(order?.order_status || order?.status || '').toUpperCase();
-      const itemStatus = String(sku?.item_status || '').toUpperCase();
-      const combinedStatus = `${orderStatus} ${itemStatus}`;
-      const isCancelled = /CANCEL/.test(combinedStatus);
+      const orderStatus = String(order?.order_status || order?.status || order?.order_status_string || '').toUpperCase();
+      const itemStatus = String(sku?.item_status || sku?.order_status || sku?.status || '').toUpperCase();
+      const settlementStatus = String(sku?.settlement_status || order?.settlement_status || '').toUpperCase();
+      const combinedStatus = `${orderStatus} ${itemStatus} ${settlementStatus}`;
+      const isCancelled = /CANCEL/.test(combinedStatus)
+        || sku?.fully_return === true
+        || Boolean(order?.cancel_reason)
+        || Boolean(order?.cancel_user);
       const hasRefundStatus = /REFUND|RETURN/.test(combinedStatus);
       const isFullyRefunded = quantity > 0 && (refundedQuantity >= quantity || hasRefundStatus);
       const effectiveQuantity = isCancelled || isFullyRefunded
@@ -672,7 +676,9 @@ export const bookingVideoOrderMetrics = (video, booking, orders = [], options = 
       estimatedCommission += isCancelled || isFullyRefunded ? 0 : (price * effectiveQuantity * commissionRate);
       currency = sku?.price?.currency || sku?.currency || currency;
       hasMatch = true;
-      matchedInOrder = true;
+      if (!isCancelled && !isFullyRefunded && effectiveQuantity > 0) {
+        matchedInOrder = true;
+      }
     }
     if (matchedInOrder && orderId) {
       orderIds.add(orderId);

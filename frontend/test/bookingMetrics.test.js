@@ -611,3 +611,30 @@ test('extractVideoHashtags extracts hashtags with casing and cleans trailing pun
   };
   assert.deepEqual(extractVideoHashtags(noTags, noTags.title), []);
 });
+
+test('bookingVideoOrderMetrics excludes cancelled orders from GMV, items sold, and order count', () => {
+  const video = { platform_video_id: 'vid-1' };
+  const orders = [
+    {
+      order_id: 'ord-completed',
+      order_status: 'COMPLETED',
+      skus: [
+        { content_id: 'vid-1', quantity: 1, price: 90, item_status: 'COMPLETED' },
+      ],
+    },
+    {
+      order_id: 'ord-cancelled',
+      order_status: 'CANCELLED',
+      skus: [
+        { content_id: 'vid-1', quantity: 1, price: 175, item_status: 'CANCELLED' },
+      ],
+    },
+  ];
+
+  const metrics = bookingVideoOrderMetrics(video, null, orders);
+  assert.ok(metrics);
+  assert.equal(metrics.grossGmv, 90);
+  assert.equal(metrics.itemsSold, 1);
+  assert.equal(metrics.orderCount, 1);
+});
+

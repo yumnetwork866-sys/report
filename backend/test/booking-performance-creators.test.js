@@ -51,6 +51,7 @@ const loadController = (
       ),
       applyBookingProductPerformance: async (bookings) => bookings,
       loadOrderMetricsForBookingProducts: async () => new Map(),
+      resolveBookingRegion: () => null,
       ...bookingVideoService,
     }),
     mockModule(require.resolve('../src/services/tiktokShop/tiktokShopEndpointService'), {

@@ -631,3 +631,81 @@ test('matchesBookingDateRange respects regional midnight when posted_at crosses 
 
   assert.equal(matchesBookingDateRange(booking, video, new Date('2026-11-09T00:00:00Z')), true);
 });
+
+test('loadOrderMetricsForBookingProducts excludes cancelled orders from GMV, items sold, and orders', async () => {
+  const rows = [
+    {
+      shop_id: 10,
+      product_id: 'prod-follicas',
+      product_name: 'Follicas Cream',
+      creator_username: 'drasyrafsam',
+      order_id: 'order-completed',
+      content_id: 'video-1',
+      content_type: 'VIDEO',
+      currency: 'MYR',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 90,
+      order_raw_data: { order_status: 'COMPLETED' },
+      raw_data: { item_status: 'COMPLETED' },
+    },
+    {
+      shop_id: 10,
+      product_id: 'prod-follicas',
+      product_name: 'Follicas Combo',
+      creator_username: 'drasyrafsam',
+      order_id: 'order-cancelled',
+      content_id: 'video-1',
+      content_type: 'VIDEO',
+      currency: 'MYR',
+      quantity: 1,
+      refunded_quantity: 0,
+      price: 175,
+      order_raw_data: { order_status: 'CANCELLED' },
+      raw_data: { item_status: 'CANCELLED' },
+    },
+  ];
+
+  const performance = await loadOrderMetricsForBookingProducts({
+    bookings: [{
+      id: 999,
+      target_shop_id: 10,
+      creator_username: 'drasyrafsam',
+      currency: 'MYR',
+      evaluation_snapshot: { products: [{ id: 'prod-follicas', name: 'Follicas' }] },
+    }],
+    database: { query: async () => rows },
+  });
+
+  const result = performance.get('999');
+  assert.equal(result.affiliate_orders, 1);
+  assert.equal(result.items_sold, 1);
+  assert.equal(result.affiliate_gmv, 90);
+});
+
+test('metricOfAffiliateSnapshot uses order ledger metrics excluding cancelled orders', () => {
+  const snapshot = {
+    creator_attributed_gmv: '265.00',
+    attributed_orders: 2,
+    attributed_items_sold: 2,
+    post_date: '2026-10-10',
+    video_views: 1884,
+  };
+  const orderMetrics = {
+    has_data: true,
+    gross_gmv: 90,
+    orders: 1,
+    items_sold: 1,
+    items_refunded: 0,
+    refunded_gmv: 0,
+    currency: 'MYR',
+    estimated_commission: 0,
+    product_ids: ['prod-follicas'],
+  };
+
+  const metrics = metricOfAffiliateSnapshot(snapshot, new Set(), orderMetrics);
+  assert.equal(metrics.gross_gmv, 90);
+  assert.equal(metrics.orders, 1);
+  assert.equal(metrics.items_sold, 1);
+});
+
