@@ -110,6 +110,8 @@ const BookingProductOrderDetailModal = ({
   onClose,
   formatMoney,
   formatNumber,
+  convertAmount,
+  displayCurrency,
   t,
   currency,
   dateRange,
@@ -256,8 +258,22 @@ const BookingProductOrderDetailModal = ({
     return rows;
   }, [rows, filterMode, video?.platform_video_id]);
 
+  const filteredRows = useMemo(() => {
+    let list = tabRows;
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter((r) => (
+        r.orderId.toLowerCase().includes(q)
+        || r.skuName.toLowerCase().includes(q)
+        || (r.productName && r.productName.toLowerCase().includes(q))
+        || (r.videoTitle && r.videoTitle.toLowerCase().includes(q))
+      ));
+    }
+    return list;
+  }, [tabRows, searchQuery]);
+
   const activeStats = useMemo(() => {
-    const list = tabRows;
+    const list = filteredRows;
     const orderIds = new Set();
     let items = 0;
     let refundedItems = 0;
@@ -280,21 +296,7 @@ const BookingProductOrderDetailModal = ({
       gmv,
       commission: comm,
     };
-  }, [tabRows]);
-
-  const filteredRows = useMemo(() => {
-    let list = tabRows;
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter((r) => (
-        r.orderId.toLowerCase().includes(q)
-        || r.skuName.toLowerCase().includes(q)
-        || (r.productName && r.productName.toLowerCase().includes(q))
-        || (r.videoTitle && r.videoTitle.toLowerCase().includes(q))
-      ));
-    }
-    return list;
-  }, [tabRows, searchQuery]);
+  }, [filteredRows]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -431,7 +433,13 @@ const BookingProductOrderDetailModal = ({
               <button
                 type="button"
                 className="button button--secondary button--compact booking-order-export-btn"
-                onClick={() => exportBookingModalOrdersToCsv(filteredRows, { booking, video, product })}
+                onClick={() => exportBookingModalOrdersToCsv(filteredRows, {
+                  booking,
+                  video,
+                  product,
+                  convertAmount,
+                  displayCurrency,
+                })}
                 disabled={!filteredRows.length}
                 title="Xuất danh sách đơn hàng ra file CSV (Excel)"
               >

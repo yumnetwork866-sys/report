@@ -57,3 +57,29 @@ test('exportBookingModalOrdersToCsv generates properly formatted CSV content wit
   assert.ok(csv.includes('"Hoàn thành (COMPLETED)"'));
 });
 
+
+test('exportBookingModalOrdersToCsv converts money columns to the display currency', () => {
+  const rows = [{
+    orderId: 'ord-vnd-1',
+    orderTime: 1731600000,
+    orderStatus: 'COMPLETED',
+    isCancelled: false,
+    isFullyRefunded: false,
+    isPartiallyRefunded: false,
+    productId: 'prod-1',
+    productName: 'Kem Actiscar',
+    quantity: 2,
+    refundedQuantity: 0,
+    price: 250000,
+    gmv: 500000,
+    commission: 50000,
+    currency: 'VND',
+  }];
+  const csv = exportBookingModalOrdersToCsv(rows, {
+    booking: { id: 1, currency: 'VND' },
+    displayCurrency: 'MYR',
+    convertAmount: (amount) => amount * 0.000162,
+  });
+  assert.ok(csv.includes('"40.5","81","8.1"'));
+  assert.ok(csv.includes('"MYR"'));
+});

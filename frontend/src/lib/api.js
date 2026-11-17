@@ -153,6 +153,7 @@ export async function downloadBookingOrdersCsv({
   staffIds,
   shopId,
   videoIds,
+  displayCurrency,
   format = 'xlsx',
   signal,
 } = {}) {
@@ -174,6 +175,7 @@ export async function downloadBookingOrdersCsv({
     staffIds,
     shopId,
     videoIds,
+    displayCurrency,
     format,
   }) : undefined;
 
@@ -185,6 +187,7 @@ export async function downloadBookingOrdersCsv({
   if (endTime) params.set('end_time', String(endTime));
   if (staffId) params.set('staff_id', String(staffId));
   if (shopId) params.set('shop_id', String(shopId));
+  if (displayCurrency) params.set('display_currency', String(displayCurrency));
   if (format) params.set('format', format);
 
   const query = usePost ? '' : `?${params.toString()}`;

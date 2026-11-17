@@ -29,10 +29,22 @@ const resolveStatusLabel = (row) => {
 
 export const exportBookingModalOrdersToCsv = (
   rows = [],
-  { booking = {}, video = {}, product = null } = {},
+  {
+    booking = {}, video = {}, product: _product = null, convertAmount = null, displayCurrency = '',
+  } = {},
   filename = '',
 ) => {
   if (!rows || !rows.length) return false;
+
+  const targetCurrency = String(displayCurrency || '').trim().toUpperCase();
+  const convertValue = (value, sourceCurrency) => {
+    if (value === null || value === undefined || value === '') return value;
+    if (!targetCurrency || typeof convertAmount !== 'function') return value;
+    const converted = convertAmount(Number(value), sourceCurrency || booking.currency || 'MYR');
+    return converted === null || converted === undefined || !Number.isFinite(Number(converted))
+      ? value
+      : converted;
+  };
 
   const headers = [
     'Mã đơn hàng',
@@ -90,6 +102,7 @@ export const exportBookingModalOrdersToCsv = (
       ? `https://www.tiktok.com/@${encodeURIComponent(cleanUsername)}/video/${encodeURIComponent(rowVideoId)}`
       : videoUrl;
     const rowVideoTitle = row.videoTitle || videoTitle;
+    const rowCurrency = row.currency || booking.currency || 'MYR';
 
     return [
       row.orderId || '',
@@ -107,12 +120,12 @@ export const exportBookingModalOrdersToCsv = (
       row.classification || row.skuName || '',
       row.quantity !== null && row.quantity !== undefined ? row.quantity : '',
       row.refundedQuantity !== null && row.refundedQuantity !== undefined ? row.refundedQuantity : 0,
-      row.price !== null && row.price !== undefined ? row.price : '',
-      row.gmv !== null && row.gmv !== undefined ? row.gmv : '',
-      row.commission !== null && row.commission !== undefined ? row.commission : '',
+      row.price !== null && row.price !== undefined ? convertValue(row.price, rowCurrency) : '',
+      row.gmv !== null && row.gmv !== undefined ? convertValue(row.gmv, rowCurrency) : '',
+      row.commission !== null && row.commission !== undefined ? convertValue(row.commission, rowCurrency) : '',
       resolveStatusLabel(row),
       shopName,
-      row.currency || booking.currency || 'MYR',
+      targetCurrency || rowCurrency,
     ].map(escapeCell).join(',');
   });
 

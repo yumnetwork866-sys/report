@@ -860,6 +860,7 @@ const BookingManagement = ({
         staffIds,
         shopId,
         videoIds: uniqueVideoIds,
+        displayCurrency: selectedCurrency,
       });
       setIsExportOrdersOpen(false);
     } catch (err) {
@@ -867,7 +868,7 @@ const BookingManagement = ({
     } finally {
       setIsExportingOrders(false);
     }
-  }, [bookingGroups, customRange, isExportingOrders, selectedMonth, sortedBookingsOfGroup, t, videoPerformanceByBooking]);
+  }, [bookingGroups, customRange, isExportingOrders, selectedCurrency, selectedMonth, sortedBookingsOfGroup, t, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canViewUsers && bookingGroups.length === 1) {
@@ -1144,6 +1145,7 @@ const BookingManagement = ({
         {isExportOrdersOpen ? (
           <BookingExportModal
             groups={bookingGroups}
+            shops={shops}
             initialSelectedKeys={selectedManagerKey === 'all'
               ? bookingGroups.map((group) => group.key)
               : [bookingManagerFilterValue]}
@@ -1309,6 +1311,8 @@ const BookingManagement = ({
           onClose={() => setProductOrderDetailModal(null)}
           formatMoney={formatMoney}
           formatNumber={formatNumber}
+          convertAmount={convertAmount}
+          displayCurrency={selectedCurrency}
           t={t}
           currency={productOrderDetailModal.booking?.currency || selectedCurrency}
           dateRange={orderRangeForPeriod(selectedMonth, customRange, productOrderDetailModal?.booking?.target_shop?.region || activeShop?.region || 'MY')}

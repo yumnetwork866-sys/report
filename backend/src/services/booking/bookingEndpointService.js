@@ -949,7 +949,7 @@ const exportBookingOrders = async (req, res) => {
 
     if (videoIds.length > 0) {
       const dateClauses = [];
-      const replacements = { videoIds };
+      const replacements = { videoIds, ...(shopIds.length ? { shopIds } : {}) };
       if (requestedShopId !== null) {
         replacements.shopId = requestedShopId;
         dateClauses.push('sku.shop_id = :shopId');
@@ -1017,11 +1017,69 @@ const exportBookingOrders = async (req, res) => {
       orderRows = skus;
     }
 
+    const orderStatusTextOf = (row) => [
+      row.order_raw_data?.order_status,
+      row.order_raw_data?.status,
+      row.order_raw_data?.order_status_string,
+      row.sku_raw_data?.item_status,
+      row.sku_raw_data?.order_status,
+      row.sku_raw_data?.status,
+      row.settlement_status,
+    ].map((value) => String(value || '').toUpperCase()).join(' ');
+
+    const isCancelledRow = (row) => (
+      /CANCEL/.test(orderStatusTextOf(row))
+      || row.fully_return === true
+      || Boolean(String(row.order_raw_data?.cancel_reason || '').trim())
+      || Boolean(String(row.order_raw_data?.cancel_user || '').trim())
+    );
+
+    const commissionOfRow = (row) => {
+      const rawRate = row.sku_raw_data?.creator_commission_rate ?? row.sku_raw_data?.commission_rate;
+      const hasRate = rawRate !== undefined && rawRate !== null
+        && String(rawRate).trim() !== ''
+        && Number.isFinite(Number(rawRate));
+      if (!hasRate) return 0;
+      const rate = Number(rawRate);
+      const commissionRate = rate > 100 ? rate / 10000 : rate / 100;
+      const netQuantity = Math.max(0, Number(row.quantity || 0) - Number(row.refunded_quantity || 0));
+      return Number(row.price || 0) * netQuantity * commissionRate;
+    };
+
+    const statusOfRow = (row) => String(
+      row.order_raw_data?.order_status
+      || row.order_raw_data?.status
+      || row.order_raw_data?.order_status_string
+      || row.sku_raw_data?.item_status
+      || row.sku_raw_data?.order_status
+      || row.sku_raw_data?.status
+      || 'COMPLETED',
+    ).toUpperCase();
+
+    const rowCurrencyOf = (row, meta = {}) => String(row.currency || meta.currency || 'MYR').toUpperCase();
+    const needsConversion = Boolean(displayCurrency) && orderRows.some((row) => (
+      rowCurrencyOf(row, videoMap.get(String(row.video_id)) || {}) !== displayCurrency
+    ));
+    const exchangeRates = needsConversion ? (await getMyrExchangeRates()).rates : null;
+    const convertMoney = (amount, fromCurrency) => {
+      const source = String(fromCurrency || 'MYR').toUpperCase();
+      if (!needsConversion || !exchangeRates || source === displayCurrency) {
+        return { amount, currency: source };
+      }
+      const sourceRate = Number(exchangeRates[source]);
+      const targetRate = Number(exchangeRates[displayCurrency]);
+      if (!Number.isFinite(sourceRate) || sourceRate <= 0 || !Number.isFinite(targetRate) || targetRate <= 0) {
+        return { amount, currency: source };
+      }
+      return { amount: amount * sourceRate / targetRate, currency: displayCurrency };
+    };
+
     if (format === 'json') {
+      const jsonRows = orderRows.filter((row) => !isCancelledRow(row));
       return res.json({
         ok: true,
-        count: orderRows.length,
-        orders: orderRows.map((row) => {
+        count: jsonRows.length,
+        orders: jsonRows.map((row) => {
           const meta = videoMap.get(String(row.video_id)) || {};
           const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
           const videoUrl = cleanCreator && row.video_id
@@ -1030,16 +1088,10 @@ const exportBookingOrders = async (req, res) => {
           const rawPrice = Number(row.price || 0);
           const rawQty = Number(row.quantity || 0);
           const rawRefundQty = Number(row.refunded_quantity || 0);
-          const gmv = rawPrice * rawQty;
-          const rawCommRate = Number(row.sku_raw_data?.creator_commission_rate || row.sku_raw_data?.commission_rate || 0);
-          const commRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
-          const commission = row.sku_raw_data?.commission_amount !== undefined
-            ? Number(row.sku_raw_data.commission_amount)
-            : (row.sku_raw_data?.estimated_commission !== undefined
-              ? Number(row.sku_raw_data.estimated_commission)
-              : (rawPrice * Math.max(0, rawQty - rawRefundQty) * commRate));
-
-          const rawStatus = String(row.order_raw_data?.order_status || row.sku_raw_data?.item_status || 'COMPLETED').toUpperCase();
+          const rowCurrency = rowCurrencyOf(row, meta);
+          const convertedPrice = convertMoney(rawPrice, rowCurrency);
+          const convertedGmv = convertMoney(rawPrice * rawQty, rowCurrency);
+          const convertedCommission = convertMoney(commissionOfRow(row), rowCurrency);
 
           return {
             orderId: row.order_id || '',
@@ -1057,23 +1109,17 @@ const exportBookingOrders = async (req, res) => {
             skuName: row.sku_raw_data?.sku_name || row.sku_id || '',
             quantity: rawQty,
             refundedQuantity: rawRefundQty,
-            price: rawPrice,
-            gmv,
-            commission,
-            orderStatus: rawStatus,
+            price: convertedPrice.amount,
+            gmv: convertedGmv.amount,
+            commission: convertedCommission.amount,
+            orderStatus: statusOfRow(row),
             settlementStatus: row.settlement_status || '',
             shopName: row.shop_name || meta.shopName || '',
-            currency: row.currency || meta.currency || 'MYR',
+            currency: convertedGmv.currency,
           };
         }),
       });
     }
-
-    const escapeCell = (val) => {
-      if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
 
     const ORDER_STATUS_MAP = {
       COMPLETED: 'Hoàn thành',
@@ -1124,23 +1170,7 @@ const exportBookingOrders = async (req, res) => {
 
     for (const row of orderRows) {
       const orderId = String(row.order_id || '').trim();
-      if (!orderId) continue;
-
-      // Status check: only export unique orders with status Thành công (COMPLETED), Đã giao (DELIVERED), Đã hủy (CANCELLED)
-      const orderStatusStr = String(row.order_raw_data?.order_status || row.order_raw_data?.status || '').toUpperCase();
-      const itemStatusStr = String(row.sku_raw_data?.item_status || '').toUpperCase();
-      const settlementStr = String(row.settlement_status || '').toUpperCase();
-      const combinedStatus = `${orderStatusStr} ${itemStatusStr} ${settlementStr}`.trim();
-
-      const isCancelled = /CANCEL/.test(combinedStatus) || row.fully_return === true;
-      const isDelivered = /DELIVER/.test(combinedStatus);
-      const isCompleted = /COMPLET/.test(combinedStatus) || settlementStr === 'SETTLED' || (!orderStatusStr && !itemStatusStr);
-
-      if (!isCancelled && !isDelivered && !isCompleted) {
-        continue;
-      }
-
-      const resolvedStatus = isCancelled ? 'CANCELLED' : (isDelivered ? 'DELIVERED' : 'COMPLETED');
+      if (!orderId || isCancelledRow(row)) continue;
 
       // Deduplicate identical order SKU records
       const skuKey = `${orderId}:${String(row.sku_id || row.product_id || '')}`;
@@ -1149,30 +1179,21 @@ const exportBookingOrders = async (req, res) => {
       }
       seenOrderSkus.add(skuKey);
 
+      const meta = videoMap.get(String(row.video_id)) || {};
+      const rowCurrency = rowCurrencyOf(row, meta);
       const rawPrice = Number(row.price || 0);
       const rawQty = Number(row.quantity || 0);
       const rawRefundQty = Number(row.refunded_quantity || 0);
-      const gmv = rawPrice * rawQty;
+      const convertedPrice = convertMoney(rawPrice, rowCurrency);
+      const convertedGmv = convertMoney(rawPrice * rawQty, rowCurrency);
+      const convertedCommission = convertMoney(commissionOfRow(row), rowCurrency);
 
-      const rawCommRate = Number(row.sku_raw_data?.creator_commission_rate || row.sku_raw_data?.commission_rate || 0);
-      const commRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
-      const commission = row.sku_raw_data?.commission_amount !== undefined
-        ? Number(row.sku_raw_data.commission_amount)
-        : (row.sku_raw_data?.estimated_commission !== undefined
-          ? Number(row.sku_raw_data.estimated_commission)
-          : (rawPrice * Math.max(0, rawQty - rawRefundQty) * commRate));
-
-      const meta = videoMap.get(String(row.video_id)) || {};
       const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
       const videoUrl = cleanCreator && row.video_id
         ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
         : '';
       const prodName = String(row.product_name || '').trim();
       const skuName = String(row.sku_raw_data?.sku_name || row.sku_id || '').trim();
-
-      const effectiveGmv = resolvedStatus === 'CANCELLED' ? 0 : gmv;
-      const effectiveCommission = resolvedStatus === 'CANCELLED' ? 0 : commission;
-      const effectiveQuantity = resolvedStatus === 'CANCELLED' ? 0 : rawQty;
 
       if (!uniqueOrdersMap.has(orderId)) {
         let formattedDate = '';
@@ -1197,16 +1218,16 @@ const exportBookingOrders = async (req, res) => {
           productIds: new Set(row.product_id ? [String(row.product_id)] : []),
           productNames: new Set(prodName ? [prodName] : []),
           skuNames: new Set(skuName ? [skuName] : []),
-          quantity: effectiveQuantity,
+          quantity: rawQty,
           rawQuantity: rawQty,
           refundedQuantity: rawRefundQty,
-          price: rawPrice,
-          gmv: effectiveGmv,
-          commission: effectiveCommission,
-          orderStatus: resolvedStatus,
+          price: convertedPrice.amount,
+          gmv: convertedGmv.amount,
+          commission: convertedCommission.amount,
+          orderStatus: statusOfRow(row),
           settlementStatus: row.settlement_status || '',
           shopName: row.shop_name || meta.shopName || '',
-          currency: row.currency || meta.currency || 'MYR',
+          currency: convertedGmv.currency,
         });
       } else {
         // Aggregate subsequent items for this unique order so that order total GMV/qty matches the web exactly
@@ -1214,13 +1235,11 @@ const exportBookingOrders = async (req, res) => {
         if (row.product_id) existing.productIds.add(String(row.product_id));
         if (prodName) existing.productNames.add(prodName);
         if (skuName) existing.skuNames.add(skuName);
-        if (existing.orderStatus !== 'CANCELLED' && resolvedStatus !== 'CANCELLED') {
-          existing.quantity += rawQty;
-          existing.gmv += gmv;
-          existing.commission += commission;
-          if (existing.quantity > 0) {
-            existing.price = existing.gmv / existing.quantity;
-          }
+        existing.quantity += rawQty;
+        existing.gmv += convertedGmv.amount;
+        existing.commission += convertedCommission.amount;
+        if (existing.quantity > 0) {
+          existing.price = existing.gmv / existing.quantity;
         }
         existing.rawQuantity += rawQty;
         existing.refundedQuantity += rawRefundQty;
@@ -1231,7 +1250,10 @@ const exportBookingOrders = async (req, res) => {
     const allRows = [];
 
     for (const order of uniqueOrdersMap.values()) {
-      const statusLabel = STATUS_MAP[order.orderStatus] || order.orderStatus;
+      const statusLabel = STATUS_MAP[order.orderStatus]
+        || (ORDER_STATUS_MAP[order.orderStatus]
+          ? `${ORDER_STATUS_MAP[order.orderStatus]} (${order.orderStatus})`
+          : order.orderStatus);
       const productIdsStr = [...order.productIds].join(', ');
       const productNamesStr = [...order.productNames].join(' + ');
       const skuNamesStr = [...order.skuNames].join(' + ');

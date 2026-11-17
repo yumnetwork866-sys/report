@@ -357,7 +357,7 @@ test('exportBookingOrders returns multi-tab Excel (.xlsx) by default with "all" 
   assert.equal(allSheet['H2'].v, 'vid-1');
 });
 
-test('exportBookingOrders deduplicates duplicate orders, filters out pending statuses, and preserves decimal currency', async (t) => {
+test('exportBookingOrders deduplicates duplicate orders, excludes cancelled orders, and preserves decimal currency', async (t) => {
   const XLSX = require('xlsx');
 
   const mockBookings = [
@@ -537,9 +537,8 @@ test('exportBookingOrders deduplicates duplicate orders, filters out pending sta
   const allSheet = workbook.Sheets['all'];
   const allRows = XLSX.utils.sheet_to_json(allSheet, { header: 1 });
 
-  // Header row + exactly 3 unique orders (ord-multi-1, ord-delivered-2, ord-cancelled-3)
-  // ord-pending-4 and ord-transit-5 must be excluded!
-  assert.equal(allRows.length, 4, 'Expected header + 3 unique orders');
+  // Header row + 4 non-cancelled unique orders. Cancelled order is excluded to match the booking UI.
+  assert.equal(allRows.length, 5, 'Expected header + 4 unique non-cancelled orders');
 
   const orderMultiRow = allRows.find((r) => r[0] === 'ord-multi-1');
   assert.ok(orderMultiRow, 'ord-multi-1 must be present');
@@ -547,6 +546,8 @@ test('exportBookingOrders deduplicates duplicate orders, filters out pending sta
   assert.equal(orderMultiRow[13], 3, 'Combined quantity should be 3');
   // GMV must be 25.50 * 2 + 10.25 = 61.25 (unrounded!)
   assert.equal(orderMultiRow[16], 61.25, 'Combined GMV should be unrounded 61.25');
+  // Commission matches the UI ledger: price * (quantity - refunded) * rate.
+  assert.equal(orderMultiRow[17], 6.13, 'Combined commission should use the order commission rate');
   assert.equal(orderMultiRow[18], 'Thành công (COMPLETED)');
 
   const orderDeliveredRow = allRows.find((r) => r[0] === 'ord-delivered-2');
@@ -555,15 +556,19 @@ test('exportBookingOrders deduplicates duplicate orders, filters out pending sta
   assert.equal(orderDeliveredRow[16], 51.68, 'GMV should be unrounded 51.68');
   assert.equal(orderDeliveredRow[18], 'Đã giao (DELIVERED)');
 
-  const orderCancelledRow = allRows.find((r) => r[0] === 'ord-cancelled-3');
-  assert.ok(orderCancelledRow, 'ord-cancelled-3 must be present');
-  assert.equal(orderCancelledRow[16], 0, 'Cancelled order GMV should be 0');
-  assert.equal(orderCancelledRow[17], 0, 'Cancelled order commission should be 0');
-  assert.equal(orderCancelledRow[18], 'Đã hủy (CANCELLED)');
+  // Pending / in-transit orders are included in the UI ledger, so they must be exported too.
+  const orderPendingRow = allRows.find((r) => r[0] === 'ord-pending-4');
+  assert.ok(orderPendingRow, 'ord-pending-4 must be present');
+  assert.equal(orderPendingRow[16], 99, 'Pending order GMV should be included');
+  assert.equal(orderPendingRow[18], 'Chờ giao hàng (AWAITING_SHIPMENT)');
 
-  // ord-pending-4 and ord-transit-5 should NOT exist
-  assert.ok(!allRows.some((r) => r[0] === 'ord-pending-4'), 'ord-pending-4 must be excluded');
-  assert.ok(!allRows.some((r) => r[0] === 'ord-transit-5'), 'ord-transit-5 must be excluded');
+  const orderTransitRow = allRows.find((r) => r[0] === 'ord-transit-5');
+  assert.ok(orderTransitRow, 'ord-transit-5 must be present');
+  assert.equal(orderTransitRow[16], 88, 'In-transit order GMV should be included');
+  assert.equal(orderTransitRow[18], 'Đang vận chuyển (IN_TRANSIT)');
+
+  // Cancelled orders are excluded from the UI ledger.
+  assert.ok(!allRows.some((r) => r[0] === 'ord-cancelled-3'), 'ord-cancelled-3 must be excluded');
 });
 
 for (const scenario of [
@@ -644,4 +649,75 @@ test('exportBookingOrders filters staff bookings and order rows by the selected 
   assert.equal(bookingWhere.target_shop_id, 5);
   assert.equal(queriedShopId, 5);
   assert.match(orderSql, /sku\.shop_id = :shopId/);
+});
+
+test('exportBookingOrders converts exported money to the UI display currency', async (t) => {
+  const mockBookings = [
+    {
+      id: 301,
+      creator_name: 'Lan Anh',
+      creator_username: 'lananh.review',
+      staff: { name: 'Thanh Hang', email: 'hang@yumnetwork.vn' },
+      target_shop_id: 9,
+      target_shop: { id: 9, name: 'Actiscar Official' },
+      booking_videos: [{ platform_video_id: 'vid-vnd-1', title: 'Video VND' }],
+      currency: 'VND',
+    },
+  ];
+
+  const mockOrderSkus = [
+    {
+      order_id: 'ord-vnd-1',
+      order_time: '2026-11-15T10:00:00.000Z',
+      video_id: 'vid-vnd-1',
+      creator_username: 'lananh.review',
+      product_id: 'prod-1',
+      product_name: 'Kem Actiscar',
+      sku_id: 'sku-1',
+      quantity: 2,
+      refunded_quantity: 0,
+      price: 250000,
+      currency: 'VND',
+      settlement_status: 'SETTLED',
+      sku_raw_data: { sku_name: '30g', commission_rate: 10 },
+      order_raw_data: { order_status: 'COMPLETED' },
+      shop_name: 'Actiscar Official',
+    },
+  ];
+
+  const service = loadWithMocks(t, '../src/services/booking/bookingEndpointService', {
+    '../src/repositories/bookingRepository': {
+      findBookings: async () => mockBookings,
+    },
+    '../src/services/exchangeRateService': {
+      getMyrExchangeRates: async () => ({
+        base: 'MYR',
+        rates: { MYR: 1, VND: 0.000162 },
+        dates: { MYR: null, VND: null },
+        source: 'test',
+      }),
+    },
+    '../src/models': {
+      sequelize: {
+        query: async () => mockOrderSkus,
+      },
+    },
+  });
+
+  let sentBody = '';
+  const res = {
+    status() { return res; },
+    setHeader() { return res; },
+    send(body) { sentBody = body; return res; },
+    json(body) { sentBody = body; return res; },
+  };
+
+  await service.exportBookingOrders({
+    body: { month: '2026-11', displayCurrency: 'MYR', format: 'csv' },
+    query: {},
+    session: { role: 'admin', sub: 1 },
+  }, res);
+
+  assert.ok(sentBody.includes('"40.5","81","8.1"'), 'Price, GMV and commission must be converted to MYR');
+  assert.ok(sentBody.includes('"MYR"'), 'Exported currency must be the display currency');
 });

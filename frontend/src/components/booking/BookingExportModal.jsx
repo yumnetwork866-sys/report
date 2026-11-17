@@ -2,8 +2,9 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, X } from 'lucide-react';
 import TargetKocAvatar from './TargetKocAvatar';
+import ShopDropdown from '../ShopDropdown';
 
-const BookingExportModal = ({ groups, initialSelectedKeys, isExporting, error, onClose, onConfirm, t }) => {
+const BookingExportModal = ({ groups, shops: availableShops = [], initialSelectedKeys, isExporting, error, onClose, onConfirm, t }) => {
   const [selectedKeys, setSelectedKeys] = useState(() => new Set(initialSelectedKeys));
   const [shopId, setShopId] = useState('all');
   const dialogRef = useRef(null);
@@ -11,13 +12,17 @@ const BookingExportModal = ({ groups, initialSelectedKeys, isExporting, error, o
   const titleId = useId();
   const shopSelectId = useId();
   const shopsById = new Map();
+  const availableShopsById = new Map(availableShops.map((shop) => [String(shop.id), shop]));
   for (const group of groups) {
     for (const booking of group.bookings || []) {
       const id = String(booking.target_shop_id || booking.target_shop?.id || '');
-      if (id && !shopsById.has(id)) shopsById.set(id, booking.target_shop?.name || `Shop #${id}`);
+      if (id && !shopsById.has(id)) {
+        const shop = availableShopsById.get(id) || booking.target_shop;
+        shopsById.set(id, { ...shop, id, name: shop?.name || `Shop #${id}` });
+      }
     }
   }
-  const shops = [...shopsById].sort((a, b) => a[1].localeCompare(b[1]));
+  const shops = [...shopsById.values()].sort((a, b) => a.name.localeCompare(b.name));
   const visibleGroups = shopId === 'all' ? groups : groups.filter((group) => (
     (group.bookings || []).some((booking) => String(booking.target_shop_id || booking.target_shop?.id || '') === shopId)
   ));
@@ -42,6 +47,12 @@ const BookingExportModal = ({ groups, initialSelectedKeys, isExporting, error, o
   const handleKeyDown = (event) => {
     if (event.key === 'Escape') {
       event.stopPropagation();
+      const openDropdown = dialogRef.current.querySelector('[aria-haspopup="listbox"][aria-expanded="true"]');
+      if (openDropdown) {
+        openDropdown.click();
+        openDropdown.focus();
+        return;
+      }
       if (!isExporting) onClose();
     }
     if (event.key !== 'Tab') return;
@@ -72,10 +83,16 @@ const BookingExportModal = ({ groups, initialSelectedKeys, isExporting, error, o
         </div>
         <div className="field booking-export-modal__shop">
           <label htmlFor={shopSelectId}>{t('booking.shop')}</label>
-          <select id={shopSelectId} value={shopId} disabled={isExporting} onChange={(event) => setShopId(event.target.value)}>
-            <option value="all">{t('booking.exportAllShops')}</option>
-            {shops.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
-          </select>
+          <ShopDropdown
+            id={shopSelectId}
+            shops={shops}
+            value={shopId}
+            disabled={isExporting}
+            onChange={setShopId}
+            allLabel={t('booking.exportAllShops')}
+            placeholder={t('booking.selectShop')}
+            unknownLabel={t('common.unknown')}
+          />
         </div>
         <label className="booking-export-modal__option">
           <input ref={allRef} type="checkbox" checked={allSelected} disabled={isExporting || !visibleGroups.length}
