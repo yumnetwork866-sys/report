@@ -1215,7 +1215,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
     const isExactOrderId = Boolean(effectiveOrderId);
 
     const where = { shop_id: shop.id };
-    if (effectiveOrderId) where.order_id = effectiveOrderId;
+    if (orderId) where.order_id = orderId;
 
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
@@ -1279,7 +1279,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
       });
     }
 
-    if (searchKeyword && !effectiveOrderId) {
+    if (searchKeyword && !orderId) {
       const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
       const profiles = await tiktokShopRepository.findCreatorProfiles({
         where: {
@@ -1301,6 +1301,7 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
           where: {
             shop_id: shop.id,
             [Op.or]: [
+              { content_id: { [Op.iLike]: pattern } },
               { product_id: { [Op.iLike]: pattern } },
               { product_name: { [Op.iLike]: pattern } },
               { creator_username: { [Op.iLike]: pattern } },
@@ -1594,6 +1595,7 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
         where: {
           shop_id: shop.id,
           [Op.or]: [
+            { content_id: { [Op.iLike]: pattern } },
             { product_id: { [Op.iLike]: pattern } },
             { product_name: { [Op.iLike]: pattern } },
             { creator_username: { [Op.iLike]: pattern } },

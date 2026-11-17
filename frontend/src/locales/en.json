@@ -956,7 +956,7 @@
     "discoverSearch": "Enter a username, e.g. @creator",
     "performanceSearch": "Creator name or username",
     "creatorsSearch": "Creator name or username",
-    "ordersSearch": "Order ID, KOC, product name or ID",
+    "ordersSearch": "Order ID, video ID, KOC, product name or ID",
     "orderSearchLabel": "Search orders",
     "programId": "Program ID",
     "orderId": "Order ID",

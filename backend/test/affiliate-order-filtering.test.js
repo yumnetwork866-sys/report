@@ -4,6 +4,62 @@ const { Op } = require('sequelize');
 
 const { mockModule } = require('./helpers/mockModule');
 
+test('numeric video ID search matches SKU content IDs for order lists and overview', async (t) => {
+  const repositoryPath = require.resolve('../src/repositories/tiktokShopRepository');
+  const servicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');
+  const videoId = '7692028483681242386';
+  const orderId = '586422591652988308';
+  const captured = {};
+  const restore = mockModule(repositoryPath, {
+    findShopWithAuthorization: async () => ({
+      id: 9, authorization_id: 11, cipher: 'cipher',
+      authorization: { id: 11, open_id: 'real-shop', updated_at: new Date(0) },
+    }),
+    findCreatorProfiles: async () => [],
+    findAffiliateOrders: async () => [],
+    findAffiliateOrderSkus: async (options) => {
+      captured.skus = options;
+      return [{ order_id: orderId }];
+    },
+    findAndCountAffiliateOrders: async (options) => {
+      captured.final = options;
+      return { count: 0, rows: [] };
+    },
+  });
+  delete require.cache[servicePath];
+  t.after(() => {
+    delete require.cache[servicePath];
+    restore();
+  });
+  const service = require(servicePath);
+  for (const action of ['listAffiliateOrders', 'listAffiliateOrderOverview']) {
+    const result = await service.execute(action, {
+      params: { shopId: '9' },
+      query: {
+        source: 'db', keyword: videoId,
+        create_time_ge: '1788195600', create_time_lt: '1790874000',
+        page_size: '20', page_token: '20',
+      },
+    });
+    assert.equal(result.status, 200);
+    assert.equal(captured.skus.where.shop_id, 9);
+    assert.ok(captured.skus.where[Op.or].some((condition) => condition.content_id?.[Op.iLike] === `%${videoId}%`));
+    assert.equal(captured.final.where.shop_id, 9);
+    assert.deepEqual(captured.final.where.order_id[Op.in], [orderId]);
+    if (action === 'listAffiliateOrders') {
+      assert.equal(captured.final.limit, 20);
+      assert.equal(captured.final.offset, 20);
+      assert.equal(captured.final.where.create_time, undefined);
+    }
+  }
+  const result = await service.execute('listAffiliateOrders', {
+    params: { shopId: '9' },
+    query: { source: 'db', order_id: orderId },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(captured.final.where.order_id, orderId);
+});
+
 test('database affiliate orders combine versatile search and quick filters', async (t) => {
   const repositoryPath = require.resolve('../src/repositories/tiktokShopRepository');
   const servicePath = require.resolve('../src/services/tiktokShop/tiktokShopEndpointService');

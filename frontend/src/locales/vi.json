@@ -957,7 +957,7 @@
     "discoverSearch": "Nhập tên người dùng, ví dụ @creator",
     "performanceSearch": "Tên hoặc tên người dùng của nhà sáng tạo",
     "creatorsSearch": "Tên hoặc tên người dùng của nhà sáng tạo",
-    "ordersSearch": "Mã đơn, KOC, tên hoặc ID sản phẩm",
+    "ordersSearch": "Mã đơn, ID video, KOC, tên hoặc ID sản phẩm",
     "orderSearchLabel": "Tìm kiếm đơn hàng",
     "programId": "Mã chương trình",
     "orderId": "Mã đơn hàng",
