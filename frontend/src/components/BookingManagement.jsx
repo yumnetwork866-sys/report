@@ -436,13 +436,14 @@ const BookingManagement = ({
       return undefined;
     }
     const localMatches = bookings.filter((b) => (
-      String(b.staff_id || '') === String(selectedBooking.staff_id || '')
+      !b.is_hashtag_report
+      && String(b.staff_id || '') === String(selectedBooking.staff_id || '')
       && (
         (selectedBooking.creator_open_id && b.creator_open_id === selectedBooking.creator_open_id)
         || (selectedBooking.creator_username && String(b.creator_username || '').toLowerCase() === String(selectedBooking.creator_username || '').toLowerCase())
       )
     ));
-    if (!localMatches.some((b) => b.id === selectedBooking.id)) {
+    if (!selectedBooking.is_hashtag_report && !localMatches.some((b) => b.id === selectedBooking.id)) {
       localMatches.push(selectedBooking);
     }
     localMatches.sort((a, b) => new Date(bookingDateOf(b) || 0) - new Date(bookingDateOf(a) || 0));
@@ -459,7 +460,7 @@ const BookingManagement = ({
       includeProductPerformance: false,
     })
       .then((items) => {
-        if (!controller.signal.aborted && Array.isArray(items) && items.length) {
+        if (!controller.signal.aborted && Array.isArray(items)) {
           items.sort((a, b) => new Date(bookingDateOf(b) || 0) - new Date(bookingDateOf(a) || 0));
           setCreatorBookings(items);
         }
@@ -566,15 +567,16 @@ const BookingManagement = ({
       ...(range.startTime ? { startTime: range.startTime, endTime: range.endTime } : {}),
       month: selectedMonth,
       includeProductPerformance: false,
+      hashtagFilter: hashtagFilterEnabled,
     })
-      .then((loadedBookings) => setBookings(loadedBookings))
+      .then((loadedBookings) => { if (!controller.signal.aborted) setBookings(loadedBookings); })
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || t('booking.errorLoad')); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [customRange, selectedMonth, t]);
+  }, [customRange, hashtagFilterEnabled, selectedMonth, t]);
 
   useEffect(() => {
-    if (bookingTab !== 'product') {
+    if (bookingTab !== 'product' || hashtagFilterEnabled) {
       setProductPerformanceLoading(false);
       setProductPerformanceError('');
       return undefined;
@@ -861,6 +863,7 @@ const BookingManagement = ({
         shopId,
         videoIds: uniqueVideoIds,
         displayCurrency: selectedCurrency,
+        hashtagFilter: hashtagFilterEnabled,
       });
       setIsExportOrdersOpen(false);
     } catch (err) {
@@ -868,7 +871,7 @@ const BookingManagement = ({
     } finally {
       setIsExportingOrders(false);
     }
-  }, [bookingGroups, customRange, isExportingOrders, selectedCurrency, selectedMonth, sortedBookingsOfGroup, t, videoPerformanceByBooking]);
+  }, [bookingGroups, customRange, hashtagFilterEnabled, isExportingOrders, selectedCurrency, selectedMonth, sortedBookingsOfGroup, t, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canViewUsers && bookingGroups.length === 1) {
@@ -913,6 +916,9 @@ const BookingManagement = ({
         } : {}),
         month: selectedMonth,
         includeProductPerformance: false,
+        hashtagFilter: hashtagFilterEnabled,
+        startTime: currentRange.startTime,
+        endTime: currentRange.endTime,
       }).then(setBookings).catch(() => {});
       setForm({ ...initialForm, staff_id: canManageUsers ? '' : String(session?.user?.id || '') });
       onEmbeddedChanged?.(created);
@@ -951,12 +957,28 @@ const BookingManagement = ({
       : current);
   };
 
+  const refreshHashtagReport = async () => {
+    if (!hashtagFilterEnabled) return;
+    const range = orderRangeForPeriod(selectedMonth, customRange);
+    try {
+      const rows = await fetchBookings(undefined, {
+        month: selectedMonth, hashtagFilter: true, includeProductPerformance: false,
+        startDate: range.startDate, endDate: range.endDate,
+        startTime: range.startTime, endTime: range.endTime,
+      });
+      setBookings(rows);
+    } catch (err) {
+      setError(err.message || t('booking.errorLoad'));
+    }
+  };
+
   const handleSaveCard = async (bookingId, payload) => {
     try {
       setUpdatingId(bookingId);
       setError('');
       const updated = await updateBooking(bookingId, payload);
       replaceBooking(updated);
+      await refreshHashtagReport();
       onEmbeddedChanged?.(updated);
     } catch (err) {
       setError(err.message || t('booking.errorUpdate'));
@@ -972,6 +994,7 @@ const BookingManagement = ({
       await deleteBooking(booking.id);
       setBookings((items) => items.filter((item) => item.id !== booking.id));
       setCreatorBookings((items) => items.filter((item) => item.id !== booking.id));
+      await refreshHashtagReport();
       if (selectedBooking?.id === booking.id) {
         const remaining = creatorBookings.filter((item) => item.id !== booking.id);
         if (remaining.length) {
@@ -1004,6 +1027,7 @@ const BookingManagement = ({
       setBookings((items) => items.filter((item) => !deletedIds.has(item.id)));
       const remaining = bookingsToDelete.filter((booking) => !deletedIds.has(booking.id));
       setCreatorBookings(remaining);
+      if (deletedIds.size) await refreshHashtagReport();
       if (remaining.length) {
         setSelectedBooking(remaining[0]);
         setError(t('booking.errorDelete'));

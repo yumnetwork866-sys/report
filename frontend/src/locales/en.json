@@ -604,6 +604,7 @@
     "estimatedCommission": "Estimated commission",
     "commission": "Estimated commission",
     "orderCount": "Total orders",
+    "totalOrders": "Total orders",
     "itemsSoldTotal": "Items sold",
     "awaitingVideo": "Waiting for a linked video",
     "noSelectedProductVideo": "No video contains the selected products",

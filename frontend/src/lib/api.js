@@ -125,8 +125,10 @@ export function fetchBookings(signal, {
   creatorOpenId,
   staffId,
   includeProductPerformance,
+  hashtagFilter,
 } = {}) {
   const params = new URLSearchParams();
+  if (hashtagFilter) params.set('hashtag_filter', 'true');
   if (windowType) params.set('window_type', windowType);
   if (startDate) params.set('start_date', startDate);
   if (endDate) params.set('end_date', endDate);
@@ -154,6 +156,7 @@ export async function downloadBookingOrdersCsv({
   shopId,
   videoIds,
   displayCurrency,
+  hashtagFilter,
   format = 'xlsx',
   signal,
 } = {}) {
@@ -176,6 +179,7 @@ export async function downloadBookingOrdersCsv({
     shopId,
     videoIds,
     displayCurrency,
+    hashtagFilter,
     format,
   }) : undefined;
 
@@ -187,6 +191,7 @@ export async function downloadBookingOrdersCsv({
   if (endTime) params.set('end_time', String(endTime));
   if (staffId) params.set('staff_id', String(staffId));
   if (shopId) params.set('shop_id', String(shopId));
+  if (hashtagFilter) params.set('hashtag_filter', 'true');
   if (displayCurrency) params.set('display_currency', String(displayCurrency));
   if (format) params.set('format', format);
 

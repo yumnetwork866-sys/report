@@ -219,8 +219,13 @@ const BookingProductOrderDetailModal = ({
   const [searchQuery, setSearchQuery] = useState('');
 
   const { rows, currency: orderCurrency } = useMemo(
-    () => extractProductOrderRows(effectiveOrders, product?.id, booking?.creator_username, video?.platform_video_id),
-    [effectiveOrders, product?.id, booking?.creator_username, video?.platform_video_id],
+    () => {
+      const extracted = extractProductOrderRows(effectiveOrders, product?.id, booking?.creator_username, video?.platform_video_id);
+      if (!booking?.is_hashtag_report) return extracted;
+      const allowedIds = new Set((booking.booking_videos || []).map((item) => String(item.platform_video_id)));
+      return { ...extracted, rows: extracted.rows.filter((row) => allowedIds.has(String(row.contentId))) };
+    },
+    [effectiveOrders, product?.id, booking, video?.platform_video_id],
   );
 
   const videoMatchRowsCount = useMemo(() => rows.filter((r) => r.isVideoMatch).length, [rows]);

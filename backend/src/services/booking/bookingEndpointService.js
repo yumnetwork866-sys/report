@@ -31,6 +31,7 @@ const {
   serializeBookings: serializeBookingsWithFreshCreatorAvatars,
 } = require('../../presenters/bookingPresenter');
 const bookingQueryService = require('./bookingQueryService');
+const { getHashtagRows } = require('./bookingHashtagService');
 const bookingCommandService = require('./bookingCommandService');
 const bookingPerformanceService = require('./bookingPerformanceService');
 const { enrichPerformanceViews } = bookingPerformanceService;
@@ -690,6 +691,9 @@ const getTargetKocDetail = async (req, res) => {
 
 const getBookings = async (req, res) => {
   try {
+    if (String(req.query?.hashtag_filter) === 'true') {
+      return res.json(await getHashtagRows(req.query, req.session));
+    }
     const requestedWindow = String(req.query?.window_type || '').trim().toUpperCase();
     const startDate = String(req.query?.start_date || '').trim();
     const endDate = String(req.query?.end_date || '').trim();
@@ -839,6 +843,7 @@ const exportBookingOrders = async (req, res) => {
       body.display_currency || body.displayCurrency || query.display_currency || query.displayCurrency || '',
     ).trim().toUpperCase();
     const format = String(body.format || query.format || 'xlsx').trim().toLowerCase();
+    const hashtagMode = String(body.hashtagFilter ?? query.hashtag_filter) === 'true';
 
     const rawExplicitVideoIds = body.video_ids || body.videoIds || query.video_ids || query.videoIds || null;
     const hasExplicitVideoIds = rawExplicitVideoIds !== null && rawExplicitVideoIds !== undefined;
@@ -901,7 +906,7 @@ const exportBookingOrders = async (req, res) => {
       };
     }
 
-    const bookings = await bookingRepository.findBookings({
+    const bookings = hashtagMode ? await getHashtagRows({ ...query, ...body }, req.session) : await bookingRepository.findBookings({
       where: {
         evaluation_snapshot: { [Op.not]: null },
         ...monthWhere,
@@ -913,6 +918,7 @@ const exportBookingOrders = async (req, res) => {
     });
 
     const videoMap = new Map();
+    const scopedVideoMap = new Map();
     for (const booking of bookings) {
       const videos = booking.booking_videos || booking.get?.('booking_videos') || [];
       const staff = booking.staff || booking.get?.('staff') || null;
@@ -922,8 +928,8 @@ const exportBookingOrders = async (req, res) => {
       for (const video of videos) {
         const platformVideoId = String(video.platform_video_id || video.id || '').trim();
         if (!platformVideoId) continue;
-        videoMap.set(platformVideoId, {
-          bookingId: booking.id,
+        const metadata = {
+          bookingId: booking.is_hashtag_report ? '' : booking.id,
           staffName: staff?.name || booking.staff_name || '',
           staffEmail: staff?.email || '',
           creatorName: booking.creator_name || '',
@@ -933,7 +939,9 @@ const exportBookingOrders = async (req, res) => {
           currency: booking.currency || 'MYR',
           videoTitle: video.title || video.item_title || '',
           videoPostedAt: video.posted_at || null,
-        });
+        };
+        videoMap.set(platformVideoId, metadata);
+        scopedVideoMap.set(`${shopId}:${platformVideoId}`, metadata);
       }
     }
 
@@ -950,6 +958,14 @@ const exportBookingOrders = async (req, res) => {
     if (videoIds.length > 0) {
       const dateClauses = [];
       const replacements = { videoIds, ...(shopIds.length ? { shopIds } : {}) };
+      if (hashtagMode) {
+        replacements.hashtagPairs = JSON.stringify([...scopedVideoMap.keys()].map((key) => {
+          const [shopId, videoId] = key.split(':');
+          return { shop_id: Number(shopId), video_id: videoId };
+        }));
+        dateClauses.push(`EXISTS (SELECT 1 FROM jsonb_to_recordset(CAST(:hashtagPairs AS jsonb)) pair(shop_id int, video_id text)
+          WHERE pair.shop_id = sku.shop_id AND pair.video_id = sku.content_id)`);
+      }
       if (requestedShopId !== null) {
         replacements.shopId = requestedShopId;
         dateClauses.push('sku.shop_id = :shopId');
@@ -987,6 +1003,7 @@ const exportBookingOrders = async (req, res) => {
       const skus = await sequelize.query(`
         SELECT 
           sku.order_id,
+          sku.shop_id,
           o.create_time AS order_time,
           sku.content_id AS video_id,
           sku.creator_username,
@@ -1058,7 +1075,7 @@ const exportBookingOrders = async (req, res) => {
 
     const rowCurrencyOf = (row, meta = {}) => String(row.currency || meta.currency || 'MYR').toUpperCase();
     const needsConversion = Boolean(displayCurrency) && orderRows.some((row) => (
-      rowCurrencyOf(row, videoMap.get(String(row.video_id)) || {}) !== displayCurrency
+      rowCurrencyOf(row, scopedVideoMap.get(`${row.shop_id}:${row.video_id}`) || videoMap.get(String(row.video_id)) || {}) !== displayCurrency
     ));
     const exchangeRates = needsConversion ? (await getMyrExchangeRates()).rates : null;
     const convertMoney = (amount, fromCurrency) => {
@@ -1080,7 +1097,7 @@ const exportBookingOrders = async (req, res) => {
         ok: true,
         count: jsonRows.length,
         orders: jsonRows.map((row) => {
-          const meta = videoMap.get(String(row.video_id)) || {};
+          const meta = scopedVideoMap.get(`${row.shop_id}:${row.video_id}`) || videoMap.get(String(row.video_id)) || {};
           const cleanCreator = meta.creatorUsername || String(row.creator_username || '').replace(/^@+/, '');
           const videoUrl = cleanCreator && row.video_id
             ? `https://www.tiktok.com/@${encodeURIComponent(cleanCreator)}/video/${encodeURIComponent(row.video_id)}`
@@ -1179,7 +1196,7 @@ const exportBookingOrders = async (req, res) => {
       }
       seenOrderSkus.add(skuKey);
 
-      const meta = videoMap.get(String(row.video_id)) || {};
+      const meta = scopedVideoMap.get(`${row.shop_id}:${row.video_id}`) || videoMap.get(String(row.video_id)) || {};
       const rowCurrency = rowCurrencyOf(row, meta);
       const rawPrice = Number(row.price || 0);
       const rawQty = Number(row.quantity || 0);

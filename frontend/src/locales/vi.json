@@ -600,6 +600,7 @@
     "estimatedCommission": "Hoa hồng ước tính",
     "commission": "Hoa hồng ước tính",
     "orderCount": "Số đơn hàng",
+    "totalOrders": "Tổng số đơn",
     "itemsSoldTotal": "Số lượng đã bán",
     "awaitingVideo": "Chờ liên kết video",
     "noSelectedProductVideo": "Không có video chứa sản phẩm đã chọn",

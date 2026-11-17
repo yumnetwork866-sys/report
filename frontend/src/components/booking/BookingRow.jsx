@@ -71,7 +71,7 @@ const BookingRow = memo(({
                   <span className="booking-product-shop-tag">{booking.target_shop.name}</span>
                 ) : null}
               </small>
-              {timeline.badge ? (
+              {!booking.is_hashtag_report && timeline.badge ? (
                 <div className="booking-row-timeline">
                   <span
                     className={`booking-row-timeline__badge booking-row-timeline__badge--${timeline.badge.type}`}

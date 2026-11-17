@@ -58,7 +58,7 @@ const BookingDetailDrawer = ({
                   <span className="booking-product-shop-tag">{selectedBooking.target_shop.name}</span>
                 ) : null}
                 {' · '}
-                {t('booking.allMonthsCount', { count: creatorBookings.length || 1 })}
+                {t('booking.allMonthsCount', { count: creatorBookings.length })}
               </p>
             </div>
           </div>

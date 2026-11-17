@@ -52,6 +52,29 @@ function errorResponse(status, message) {
   });
 }
 
+test('booking hashtag mode is forwarded to both report and Excel export', async () => {
+  await withBrowser(async () => {
+    let reportUrl;
+    globalThis.fetch = async (url) => {
+      reportUrl = url;
+      return new Response('[]', { headers: { 'Content-Type': 'application/json' } });
+    };
+    await fetchBookings(undefined, { month: '2026-10', hashtagFilter: true });
+    assert.equal(new URL(reportUrl, 'https://example.test').searchParams.get('hashtag_filter'), 'true');
+    let exportBody;
+    globalThis.fetch = async (_url, options) => {
+      exportBody = JSON.parse(options.body);
+      return errorResponse(500, 'Export unavailable');
+    };
+    await assert.rejects(downloadBookingOrdersExcel({
+      month: '2026-10', hashtagFilter: true, staffIds: [21], shopId: 1, videoIds: ['7696845877435960596'],
+    }), /Export unavailable/);
+    assert.equal(exportBody.hashtagFilter, true);
+    assert.deepEqual(exportBody.staffIds, [21]);
+    assert.equal(exportBody.shopId, 1);
+  });
+});
+
 test('booking Excel export posts selected staff, shop and video IDs with the current period', async () => {
   await withBrowser(async () => {
     let request;

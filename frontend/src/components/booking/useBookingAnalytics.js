@@ -57,8 +57,9 @@ const uniqueVideoSummary = (bookings, videoPerformanceByBooking, productOrdersBy
     summary.revenue += convertAmount(rawRevenue, performance.currency) ?? rawRevenue;
     summary.views += finiteNumber(performance.views ?? performance.video_views);
     summary.videoCount += shopVideos.length;
+    summary.orders += finiteNumber(performance.orders ?? performance.affiliate_orders);
     return summary;
-  }, { revenue: 0, views: 0, videoCount: 0 });
+  }, { revenue: 0, views: 0, videoCount: 0, orders: 0 });
   return result;
 };
 
@@ -231,6 +232,7 @@ export default function useBookingAnalytics({
           totalRevenue: 0,
           videoCount: 0,
           totalViews: 0,
+          totalOrders: 0,
         });
       }
       const group = groups.get(key);
@@ -248,6 +250,7 @@ export default function useBookingAnalytics({
       }
       if (bookingTab === 'product') {
         group.totalRevenue += convertAmount(rawRevenue, performance?.currency) ?? rawRevenue;
+        group.totalOrders += finiteNumber(performance?.affiliate_orders ?? performance?.orders);
       }
     }
 
@@ -280,12 +283,13 @@ export default function useBookingAnalytics({
         group.totalRevenue = videoSummary.revenue;
         group.videoCount = videoSummary.videoCount;
         group.totalViews = videoSummary.views;
+        group.totalOrders = videoSummary.orders;
       } else {
         const productVideoSummary = productVideoSummaryForBookings(group.bookings, productPerformanceByBooking);
         group.videoCount = productVideoSummary.videoCount;
         group.totalViews = productVideoSummary.views;
       }
-      group.kocCount = bookingTab === 'video'
+      group.kocCount = hashtagFilterEnabled ? new Set(group.bookings.map(bookingCreatorKey)).size : bookingTab === 'video'
         ? countPaidBookingKocs(
           group.bookings,
           (booking) => bookingInPeriodById.get(String(booking.id)),
@@ -325,6 +329,7 @@ export default function useBookingAnalytics({
         if (key === 'koc') return group.kocCount;
         if (key === 'videos') return group.videoCount;
         if (key === 'views') return group.totalViews;
+        if (key === 'orders') return group.totalOrders;
         if (key === 'cost') return group.totalCost;
         if (key === 'revenue') return group.totalRevenue;
         if (key === 'ratio') return group.totalRevenue > 0

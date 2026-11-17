@@ -1573,6 +1573,7 @@ const serializeBookingWithActual = (instance) => {
 };
 
 module.exports = {
+  IS_NOT_CANCELLED_SQL,
   attributedProductIdsForBooking,
   autoLinkBookingVideos,
   bookingVideoInclude,
