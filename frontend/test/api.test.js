@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  downloadBookingOrdersExcel,
   fetchTikTokSellerCreatorInvitations, fetchActiveTikTokApps, fetchBookingById, fetchBookingProductPerformance, fetchBookingTargetKocDetail, fetchBookings, fetchChannelReport, fetchChannelReportMemberDetail, fetchDashboardVideos, fetchTikTokSellerAffiliateOrderOverview, fetchTikTokSellerAffiliateOrders, fetchTikTokSellerMarketplaceCreator, fetchTikTokSellerMarketplaceCreators, fetchTikTokShopAnalytics, fetchTikTokShopVideoAnalytics, fetchTikTokShopVideoPerformance, fetchTikTokShopVideoThumbnail, fetchUsers, startTikTokPartnerOauth, startTikTokShopOauth, syncChannelVideos, syncTikTokShopAnalytics, syncTikTokShopVideoPerformance,
   deleteUser, fetchTikTokApps, createTikTokApp, updateTikTokApp, deleteTikTokApp, toggleTikTokAppStatus, fetchTikTokAppSecret,
 } from '../src/lib/api.js';
@@ -50,6 +51,24 @@ function errorResponse(status, message) {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+test('booking Excel export posts selected staff, shop and video IDs with the current period', async () => {
+  await withBrowser(async () => {
+    let request;
+    globalThis.fetch = async (url, options) => {
+      request = { url, ...options };
+      return errorResponse(500, 'Export unavailable');
+    };
+    await assert.rejects(downloadBookingOrdersExcel({
+      month: '2026-11', staffIds: ['2', '3'], shopId: '5', videoIds: ['video-2', 'video-3'],
+    }), /Export unavailable/);
+    assert.ok(request.url.endsWith('/bookings/export-orders'));
+    assert.equal(request.method, 'POST');
+    assert.deepEqual(JSON.parse(request.body), {
+      month: '2026-11', staffIds: ['2', '3'], shopId: '5', videoIds: ['video-2', 'video-3'], format: 'xlsx',
+    });
+  });
+});
 
 test('a delayed 401 from an old request does not remove the new login', async () => {
   await withBrowser(async () => {

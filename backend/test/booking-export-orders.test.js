@@ -565,3 +565,83 @@ test('exportBookingOrders deduplicates duplicate orders, filters out pending sta
   assert.ok(!allRows.some((r) => r[0] === 'ord-pending-4'), 'ord-pending-4 must be excluded');
   assert.ok(!allRows.some((r) => r[0] === 'ord-transit-5'), 'ord-transit-5 must be excluded');
 });
+
+for (const scenario of [
+  { name: 'filters multiple selected staff for admins', session: { role: 'admin', sub: 1 }, ids: [2, '3', 2, 'invalid'], expected: [2, 3] },
+  { name: 'keeps an empty selection empty', session: { role: 'admin', sub: 1 }, ids: [], expected: [] },
+  { name: 'limits ordinary users to their own staff ID', session: { role: 'user', sub: 7, permissions: [] }, ids: [2, 3], expected: 7 },
+]) {
+  test(`exportBookingOrders ${scenario.name}`, async (t) => {
+    const { Op } = require('sequelize');
+    let staffWhere;
+    const service = loadWithMocks(t, '../src/services/booking/bookingEndpointService', {
+      '../src/repositories/bookingRepository': {
+        findBookings: async ({ where }) => {
+          staffWhere = where.staff_id;
+          return [];
+        },
+      },
+      '../src/models': { sequelize: { query: async () => { throw new Error('No videos should query orders'); } } },
+    });
+    let status = 200;
+    const res = {
+      status(value) { status = value; return this; },
+      setHeader() { return this; },
+      send() { return this; },
+      json() { return this; },
+    };
+    await service.exportBookingOrders({
+      body: { staffIds: scenario.ids, videoIds: [], format: 'csv' },
+      query: {},
+      session: scenario.session,
+    }, res);
+    assert.equal(status, 200);
+    if (Array.isArray(scenario.expected)) assert.deepEqual(staffWhere[Op.in], scenario.expected);
+    else assert.equal(staffWhere, scenario.expected);
+  });
+}
+
+test('exportBookingOrders filters staff bookings and order rows by the selected shop', async (t) => {
+  let queriedVideoIds;
+  let bookingWhere;
+  let queriedShopId;
+  let orderSql;
+  const service = loadWithMocks(t, '../src/services/booking/bookingEndpointService', {
+    '../src/repositories/bookingRepository': {
+      findBookings: async ({ where }) => {
+        bookingWhere = where;
+        return [
+        { id: 1, staff: { name: 'Staff 2' }, booking_videos: [{ platform_video_id: 'video-2' }] },
+        { id: 2, staff: { name: 'Staff 3' }, booking_videos: [{ platform_video_id: 'video-3' }] },
+        ];
+      },
+    },
+    '../src/models': {
+      sequelize: {
+        query: async (sql, options) => {
+          queriedVideoIds = options.replacements.videoIds;
+          queriedShopId = options.replacements.shopId;
+          orderSql = sql;
+          return [];
+        },
+      },
+    },
+  });
+  let status = 200;
+  const res = {
+    status(value) { status = value; return this; },
+    setHeader() { return this; },
+    send() { return this; },
+    json() { return this; },
+  };
+  await service.exportBookingOrders({
+    body: { staffIds: [2, 3], shopId: '5', videoIds: ['video-2', 'video-3', 'video-other'], format: 'csv' },
+    query: {},
+    session: { role: 'admin', sub: 1 },
+  }, res);
+  assert.equal(status, 200);
+  assert.deepEqual(queriedVideoIds, ['video-2', 'video-3']);
+  assert.equal(bookingWhere.target_shop_id, 5);
+  assert.equal(queriedShopId, 5);
+  assert.match(orderSql, /sku\.shop_id = :shopId/);
+});

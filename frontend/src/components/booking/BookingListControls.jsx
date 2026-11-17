@@ -100,7 +100,7 @@ const BookingListControls = ({
             title={t('booking.exportOrdersTooltip', { defaultValue: 'Xuất chi tiết toàn bộ đơn hàng video trong kỳ ra file Excel (nhiều sheet theo từng nhân viên)' })}
           >
             <Download size={14} />
-            <span>{isExportingOrders ? (t('booking.exportingOrders') || 'Đang xuất…') : (t('booking.exportOrders') || 'Xuất Excel đơn hàng')}</span>
+            <span>{isExportingOrders ? (t('booking.exportingOrders') || 'Đang xuất…') : (t('booking.exportOrders') || 'Xuất Excel')}</span>
           </button>
         </div>
       ) : null}

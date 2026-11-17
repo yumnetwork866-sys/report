@@ -50,6 +50,7 @@ import BookingDetailDrawer from './booking/BookingDetailDrawer';
 import BookingDeleteConfirmModal from './booking/BookingDeleteConfirmModal';
 import BookingPageHero from './booking/BookingPageHero';
 import BookingListControls from './booking/BookingListControls';
+import BookingExportModal from './booking/BookingExportModal';
 import BookingGroupsTable from './booking/BookingGroupsTable';
 import BookingProductsCostTable from './booking/BookingProductsCostTable';
 import BookingTableSkeleton from './booking/BookingTableSkeleton';
@@ -173,6 +174,8 @@ const BookingManagement = ({
   const [productPerformanceError, setProductPerformanceError] = useState('');
   const [error, setError] = useState('');
   const [isExportingOrders, setIsExportingOrders] = useState(false);
+  const [isExportOrdersOpen, setIsExportOrdersOpen] = useState(false);
+  const [exportOrdersError, setExportOrdersError] = useState('');
   const productOrdersByShop = emptyProductOrdersByShop;
 
   const closeCreateBooking = useCallback(() => {
@@ -820,21 +823,24 @@ const BookingManagement = ({
     t,
   });
 
-  const handleExportOrders = useCallback(async () => {
+  const handleExportOrders = useCallback(async (selectedGroupKeys, shopId) => {
+    const targetGroups = bookingGroups.filter((group) => selectedGroupKeys.includes(group.key));
+    if (!targetGroups.length || isExportingOrders) return;
     try {
       setIsExportingOrders(true);
+      setExportOrdersError('');
       setError('');
-      const staffId = selectedManagerKey && selectedManagerKey.startsWith('id:')
-        ? selectedManagerKey.slice(3)
+      const staffIds = targetGroups.every((group) => group.key.startsWith('id:'))
+        ? targetGroups.map((group) => group.key.slice(3))
         : undefined;
 
       const range = orderRangeForPeriod(selectedMonth, customRange);
 
       const visibleVideoIds = [];
-      const targetGroups = sortedBookingGroupsToRender || [];
       for (const group of targetGroups) {
         const groupBookings = sortedBookingsOfGroup ? sortedBookingsOfGroup(group.bookings) : group.bookings;
         for (const booking of groupBookings || []) {
+          if (shopId && String(booking.target_shop_id || booking.target_shop?.id || '') !== String(shopId)) continue;
           const videoData = videoPerformanceByBooking.get(String(booking.id));
           const videos = videoData?.videos || [];
           for (const v of videos) {
@@ -851,15 +857,17 @@ const BookingManagement = ({
         endDate: range.endDate,
         startTime: range.startTime,
         endTime: range.endTime,
-        staffId,
+        staffIds,
+        shopId,
         videoIds: uniqueVideoIds,
       });
+      setIsExportOrdersOpen(false);
     } catch (err) {
-      setError(err.message || 'Không thể xuất danh sách đơn hàng');
+      setExportOrdersError(err.message || t('booking.exportError'));
     } finally {
       setIsExportingOrders(false);
     }
-  }, [customRange, selectedManagerKey, selectedMonth, sortedBookingGroupsToRender, sortedBookingsOfGroup, videoPerformanceByBooking]);
+  }, [bookingGroups, customRange, isExportingOrders, selectedMonth, sortedBookingsOfGroup, t, videoPerformanceByBooking]);
 
   useEffect(() => {
     if (!canViewUsers && bookingGroups.length === 1) {
@@ -1129,10 +1137,23 @@ const BookingManagement = ({
           monthOptions={monthOptions}
           customRange={customRange}
           onCustomRangeChange={setCustomRange}
-          onExportOrders={handleExportOrders}
+          onExportOrders={() => { setExportOrdersError(''); setIsExportOrdersOpen(true); }}
           isExportingOrders={isExportingOrders}
           t={t}
         />
+        {isExportOrdersOpen ? (
+          <BookingExportModal
+            groups={bookingGroups}
+            initialSelectedKeys={selectedManagerKey === 'all'
+              ? bookingGroups.map((group) => group.key)
+              : [bookingManagerFilterValue]}
+            isExporting={isExportingOrders}
+            error={exportOrdersError}
+            onClose={() => setIsExportOrdersOpen(false)}
+            onConfirm={handleExportOrders}
+            t={t}
+          />
+        ) : null}
         {productPerformanceError && bookingTab === 'product' ? <p className="form-error" role="alert">{productPerformanceError}</p> : null}
         {listLoading ? (
           <BookingTableSkeleton label={t('booking.loading')} />

@@ -25,6 +25,7 @@ const {
   applyBookingProductPerformance,
 } = require('../bookingVideoPerformanceService');
 const { handleShopOauthCallback } = require('../tiktokShop/tiktokShopEndpointService');
+const { getMyrExchangeRates } = require('../exchangeRateService');
 const {
   serializeBookingSummaries,
   serializeBookings: serializeBookingsWithFreshCreatorAvatars,
@@ -825,6 +826,18 @@ const exportBookingOrders = async (req, res) => {
     const requestedUsername = String(body.creator_username || query.creator_username || '').trim().replace(/^@+/, '');
     const requestedOpenId = String(body.creator_open_id || query.creator_open_id || '').trim();
     const requestedStaffId = body.staff_id || query.staff_id || body.staffId || query.staffId || null;
+    const rawShopId = body.shopId ?? body.shop_id ?? query.shop_id;
+    const requestedShopId = rawShopId == null ? null : Number(rawShopId);
+    if (requestedShopId !== null && (!Number.isInteger(requestedShopId) || requestedShopId <= 0)) {
+      return res.status(400).json({ message: 'Shop không hợp lệ' });
+    }
+    const rawStaffIds = body.staffIds ?? body.staff_ids;
+    const requestedStaffIds = Array.isArray(rawStaffIds)
+      ? [...new Set(rawStaffIds.map(Number).filter((id) => Number.isInteger(id) && id > 0))]
+      : null;
+    const displayCurrency = String(
+      body.display_currency || body.displayCurrency || query.display_currency || query.displayCurrency || '',
+    ).trim().toUpperCase();
     const format = String(body.format || query.format || 'xlsx').trim().toLowerCase();
 
     const rawExplicitVideoIds = body.video_ids || body.videoIds || query.video_ids || query.videoIds || null;
@@ -851,9 +864,11 @@ const exportBookingOrders = async (req, res) => {
     } else if (requestedUsername) {
       creatorWhere = { creator_username: { [Op.iLike]: requestedUsername } };
     }
-    const staffWhere = Number.isInteger(effectiveStaffId) && effectiveStaffId > 0
-      ? { staff_id: effectiveStaffId }
-      : {};
+    const staffWhere = canViewAllUsers && requestedStaffIds !== null
+      ? { staff_id: { [Op.in]: requestedStaffIds } }
+      : Number.isInteger(effectiveStaffId) && effectiveStaffId > 0
+        ? { staff_id: effectiveStaffId }
+        : {};
 
     let monthWhere = {};
     if (requestedMonth === 'custom' && startDate && endDate && parseDateOnly(startDate) && parseDateOnly(endDate)) {
@@ -892,6 +907,7 @@ const exportBookingOrders = async (req, res) => {
         ...monthWhere,
         ...creatorWhere,
         ...staffWhere,
+        ...(requestedShopId !== null ? { target_shop_id: requestedShopId } : {}),
       },
       order: [['created_at', 'DESC'], ['id', 'DESC']],
     });
@@ -901,6 +917,7 @@ const exportBookingOrders = async (req, res) => {
       const videos = booking.booking_videos || booking.get?.('booking_videos') || [];
       const staff = booking.staff || booking.get?.('staff') || null;
       const targetShop = booking.target_shop || booking.get?.('target_shop') || null;
+      const shopId = Number(booking.target_shop_id || targetShop?.id);
 
       for (const video of videos) {
         const platformVideoId = String(video.platform_video_id || video.id || '').trim();
@@ -911,6 +928,7 @@ const exportBookingOrders = async (req, res) => {
           staffEmail: staff?.email || '',
           creatorName: booking.creator_name || '',
           creatorUsername: String(booking.creator_username || '').replace(/^@+/, ''),
+          shopId: Number.isInteger(shopId) && shopId > 0 ? shopId : null,
           shopName: targetShop?.name || '',
           currency: booking.currency || 'MYR',
           videoTitle: video.title || video.item_title || '',
@@ -919,8 +937,12 @@ const exportBookingOrders = async (req, res) => {
       }
     }
 
+    const shopIds = [...new Set(
+      [...videoMap.values()].map((meta) => meta.shopId).filter(Number.isInteger),
+    )];
+
     const videoIds = hasExplicitVideoIds
-      ? explicitVideoIds
+      ? (requestedStaffIds !== null || requestedShopId !== null ? explicitVideoIds.filter((id) => videoMap.has(id)) : explicitVideoIds)
       : [...videoMap.keys()];
 
     let orderRows = [];
@@ -928,6 +950,10 @@ const exportBookingOrders = async (req, res) => {
     if (videoIds.length > 0) {
       const dateClauses = [];
       const replacements = { videoIds };
+      if (requestedShopId !== null) {
+        replacements.shopId = requestedShopId;
+        dateClauses.push('sku.shop_id = :shopId');
+      }
 
       if (startTime) {
         replacements.startDateTime = new Date(Number(startTime) * (Number(startTime) < 1e12 ? 1000 : 1)).toISOString();
@@ -969,6 +995,7 @@ const exportBookingOrders = async (req, res) => {
           sku.sku_id,
           sku.quantity,
           sku.refunded_quantity,
+          sku.fully_return,
           sku.price,
           sku.currency,
           sku.settlement_status,
@@ -979,7 +1006,7 @@ const exportBookingOrders = async (req, res) => {
         JOIN tiktok_affiliate_orders o ON o.id = sku.affiliate_order_id
         LEFT JOIN tiktok_shops ts ON ts.id = sku.shop_id
         WHERE sku.content_id IN (:videoIds)
-          AND UPPER(sku.content_type) = 'VIDEO'
+          ${shopIds.length ? 'AND sku.shop_id IN (:shopIds)' : ''}
           ${dateWhere}
         ORDER BY o.create_time DESC
       `, {

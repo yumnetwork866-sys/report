@@ -3531,3 +3531,77 @@
     width: 100%;
   }
 }
+
+.booking-export-modal {
+  width: min(480px, 100%);
+  max-height: calc(100dvh - 40px);
+  overflow-y: auto;
+  padding: 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.booking-export-modal__header,
+.booking-export-modal__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.booking-export-modal__header h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.booking-export-modal__shop {
+  margin: 16px 0 8px;
+}
+
+.booking-export-modal > p,
+.booking-export-modal__staff small {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.booking-export-modal__list {
+  max-height: 320px;
+  overflow-y: auto;
+  margin: 8px 0 20px;
+  border-block: 1px solid var(--color-border);
+}
+
+.booking-export-modal__option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 4px;
+  cursor: pointer;
+}
+
+.booking-export-modal__option input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+
+.booking-export-modal__staff {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.booking-export-modal__count {
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+.booking-export-modal__actions {
+  justify-content: flex-end;
+}
