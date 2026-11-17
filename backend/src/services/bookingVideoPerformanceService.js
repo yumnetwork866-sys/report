@@ -347,8 +347,7 @@ const loadOrderMetricsForVideos = async ({
         END)::numeric AS estimated_commission
       FROM tiktok_affiliate_order_skus s
       JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
-      WHERE s.shop_id IN (:shopIds)
-        AND s.content_id IN (:videoIds)
+      WHERE ${targetVideoIds.length ? 's.content_id IN (:videoIds)' : 's.shop_id IN (:shopIds)'}
         ${dateWhere}
       GROUP BY s.shop_id, s.content_id, s.product_id, COALESCE(s.currency, 'VND')
     `, {
@@ -358,16 +357,9 @@ const loadOrderMetricsForVideos = async ({
 
     const metricsByVideo = new Map();
     for (const row of rows || []) {
-      const videoKey = `${row.shop_id}:${row.video_id}`;
-      if (!metricsByVideo.has(videoKey)) {
-        metricsByVideo.set(videoKey, {
-          shop_id: Number(row.shop_id),
-          video_id: String(row.video_id),
-          by_product: new Map(),
-          products: [],
-        });
-      }
-      const videoData = metricsByVideo.get(videoKey);
+      const shopVideoKey = `${row.shop_id}:${row.video_id}`;
+      const crossShopKey = String(row.video_id);
+
       const productId = String(row.product_id || '').trim();
       const grossGmv = numberOrZero(row.gross_gmv);
       const refundedGmv = numberOrZero(row.refunded_gmv);
@@ -385,10 +377,49 @@ const loadOrderMetricsForVideos = async ({
         refunded_gmv: refundedGmv,
         net_gmv: netGmv,
       };
+
+      if (!metricsByVideo.has(shopVideoKey)) {
+        metricsByVideo.set(shopVideoKey, {
+          shop_id: Number(row.shop_id),
+          video_id: String(row.video_id),
+          by_product: new Map(),
+          products: [],
+        });
+      }
+      const shopVideoData = metricsByVideo.get(shopVideoKey);
       if (productId) {
-        videoData.by_product.set(productId, productMetric);
-        if (!videoData.products.includes(productId)) {
-          videoData.products.push(productId);
+        shopVideoData.by_product.set(productId, { ...productMetric });
+        if (!shopVideoData.products.includes(productId)) {
+          shopVideoData.products.push(productId);
+        }
+      }
+
+      if (!metricsByVideo.has(crossShopKey)) {
+        metricsByVideo.set(crossShopKey, {
+          shop_id: Number(row.shop_id),
+          video_id: String(row.video_id),
+          by_product: new Map(),
+          products: [],
+        });
+      }
+      const crossVideoData = metricsByVideo.get(crossShopKey);
+      if (productId) {
+        if (crossVideoData.by_product.has(productId)) {
+          const existing = crossVideoData.by_product.get(productId);
+          existing.orders += orders;
+          existing.items_sold += itemsSold;
+          existing.refunded_quantity += productMetric.refunded_quantity;
+          existing.gross_gmv += grossGmv;
+          existing.refunded_gmv += refundedGmv;
+          existing.net_gmv += netGmv;
+          if (productMetric.estimated_commission !== null) {
+            existing.estimated_commission = (existing.estimated_commission || 0) + productMetric.estimated_commission;
+          }
+        } else {
+          crossVideoData.by_product.set(productId, { ...productMetric });
+          if (!crossVideoData.products.includes(productId)) {
+            crossVideoData.products.push(productId);
+          }
         }
       }
     }
@@ -543,12 +574,11 @@ const loadOrderMetricsForBookingProducts = async ({
         ORDER BY snapshot.snapshot_date DESC, snapshot.synced_at DESC, snapshot.id DESC
         LIMIT 1
       ) video_snapshot ON TRUE
-      WHERE s.shop_id IN (:shopIds)
-        ${hasGlobalVideoFilter
+      WHERE ${hasGlobalVideoFilter
     ? (allProductIds.length
-      ? 'AND (s.product_id IN (:productIds) OR s.content_id IN (:filteredVideoIds))'
-      : 'AND s.content_id IN (:filteredVideoIds)')
-    : 'AND s.product_id IN (:productIds)'}
+      ? '(s.product_id IN (:productIds) OR s.content_id IN (:filteredVideoIds))'
+      : 's.content_id IN (:filteredVideoIds)')
+    : '(s.shop_id IN (:shopIds) AND s.product_id IN (:productIds))'}
         ${dateWhere}
     `, {
       replacements,
@@ -598,7 +628,10 @@ const loadOrderMetricsForBookingProducts = async ({
       ]));
 
       for (const [rowIndex, row] of (rows || []).entries()) {
-        if (Number(row.shop_id) !== bookingShopId) continue;
+        const contentId = String(row.content_id || '').trim();
+        const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
+        const isAllowedVideo = allowedVideoIds && contentId && (!contentType || contentType.includes('VIDEO')) && allowedVideoIds.has(contentId);
+        if (Number(row.shop_id) !== bookingShopId && !isAllowedVideo) continue;
         const productId = String(row.product_id || '').trim();
         if (!hasVideoFilter && !selectedIds.has(productId)) continue;
         const rowCreator = String(row.creator_username || '').trim();
@@ -606,8 +639,6 @@ const loadOrderMetricsForBookingProducts = async ({
         const bookingDate = dateOnly(booking?.start_date || booking?.booking_date || booking?.created_at);
         const orderDate = dateOnly(row.create_time);
         if (bookingDate && orderDate && bookingDate > orderDate) continue;
-        const contentId = String(row.content_id || '').trim();
-        const contentType = String(row.content_type || row?.raw_data?.content_type || '').toUpperCase();
         if (allowedVideoIds && (
           !contentId
           || (contentType && !contentType.includes('VIDEO'))

@@ -216,8 +216,9 @@ const applyBookingVideoPerformanceWindow = async (bookings, performanceWindow, c
       const snapshot = exportRecord
         ? snapshotByExportAndVideo.get(`${exportRecord.id}:${video.platform_video_id}`)
         : null;
-      const videoData = orderMetricsByShopAndVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`);
-      const orderMetrics = resolveOrderMetricsForVideo(videoData, selectedIds);
+      const videoData = orderMetricsByShopAndVideo.get(String(video.platform_video_id))
+        || orderMetricsByShopAndVideo.get(`${booking.target_shop_id}:${video.platform_video_id}`);
+      const orderMetrics = resolveOrderMetricsForVideo(videoData, null);
       const resolvedViews = existingLatest?.views
         ?? fallbackSnap?.video_views
         ?? (existingLatest?.raw_metrics?.views !== undefined ? existingLatest.raw_metrics.views : null)
@@ -763,7 +764,7 @@ const getBookings = async (req, res) => {
       };
     }
 
-    const cacheKey = `bookings:list:v6:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
+    const cacheKey = `bookings:list:v7:${requestedWindow || 'default'}:${requestedMonth || 'all'}:${requestedUsername || 'any'}:${requestedOpenId || 'any'}:${requestedStaffId || 'any-staff'}:${startDate || 'none'}:${endDate || 'none'}:${startTime || 'none'}:${endTime || 'none'}:${includeProductPerformance ? 'with-product' : 'video-only'}`;
     const { data: payload, hit } = await getOrSetCache(cacheKey, 120, async () => {
       const bookings = await bookingRepository.findBookings({
         where: {

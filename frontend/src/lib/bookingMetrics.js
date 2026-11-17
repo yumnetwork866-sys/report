@@ -983,25 +983,29 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
   let currency = 'MYR';
 
   for (const order of orders) {
-    const orderId = String(order?.id || order?.order_id || '').trim();
-    const orderTime = order?.create_time || order?.order_create_time || order?.created_time || order?.paid_time;
-    const orderStatus = order?.order_status || order?.status || null;
+    const orderId = String(order?.id || order?.order_id || order?.orderId || '').trim();
+    const orderTime = order?.create_time || order?.order_create_time || order?.created_time || order?.paid_time || order?.orderTime;
+    const orderStatus = order?.order_status || order?.status || order?.orderStatus || null;
 
-    for (const sku of Array.isArray(order?.skus) ? order.skus : []) {
-      const skuProdId = String(sku?.product_id || '').trim();
+    const skusList = Array.isArray(order?.skus) ? order.skus : [order];
+    for (const sku of skusList) {
+      const skuProdId = String(sku?.product_id || sku?.productId || '').trim();
       if (normProdId && skuProdId !== normProdId) continue;
 
-      const skuCreator = String(sku?.creator_username || order?.creator_username || '').trim().replace(/^@+/, '').toLocaleLowerCase();
+      const skuCreator = String(sku?.creator_username || sku?.creatorUsername || order?.creator_username || order?.creatorUsername || '').trim().replace(/^@+/, '').toLocaleLowerCase();
       if (normCreator && skuCreator && skuCreator !== normCreator) continue;
 
       const rawQuantity = sku?.quantity ?? sku?.sku_quantity ?? sku?.item_count ?? sku?.product_count ?? sku?.count;
       const quantity = Math.max(0, finiteNumber(rawQuantity !== undefined && rawQuantity !== null && rawQuantity !== '' ? rawQuantity : 1));
-      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refund_quantity ?? 0)));
+      const refundedQuantity = Math.min(quantity, Math.max(0, finiteNumber(sku?.refunded_quantity ?? sku?.refundedQuantity ?? sku?.refund_quantity ?? 0)));
       const normalizedOrderStatus = String(orderStatus || '').trim().toUpperCase();
-      const normalizedItemStatus = String(sku?.item_status || '').trim().toUpperCase();
+      const normalizedItemStatus = String(sku?.item_status || sku?.orderStatus || '').trim().toUpperCase();
+      const settlementStatus = String(sku?.settlement_status || sku?.settlementStatus || order?.settlement_status || order?.settlementStatus || '').toUpperCase();
+      const cancelReason = String(order?.cancel_reason || order?.cancelReason || sku?.order_raw_data?.cancel_reason || '').trim();
+      const cancelUser = String(order?.cancel_user || order?.cancelUser || sku?.order_raw_data?.cancel_user || '').trim();
       const normalizedStatus = normalizedItemStatus || normalizedOrderStatus || 'COMPLETED';
-      const combinedStatus = `${normalizedOrderStatus} ${normalizedItemStatus}`;
-      const isCancelled = /CANCEL/.test(combinedStatus);
+      const combinedStatus = `${normalizedOrderStatus} ${normalizedItemStatus} ${settlementStatus}`;
+      const isCancelled = /CANCEL/.test(combinedStatus) || sku?.fully_return === true || Boolean(cancelReason) || Boolean(cancelUser);
       const hasRefundStatus = /REFUND|RETURN/.test(combinedStatus);
       const isFullyRefunded = quantity > 0 && (refundedQuantity >= quantity || hasRefundStatus);
       const isPartiallyRefunded = !isFullyRefunded && refundedQuantity > 0;
@@ -1010,7 +1014,7 @@ export const extractProductOrderRows = (orders = [], productId, creatorUsername,
         : Math.max(quantity - refundedQuantity, 0);
       const rawPrice = typeof sku?.price === 'object' ? sku?.price?.amount : (sku?.price ?? sku?.price_amount ?? sku?.original_price);
       const price = Math.max(0, finiteNumber(rawPrice));
-      const rawCommRate = finiteNumber(sku?.creator_commission_rate);
+      const rawCommRate = finiteNumber(sku?.creator_commission_rate || sku?.commissionRate);
       const commissionRate = rawCommRate > 100 ? rawCommRate / 10000 : rawCommRate / 100;
       const skuCurrency = sku?.price?.currency || sku?.currency || order?.currency || currency;
       currency = skuCurrency;

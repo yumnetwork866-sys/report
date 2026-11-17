@@ -220,6 +220,65 @@ export async function downloadBookingOrdersCsv({
 
 export const downloadBookingOrdersExcel = downloadBookingOrdersCsv;
 
+export async function fetchBookingOrdersJson({
+  month,
+  startDate,
+  endDate,
+  startTime,
+  endTime,
+  staffId,
+  videoIds,
+  signal,
+} = {}) {
+  const sessionToken = getStoredSession()?.token || null;
+  const hasVideoIds = Array.isArray(videoIds);
+  const method = hasVideoIds ? 'POST' : 'GET';
+  const headers = {
+    ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    ...(hasVideoIds ? { 'Content-Type': 'application/json' } : {}),
+  };
+
+  const bodyPayload = hasVideoIds ? JSON.stringify({
+    month: month && month !== 'all' ? month : undefined,
+    startDate,
+    endDate,
+    startTime,
+    endTime,
+    staffId,
+    videoIds,
+    format: 'json',
+  }) : undefined;
+
+  const params = new URLSearchParams();
+  if (month && month !== 'all') params.set('month', month);
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  if (startTime) params.set('start_time', String(startTime));
+  if (endTime) params.set('end_time', String(endTime));
+  if (staffId) params.set('staff_id', String(staffId));
+  params.set('format', 'json');
+
+  const query = hasVideoIds ? '' : `?${params.toString()}`;
+  const url = `${API_BASE_URL}/bookings/export-orders${query}`;
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: bodyPayload,
+    signal,
+  });
+
+  if (!response.ok) {
+    let msg = `Tải danh sách đơn hàng thất bại (${response.status})`;
+    try {
+      const err = await response.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  return response.json();
+}
+
 export function fetchBookingById(bookingId, signal) {
   return apiRequest(`/bookings/${encodeURIComponent(bookingId)}`, { signal });
 }
