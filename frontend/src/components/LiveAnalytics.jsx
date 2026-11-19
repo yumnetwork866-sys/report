@@ -328,33 +328,6 @@ const LiveAnalytics = () => {
     return () => controller.abort();
   }, [selectedShopId, startDate, endDate]);
 
-  useEffect(() => {
-    if (!Array.isArray(livePerformances) || livePerformances.length === 0) return;
-    const controller = new AbortController();
-    const compactSessions = livePerformances.map((lp) => ({
-      session_id: lp.live_id || lp.id,
-      shop_id: lp.shopId || selectedShopId,
-      start_time: lp.start_time,
-      title: lp.title,
-      creator: lp.creator_username || lp.creator?.user_name,
-      gmv: Number(lp.gmv?.amount || lp.revenue?.amount || lp.gmv || 0),
-    }));
-
-    fetchLiveSessionAds(selectedShopId, { sessions: compactSessions, signal: controller.signal })
-      .then((rows) => {
-        if (controller.signal.aborted || !Array.isArray(rows)) return;
-        const map = {};
-        rows.forEach((row) => {
-          map[`${row.shop_id}:${row.session_id}`] = row;
-          map[row.session_id] = row;
-        });
-        setSessionAdsMap((prev) => ({ ...prev, ...map }));
-      })
-      .catch(() => {});
-
-    return () => controller.abort();
-  }, [livePerformances, selectedShopId]);
-
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -580,6 +553,33 @@ const LiveAnalytics = () => {
       controller.abort();
     };
   }, [currency, endDate, invalidRange, periodPreset, selectedShop, selectedShopId, shops, startDate]);
+
+  useEffect(() => {
+    if (!Array.isArray(livePerformances) || livePerformances.length === 0) return;
+    const controller = new AbortController();
+    const compactSessions = livePerformances.map((lp) => ({
+      session_id: lp.live_id || lp.id,
+      shop_id: lp.shopId || selectedShopId,
+      start_time: lp.start_time,
+      title: lp.title,
+      creator: lp.creator_username || lp.creator?.user_name,
+      gmv: Number(lp.gmv?.amount || lp.revenue?.amount || lp.gmv || 0),
+    }));
+
+    fetchLiveSessionAds(selectedShopId, { sessions: compactSessions, signal: controller.signal })
+      .then((rows) => {
+        if (controller.signal.aborted || !Array.isArray(rows)) return;
+        const map = {};
+        rows.forEach((row) => {
+          map[`${row.shop_id}:${row.session_id}`] = row;
+          map[row.session_id] = row;
+        });
+        setSessionAdsMap((prev) => ({ ...prev, ...map }));
+      })
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, [livePerformances, selectedShopId]);
 
   const { livePerformanceByShopSession, livePerformancesByShop } = useMemo(() => {
     const bySession = new Map();
