@@ -1424,8 +1424,9 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
           seller_discount: matchingLineItem.seller_discount ?? rawSku.seller_discount,
           platform_discount: matchingLineItem.platform_discount ?? rawSku.platform_discount,
           price: s.price !== null && s.price !== undefined
-            ? { amount: String(s.price), currency: s.currency || 'MYR' }
+            ? { amount: String(s.price), currency: s.currency || rawSku.price?.currency || rawSku.currency || (shop?.region === 'VN' ? 'VND' : 'MYR') }
             : (rawSku.price || {}),
+          currency: s.currency || rawSku.currency || rawSku.price?.currency || (shop?.region === 'VN' ? 'VND' : 'MYR'),
           content_id: s.content_id || rawSku.content_id,
           content_type: s.content_type || rawSku.content_type,
           creator_username: s.creator_username || rawSku.creator_username,

@@ -26,7 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useI18n } from '../lib/language';
-import { useMoneyFormatter } from '../lib/currency';
+import { convertCurrencyAmount, useMoneyFormatter } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
 import { fetchLiveHostUsers, fetchLiveHosts, fetchTikTokSellerAffiliateOrders, fetchTikTokShopLivePerformance } from '../lib/api';
 import { useSession } from '../lib/useSession';
@@ -154,7 +154,7 @@ const MultiShopLiveTooltip = ({ active, payload, label, formatMoney }) => {
 const LiveAnalytics = () => {
   const { t, language } = useI18n();
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
-  const { formatMoney: formatPreferredMoney } = useMoneyFormatter(locale);
+  const { formatMoney: formatPreferredMoney, exchangeRates } = useMoneyFormatter(locale);
 
   // Filters & State
   const initialRange = useMemo(() => rangeForDays(7), []);
@@ -346,7 +346,17 @@ const LiveAnalytics = () => {
 
   // Currency & formatting
   const displayCurrency = intervals.find((row) => row?.gmv?.currency && row?.gmv?.currency !== 'LOCAL')?.gmv?.currency
-    || (selectedShop?.region === 'MY' ? 'MYR' : 'VND');
+    || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
+
+  const toDisplayCurrency = useCallback((amount, sourceCurrency) => {
+    const numeric = Number(amount);
+    if (!Number.isFinite(numeric)) return 0;
+    const normSource = String(sourceCurrency || '').trim().toUpperCase();
+    const normTarget = String(displayCurrency || '').trim().toUpperCase();
+    if (!normSource || normSource === 'LOCAL' || normSource === normTarget) return numeric;
+    const converted = convertCurrencyAmount(numeric, normSource, normTarget, exchangeRates);
+    return converted !== null ? converted : numeric;
+  }, [displayCurrency, exchangeRates]);
 
   const formatMoney = useCallback((value, currencyCode = displayCurrency) => (
     formatPreferredMoney(value, currencyCode === 'LOCAL' ? displayCurrency : currencyCode)
@@ -592,6 +602,15 @@ const LiveAnalytics = () => {
     const productMap = {};
     const flatRows = [];
 
+    const isCancelledOrder = (order, sku) => {
+      const status = String(order?.order_status || order?.status || '').toUpperCase();
+      if (['CANCELLED', 'CANCELED'].includes(status)) return true;
+      if (order?.cancel_reason || order?.cancel_time || order?.cancel_user) return true;
+      if (sku?.fully_return) return true;
+      if (sku?.refunded_quantity && sku?.quantity && Number(sku.refunded_quantity) >= Number(sku.quantity)) return true;
+      return false;
+    };
+
     liveOrders.forEach((order) => {
       const skus = Array.isArray(order.skus) ? order.skus : [];
       const liveSkus = skus.filter((s) => (
@@ -614,6 +633,14 @@ const LiveAnalytics = () => {
         : 0;
       const settlementStatus = liveSkus[0]?.settlement_status || liveSkus[0]?.raw_data?.settlement_status || '';
       const currentShop = shopsById.get(String(order.shop_id || order.shopId)) || selectedShop;
+      const orderShopRegion = String(currentShop?.region || '').trim().toUpperCase()
+        || (order.shopName?.includes('Việt Nam') || order.shopName?.includes('VN') ? 'VN' : 'MY');
+      const fallbackOrderCurrency = orderShopRegion === 'VN' ? 'VND' : 'MYR';
+      const orderCurrency = liveSkus[0]?.currency
+        || liveSkus[0]?.price?.currency
+        || order.currency
+        || fallbackOrderCurrency;
+      const isOrderCancelled = isCancelledOrder(order, liveSkus[0]);
       const rawSessionId = String(liveSkus[0]?.content_id || liveSkus[0]?.room_id || 'unknown');
       const shopId = order.shop_id || order.shopId;
       const orderSessionKey = `${shopId}:${rawSessionId}`;
@@ -645,18 +672,27 @@ const LiveAnalytics = () => {
         creatorUsername: orderCreatorUsername,
         isExternal: orderIsExternal,
         sessionId: rawSessionId,
-        totalGmv: liveSkus.reduce((sum, s) => sum + (moneyValue(s.price) * (Number(s.quantity) || 1)), 0),
-        totalCommission,
+        isCancelled: isOrderCancelled,
+        totalGmv: liveSkus.reduce((sum, s) => {
+          const sCurr = s.currency || s.price?.currency || orderCurrency;
+          const raw = (moneyValue(s.price) || 0) * (Number(s.quantity) || 1);
+          return sum + toDisplayCurrency(raw, sCurr);
+        }, 0),
+        totalCommission: toDisplayCurrency(totalCommission, orderCurrency),
         commissionRate,
         settlementStatus,
-        currency: liveSkus[0]?.currency || order.currency || displayCurrency,
+        currency: displayCurrency,
       });
 
       liveSkus.forEach((sku) => {
+        const skuCurr = sku.currency || sku.price?.currency || orderCurrency;
+        const isSkuCancelled = isCancelledOrder(order, sku);
         const cid = String(sku.content_id || sku.room_id || 'unknown');
         const sessionKey = `${shopId}:${cid}`;
         const qty = Number(sku.quantity) || 1;
-        const gmv = (moneyValue(sku.price) || 0) * qty;
+        const rawGmv = (moneyValue(sku.price) || 0) * qty;
+        const convertedGmv = toDisplayCurrency(rawGmv, skuCurr);
+        const convertedComm = toDisplayCurrency(totalCommission, skuCurr);
         const matchedSkuLive = livePerformanceByShopSession.get(sessionKey)
           || findLivePerformanceForSession(livePerformancesByShop.get(String(shopId)), { sessionId: cid });
         const creatorUsername = matchedSkuLive?.creator_username
@@ -693,7 +729,7 @@ const LiveAnalytics = () => {
             creatorUsername,
             creatorNickname,
             creatorAvatar,
-            currency: sku.currency || displayCurrency,
+            currency: displayCurrency,
             orderIds: new Set(),
             totalQuantity: 0,
             totalGmv: 0,
@@ -707,10 +743,12 @@ const LiveAnalytics = () => {
         }
 
         const s = sessions[sessionKey];
-        s.orderIds.add(order.id || order.order_id);
-        s.totalQuantity += qty;
-        s.totalGmv += gmv;
-        s.totalCommission += totalCommission;
+        if (!isSkuCancelled) {
+          s.orderIds.add(order.id || order.order_id);
+          s.totalQuantity += qty;
+          s.totalGmv += convertedGmv;
+          s.totalCommission += convertedComm;
+        }
         if (isExternal) s.isExternal = true;
         if (orderCreateTime && (!s.firstTime || orderCreateTime < s.firstTime)) s.firstTime = orderCreateTime;
         if (orderCreateTime && (!s.lastTime || orderCreateTime > s.lastTime)) s.lastTime = orderCreateTime;
@@ -729,8 +767,10 @@ const LiveAnalytics = () => {
               gmv: 0,
             };
           }
-          s.products[pid].quantity += qty;
-          s.products[pid].gmv += gmv;
+          if (!isSkuCancelled) {
+            s.products[pid].quantity += qty;
+            s.products[pid].gmv += convertedGmv;
+          }
         }
 
         // Group Global Product
@@ -743,12 +783,14 @@ const LiveAnalytics = () => {
               quantity: 0,
               gmv: 0,
               orderIds: new Set(),
-              currency: sku.currency || displayCurrency,
+              currency: displayCurrency,
             };
           }
-          productMap[pid].quantity += qty;
-          productMap[pid].gmv += gmv;
-          productMap[pid].orderIds.add(order.id || order.order_id);
+          if (!isSkuCancelled) {
+            productMap[pid].quantity += qty;
+            productMap[pid].gmv += convertedGmv;
+            productMap[pid].orderIds.add(order.id || order.order_id);
+          }
         }
       });
     });
@@ -858,7 +900,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop]);
+  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
@@ -924,7 +966,7 @@ const LiveAnalytics = () => {
           totalGmv: 0,
           totalCommission: 0,
           totalComments: 0,
-          currency: sess.currency,
+          currency: sess.currency || displayCurrency,
           sessions: [],
         };
       }
@@ -943,7 +985,7 @@ const LiveAnalytics = () => {
     });
 
     return Object.values(channelMap).sort((a, b) => b.totalGmv - a.totalGmv);
-  }, [sessionList]);
+  }, [sessionList, displayCurrency]);
 
   // Source type options
   const sourceTypeOptions = useMemo(() => [
@@ -964,6 +1006,10 @@ const LiveAnalytics = () => {
       || (c.nickname && c.nickname.toLowerCase().includes(term))
     ));
   }, [channelList, sourceType, searchKeyword]);
+
+  const totalTableLiveSales = useMemo(() => (
+    filteredChannelList.reduce((sum, c) => sum + c.totalGmv, 0)
+  ), [filteredChannelList]);
 
   // Host options for dropdown filter
   const hostFilterOptions = useMemo(() => {
@@ -1740,7 +1786,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAvgGmvPerSession')}</th>
                   <th className="cell-number">{t('liveAnalytics.channelGmvShare')}</th>
-                  <th className="cell-actions">{t('common.actions')}</th>
+                  <th className="cell-actions">{t('liveAnalytics.colActions', 'Thao tác')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1767,8 +1813,7 @@ const LiveAnalytics = () => {
 
                 {filteredChannelList.map((ch) => {
                   const avgGmv = ch.sessionsCount > 0 ? ch.totalGmv / ch.sessionsCount : 0;
-                  const totalLiveSales = channelList.reduce((sum, c) => sum + c.totalGmv, 0);
-                  const share = totalLiveSales > 0 ? (ch.totalGmv / totalLiveSales) * 100 : 0;
+                  const share = totalTableLiveSales > 0 ? (ch.totalGmv / totalTableLiveSales) * 100 : 0;
 
                   return (
                     <tr
