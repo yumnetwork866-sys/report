@@ -5,10 +5,10 @@ const { requireAdmin, requirePermission } = require('../lib/session');
 const router = express.Router();
 
 // 1. Get OAuth authorization URL (Admin only)
-router.get('/oauth/url', requireAdmin, (req, res) => {
+router.get('/oauth/url', requireAdmin, async (req, res) => {
   try {
     const state = req.query.state || 'tiktok_ads_connect';
-    const url = tiktokAdsService.getAuthUrl(state);
+    const url = await tiktokAdsService.getAuthUrl(state);
     res.json({ url });
   } catch (err) {
     res.status(500).json({ message: err.message });

@@ -2071,6 +2071,8 @@
     "partnerApp": "TikTok Shop",
     "customApp": "TikTok Shop",
     "channelApp": "TikTok Channel",
+    "adsApp": "TikTok Ads",
+    "linkedAds": "Accounts",
     "active": "Active",
     "inactive": "Inactive",
     "secretMasked": "Secret Saved",

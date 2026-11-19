@@ -40,6 +40,22 @@ const countLinkedAccounts = async (app) => {
     });
   }
 
+  if (app.app_type === 'ads') {
+    const { sequelize } = require('../models');
+    try {
+      const [row] = await sequelize.query(`
+        SELECT COUNT(*) as count FROM tiktok_ads_authorizations
+        WHERE app_id = :appKey
+      `, {
+        replacements: { appKey: app.app_key },
+        type: sequelize.QueryTypes.SELECT,
+      });
+      return Number(row?.count || 0);
+    } catch {
+      return 0;
+    }
+  }
+
   return TikTokShop.count({
     distinct: true,
     col: 'id',
@@ -88,17 +104,19 @@ const createApp = async (req, res) => {
     const serviceId = String(req.body.service_id || '').trim() || null;
     let appType = String(req.body.app_type || '').trim().toLowerCase();
     if (appType === 'custom') appType = 'partner';
-    if (!['partner', 'channel'].includes(appType)) {
+    if (!['partner', 'channel', 'ads'].includes(appType)) {
       appType = 'partner';
     }
 
-    let region = String(req.body.region || (appType === 'channel' ? 'ALL' : 'AUTO')).trim().toUpperCase();
-    if (!region) region = appType === 'channel' ? 'ALL' : 'AUTO';
+    let region = String(req.body.region || (appType === 'channel' || appType === 'ads' ? 'ALL' : 'AUTO')).trim().toUpperCase();
+    if (!region) region = appType === 'channel' || appType === 'ads' ? 'ALL' : 'AUTO';
 
     let name = String(req.body.name || '').trim();
     if (!name) {
       if (appType === 'channel') {
         name = 'TikTok Channel';
+      } else if (appType === 'ads') {
+        name = 'TikTok Ads';
       } else {
         name = region === 'AUTO' ? 'TikTok Shop' : `TikTok Shop ${region}`;
       }
@@ -106,13 +124,20 @@ const createApp = async (req, res) => {
 
     const appKey = String(req.body.app_key || '').trim();
     const appSecret = String(req.body.app_secret || '').trim();
-    const defaultAuthUrl = appType === 'channel'
-      ? (process.env.TIKTOK_OAUTH_AUTHORIZE_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/')
-      : 'https://services.tiktokshop.com/open/authorize';
+    let defaultAuthUrl = 'https://services.tiktokshop.com/open/authorize';
+    if (appType === 'channel') {
+      defaultAuthUrl = process.env.TIKTOK_OAUTH_AUTHORIZE_BASE_URL || 'https://www.tiktok.com/v2/auth/authorize/';
+    } else if (appType === 'ads') {
+      defaultAuthUrl = 'https://business-api.tiktok.com/portal/auth';
+    }
     const authorizeUrl = String(req.body.authorize_url || '').trim() || defaultAuthUrl;
-    const defaultRedirectUri = appType === 'channel'
-      ? (process.env.TIKTOK_REDIRECT_URI || null)
-      : (process.env.TIKTOK_PARTNER_REDIRECT_URI || null);
+
+    let defaultRedirectUri = process.env.TIKTOK_PARTNER_REDIRECT_URI || null;
+    if (appType === 'channel') {
+      defaultRedirectUri = process.env.TIKTOK_REDIRECT_URI || null;
+    } else if (appType === 'ads') {
+      defaultRedirectUri = process.env.TIKTOK_BUSINESS_REDIRECT_URI || 'https://report-api.yumnetwork.vn/api/ads/oauth/callback';
+    }
     const redirectUri = String(req.body.redirect_uri || '').trim() || defaultRedirectUri;
     const isActive = req.body.is_active !== undefined ? Boolean(req.body.is_active) : true;
 
@@ -128,7 +153,7 @@ const createApp = async (req, res) => {
 
     const capabilities = Array.isArray(req.body.capabilities)
       ? req.body.capabilities
-      : (req.body.capabilities ? [req.body.capabilities] : (appType === 'channel' ? ['channel'] : ['orders', 'compass', 'affiliate', 'analytics']));
+      : (req.body.capabilities ? [req.body.capabilities] : (appType === 'channel' ? ['channel'] : (appType === 'ads' ? ['ads'] : ['orders', 'compass', 'affiliate', 'analytics'])));
     const declaredScopes = Array.isArray(req.body.declared_scopes) ? req.body.declared_scopes : [];
 
     const appSecretEncrypted = encryptPartnerToken(appSecret);
@@ -164,7 +189,7 @@ const updateApp = async (req, res) => {
 
     const serviceId = req.body.service_id !== undefined ? (String(req.body.service_id || '').trim() || null) : app.service_id;
     let appType = req.body.app_type !== undefined ? String(req.body.app_type || '').trim().toLowerCase() : app.app_type;
-    if (!['partner', 'custom', 'channel'].includes(appType)) {
+    if (!['partner', 'custom', 'channel', 'ads'].includes(appType)) {
       appType = 'partner';
     }
 

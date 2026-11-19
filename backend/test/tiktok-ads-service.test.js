@@ -2,9 +2,9 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { createTikTokAdsService } = require('../src/services/tiktokAdsService');
 
-test('getAuthUrl generates valid TikTok Business OAuth URL', () => {
+test('getAuthUrl generates valid TikTok Business OAuth URL', async () => {
   const service = createTikTokAdsService();
-  const url = service.getAuthUrl('test_state');
+  const url = await service.getAuthUrl('test_state');
   assert.match(url, /^https:\/\/business-api\.tiktok\.com\/portal\/auth\?/);
   assert.match(url, /app_id=7709534514481283092/);
   assert.match(url, /state=test_state/);
@@ -43,9 +43,9 @@ test('handleOAuthCallback exchanges auth_code and persists authorization', async
   assert.deepEqual(result.advertiserIds, ['7123456789012345678']);
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /oauth2\/access_token/);
-  assert.equal(queries.length, 1);
-  assert.match(queries[0].sql, /INSERT INTO tiktok_ads_authorizations/);
-  assert.equal(queries[0].replacements.accessToken, 'fake_access_token_123');
+  const insertQuery = queries.find((q) => q.sql.includes('INSERT INTO tiktok_ads_authorizations'));
+  assert.ok(insertQuery);
+  assert.equal(insertQuery.replacements.accessToken, 'fake_access_token_123');
 });
 
 test('saveLiveSessionAds validates cost and persists ads cost', async () => {

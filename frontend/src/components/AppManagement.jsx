@@ -49,8 +49,10 @@ const getRegionDisplay = (regionCode) => {
 
 const CHANNEL_AUTHORIZE_URL = 'https://www.tiktok.com/v2/auth/authorize/';
 const SHOP_AUTHORIZE_URL = 'https://services.tiktokshop.com/open/authorize';
+const ADS_AUTHORIZE_URL = 'https://business-api.tiktok.com/portal/auth';
 const CHANNEL_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/channels/oauth/tiktok/callback';
 const SHOP_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/bookings/tiktok-partner/callback';
+const ADS_REDIRECT_URI = 'https://report-api.yumnetwork.vn/api/ads/oauth/callback';
 
 const INITIAL_FORM = {
   name: '',
@@ -143,6 +145,16 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
         </span>
       );
     }
+    if (appType === 'ads') {
+      return (
+        <span
+          className="app-management__type-badge app-management__type-badge--ads"
+          style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}
+        >
+          {t('appsManagement.adsApp') || 'TikTok Ads'}
+        </span>
+      );
+    }
     return (
       <span className="app-management__type-badge app-management__type-badge--partner">
         {t('appsManagement.partnerApp') || 'TikTok Shop'}
@@ -152,12 +164,17 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
 
   const renderLinkedCount = (app) => {
     const isChannel = app.app_type === 'channel';
+    const isAds = app.app_type === 'ads';
     const count = Number(app.linked_count || 0);
     const target = isChannel
       ? `/manage/connections?tab=channels&app_id=${encodeURIComponent(app.id)}`
+      : isAds
+      ? `/tiktok/live`
       : `/manage/connections?tab=shops&app_id=${encodeURIComponent(app.id)}`;
     const unit = isChannel
       ? (t('appsManagement.linkedChannels') || 'Kênh')
+      : isAds
+      ? (t('appsManagement.linkedAds') || 'Tài khoản Ads')
       : (t('appsManagement.linkedShops') || 'Shop');
 
     return (
@@ -211,12 +228,13 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
   const handleAppTypeChange = (e) => {
     const nextType = e.target.value;
     const isChannel = nextType === 'channel';
+    const isAds = nextType === 'ads';
     setForm((prev) => ({
       ...prev,
       app_type: nextType,
-      region: isChannel ? 'ALL' : 'AUTO',
-      authorize_url: isChannel ? CHANNEL_AUTHORIZE_URL : SHOP_AUTHORIZE_URL,
-      redirect_uri: isChannel ? CHANNEL_REDIRECT_URI : SHOP_REDIRECT_URI,
+      region: isChannel || isAds ? 'ALL' : 'AUTO',
+      authorize_url: isChannel ? CHANNEL_AUTHORIZE_URL : (isAds ? ADS_AUTHORIZE_URL : SHOP_AUTHORIZE_URL),
+      redirect_uri: isChannel ? CHANNEL_REDIRECT_URI : (isAds ? ADS_REDIRECT_URI : SHOP_REDIRECT_URI),
     }));
   };
 
@@ -593,7 +611,7 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
 
               <form onSubmit={handleFormSubmit}>
                 {!editingApp ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: form.app_type === 'channel' ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: ['channel', 'ads'].includes(form.app_type) ? '1fr' : '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
                     <div className="field" style={{ marginBottom: 0 }}>
                       <label htmlFor="app-type">{t('appsManagement.appType') || 'Loại App'}</label>
                       <select
@@ -604,10 +622,11 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                       >
                         <option value="channel">TikTok Channel</option>
                         <option value="partner">TikTok Shop</option>
+                        <option value="ads">TikTok Ads (Business)</option>
                       </select>
                     </div>
 
-                    {form.app_type !== 'channel' ? (
+                    {!['channel', 'ads'].includes(form.app_type) ? (
                       <div className="field" style={{ marginBottom: 0 }}>
                         <label htmlFor="app-region">{t('appsManagement.region') || 'Vùng / Quốc gia'}</label>
                         <select
@@ -724,15 +743,17 @@ const AppManagement = ({ embedded = false, onCountChange }) => {
                   </div>
                 </div>
 
-                <div className="field">
-                  <label htmlFor="service-id">{t('appsManagement.serviceIdLabel') || 'Service ID (không bắt buộc)'}</label>
-                  <input
-                    id="service-id"
-                    name="service_id"
-                    value={form.service_id}
-                    onChange={handleFormChange}
-                  />
-                </div>
+                {form.app_type === 'partner' ? (
+                  <div className="field">
+                    <label htmlFor="service-id">{t('appsManagement.serviceIdLabel') || 'Service ID (không bắt buộc)'}</label>
+                    <input
+                      id="service-id"
+                      name="service_id"
+                      value={form.service_id}
+                      onChange={handleFormChange}
+                    />
+                  </div>
+                ) : null}
 
                 <div className="field">
                   <label htmlFor="redirect-uri">{t('appsManagement.redirectUri') || 'Redirect URI'}</label>

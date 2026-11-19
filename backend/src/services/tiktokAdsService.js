@@ -1,19 +1,44 @@
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
+const { decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 
-const getBusinessConfig = () => ({
-  appId: process.env.TIKTOK_BUSINESS_APP_ID || '7709534514481283092',
-  secret: process.env.TIKTOK_BUSINESS_SECRET || '01ed165188d088f5fcf477d3b699cd90a1f45365',
-  redirectUri: process.env.TIKTOK_BUSINESS_REDIRECT_URI || 'https://report-api.yumnetwork.vn/api/ads/oauth/callback',
-  baseUrl: process.env.TIKTOK_BUSINESS_API_BASE_URL || 'https://business-api.tiktok.com',
-});
+const getBusinessConfig = async (db = sequelize) => {
+  try {
+    const rows = await db.query(`
+      SELECT app_key, app_secret_encrypted, redirect_uri
+      FROM tiktok_apps
+      WHERE app_type = 'ads' AND is_active = true
+      ORDER BY id DESC LIMIT 1
+    `, { type: QueryTypes.SELECT });
+
+    if (rows && rows[0]?.app_key) {
+      let secret = '';
+      try {
+        secret = decryptPartnerToken(rows[0].app_secret_encrypted);
+      } catch (_e) {}
+      return {
+        appId: rows[0].app_key,
+        secret: secret || process.env.TIKTOK_BUSINESS_SECRET || '01ed165188d088f5fcf477d3b699cd90a1f45365',
+        redirectUri: rows[0].redirect_uri || process.env.TIKTOK_BUSINESS_REDIRECT_URI || 'https://report-api.yumnetwork.vn/api/ads/oauth/callback',
+        baseUrl: process.env.TIKTOK_BUSINESS_API_BASE_URL || 'https://business-api.tiktok.com',
+      };
+    }
+  } catch (_err) {}
+
+  return {
+    appId: process.env.TIKTOK_BUSINESS_APP_ID || '7709534514481283092',
+    secret: process.env.TIKTOK_BUSINESS_SECRET || '01ed165188d088f5fcf477d3b699cd90a1f45365',
+    redirectUri: process.env.TIKTOK_BUSINESS_REDIRECT_URI || 'https://report-api.yumnetwork.vn/api/ads/oauth/callback',
+    baseUrl: process.env.TIKTOK_BUSINESS_API_BASE_URL || 'https://business-api.tiktok.com',
+  };
+};
 
 const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
   const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
 
   return {
-    getAuthUrl(state = '') {
-      const { appId, redirectUri } = getBusinessConfig();
+    async getAuthUrl(state = '') {
+      const { appId, redirectUri } = await getBusinessConfig(db);
       const params = new URLSearchParams({
         app_id: appId,
         state: state || 'tiktok_ads_auth',
@@ -23,7 +48,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
     },
 
     async handleOAuthCallback(code) {
-      const { appId, secret, baseUrl } = getBusinessConfig();
+      const { appId, secret, baseUrl } = await getBusinessConfig(db);
       if (!code) throw new Error('Authorization code is required.');
 
       const response = await fetchImpl(`${baseUrl}/open_api/v1.3/oauth2/access_token/`, {
