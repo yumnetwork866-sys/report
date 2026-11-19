@@ -4,6 +4,7 @@ import { Link2, LoaderCircle, Settings } from 'lucide-react';
 import AppLogo from './AppLogo';
 import {
   fetchActiveTikTokApps,
+  fetchTikTokAdsAuthUrl,
   getTikTokOauthUrl,
   startTikTokShopOauth,
   updateUser,
@@ -186,6 +187,16 @@ const Header = () => {
         </span>
       );
     }
+    if (appType === 'ads') {
+      return (
+        <span
+          className="topbar__connect-badge topbar__connect-badge--ads"
+          style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}
+        >
+          {t('appsManagement.adsApp') || 'TikTok Ads'}
+        </span>
+      );
+    }
     return (
       <span className="topbar__connect-badge topbar__connect-badge--partner">
         {t('appsManagement.partnerApp') || 'TikTok Shop'}
@@ -254,6 +265,9 @@ const Header = () => {
       let authorizeUrl;
       if (app.app_type === 'channel') {
         authorizeUrl = await getTikTokOauthUrl();
+      } else if (app.app_type === 'ads') {
+        const res = await fetchTikTokAdsAuthUrl();
+        authorizeUrl = res?.url;
       } else if (app.app_type === 'custom') {
         ({ authorizeUrl } = await startTikTokShopOauth('/manage/shops', { appType: 'custom', region: app.region, appId: app.id }));
       } else {

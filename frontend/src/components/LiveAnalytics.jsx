@@ -32,7 +32,6 @@ import {
   fetchLiveHostUsers,
   fetchLiveHosts,
   fetchLiveSessionAds,
-  fetchTikTokAdsStatus,
   fetchTikTokSellerAffiliateOrders,
   fetchTikTokShopLivePerformance,
 } from '../lib/api';
@@ -79,7 +78,6 @@ import {
   findLivePerformanceForSession,
   formatLiveDuration,
   formatTotalDuration,
-  isInternalLiveChannel,
   resolveLiveSessionHost,
   resolveLiveSessionSource,
 } from './liveAnalyticsUtils.js';
@@ -177,7 +175,6 @@ const LiveAnalytics = () => {
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
   const [sessionAdsMap, setSessionAdsMap] = useState({});
-  const [adsStatus, setAdsStatus] = useState(null);
   const [adsNotification, setAdsNotification] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -314,17 +311,6 @@ const LiveAnalytics = () => {
     }
     return undefined;
   }, [t]);
-
-  useEffect(() => {
-    if (!canEditHost) return;
-    const controller = new AbortController();
-    fetchTikTokAdsStatus(controller.signal)
-      .then((status) => {
-        if (!controller.signal.aborted) setAdsStatus(status);
-      })
-      .catch(() => {});
-    return () => controller.abort();
-  }, [canEditHost]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -973,7 +959,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
+  }, [liveOrders, livePerformances, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
