@@ -5,8 +5,8 @@ const up = async ({ sequelize, transaction }) => {
     )
     VALUES (
       'tiktok_ads_live_performance',
-      'Chi phí TikTok Ads & ROAS Live',
-      'Đồng bộ chi phí quảng cáo TikTok Ads cho các phiên LIVE và tính toán ROAS tự động',
+      'Chi phí Ads',
+      '',
       true,
       'Asia/Ho_Chi_Minh',
       '["06:00", "12:00", "18:00", "23:00"]'::jsonb,

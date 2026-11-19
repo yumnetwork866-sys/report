@@ -2040,8 +2040,8 @@
         "description": ""
       },
       "tiktok_ads_live_performance": {
-        "name": "TikTok Ads Live Cost & ROAS",
-        "description": "Auto-sync ads cost and calculate ROAS for each LIVE session"
+        "name": "Ads Cost",
+        "description": ""
       },
       "tiktok_auth": {
         "name": "Authentication & OAuth",
