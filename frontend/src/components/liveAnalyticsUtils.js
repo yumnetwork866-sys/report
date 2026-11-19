@@ -44,7 +44,9 @@ export const findLivePerformanceForSession = (performances, session) => {
 };
 
 export const resolveLiveSessionHost = (manualHost, autoHost) => {
-  if (manualHost?.id) return { host: manualHost, hostSource: 'manual' };
+  if (manualHost?.unassigned) return { host: null, hostSource: 'manual' };
+  const manual = manualHost?.host && typeof manualHost.host === 'object' ? manualHost.host : manualHost;
+  if (manual?.id) return { host: manual, hostSource: 'manual' };
   if (autoHost?.id) return { host: autoHost, hostSource: 'auto_hashtag' };
   return { host: null, hostSource: null };
 };

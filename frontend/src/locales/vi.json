@@ -1680,8 +1680,11 @@
   "liveAnalytics": {
     "colTikTokAccount": "Tài khoản TikTok",
     "editHost": "Chỉnh sửa Host",
+    "addHost": "Gán Host",
     "appHost": "Host",
     "unassignedHost": "Chưa gắn Host",
+    "allHosts": "Tất cả Host",
+    "filterHost": "Lọc theo Host",
     "autoHost": "Tự động",
     "autoHostTitle": "Tự động gán theo hashtag trong tiêu đề LIVE",
     "savingHost": "Đang lưu…",

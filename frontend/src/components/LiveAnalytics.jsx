@@ -21,13 +21,14 @@ import {
   Search,
   ShoppingBag,
   TrendingUp,
+  UserRound,
   Users,
   X,
 } from 'lucide-react';
 import { useI18n } from '../lib/language';
 import { useMoneyFormatter } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
-import { fetchLiveHosts, fetchTikTokSellerAffiliateOrders, fetchTikTokShopLivePerformance } from '../lib/api';
+import { fetchLiveHostUsers, fetchLiveHosts, fetchTikTokSellerAffiliateOrders, fetchTikTokShopLivePerformance } from '../lib/api';
 import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import AppAvatar from './AppAvatar';
@@ -165,9 +166,11 @@ const LiveAnalytics = () => {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('all');
   const [sourceType, setSourceType] = useState('shop'); // 'all' | 'external' | 'shop'
+  const [selectedHost, setSelectedHost] = useState('all'); // 'all' | 'unassigned' | hostId
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
+  const [availableUsers, setAvailableUsers] = useState([]);
   const appSession = useSession();
   const canEditHost = hasPermission(appSession, 'admin.shops.manage');
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -268,6 +271,17 @@ const LiveAnalytics = () => {
     return () => controller.abort();
   }, [selectedShopId]);
 
+  useEffect(() => {
+    if (!canEditHost) return;
+    const controller = new AbortController();
+    fetchLiveHostUsers(controller.signal).then((rows) => {
+      if (!controller.signal.aborted && Array.isArray(rows)) {
+        setAvailableUsers(rows);
+      }
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [canEditHost]);
+
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -276,6 +290,7 @@ const LiveAnalytics = () => {
   useEffect(() => {
     setToggledOffShopIds(new Set());
     setSelectedChannel('all');
+    setSelectedHost('all');
     setSourceType('shop');
   }, [selectedShopId]);
 
@@ -950,7 +965,38 @@ const LiveAnalytics = () => {
     ));
   }, [channelList, sourceType, searchKeyword]);
 
-  // Filtered sessions by sourceType & channel
+  // Host options for dropdown filter
+  const hostFilterOptions = useMemo(() => {
+    const options = [
+      { value: 'all', label: t('liveAnalytics.allHosts', 'Tất cả Host') },
+      { value: 'unassigned', label: t('liveAnalytics.unassignedHost', 'Chưa gắn Host') },
+    ];
+    const hostMap = new Map();
+    sessionList.forEach((s) => {
+      if (s.host?.id) {
+        hostMap.set(String(s.host.id), s.host);
+      }
+    });
+    availableUsers.forEach((u) => {
+      if (u?.id && !hostMap.has(String(u.id))) {
+        hostMap.set(String(u.id), u);
+      }
+    });
+    const sortedHosts = Array.from(hostMap.values()).sort((a, b) => (
+      (a.name || a.email || '').localeCompare(b.name || b.email || '')
+    ));
+    sortedHosts.forEach((h) => {
+      options.push({
+        value: String(h.id),
+        label: h.name || h.email,
+        subtitle: h.email,
+        icon: <AppAvatar src={h.avatar_url} name={h.name || h.email} size="sm" />,
+      });
+    });
+    return options;
+  }, [availableUsers, sessionList, t]);
+
+  // Filtered sessions by sourceType, channel & host
   const sourceFilteredSessions = useMemo(() => {
     return sessionList.filter((s) => {
       if (sourceType === 'external' && !s.isExternal) return false;
@@ -958,9 +1004,16 @@ const LiveAnalytics = () => {
       if (selectedChannel && selectedChannel !== 'all') {
         if ((s.creatorUsername || '').toLowerCase() !== selectedChannel.toLowerCase()) return false;
       }
+      if (selectedHost && selectedHost !== 'all') {
+        if (selectedHost === 'unassigned') {
+          if (s.host?.id) return false;
+        } else {
+          if (!s.host || String(s.host.id) !== String(selectedHost)) return false;
+        }
+      }
       return true;
     });
-  }, [sessionList, sourceType, selectedChannel]);
+  }, [sessionList, sourceType, selectedChannel, selectedHost]);
 
   // Filtered sessions by search keyword
   const filteredSessions = useMemo(() => {
@@ -985,7 +1038,7 @@ const LiveAnalytics = () => {
 
   useEffect(() => {
     setSessionPage(1);
-  }, [endDate, searchKeyword, selectedChannel, selectedShopId, sourceType, startDate]);
+  }, [endDate, searchKeyword, selectedChannel, selectedHost, selectedShopId, sourceType, startDate]);
 
   useEffect(() => {
     setSessionPage((page) => Math.min(page, totalSessionPages));
@@ -994,19 +1047,19 @@ const LiveAnalytics = () => {
   // Filtered products by source, channel & search keyword
   const filteredProducts = useMemo(() => {
     let prods = topProductsList;
-    if (sourceType !== 'all' || (selectedChannel && selectedChannel !== 'all')) {
+    if (sourceType !== 'all' || (selectedChannel && selectedChannel !== 'all') || (selectedHost && selectedHost !== 'all')) {
       const allowedProductIds = new Set(sourceFilteredSessions.flatMap((s) => s.productsList.map((p) => p.productId)));
       prods = prods.filter((p) => allowedProductIds.has(p.productId));
     }
     if (!searchKeyword.trim()) return prods;
     const term = searchKeyword.trim().toLowerCase();
     return prods.filter((p) => p.name && p.name.toLowerCase().includes(term));
-  }, [sourceFilteredSessions, searchKeyword, selectedChannel, sourceType, topProductsList]);
+  }, [sourceFilteredSessions, searchKeyword, selectedChannel, selectedHost, sourceType, topProductsList]);
 
-  // Filtered orders by source, channel & search keyword
+  // Filtered orders by source, channel, host & search keyword
   const channelFilteredOrders = useMemo(() => {
     let orders = liveOrderRows;
-    if (sourceType !== 'all') {
+    if (sourceType !== 'all' || (selectedHost && selectedHost !== 'all')) {
       const allowedSessionIds = new Set(sourceFilteredSessions.map((s) => s.sessionId));
       orders = orders.filter((o) => (
         allowedSessionIds.has(String(o.sessionId || ''))
@@ -1023,7 +1076,7 @@ const LiveAnalytics = () => {
       ));
     }
     return orders;
-  }, [liveOrderRows, selectedChannel, sourceFilteredSessions, sourceType]);
+  }, [liveOrderRows, selectedChannel, selectedHost, sourceFilteredSessions, sourceType]);
 
   const filteredOrders = useMemo(() => {
     if (!searchKeyword.trim()) return channelFilteredOrders;
@@ -1455,6 +1508,17 @@ const LiveAnalytics = () => {
             />
           </div>
 
+          <div className="live-channel-select" style={{ minWidth: 175 }} title={t('liveAnalytics.filterHost', 'Lọc theo Host')}>
+            <SelectDropdown
+              id="live-host-select"
+              options={hostFilterOptions}
+              value={selectedHost}
+              onChange={setSelectedHost}
+              placeholder={t('liveAnalytics.allHosts', 'Tất cả Host')}
+              icon={<UserRound size={14} />}
+            />
+          </div>
+
           {selectedChannel !== 'all' ? (
             <button
               type="button"
@@ -1464,6 +1528,23 @@ const LiveAnalytics = () => {
               title={t('common.clearFilter', 'Bỏ lọc kênh')}
             >
               <span>@{selectedChannel}</span>
+              <X size={14} />
+            </button>
+          ) : null}
+
+          {selectedHost !== 'all' ? (
+            <button
+              type="button"
+              className="chip chip--primary"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', padding: '6px 10px', fontSize: '0.8125rem', height: 36 }}
+              onClick={() => setSelectedHost('all')}
+              title={t('common.clearFilter', 'Bỏ lọc Host')}
+            >
+              <span>
+                {selectedHost === 'unassigned'
+                  ? t('liveAnalytics.unassignedHost', 'Chưa gắn Host')
+                  : (hostFilterOptions.find((h) => h.value === selectedHost)?.label || selectedHost)}
+              </span>
               <X size={14} />
             </button>
           ) : null}
@@ -1505,12 +1586,13 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
+                  <th className="cell-actions">{t('liveAnalytics.colActions', 'Thao tác')}</th>
                 </tr>
               </thead>
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1521,7 +1603,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1562,13 +1644,60 @@ const LiveAnalytics = () => {
                     </td>
                     <td>
                       {session.host ? (
-                        <div className="live-host-cell">
-                          <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
-                          <div className="live-host-meta">
-                            <span className="live-host-name">{session.host.name || session.host.email}</span>
+                        <div className="live-host-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
+                            <div className="live-host-meta">
+                              <span className="live-host-name">{session.host.name || session.host.email}</span>
+                              {session.hostSource === 'auto_hashtag' ? (
+                                <span
+                                  className="chip chip--neutral"
+                                  style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
+                                  title={t('liveAnalytics.autoHostTitle')}
+                                >
+                                  {t('liveAnalytics.autoHost')}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
+                          {canEditHost && session.sessionId !== 'unknown' ? (
+                            <button
+                              type="button"
+                              className="live-action-btn"
+                              style={{ width: 26, height: 26, flexShrink: 0, opacity: 0.8 }}
+                              disabled={!session.shopId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditingSession(session);
+                              }}
+                              title={t('liveAnalytics.editHost')}
+                              aria-label={t('liveAnalytics.editHost')}
+                            >
+                              <Pencil size={12} />
+                            </button>
+                          ) : null}
                         </div>
-                      ) : <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>}
+                      ) : (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>
+                          {canEditHost && session.sessionId !== 'unknown' ? (
+                            <button
+                              type="button"
+                              className="button button--secondary button--xs"
+                              style={{ padding: '2px 8px', fontSize: '0.75rem', height: 24, display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                              disabled={!session.shopId}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditingSession(session);
+                              }}
+                              title={t('liveAnalytics.addHost', 'Gán Host')}
+                            >
+                              <Pencil size={11} />
+                              <span>{t('liveAnalytics.addHost', 'Gán Host')}</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
                     </td>
                     <td>
                       <span className="code-pill font-mono" title={session.sessionId}>
@@ -1624,6 +1753,23 @@ const LiveAnalytics = () => {
                           </span>
                         ) : null}
                       </div>
+                    </td>
+                    <td className="cell-actions">
+                      {canEditHost ? (
+                        <button
+                          type="button"
+                          className="live-action-btn"
+                          disabled={!session.shopId || session.sessionId === 'unknown'}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setEditingSession(session);
+                          }}
+                          title={session.host ? t('liveAnalytics.editHost') : t('liveAnalytics.addHost', 'Gán Host')}
+                          aria-label={session.host ? t('liveAnalytics.editHost') : t('liveAnalytics.addHost', 'Gán Host')}
+                        >
+                          <Pencil size={14} />
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -1924,15 +2070,13 @@ const LiveAnalytics = () => {
             const hostObj = saved?.host || null;
             setHostAssignments((current) => ({
               ...current,
-              [editingSession.sessionKey]: {
-                shop_id: editingSession.shopId,
-                session_id: editingSession.sessionId,
-                host: hostObj,
-              },
+              [editingSession.sessionKey]: hostObj
+                ? { ...hostObj, shop_id: editingSession.shopId, session_id: editingSession.sessionId, host: hostObj }
+                : { shop_id: editingSession.shopId, session_id: editingSession.sessionId, unassigned: true, host: null },
             }));
             setSelectedSession((current) => (
               current?.sessionKey === editingSession.sessionKey
-                ? { ...current, host: hostObj }
+                ? { ...current, host: hostObj, hostSource: hostObj ? 'manual' : null }
                 : current
             ));
           }}

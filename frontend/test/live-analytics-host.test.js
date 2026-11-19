@@ -55,6 +55,21 @@ test('resolveLiveSessionHost falls back to the auto hashtag host', () => {
   });
 });
 
+test('resolveLiveSessionHost supports nested host object and explicit unassigned override', () => {
+  const manual = { host: { id: 3, name: 'Nested Host' } };
+  const auto = { id: 2, name: 'Auto Host' };
+  assert.deepEqual(resolveLiveSessionHost(manual, auto), {
+    host: manual.host,
+    hostSource: 'manual',
+  });
+
+  const unassigned = { unassigned: true, host: null };
+  assert.deepEqual(resolveLiveSessionHost(unassigned, auto), {
+    host: null,
+    hostSource: 'manual',
+  });
+});
+
 test('resolveLiveSessionHost returns no host when neither source has a user', () => {
   assert.deepEqual(resolveLiveSessionHost(null, null), {
     host: null,

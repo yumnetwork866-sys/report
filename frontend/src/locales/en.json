@@ -1681,8 +1681,11 @@
   "liveAnalytics": {
     "colTikTokAccount": "TikTok account",
     "editHost": "Edit Host",
+    "addHost": "Assign Host",
     "appHost": "Host",
     "unassignedHost": "Unassigned Host",
+    "allHosts": "All Hosts",
+    "filterHost": "Filter by Host",
     "autoHost": "Auto",
     "autoHostTitle": "Automatically assigned from the LIVE title hashtag",
     "savingHost": "Saving…",
