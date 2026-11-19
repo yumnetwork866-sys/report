@@ -88,6 +88,28 @@ export function saveLiveHost(shopId, sessionId, userId) {
   });
 }
 
+export function fetchTikTokAdsStatus(signal) {
+  return apiRequest('/ads/status', { signal });
+}
+
+export function fetchTikTokAdsAuthUrl(state, signal) {
+  const params = state ? `?state=${encodeURIComponent(state)}` : '';
+  return apiRequest(`/ads/oauth/url${params}`, { signal });
+}
+
+export function fetchLiveSessionAds(shopId, signal) {
+  const params = new URLSearchParams();
+  if (shopId && shopId !== 'all') params.set('shop_id', shopId);
+  return apiRequest(`/ads/live-sessions?${params}`, { signal });
+}
+
+export function saveLiveSessionAds(shopId, sessionId, payload) {
+  return apiRequest(`/ads/shops/${encodeURIComponent(shopId)}/live-sessions/${encodeURIComponent(sessionId)}`, {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
 export function fetchUser(userId, signal) {
   return apiRequest(`/users/${encodeURIComponent(userId)}`, { signal });
 }

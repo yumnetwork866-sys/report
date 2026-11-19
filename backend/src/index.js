@@ -21,6 +21,7 @@ const importRoutes = require('./routes/importRoutes');
 const authRoutes = require('./routes/authRoutes');
 
 const tiktokPartnerPublicRoutes = require('./routes/tiktokPartnerPublicRoutes');
+const tiktokAdsRoutes = require('./routes/tiktokAdsRoutes');
 const tiktokShopRoutes = require('./routes/tiktokShopRoutes');
 const tiktokAppRoutes = require('./routes/tiktokAppRoutes');
 const scheduleRoutes = require('./routes/scheduleRoutes');
@@ -71,6 +72,7 @@ const createApp = () => {
     immutable: true,
   }));
   app.use('/api/bookings/tiktok-partner', tiktokPartnerPublicRoutes);
+  app.use('/api/ads', tiktokAdsRoutes);
 
   app.get('/', (_req, res) => {
     res.json({ message: 'Content Performance Reporting API' });

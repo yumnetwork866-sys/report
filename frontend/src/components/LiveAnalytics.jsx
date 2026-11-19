@@ -28,11 +28,20 @@ import {
 import { useI18n } from '../lib/language';
 import { convertCurrencyAmount, useMoneyFormatter } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
-import { fetchLiveHostUsers, fetchLiveHosts, fetchTikTokSellerAffiliateOrders, fetchTikTokShopLivePerformance } from '../lib/api';
+import {
+  fetchLiveHostUsers,
+  fetchLiveHosts,
+  fetchLiveSessionAds,
+  fetchTikTokAdsAuthUrl,
+  fetchTikTokAdsStatus,
+  fetchTikTokSellerAffiliateOrders,
+  fetchTikTokShopLivePerformance,
+} from '../lib/api';
 import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import AppAvatar from './AppAvatar';
 import LiveHostEditor from './LiveHostEditor';
+import LiveAdsCostEditor from './LiveAdsCostEditor';
 import SelectDropdown from './SelectDropdown';
 import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
@@ -169,6 +178,11 @@ const LiveAnalytics = () => {
   const [selectedHost, setSelectedHost] = useState('all'); // 'all' | 'unassigned' | hostId
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
+  const [editingAdsSession, setEditingAdsSession] = useState(null);
+  const [sessionAdsMap, setSessionAdsMap] = useState({});
+  const [adsStatus, setAdsStatus] = useState(null);
+  const [connectingAds, setConnectingAds] = useState(false);
+  const [adsNotification, setAdsNotification] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
   const [availableUsers, setAvailableUsers] = useState([]);
   const appSession = useSession();
@@ -281,6 +295,70 @@ const LiveAnalytics = () => {
     }).catch(() => {});
     return () => controller.abort();
   }, [canEditHost]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('ads_connected') === 'true') {
+      setAdsNotification({ type: 'success', message: t('liveAnalytics.adsConnected') });
+      params.delete('ads_connected');
+      const newSearch = params.toString();
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      const timer = setTimeout(() => setAdsNotification(null), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (params.get('ads_error')) {
+      setAdsNotification({ type: 'error', message: params.get('ads_error') });
+      params.delete('ads_error');
+      const newSearch = params.toString();
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash;
+      window.history.replaceState({}, document.title, newUrl);
+      const timer = setTimeout(() => setAdsNotification(null), 6000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [t]);
+
+  useEffect(() => {
+    if (!canEditHost) return;
+    const controller = new AbortController();
+    fetchTikTokAdsStatus(controller.signal)
+      .then((status) => {
+        if (!controller.signal.aborted) setAdsStatus(status);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [canEditHost]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setSessionAdsMap({});
+    fetchLiveSessionAds(selectedShopId, controller.signal)
+      .then((rows) => {
+        if (controller.signal.aborted || !Array.isArray(rows)) return;
+        const map = {};
+        rows.forEach((row) => {
+          map[`${row.shop_id}:${row.session_id}`] = row;
+          map[row.session_id] = row;
+        });
+        setSessionAdsMap(map);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [selectedShopId]);
+
+  const handleConnectTikTokAds = async () => {
+    try {
+      setConnectingAds(true);
+      const res = await fetchTikTokAdsAuthUrl();
+      if (res?.url) {
+        window.location.href = res.url;
+      }
+    } catch (err) {
+      setError(err.message || 'Lỗi lấy URL kết nối TikTok Ads');
+      setConnectingAds(false);
+    }
+  };
 
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
@@ -870,6 +948,14 @@ const LiveAnalytics = () => {
         totalCommission: sess.totalCommission,
       });
 
+      const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`] || sessionAdsMap[sess.sessionId];
+      const rawAdsCost = adsRecord?.ads_cost !== undefined && adsRecord?.ads_cost !== null ? Number(adsRecord.ads_cost) : null;
+      const adsCurrency = adsRecord?.currency || sess.currency || displayCurrency;
+      const convertedAdsCost = rawAdsCost !== null ? toDisplayCurrency(rawAdsCost, adsCurrency) : null;
+      const roas = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
+        ? (sess.totalGmv / convertedAdsCost)
+        : null;
+
       return {
         ...sess,
         creatorUsername,
@@ -886,6 +972,10 @@ const LiveAnalytics = () => {
         hashtags: performance?.hashtags || [],
         orderCount: sess.orderIds.size,
         totalComments,
+        adsCost: rawAdsCost,
+        adsCurrency,
+        roas,
+        adsSource: adsRecord?.source || null,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
       };
     }).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
@@ -900,7 +990,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, displayCurrency, hostAssignments, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
+  }, [liveOrders, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
@@ -1649,8 +1739,73 @@ const LiveAnalytics = () => {
               </button>
             ) : null}
           </div>
+
+          {canEditHost ? (
+            adsStatus?.connected ? (
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 36,
+                  padding: '0 12px',
+                  borderRadius: 'var(--radius-default, 8px)',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  color: '#059669',
+                  whiteSpace: 'nowrap',
+                }}
+                title={`TikTok Ads API: ${adsStatus.advertiserIds?.length || 0} tài khoản quảng cáo`}
+              >
+                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+                <span>{t('liveAnalytics.adsConnected')}</span>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="button button--secondary button--sm"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, whiteSpace: 'nowrap' }}
+                onClick={handleConnectTikTokAds}
+                disabled={connectingAds}
+                title="Ủy quyền truy cập TikTok Business Marketing API"
+              >
+                <TrendingUp size={14} color="var(--color-primary)" />
+                <span>{connectingAds ? t('common.loading') : t('liveAnalytics.connectAds')}</span>
+              </button>
+            )
+          ) : null}
         </div>
       </div>
+
+      {adsNotification ? (
+        <div
+          role="status"
+          style={{
+            padding: '10px 16px',
+            borderRadius: 'var(--radius-default, 8px)',
+            background: adsNotification.type === 'error' ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)',
+            border: `1px solid ${adsNotification.type === 'error' ? 'rgba(239, 68, 68, 0.3)' : 'rgba(16, 185, 129, 0.3)'}`,
+            color: adsNotification.type === 'error' ? '#dc2626' : '#059669',
+            fontSize: '0.875rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+          }}
+        >
+          <span>{adsNotification.message}</span>
+          <button
+            type="button"
+            onClick={() => setAdsNotification(null)}
+            style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'inherit' }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      ) : null}
 
       {/* Tab 1: Sessions & Hosts */}
       {activeTab === 'overview' ? (
@@ -1666,6 +1821,8 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colAdsCost')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colRoas')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
                 </tr>
@@ -1673,7 +1830,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1684,7 +1841,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1764,6 +1921,32 @@ const LiveAnalytics = () => {
                     </td>
                     <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
                       {formatMoney(session.totalGmv, session.currency)}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 600 }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                        <span>
+                          {session.adsCost !== null && session.adsCost !== undefined
+                            ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
+                            : '—'}
+                        </span>
+                        {canEditHost && session.sessionId !== 'unknown' ? (
+                          <button
+                            type="button"
+                            className="button button--ghost button--xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingAdsSession(session);
+                            }}
+                            title={t('liveAnalytics.editAdsCost')}
+                            style={{ padding: '2px 4px', height: 'auto', opacity: 0.7 }}
+                          >
+                            <Pencil size={11} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 750, color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'inherit') : 'inherit' }}>
+                      {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
                     </td>
                     <td className="cell-number">
                       {session.totalComments !== null && session.totalComments !== undefined
@@ -2101,6 +2284,36 @@ const LiveAnalytics = () => {
           t={t}
         />
       ) : null}
+      {editingAdsSession ? (
+        <LiveAdsCostEditor
+          session={editingAdsSession}
+          onClose={() => setEditingAdsSession(null)}
+          onSaved={(saved) => {
+            setSessionAdsMap((current) => ({
+              ...current,
+              [`${editingAdsSession.shopId}:${editingAdsSession.sessionId}`]: saved,
+              [editingAdsSession.sessionId]: saved,
+            }));
+            setSelectedSession((current) => {
+              if (current && (current.sessionId === editingAdsSession.sessionId || current.sessionKey === editingAdsSession.sessionKey)) {
+                const adsCost = Number(saved.ads_cost);
+                const adsCurrency = saved.currency || current.currency;
+                const convertedCost = toDisplayCurrency(adsCost, adsCurrency);
+                const roas = (convertedCost > 0 && current.totalGmv > 0) ? (current.totalGmv / convertedCost) : null;
+                return {
+                  ...current,
+                  adsCost,
+                  adsCurrency,
+                  roas,
+                  adsSource: saved.source || 'manual',
+                };
+              }
+              return current;
+            });
+          }}
+          t={t}
+        />
+      ) : null}
       {selectedSession ? (
         <LiveSessionDrawer
           session={selectedSession}
@@ -2108,6 +2321,8 @@ const LiveAnalytics = () => {
           onSelectOrder={setSelectedOrder}
           onEditHost={setEditingSession}
           canEditHost={canEditHost}
+          onEditAdsCost={setEditingAdsSession}
+          canEditAdsCost={canEditHost}
           formatMoney={formatMoney}
           formatNumber={formatNumber}
           formatDisplayDateTime={formatDisplayDateTime}
@@ -2137,6 +2352,8 @@ const LiveSessionDrawer = ({
   onSelectOrder,
   onEditHost,
   canEditHost,
+  onEditAdsCost,
+  canEditAdsCost,
   formatMoney,
   formatNumber,
   formatDisplayDateTime,
@@ -2294,6 +2511,34 @@ const LiveSessionDrawer = ({
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
                 <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
                   {formatMoney(session.totalGmv, session.currency)}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
+                  {canEditAdsCost && session.sessionId !== 'unknown' ? (
+                    <button
+                      type="button"
+                      className="button button--ghost button--xs"
+                      onClick={() => onEditAdsCost?.(session)}
+                      title={t('liveAnalytics.editAdsCost')}
+                      style={{ padding: '2px 4px', height: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: '0.75rem' }}
+                    >
+                      <Pencil size={11} />
+                      <span>{t('liveAnalytics.editAdsCost')}</span>
+                    </button>
+                  ) : null}
+                </div>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.adsCost !== null && session.adsCost !== undefined
+                    ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
+                    : '—'}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRoas')}:</span>
+                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'var(--color-primary)') : 'var(--color-text)' }}>
+                  {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>

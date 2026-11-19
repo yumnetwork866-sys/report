@@ -126,6 +126,7 @@ const defaultMigrationNames = [
   '117_create_live_session_hosts',
   '118_add_comment_to_live_session_hosts',
   '119_remove_comment_from_live_session_hosts',
+  '120_create_tiktok_ads_and_live_session_ads',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));
