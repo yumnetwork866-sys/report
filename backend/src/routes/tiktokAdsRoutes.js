@@ -43,11 +43,15 @@ router.get('/status', requireAdmin, requireAnyPermission(['admin.shops.manage', 
   }
 });
 
-// 4. Get Ads cost for live sessions
+// 4. Get Ads cost for live sessions (auto-synced from TikTok API by session_id)
 router.get('/live-sessions', requireAdmin, requirePermission('shop.analytics.view'), async (req, res) => {
   try {
     const shopId = req.query.shop_id || null;
-    const rows = await tiktokAdsService.getLiveSessionAds(shopId);
+    let sessionIds = req.query.session_ids;
+    if (sessionIds && !Array.isArray(sessionIds)) {
+      sessionIds = [sessionIds];
+    }
+    const rows = await tiktokAdsService.getLiveSessionAds(shopId, { sessionIds });
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });

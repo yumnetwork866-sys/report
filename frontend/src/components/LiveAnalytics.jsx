@@ -41,7 +41,6 @@ import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import AppAvatar from './AppAvatar';
 import LiveHostEditor from './LiveHostEditor';
-import LiveAdsCostEditor from './LiveAdsCostEditor';
 import SelectDropdown from './SelectDropdown';
 import useShopInventory from './shop-analytics/hooks/useShopInventory';
 import useShopAnalyticsData from './shop-analytics/hooks/useShopAnalyticsData';
@@ -178,7 +177,6 @@ const LiveAnalytics = () => {
   const [selectedHost, setSelectedHost] = useState('all'); // 'all' | 'unassigned' | hostId
   const [selectedSession, setSelectedSession] = useState(null);
   const [editingSession, setEditingSession] = useState(null);
-  const [editingAdsSession, setEditingAdsSession] = useState(null);
   const [sessionAdsMap, setSessionAdsMap] = useState({});
   const [adsStatus, setAdsStatus] = useState(null);
   const [connectingAds, setConnectingAds] = useState(false);
@@ -1923,27 +1921,9 @@ const LiveAnalytics = () => {
                       {formatMoney(session.totalGmv, session.currency)}
                     </td>
                     <td className="cell-number" style={{ fontWeight: 600 }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
-                        <span>
-                          {session.adsCost !== null && session.adsCost !== undefined
-                            ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
-                            : '—'}
-                        </span>
-                        {canEditHost && session.sessionId !== 'unknown' ? (
-                          <button
-                            type="button"
-                            className="button button--ghost button--xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingAdsSession(session);
-                            }}
-                            title={t('liveAnalytics.editAdsCost')}
-                            style={{ padding: '2px 4px', height: 'auto', opacity: 0.7 }}
-                          >
-                            <Pencil size={11} />
-                          </button>
-                        ) : null}
-                      </div>
+                      {session.adsCost !== null && session.adsCost !== undefined
+                        ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
+                        : '—'}
                     </td>
                     <td className="cell-number" style={{ fontWeight: 750, color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'inherit') : 'inherit' }}>
                       {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
@@ -2284,36 +2264,6 @@ const LiveAnalytics = () => {
           t={t}
         />
       ) : null}
-      {editingAdsSession ? (
-        <LiveAdsCostEditor
-          session={editingAdsSession}
-          onClose={() => setEditingAdsSession(null)}
-          onSaved={(saved) => {
-            setSessionAdsMap((current) => ({
-              ...current,
-              [`${editingAdsSession.shopId}:${editingAdsSession.sessionId}`]: saved,
-              [editingAdsSession.sessionId]: saved,
-            }));
-            setSelectedSession((current) => {
-              if (current && (current.sessionId === editingAdsSession.sessionId || current.sessionKey === editingAdsSession.sessionKey)) {
-                const adsCost = Number(saved.ads_cost);
-                const adsCurrency = saved.currency || current.currency;
-                const convertedCost = toDisplayCurrency(adsCost, adsCurrency);
-                const roas = (convertedCost > 0 && current.totalGmv > 0) ? (current.totalGmv / convertedCost) : null;
-                return {
-                  ...current,
-                  adsCost,
-                  adsCurrency,
-                  roas,
-                  adsSource: saved.source || 'manual',
-                };
-              }
-              return current;
-            });
-          }}
-          t={t}
-        />
-      ) : null}
       {selectedSession ? (
         <LiveSessionDrawer
           session={selectedSession}
@@ -2321,8 +2271,6 @@ const LiveAnalytics = () => {
           onSelectOrder={setSelectedOrder}
           onEditHost={setEditingSession}
           canEditHost={canEditHost}
-          onEditAdsCost={setEditingAdsSession}
-          canEditAdsCost={canEditHost}
           formatMoney={formatMoney}
           formatNumber={formatNumber}
           formatDisplayDateTime={formatDisplayDateTime}
@@ -2352,8 +2300,6 @@ const LiveSessionDrawer = ({
   onSelectOrder,
   onEditHost,
   canEditHost,
-  onEditAdsCost,
-  canEditAdsCost,
   formatMoney,
   formatNumber,
   formatDisplayDateTime,
@@ -2514,21 +2460,7 @@ const LiveSessionDrawer = ({
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
-                  {canEditAdsCost && session.sessionId !== 'unknown' ? (
-                    <button
-                      type="button"
-                      className="button button--ghost button--xs"
-                      onClick={() => onEditAdsCost?.(session)}
-                      title={t('liveAnalytics.editAdsCost')}
-                      style={{ padding: '2px 4px', height: 'auto', display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: '0.75rem' }}
-                    >
-                      <Pencil size={11} />
-                      <span>{t('liveAnalytics.editAdsCost')}</span>
-                    </button>
-                  ) : null}
-                </div>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
                   {session.adsCost !== null && session.adsCost !== undefined
                     ? formatMoney(session.adsCost, session.adsCurrency || session.currency)

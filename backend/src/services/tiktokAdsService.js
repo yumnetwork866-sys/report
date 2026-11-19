@@ -112,12 +112,102 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       };
     },
 
-    async getLiveSessionAds(shopId = null) {
+    async getLiveSessionAds(shopId = null, { sync = true, sessionIds = [] } = {}) {
+      if (sync) {
+        try {
+          await this.syncLiveSessionAds({ shopId, sessionIds });
+        } catch (err) {
+          console.warn('[TikTok Ads] Auto-sync live session ads failed:', err.message);
+        }
+      }
+
       return select(`
         SELECT shop_id, session_id, ads_cost, currency, source, advertiser_id, updated_at
         FROM live_session_ads
         WHERE (:shopId::int IS NULL OR shop_id = :shopId)
       `, { shopId: shopId ? Number(shopId) : null });
+    },
+
+    async syncLiveSessionAds({ shopId = null, sessionIds = [] } = {}) {
+      const authRows = await select(`
+        SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations ORDER BY updated_at DESC LIMIT 1
+      `);
+      if (!authRows.length) return [];
+
+      const { access_token: accessToken, advertiser_ids: rawAdvertisers } = authRows[0];
+      const advertiserIds = Array.isArray(rawAdvertisers)
+        ? rawAdvertisers
+        : (typeof rawAdvertisers === 'string' ? JSON.parse(rawAdvertisers || '[]') : []);
+
+      if (!advertiserIds.length) return [];
+
+      const { baseUrl } = await getBusinessConfig(db);
+      const results = [];
+
+      for (const advertiserId of advertiserIds) {
+        try {
+          const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
+          url.searchParams.set('advertiser_id', advertiserId);
+          url.searchParams.set('dimensions', JSON.stringify(['room_id']));
+          url.searchParams.set('metrics', JSON.stringify(['cost', 'gmv_max_cost', 'net_cost', 'gross_revenue', 'orders']));
+          if (Array.isArray(sessionIds) && sessionIds.length) {
+            url.searchParams.set('filtering', JSON.stringify({ room_ids: sessionIds.map(String) }));
+          }
+
+          const response = await fetchImpl(url.toString(), {
+            method: 'GET',
+            headers: {
+              'Access-Token': accessToken,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          const payload = await response.json();
+          if (payload?.code === 0 && Array.isArray(payload?.data?.list)) {
+            for (const item of payload.data.list) {
+              const roomId = item.dimensions?.room_id;
+              const metrics = item.metrics || {};
+              const cost = Number(metrics.cost ?? metrics.gmv_max_cost ?? metrics.net_cost ?? 0);
+              if (roomId && Number.isFinite(cost)) {
+                await db.query(`
+                  INSERT INTO live_session_ads (shop_id, session_id, ads_cost, currency, source, advertiser_id, raw_metrics, updated_at)
+                  VALUES (
+                    COALESCE(:shopId, 0),
+                    :sessionId,
+                    :adsCost,
+                    :currency,
+                    'api',
+                    :advertiserId,
+                    :rawMetrics::jsonb,
+                    NOW()
+                  )
+                  ON CONFLICT (shop_id, session_id) DO UPDATE
+                  SET ads_cost = EXCLUDED.ads_cost,
+                      currency = EXCLUDED.currency,
+                      source = 'api',
+                      advertiser_id = EXCLUDED.advertiser_id,
+                      raw_metrics = EXCLUDED.raw_metrics,
+                      updated_at = NOW()
+                `, {
+                  replacements: {
+                    shopId: shopId ? Number(shopId) : null,
+                    sessionId: String(roomId),
+                    adsCost: cost,
+                    currency: item.metrics?.currency || 'MYR',
+                    advertiserId,
+                    rawMetrics: JSON.stringify(metrics),
+                  },
+                });
+                results.push({ session_id: roomId, ads_cost: cost });
+              }
+            }
+          }
+        } catch (err) {
+          console.warn(`[TikTok Ads Sync] Error querying advertiser ${advertiserId}:`, err.message);
+        }
+      }
+
+      return results;
     },
 
     async saveLiveSessionAds({ shopId, sessionId, adsCost, currency = 'MYR', source = 'manual', advertiserId = null }) {
