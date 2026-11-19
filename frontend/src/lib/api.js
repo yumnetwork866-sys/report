@@ -97,7 +97,22 @@ export function fetchTikTokAdsAuthUrl(state, signal) {
   return apiRequest(`/ads/oauth/url${params}`, { signal });
 }
 
-export function fetchLiveSessionAds(shopId, signal) {
+export function fetchLiveSessionAds(shopId, optionsOrSignal) {
+  const isSignal = optionsOrSignal && typeof optionsOrSignal.aborted === 'boolean';
+  const signal = isSignal ? optionsOrSignal : optionsOrSignal?.signal;
+  const sessions = (!isSignal && Array.isArray(optionsOrSignal?.sessions)) ? optionsOrSignal.sessions : null;
+
+  if (sessions && sessions.length > 0) {
+    return apiRequest('/ads/live-sessions', {
+      method: 'POST',
+      body: {
+        shop_id: shopId && shopId !== 'all' ? shopId : null,
+        sessions,
+      },
+      signal,
+    });
+  }
+
   const params = new URLSearchParams();
   if (shopId && shopId !== 'all') params.set('shop_id', shopId);
   return apiRequest(`/ads/live-sessions?${params}`, { signal });

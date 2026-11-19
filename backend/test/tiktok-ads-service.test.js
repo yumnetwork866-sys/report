@@ -152,4 +152,72 @@ test('syncLiveSessionAds pulls GMV Max report and persists into live_session_ads
   assert.ok(insertQuery.replacements.rawData.includes('304.95'));
 });
 
+test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to sessions', async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url) => {
+    fetchCalls.push(url);
+    if (url.includes('/report/integrated/get/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: {
+            list: [
+              {
+                dimensions: {
+                  campaign_id: '123456',
+                  stat_time_day: '2026-11-18 00:00:00',
+                },
+                metrics: {
+                  spend: '304.95',
+                  impressions: '12000',
+                  clicks: '500',
+                },
+              },
+            ],
+          },
+        }),
+      };
+    }
+    return { json: async () => ({ code: 0, data: { list: [] } }) };
+  };
+
+  const queries = [];
+  const fakeDb = {
+    query: async (sql, options) => {
+      queries.push({ sql, ...options });
+      if (sql.includes('SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations')) {
+        return [{ access_token: 'valid_token_xyz', advertiser_ids: ['adv_777'] }];
+      }
+      if (sql.includes('FROM tiktok_shops')) {
+        return [{ id: 5, name: 'Actiscar Live', platform_shop_id: 'store_123', region: 'MY' }];
+      }
+      return [];
+    },
+  };
+
+  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  // Pass sessions loaded in frontend with date 2026-11-18
+  const testSessions = [
+    {
+      session_id: '770947923089',
+      shop_id: 5,
+      start_time: new Date('2026-11-18T19:57:00+08:00').getTime(),
+      title: 'Actiscar Live Nana',
+      gmv: 365.90,
+    },
+  ];
+
+  const results = await service.syncLiveSessionAds({ shopId: 5, sessions: testSessions });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].session_id, '770947923089');
+  assert.equal(results[0].ads_cost, 304.95);
+
+  const insertQuery = queries.find((q) => q.sql.includes('INSERT INTO live_session_ads'));
+  assert.ok(insertQuery);
+  assert.equal(insertQuery.replacements.sessionId, '770947923089');
+  assert.equal(insertQuery.replacements.adsCost, 304.95);
+});
+
 
