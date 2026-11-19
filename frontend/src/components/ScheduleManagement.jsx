@@ -54,6 +54,7 @@ const JOB_APP_TAGS = {
   tiktok_shop_video_catalog: { label: 'Partner', type: 'partner' },
   tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
   tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
+  tiktok_ads_live_performance: { label: 'TikTok Ads', type: 'ads' },
   tiktok_auth: { label: 'Auth', type: 'auth' },
 };
 

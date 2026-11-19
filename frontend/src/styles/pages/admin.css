@@ -1661,6 +1661,12 @@
   border: 1px solid #f5d0fe;
 }
 
+.schedule-app-tag--ads {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
 .schedule-app-tag--sm {
   font-size: 0.64rem;
   padding: 1px 5px;

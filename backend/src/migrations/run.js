@@ -129,6 +129,7 @@ const migrations = [
   require('./119_remove_comment_from_live_session_hosts'),
   require('./120_create_tiktok_ads_and_live_session_ads'),
   require('./121_seed_tiktok_ads_app'),
+  require('./122_add_tiktok_ads_scheduled_job'),
 ];
 
 const createMigrationRunner = ({

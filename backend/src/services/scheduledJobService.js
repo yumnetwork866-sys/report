@@ -47,6 +47,7 @@ const JOB_KEYS = new Set([
   'tiktok_affiliate_video_performance',
   'tiktok_channel_report_revenue',
   'tiktok_affiliate_orders',
+  'tiktok_ads_live_performance',
   'tiktok_auth',
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -753,6 +754,13 @@ const jobHandlers = {
     }
     return { windows };
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_affiliate_video_performance' }),
+  tiktok_ads_live_performance: async ({ signal, shopId } = {}) => {
+    throwIfAborted(signal);
+    const tiktokAdsService = require('./tiktokAdsService');
+    const results = await tiktokAdsService.syncLiveSessionAds({ shopId });
+    throwIfAborted(signal);
+    return { synced_sessions: results.length, details: results };
+  },
   tiktok_auth: async () => {
     const { checkTokenHealth } = require('./authLogService');
     return checkTokenHealth();

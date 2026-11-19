@@ -141,69 +141,126 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
 
       if (!advertiserIds.length) return [];
 
+      let targetShops = [];
+      if (shopId) {
+        targetShops = await select(`
+          SELECT id, name, platform_shop_id, region
+          FROM tiktok_shops
+          WHERE id = :shopId AND platform_shop_id IS NOT NULL
+        `, { shopId: Number(shopId) });
+      } else {
+        targetShops = await select(`
+          SELECT id, name, platform_shop_id, region
+          FROM tiktok_shops
+          WHERE platform_shop_id IS NOT NULL
+        `);
+      }
+      if (!targetShops.length) return [];
+
       const { baseUrl } = await getBusinessConfig(db);
       const results = [];
+      const campaignsByAdvertiser = {};
 
-      for (const advertiserId of advertiserIds) {
-        try {
-          const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
-          url.searchParams.set('advertiser_id', advertiserId);
-          url.searchParams.set('dimensions', JSON.stringify(['room_id']));
-          url.searchParams.set('metrics', JSON.stringify(['cost', 'gmv_max_cost', 'net_cost', 'gross_revenue', 'orders']));
-          if (Array.isArray(sessionIds) && sessionIds.length) {
-            url.searchParams.set('filtering', JSON.stringify({ room_ids: sessionIds.map(String) }));
-          }
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      const formatDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const endDate = formatDate(now);
+      const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+      const startDate = formatDate(sixtyDaysAgo);
 
-          const response = await fetchImpl(url.toString(), {
-            method: 'GET',
-            headers: {
-              'Access-Token': accessToken,
-              'Content-Type': 'application/json',
-            },
-          });
+      for (const targetShop of targetShops) {
+        const storeId = String(targetShop.platform_shop_id);
 
-          const payload = await response.json();
-          if (payload?.code === 0 && Array.isArray(payload?.data?.list)) {
-            for (const item of payload.data.list) {
-              const roomId = item.dimensions?.room_id;
-              const metrics = item.metrics || {};
-              const cost = Number(metrics.cost ?? metrics.gmv_max_cost ?? metrics.net_cost ?? 0);
-              if (roomId && Number.isFinite(cost)) {
-                await db.query(`
-                  INSERT INTO live_session_ads (shop_id, session_id, ads_cost, currency, source, advertiser_id, raw_metrics, updated_at)
-                  VALUES (
-                    COALESCE(:shopId, 0),
-                    :sessionId,
-                    :adsCost,
-                    :currency,
-                    'api',
-                    :advertiserId,
-                    :rawMetrics::jsonb,
-                    NOW()
-                  )
-                  ON CONFLICT (shop_id, session_id) DO UPDATE
-                  SET ads_cost = EXCLUDED.ads_cost,
-                      currency = EXCLUDED.currency,
-                      source = 'api',
-                      advertiser_id = EXCLUDED.advertiser_id,
-                      raw_metrics = EXCLUDED.raw_metrics,
-                      updated_at = NOW()
-                `, {
-                  replacements: {
-                    shopId: shopId ? Number(shopId) : null,
-                    sessionId: String(roomId),
-                    adsCost: cost,
-                    currency: item.metrics?.currency || 'MYR',
-                    advertiserId,
-                    rawMetrics: JSON.stringify(metrics),
+        for (const advertiserId of advertiserIds) {
+          try {
+            if (!campaignsByAdvertiser[advertiserId]) {
+              try {
+                const campUrl = new URL(`${baseUrl}/open_api/v1.3/campaign/get/`);
+                campUrl.searchParams.set('advertiser_id', advertiserId);
+                campUrl.searchParams.set('page_size', '50');
+                const campRes = await fetchImpl(campUrl.toString(), {
+                  method: 'GET',
+                  headers: {
+                    'Access-Token': accessToken,
+                    'Content-Type': 'application/json',
                   },
                 });
-                results.push({ session_id: roomId, ads_cost: cost });
+                const campData = await campRes.json();
+                campaignsByAdvertiser[advertiserId] = (campData.data?.list || []).map((c) => c.campaign_id);
+              } catch (_campErr) {
+                campaignsByAdvertiser[advertiserId] = [];
               }
             }
+
+            const campaignIds = campaignsByAdvertiser[advertiserId] || [];
+            if (!campaignIds.length) continue;
+
+            const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
+            url.searchParams.set('advertiser_id', advertiserId);
+            url.searchParams.set('store_ids', JSON.stringify([storeId]));
+            url.searchParams.set('dimensions', JSON.stringify(['room_id']));
+            url.searchParams.set('metrics', JSON.stringify(['cost', 'gross_revenue', 'orders']));
+            url.searchParams.set('start_date', startDate);
+            url.searchParams.set('end_date', endDate);
+
+            const filterObj = { campaign_ids: campaignIds.slice(0, 100) };
+            if (Array.isArray(sessionIds) && sessionIds.length) {
+              filterObj.room_ids = sessionIds.map(String);
+            }
+            url.searchParams.set('filtering', JSON.stringify(filterObj));
+
+            const response = await fetchImpl(url.toString(), {
+              method: 'GET',
+              headers: {
+                'Access-Token': accessToken,
+                'Content-Type': 'application/json',
+              },
+            });
+
+            const payload = await response.json();
+            if (payload?.code === 0 && Array.isArray(payload?.data?.list)) {
+              for (const item of payload.data.list) {
+                const roomId = item.dimensions?.room_id;
+                const metrics = item.metrics || {};
+                const cost = Number(metrics.cost ?? 0);
+                if (roomId && Number.isFinite(cost)) {
+                  await db.query(`
+                    INSERT INTO live_session_ads (shop_id, session_id, ads_cost, currency, source, advertiser_id, raw_metrics, updated_at)
+                    VALUES (
+                      :shopId,
+                      :sessionId,
+                      :adsCost,
+                      :currency,
+                      'api',
+                      :advertiserId,
+                      :rawMetrics::jsonb,
+                      NOW()
+                    )
+                    ON CONFLICT (shop_id, session_id) DO UPDATE
+                    SET ads_cost = EXCLUDED.ads_cost,
+                        currency = EXCLUDED.currency,
+                        source = 'api',
+                        advertiser_id = EXCLUDED.advertiser_id,
+                        raw_metrics = EXCLUDED.raw_metrics,
+                        updated_at = NOW()
+                    WHERE live_session_ads.source != 'manual' OR live_session_ads.ads_cost IS NULL
+                  `, {
+                    replacements: {
+                      shopId: targetShop.id,
+                      sessionId: String(roomId),
+                      adsCost: cost,
+                      currency: targetShop.region === 'VN' ? 'VND' : 'MYR',
+                      advertiserId,
+                      rawMetrics: JSON.stringify(metrics),
+                    },
+                  });
+                  results.push({ shop_id: targetShop.id, session_id: roomId, ads_cost: cost });
+                }
+              }
+            }
+          } catch (err) {
+            console.warn(`[TikTok Ads Sync] Error querying advertiser ${advertiserId} for shop ${targetShop.name}:`, err.message);
           }
-        } catch (err) {
-          console.warn(`[TikTok Ads Sync] Error querying advertiser ${advertiserId}:`, err.message);
         }
       }
 

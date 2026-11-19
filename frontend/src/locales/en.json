@@ -2039,6 +2039,10 @@
         "name": "Booking Video Detail",
         "description": ""
       },
+      "tiktok_ads_live_performance": {
+        "name": "TikTok Ads Live Cost & ROAS",
+        "description": "Auto-sync ads cost and calculate ROAS for each LIVE session"
+      },
       "tiktok_auth": {
         "name": "Authentication & OAuth",
         "description": "OAuth authorization history for Shops, Channels, KOCs and token refresh"

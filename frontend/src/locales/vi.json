@@ -2037,6 +2037,10 @@
         "name": "Chi tiết video Booking",
         "description": ""
       },
+      "tiktok_ads_live_performance": {
+        "name": "Chi phí TikTok Ads & ROAS Live",
+        "description": "Tự động đồng bộ chi phí quảng cáo và tính ROAS theo từng phiên LIVE"
+      },
       "tiktok_auth": {
         "name": "Xác thực & Kết nối",
         "description": "Lịch sử ủy quyền OAuth Shop, Kênh, KOC và làm mới Token"
