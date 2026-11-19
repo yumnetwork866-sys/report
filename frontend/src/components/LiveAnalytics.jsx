@@ -1586,13 +1586,12 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
-                  <th className="cell-actions">{t('liveAnalytics.colActions', 'Thao tác')}</th>
                 </tr>
               </thead>
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1603,7 +1602,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1644,59 +1643,14 @@ const LiveAnalytics = () => {
                     </td>
                     <td>
                       {session.host ? (
-                        <div className="live-host-cell" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                            <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
-                            <div className="live-host-meta">
-                              <span className="live-host-name">{session.host.name || session.host.email}</span>
-                              {session.hostSource === 'auto_hashtag' ? (
-                                <span
-                                  className="chip chip--neutral"
-                                  style={{ fontSize: '0.6875rem', padding: '1px 6px' }}
-                                  title={t('liveAnalytics.autoHostTitle')}
-                                >
-                                  {t('liveAnalytics.autoHost')}
-                                </span>
-                              ) : null}
-                            </div>
+                        <div className="live-host-cell">
+                          <AppAvatar src={session.host.avatar_url} name={session.host.name || session.host.email} className="live-host-avatar" fallbackClassName="live-host-avatar--fallback" />
+                          <div className="live-host-meta">
+                            <span className="live-host-name">{session.host.name || session.host.email}</span>
                           </div>
-                          {canEditHost && session.sessionId !== 'unknown' ? (
-                            <button
-                              type="button"
-                              className="live-action-btn"
-                              style={{ width: 26, height: 26, flexShrink: 0, opacity: 0.8 }}
-                              disabled={!session.shopId}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setEditingSession(session);
-                              }}
-                              title={t('liveAnalytics.editHost')}
-                              aria-label={t('liveAnalytics.editHost')}
-                            >
-                              <Pencil size={12} />
-                            </button>
-                          ) : null}
                         </div>
                       ) : (
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>
-                          {canEditHost && session.sessionId !== 'unknown' ? (
-                            <button
-                              type="button"
-                              className="button button--secondary button--xs"
-                              style={{ padding: '2px 8px', fontSize: '0.75rem', height: 24, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                              disabled={!session.shopId}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setEditingSession(session);
-                              }}
-                              title={t('liveAnalytics.addHost', 'Gán Host')}
-                            >
-                              <Pencil size={11} />
-                              <span>{t('liveAnalytics.addHost', 'Gán Host')}</span>
-                            </button>
-                          ) : null}
-                        </div>
+                        <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>
                       )}
                     </td>
                     <td>
@@ -1753,23 +1707,6 @@ const LiveAnalytics = () => {
                           </span>
                         ) : null}
                       </div>
-                    </td>
-                    <td className="cell-actions">
-                      {canEditHost ? (
-                        <button
-                          type="button"
-                          className="live-action-btn"
-                          disabled={!session.shopId || session.sessionId === 'unknown'}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            setEditingSession(session);
-                          }}
-                          title={session.host ? t('liveAnalytics.editHost') : t('liveAnalytics.addHost', 'Gán Host')}
-                          aria-label={session.host ? t('liveAnalytics.editHost') : t('liveAnalytics.addHost', 'Gán Host')}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -2225,7 +2162,7 @@ const LiveSessionDrawer = ({
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
                 >
                   <Pencil size={13} />
-                  <span>{t('liveAnalytics.editHost')}</span>
+                  <span>{session.host ? t('liveAnalytics.editHost') : t('liveAnalytics.addHost', 'Gán Host')}</span>
                 </button>
               ) : null}
             </div>
