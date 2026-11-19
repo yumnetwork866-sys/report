@@ -32,7 +32,6 @@ import {
   fetchLiveHostUsers,
   fetchLiveHosts,
   fetchLiveSessionAds,
-  fetchTikTokAdsAuthUrl,
   fetchTikTokAdsStatus,
   fetchTikTokSellerAffiliateOrders,
   fetchTikTokShopLivePerformance,
@@ -179,7 +178,6 @@ const LiveAnalytics = () => {
   const [editingSession, setEditingSession] = useState(null);
   const [sessionAdsMap, setSessionAdsMap] = useState({});
   const [adsStatus, setAdsStatus] = useState(null);
-  const [connectingAds, setConnectingAds] = useState(false);
   const [adsNotification, setAdsNotification] = useState(null);
   const [hostAssignments, setHostAssignments] = useState({});
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -344,19 +342,6 @@ const LiveAnalytics = () => {
       .catch(() => {});
     return () => controller.abort();
   }, [selectedShopId]);
-
-  const handleConnectTikTokAds = async () => {
-    try {
-      setConnectingAds(true);
-      const res = await fetchTikTokAdsAuthUrl();
-      if (res?.url) {
-        window.location.href = res.url;
-      }
-    } catch (err) {
-      setError(err.message || 'Lỗi lấy URL kết nối TikTok Ads');
-      setConnectingAds(false);
-    }
-  };
 
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
@@ -1737,43 +1722,6 @@ const LiveAnalytics = () => {
               </button>
             ) : null}
           </div>
-
-          {canEditHost ? (
-            adsStatus?.connected ? (
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  height: 36,
-                  padding: '0 12px',
-                  borderRadius: 'var(--radius-default, 8px)',
-                  background: 'rgba(16, 185, 129, 0.08)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  color: '#059669',
-                  whiteSpace: 'nowrap',
-                }}
-                title={`TikTok Ads API: ${adsStatus.advertiserIds?.length || 0} tài khoản quảng cáo`}
-              >
-                <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
-                <span>{t('liveAnalytics.adsConnected')}</span>
-              </div>
-            ) : (
-              <button
-                type="button"
-                className="button button--secondary button--sm"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, whiteSpace: 'nowrap' }}
-                onClick={handleConnectTikTokAds}
-                disabled={connectingAds}
-                title="Ủy quyền truy cập TikTok Business Marketing API"
-              >
-                <TrendingUp size={14} color="var(--color-primary)" />
-                <span>{connectingAds ? t('common.loading') : t('liveAnalytics.connectAds')}</span>
-              </button>
-            )
-          ) : null}
         </div>
       </div>
 
