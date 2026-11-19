@@ -1,11 +1,11 @@
 const express = require('express');
 const tiktokAdsService = require('../services/tiktokAdsService');
-const { requireAdmin, requirePermission } = require('../lib/session');
+const { requireAdmin, requirePermission, requireAnyPermission } = require('../lib/session');
 
 const router = express.Router();
 
 // 1. Get OAuth authorization URL (Admin only)
-router.get('/oauth/url', requireAdmin, async (req, res) => {
+router.get('/oauth/url', requireAdmin, requirePermission('admin.shops.manage'), async (req, res) => {
   try {
     const state = req.query.state || 'tiktok_ads_connect';
     const url = await tiktokAdsService.getAuthUrl(state);
@@ -34,7 +34,7 @@ router.get('/oauth/callback', async (req, res) => {
 });
 
 // 3. Get connection status & connected advertiser accounts
-router.get('/status', requireAdmin, async (_req, res) => {
+router.get('/status', requireAdmin, requireAnyPermission(['admin.shops.manage', 'shop.analytics.view']), async (_req, res) => {
   try {
     const status = await tiktokAdsService.getStatus();
     res.json(status);
@@ -44,7 +44,7 @@ router.get('/status', requireAdmin, async (_req, res) => {
 });
 
 // 4. Get Ads cost for live sessions
-router.get('/live-sessions', requirePermission('shop.analytics.view'), async (req, res) => {
+router.get('/live-sessions', requireAdmin, requirePermission('shop.analytics.view'), async (req, res) => {
   try {
     const shopId = req.query.shop_id || null;
     const rows = await tiktokAdsService.getLiveSessionAds(shopId);
@@ -55,7 +55,7 @@ router.get('/live-sessions', requirePermission('shop.analytics.view'), async (re
 });
 
 // 5. Update or manually set Ads cost for a live session
-router.put('/shops/:shopId/live-sessions/:sessionId', requirePermission('admin.shops.manage'), async (req, res) => {
+router.put('/shops/:shopId/live-sessions/:sessionId', requireAdmin, requirePermission('admin.shops.manage'), async (req, res) => {
   try {
     const { shopId, sessionId } = req.params;
     const { ads_cost, currency, source, advertiser_id } = req.body;
