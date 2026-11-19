@@ -81,3 +81,75 @@ test('saveLiveSessionAds validates cost and persists ads cost', async () => {
   assert.match(queries[1].sql, /DELETE FROM live_session_ads/);
 });
 
+test('syncLiveSessionAds pulls GMV Max report and persists into live_session_ads', async () => {
+  const fetchCalls = [];
+  const fakeFetch = async (url) => {
+    fetchCalls.push(url);
+    if (url.includes('/gmv_max/store/list/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: { list: [{ store_id: 'store_123', store_name: 'Test Store' }] },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/report/get/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: {
+            list: [
+              {
+                dimensions: { room_id: '770947923089', store_id: 'store_123' },
+                metrics: { cost: '304.95', gross_revenue: '366.00', orders: 2 },
+              },
+            ],
+          },
+        }),
+      };
+    }
+    if (url.includes('/report/integrated/get/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: { list: [] },
+        }),
+      };
+    }
+    return { json: async () => ({ code: 0, data: {} }) };
+  };
+
+  const queries = [];
+  const fakeDb = {
+    query: async (sql, options) => {
+      queries.push({ sql, ...options });
+      if (sql.includes('SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations')) {
+        return [{ access_token: 'valid_token_xyz', advertiser_ids: ['adv_777'] }];
+      }
+      if (sql.includes('FROM tiktok_shops')) {
+        return [{ id: 5, name: 'Actiscar Live', platform_shop_id: 'store_123', region: 'MY' }];
+      }
+      return [];
+    },
+  };
+
+  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const results = await service.syncLiveSessionAds({ shopId: 5 });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].session_id, '770947923089');
+  assert.equal(results[0].ads_cost, 304.95);
+
+  const insertQuery = queries.find((q) => q.sql.includes('INSERT INTO live_session_ads'));
+  assert.ok(insertQuery);
+  assert.equal(insertQuery.replacements.adsCost, 304.95);
+  assert.equal(insertQuery.replacements.sessionId, '770947923089');
+  assert.equal(insertQuery.replacements.shopId, 5);
+  assert.equal(insertQuery.replacements.currency, 'MYR');
+  assert.ok(insertQuery.replacements.rawData.includes('304.95'));
+});
+
+

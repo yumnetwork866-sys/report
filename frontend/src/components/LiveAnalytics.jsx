@@ -327,7 +327,7 @@ const LiveAnalytics = () => {
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [selectedShopId]);
+  }, [selectedShopId, startDate, endDate]);
 
   // Multi-shop compare state
   const [toggledOffShopIds, setToggledOffShopIds] = useState(() => new Set());
