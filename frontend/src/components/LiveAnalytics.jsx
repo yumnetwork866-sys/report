@@ -1018,16 +1018,52 @@ const LiveAnalytics = () => {
       { value: 'unassigned', label: t('liveAnalytics.unassignedHost', 'Chưa gắn Host') },
     ];
     const hostMap = new Map();
+
+    const isLiveHostUser = (u) => {
+      if (!u) return false;
+      if (u.has_hosted) return true;
+      const team = String(u.team_name || u.team?.name || u.team || '').toLowerCase();
+      if (team.includes('live') || team.includes('host')) return true;
+      const role = String(u.role || '').toLowerCase();
+      if (role.includes('live') || role.includes('host')) return true;
+      const email = String(u.email || '').toLowerCase();
+      if (email.includes('live') || email.includes('host')) return true;
+      const name = String(u.name || '').toLowerCase();
+      if (name.includes('live') || name.includes('host')) return true;
+      return false;
+    };
+
+    // 1. Hosts present in the current loaded sessions
     sessionList.forEach((s) => {
       if (s.host?.id) {
         hostMap.set(String(s.host.id), s.host);
       }
     });
-    availableUsers.forEach((u) => {
+
+    // 2. Hosts assigned in database
+    Object.values(hostAssignments || {}).forEach((row) => {
+      const u = row?.host || (row?.id && row?.name ? row : null);
       if (u?.id && !hostMap.has(String(u.id))) {
         hostMap.set(String(u.id), u);
       }
     });
+
+    // 3. Only users who belong to LIVE (by team, role, or has_hosted flag)
+    availableUsers.forEach((u) => {
+      if (u?.id && !hostMap.has(String(u.id))) {
+        if (isLiveHostUser(u)) {
+          hostMap.set(String(u.id), u);
+        }
+      }
+    });
+
+    // Fallback: If no live hosts were found at all, fallback to available users so filter isn't empty
+    if (hostMap.size === 0 && availableUsers.length > 0) {
+      availableUsers.forEach((u) => {
+        if (u?.id) hostMap.set(String(u.id), u);
+      });
+    }
+
     const sortedHosts = Array.from(hostMap.values()).sort((a, b) => (
       (a.name || a.email || '').localeCompare(b.name || b.email || '')
     ));
@@ -1035,12 +1071,12 @@ const LiveAnalytics = () => {
       options.push({
         value: String(h.id),
         label: h.name || h.email,
-        subtitle: h.email,
+        subtitle: h.team_name ? `${h.team_name} · ${h.email}` : h.email,
         icon: <AppAvatar src={h.avatar_url} name={h.name || h.email} size="sm" />,
       });
     });
     return options;
-  }, [availableUsers, sessionList, t]);
+  }, [availableUsers, hostAssignments, sessionList, t]);
 
   // Filtered sessions by sourceType, channel & host
   const sourceFilteredSessions = useMemo(() => {

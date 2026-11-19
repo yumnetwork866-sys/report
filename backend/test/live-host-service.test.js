@@ -53,7 +53,8 @@ test('host directory exposes only active users and assignments support shop filt
   await service.execute('users', {});
   await service.execute('list', { query: { shop_id: 2 } });
   await service.execute('list', {});
-  assert.match(calls[0].sql, /SELECT id, name, email, avatar_url FROM users\s+WHERE is_active = TRUE/);
+  assert.match(calls[0].sql, /FROM users/);
+  assert.match(calls[0].sql, /is_active = TRUE/);
   assert.deepEqual(calls[1].replacements, { shopId: 2 });
   assert.deepEqual(calls[2].replacements, { shopId: null });
 });

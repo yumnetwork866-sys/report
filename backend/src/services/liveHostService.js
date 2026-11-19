@@ -5,8 +5,13 @@ const createLiveHostService = (db = sequelize) => ({
   async execute(action, { params = {}, query = {}, body = {} }) {
     const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
     if (action === 'users') {
-      return { body: await select(`SELECT id, name, email, avatar_url FROM users
-        WHERE is_active = TRUE ORDER BY LOWER(name), id`) };
+      return { body: await select(`SELECT u.id, u.name, u.email, u.avatar_url,
+        t.name AS team_name, u.role,
+        EXISTS (SELECT 1 FROM live_session_hosts h WHERE h.user_id = u.id) AS has_hosted
+        FROM users u
+        LEFT JOIN user_content_attributions uca ON uca.user_id = u.id
+        LEFT JOIN content_teams t ON t.id = uca.team_id
+        WHERE u.is_active = TRUE ORDER BY LOWER(u.name), u.id`) };
     }
     if (action === 'list') {
       return { body: await select(`SELECT h.shop_id, h.session_id, u.id, u.name, u.email, u.avatar_url

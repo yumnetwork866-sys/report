@@ -15,6 +15,29 @@ export default function LiveHostEditor({ session, onClose, onSaved, t }) {
   const [error, setError] = useState('');
   const selectedUser = users.find((user) => String(user.id) === userId)
     || (String(session.host?.id) === userId ? session.host : null);
+
+  const isLiveHostUser = (u) => {
+    if (!u) return false;
+    if (u.has_hosted) return true;
+    const team = String(u.team_name || u.team?.name || u.team || '').toLowerCase();
+    if (team.includes('live') || team.includes('host')) return true;
+    const role = String(u.role || '').toLowerCase();
+    if (role.includes('live') || role.includes('host')) return true;
+    const email = String(u.email || '').toLowerCase();
+    if (email.includes('live') || email.includes('host')) return true;
+    const name = String(u.name || '').toLowerCase();
+    if (name.includes('live') || name.includes('host')) return true;
+    return false;
+  };
+
+  const sortedUsers = [...users].sort((a, b) => {
+    const aLive = isLiveHostUser(a);
+    const bLive = isLiveHostUser(b);
+    if (aLive && !bLive) return -1;
+    if (!aLive && bLive) return 1;
+    return (a.name || a.email || '').localeCompare(b.name || b.email || '');
+  });
+
   const userAvatar = (user) => (
     <TargetKocAvatar
       src={user.avatar_url}
@@ -79,10 +102,15 @@ export default function LiveHostEditor({ session, onClose, onSaved, t }) {
             icon={selectedUser ? userAvatar(selectedUser) : <UserRound size={16} />}
             options={[
               { value: '', label: t('liveAnalytics.unassignedHost'), icon: <UserRound size={16} /> },
-              ...(session.host && !users.some((user) => String(user.id) === String(session.host.id))
-                ? [{ value: String(session.host.id), label: session.host.name || session.host.email, subtitle: session.host.email, icon: userAvatar(session.host) }]
+              ...(session.host && !sortedUsers.some((user) => String(user.id) === String(session.host.id))
+                ? [{ value: String(session.host.id), label: session.host.name || session.host.email, subtitle: session.host.team_name ? `${session.host.team_name} · ${session.host.email}` : session.host.email, icon: userAvatar(session.host) }]
                 : []),
-              ...users.map((user) => ({ value: String(user.id), label: user.name || user.email, subtitle: user.email, icon: userAvatar(user) })),
+              ...sortedUsers.map((user) => ({
+                value: String(user.id),
+                label: user.name || user.email,
+                subtitle: user.team_name ? `${user.team_name} · ${user.email}` : user.email,
+                icon: userAvatar(user),
+              })),
             ]}
           />
         </div>
