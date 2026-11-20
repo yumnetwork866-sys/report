@@ -422,7 +422,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           }
         }
 
-        // --- B. ALSO QUERY GMV MAX REPORT IF AVAILABLE ---
+        // --- B. QUERY GMV MAX CAMPAIGN REPORT (https://business-api.tiktok.com/open_api/v1.3/gmv_max/report/get/) ---
         let storeIds = [];
         try {
           const storeUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/store/list/`);
@@ -436,44 +436,109 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           });
           const storeData = await storeRes.json();
           if (storeData?.code === 0 && Array.isArray(storeData?.data?.list)) {
-            storeIds = storeData.data.list.map((s) => String(s.store_id || s.id)).filter(Boolean);
+            // TikTok doc: confirm is_gmv_max_available is true if provided
+            storeIds = storeData.data.list
+              .filter((s) => s.is_gmv_max_available !== false)
+              .map((s) => String(s.store_id || s.id || ''))
+              .filter(Boolean);
           }
-        } catch (_storeErr) {}
+        } catch (storeErr) {
+          console.warn(`[TikTok Ads Sync] gmv_max/store/list failed: ${storeErr.message}`);
+        }
 
         if (!storeIds.length) {
           storeIds = targetShops.map((s) => String(s.platform_shop_id)).filter(Boolean);
         }
 
-        if (storeIds.length) {
-          try {
-            const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
-            url.searchParams.set('advertiser_id', advertiserId);
-            url.searchParams.set('store_ids', JSON.stringify(storeIds));
-            url.searchParams.set('dimensions', JSON.stringify(['room_id']));
-            url.searchParams.set('metrics', JSON.stringify(['cost', 'gmv_max_cost', 'net_cost', 'spend']));
-            url.searchParams.set('start_date', startDate);
-            url.searchParams.set('end_date', endDate);
+        const uniqueStoreIds = [...new Set(storeIds)];
+        // TikTok GMV Max doc: store_ids Max size: 1 -> query each store separately
+        for (const singleStoreId of uniqueStoreIds) {
+          // Try LIVE GMV Max dimension: room_id first, then with stat_time_day
+          const gmvConfigs = [
+            {
+              dimensions: ['room_id'],
+              metrics: ['cost', 'net_cost', 'orders', 'gross_revenue', 'roi'],
+              filtering: { gmv_max_promotion_types: ['LIVE'] },
+            },
+            {
+              dimensions: ['room_id'],
+              metrics: ['cost', 'net_cost', 'orders', 'gross_revenue', 'roi'],
+              filtering: null,
+            },
+            {
+              dimensions: ['room_id', 'stat_time_day'],
+              metrics: ['cost', 'gross_revenue', 'orders'],
+              filtering: null,
+            },
+            {
+              dimensions: ['campaign_id', 'stat_time_day'],
+              metrics: ['cost', 'gross_revenue', 'orders'],
+              filtering: null,
+            },
+          ];
 
-            const res = await fetchImpl(url.toString(), {
-              method: 'GET',
-              headers: {
-                'Access-Token': accessToken,
-                'Content-Type': 'application/json',
-              },
-            });
-            const payload = await res.json();
-            if (payload?.code === 0 && Array.isArray(payload?.data?.list)) {
-              for (const item of payload.data.list) {
-                const roomId = item.dimensions?.room_id;
-                const metrics = item.metrics || {};
-                const cost = Number(metrics.cost ?? metrics.gmv_max_cost ?? metrics.net_cost ?? metrics.spend ?? 0);
-                if (roomId && Number.isFinite(cost) && cost > 0) {
-                  const shop = findShopForSession(item.dimensions?.store_id);
-                  recordSpend(roomId, shop.id, cost, metrics);
-                }
+          for (const gmvCfg of gmvConfigs) {
+            try {
+              const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
+              url.searchParams.set('advertiser_id', advertiserId);
+              url.searchParams.set('store_ids', JSON.stringify([String(singleStoreId)]));
+              url.searchParams.set('dimensions', JSON.stringify(gmvCfg.dimensions));
+              url.searchParams.set('metrics', JSON.stringify(gmvCfg.metrics));
+              url.searchParams.set('start_date', startDate);
+              url.searchParams.set('end_date', endDate);
+              url.searchParams.set('page_size', '1000');
+              url.searchParams.set('page', '1');
+
+              if (gmvCfg.filtering) {
+                url.searchParams.set('filtering', JSON.stringify(gmvCfg.filtering));
               }
+
+              const res = await fetchImpl(url.toString(), {
+                method: 'GET',
+                headers: {
+                  'Access-Token': accessToken,
+                  'Content-Type': 'application/json',
+                },
+              });
+              const payload = await res.json();
+              if (payload?.code === 0 && Array.isArray(payload?.data?.list) && payload.data.list.length > 0) {
+                console.log(`[TikTok Ads Sync] GMV Max report returned ${payload.data.list.length} rows for store ${singleStoreId}`);
+                for (const item of payload.data.list) {
+                  const roomId = item.dimensions?.room_id;
+                  const dateKey = item.dimensions?.stat_time_day ? String(item.dimensions.stat_time_day).slice(0, 10) : null;
+                  const metrics = item.metrics || {};
+                  const cost = Number(metrics.cost ?? metrics.net_cost ?? 0);
+                  if (!Number.isFinite(cost) || cost <= 0) continue;
+
+                  if (roomId) {
+                    const shop = findShopForSession(singleStoreId);
+                    recordSpend(roomId, shop.id, cost, metrics);
+                  } else if (dateKey) {
+                    const matchedSessions = knownSessionsByDate[dateKey] || [];
+                    if (matchedSessions.length > 0) {
+                      const gmvSessions = matchedSessions.filter((s) => s.gmv > 0);
+                      if (gmvSessions.length === 1) {
+                        recordSpend(gmvSessions[0].sessionId, gmvSessions[0].shopId, cost, metrics);
+                      } else if (gmvSessions.length > 1) {
+                        const totalGmv = gmvSessions.reduce((acc, s) => acc + s.gmv, 0);
+                        for (const s of gmvSessions) {
+                          const allocated = Number(((s.gmv / totalGmv) * cost).toFixed(2));
+                          recordSpend(s.sessionId, s.shopId, allocated, metrics);
+                        }
+                      } else {
+                        recordSpend(matchedSessions[0].sessionId, matchedSessions[0].shopId, cost, metrics);
+                      }
+                    }
+                  }
+                }
+                break; // Stop falling back for this store if successful
+              } else if (payload?.code !== 0) {
+                console.warn(`[TikTok Ads Sync] GMV Max error code ${payload?.code}: ${payload?.message}`);
+              }
+            } catch (gmvErr) {
+              console.warn(`[TikTok Ads Sync] GMV Max request failed: ${gmvErr.message}`);
             }
-          } catch (_gmvErr) {}
+          }
         }
 
         // --- C. PERSIST ACCUMULATED SPEND INTO DATABASE ---
