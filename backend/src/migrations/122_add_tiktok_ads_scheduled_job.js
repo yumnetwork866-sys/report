@@ -5,7 +5,7 @@ const up = async ({ sequelize, transaction }) => {
     )
     VALUES (
       'tiktok_ads_live_performance',
-      'Chi phí Ads',
+      'Ads Cost',
       '',
       true,
       'Asia/Ho_Chi_Minh',

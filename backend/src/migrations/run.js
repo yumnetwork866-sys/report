@@ -130,6 +130,7 @@ const migrations = [
   require('./120_create_tiktok_ads_and_live_session_ads'),
   require('./121_seed_tiktok_ads_app'),
   require('./122_add_tiktok_ads_scheduled_job'),
+  require('./123_rename_tiktok_ads_scheduled_job_to_ads_cost'),
 ];
 
 const createMigrationRunner = ({

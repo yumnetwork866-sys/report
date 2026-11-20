@@ -1755,12 +1755,12 @@
     "colOrderStatus": "Trạng thái đơn",
     "colCommission": "Hoa hồng KOC",
     "colActions": "Thao tác",
-    "colAdsCost": "Chi phí Ads",
+    "colAdsCost": "Ads Cost",
     "colRoas": "ROAS",
     "editAdsCost": "Sửa Ads Cost",
     "connectAds": "Kết nối TikTok Ads",
     "adsConnected": "TikTok Ads đã kết nối",
-    "savingAdsCost": "Đang lưu chi phí Ads...",
+    "savingAdsCost": "Đang lưu Ads Cost...",
     "viewSessionDetail": "Xem chi tiết phiên",
     "viewOrderDetail": "Chi tiết đơn hàng",
     "searchPlaceholder": "Tìm kiếm theo Host, mã phiên hoặc sản phẩm...",
@@ -2038,7 +2038,7 @@
         "description": ""
       },
       "tiktok_ads_live_performance": {
-        "name": "Chi phí Ads",
+        "name": "Ads Cost",
         "description": ""
       },
       "tiktok_auth": {
