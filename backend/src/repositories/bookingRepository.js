@@ -280,7 +280,7 @@ const findCreatorPerformance = ({
   preferDefaultWindows = false,
 }) => TikTokCreatorPerformanceSnapshot.findOne({
   where: {
-    shop_id: shopId,
+    ...(shopId ? { shop_id: shopId } : {}),
     window_type: preferDefaultWindows
       ? { [Op.in]: ['PAST_30_DAYS', 'PAST_7_DAYS', 'PAST_24H'] }
       : windowType,
