@@ -944,7 +944,8 @@ const LiveAnalytics = () => {
         totalCommission: sess.totalCommission,
       });
 
-      const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`] || sessionAdsMap[sess.sessionId];
+      const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`]
+        || (sessionAdsMap[sess.sessionId]?.shop_id && Number(sessionAdsMap[sess.sessionId].shop_id) === Number(sess.shopId) ? sessionAdsMap[sess.sessionId] : null);
       const rawAdsCost = adsRecord?.ads_cost !== undefined && adsRecord?.ads_cost !== null ? Number(adsRecord.ads_cost) : null;
       const adsCurrency = adsRecord?.currency || sess.currency || displayCurrency;
       const convertedAdsCost = rawAdsCost !== null ? toDisplayCurrency(rawAdsCost, adsCurrency) : null;
@@ -976,6 +977,7 @@ const LiveAnalytics = () => {
         totalComments,
         adsCost: rawAdsCost,
         adsCurrency,
+        convertedAdsCost,
         roas,
         adsSource: adsRecord?.source || null,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
@@ -1895,7 +1897,11 @@ const LiveAnalytics = () => {
                     </td>
                     <td className="cell-number" style={{ fontWeight: 600 }}>
                       {session.adsCost !== null && session.adsCost !== undefined
-                        ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
+                        ? (
+                          <span title={session.adsCurrency && session.adsCurrency !== session.currency ? `${session.adsCost.toFixed(2)} ${session.adsCurrency}` : undefined}>
+                            {formatMoney(session.adsCost, session.adsCurrency || session.currency)}
+                          </span>
+                        )
                         : '—'}
                     </td>
                     <td className="cell-number" style={{ fontWeight: 750, color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'inherit') : 'inherit' }}>
@@ -2450,7 +2456,11 @@ const LiveSessionDrawer = ({
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
                   {session.adsCost !== null && session.adsCost !== undefined
-                    ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
+                    ? (
+                      <span title={session.adsCurrency && session.adsCurrency !== session.currency ? `${session.adsCost.toFixed(2)} ${session.adsCurrency}` : undefined}>
+                        {formatMoney(session.adsCost, session.adsCurrency || session.currency)}
+                      </span>
+                    )
                     : '—'}
                 </p>
               </div>

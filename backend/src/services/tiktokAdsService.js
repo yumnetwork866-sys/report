@@ -180,57 +180,64 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
 
     async syncLiveSessionAds({ shopId = null, sessionIds = [], sessions = [] } = {}) {
       const authRows = await select(`
-        SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations ORDER BY updated_at DESC LIMIT 1
+        SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations ORDER BY updated_at DESC
       `);
       if (!authRows.length) return [];
 
-      const { access_token: accessToken, advertiser_ids: rawAdvertisers } = authRows[0];
-      let advertiserIds = Array.isArray(rawAdvertisers)
-        ? rawAdvertisers
-        : (typeof rawAdvertisers === 'string' ? JSON.parse(rawAdvertisers || '[]') : []);
-
       const { appId, secret, baseUrl } = await getBusinessConfig(db);
+      const authList = [];
 
-      // 1. Resolve advertiser IDs if empty
-      if (!advertiserIds.length && appId && secret) {
-        const versions = ['v1.3', 'v2.0'];
-        for (const ver of versions) {
-          try {
-            const advUrl = new URL(`${baseUrl}/open_api/${ver}/oauth2/advertiser/get/`);
-            advUrl.searchParams.set('app_id', appId);
-            advUrl.searchParams.set('secret', secret);
-            const advRes = await safeFetch(advUrl.toString(), {
-              method: 'GET',
-              headers: {
-                'Access-Token': accessToken,
-                'Content-Type': 'application/json',
-              },
-            });
-            const advData = await advRes.json();
-            if (advData?.code === 0 && Array.isArray(advData?.data?.list)) {
-              advertiserIds = advData.data.list.map((a) => String(a.advertiser_id || a.advertiserId || a)).filter(Boolean);
-              if (advertiserIds.length) {
-                await db.query(`
-                  UPDATE tiktok_ads_authorizations
-                  SET advertiser_ids = :advertiserIds::jsonb, updated_at = NOW()
-                  WHERE access_token = :accessToken
-                `, {
-                  replacements: {
-                    advertiserIds: JSON.stringify(advertiserIds),
-                    accessToken,
-                  },
-                });
-                break;
+      for (const authRow of authRows) {
+        const { access_token: accessToken, advertiser_ids: rawAdvertisers } = authRow;
+        let advertiserIds = Array.isArray(rawAdvertisers)
+          ? rawAdvertisers
+          : (typeof rawAdvertisers === 'string' ? JSON.parse(rawAdvertisers || '[]') : []);
+
+        // Resolve advertiser IDs if empty
+        if (!advertiserIds.length && appId && secret) {
+          const versions = ['v1.3', 'v2.0'];
+          for (const ver of versions) {
+            try {
+              const advUrl = new URL(`${baseUrl}/open_api/${ver}/oauth2/advertiser/get/`);
+              advUrl.searchParams.set('app_id', appId);
+              advUrl.searchParams.set('secret', secret);
+              const advRes = await safeFetch(advUrl.toString(), {
+                method: 'GET',
+                headers: {
+                  'Access-Token': accessToken,
+                  'Content-Type': 'application/json',
+                },
+              });
+              const advData = await advRes.json();
+              if (advData?.code === 0 && Array.isArray(advData?.data?.list)) {
+                advertiserIds = advData.data.list.map((a) => String(a.advertiser_id || a.advertiserId || a)).filter(Boolean);
+                if (advertiserIds.length) {
+                  await db.query(`
+                    UPDATE tiktok_ads_authorizations
+                    SET advertiser_ids = :advertiserIds::jsonb, updated_at = NOW()
+                    WHERE access_token = :accessToken
+                  `, {
+                    replacements: {
+                      advertiserIds: JSON.stringify(advertiserIds),
+                      accessToken,
+                    },
+                  });
+                  break;
+                }
               }
+            } catch (advErr) {
+              console.warn(`[TikTok Ads Sync] Could not fetch advertiser list on ${ver}:`, advErr.message);
             }
-          } catch (advErr) {
-            console.warn(`[TikTok Ads Sync] Could not fetch advertiser list on ${ver}:`, advErr.message);
           }
+        }
+
+        if (advertiserIds.length) {
+          authList.push({ accessToken, advertiserIds });
         }
       }
 
-      if (!advertiserIds.length) {
-        console.warn('[TikTok Ads Sync] No advertiser IDs available for sync.');
+      if (!authList.length) {
+        console.warn('[TikTok Ads Sync] No active authorizations or advertiser IDs available for sync.');
         return [];
       }
 
@@ -249,6 +256,9 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         `);
       }
 
+      if (!targetShops.length) return [];
+      const targetShopsByPlatformId = new Map(targetShops.map((s) => [String(s.platform_shop_id), s]));
+
       const results = [];
       const now = new Date();
       const pad = (n) => String(n).padStart(2, '0');
@@ -263,20 +273,10 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         }
       };
       const endDate = formatDate(now);
-      // Synchronous report API allows up to 30 days for stat_time_day
       const thirtyDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
       const startDate = formatDate(thirtyDaysAgo);
 
-      const findShopForSession = (storeId) => {
-        if (targetShops.length === 1) return targetShops[0];
-        if (storeId) {
-          const match = targetShops.find((s) => String(s.platform_shop_id) === String(storeId));
-          if (match) return match;
-        }
-        return targetShops[0] || { id: 1, region: 'MY' };
-      };
-
-      // Also find sessions from database orders and hosts if available
+      // Map sessions from database orders and hosts for fallback
       const dbLiveSessions = await select(`
         SELECT DISTINCT s.shop_id, s.content_id AS session_id,
                TO_CHAR(o.create_time AT TIME ZONE 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') AS session_date
@@ -311,12 +311,8 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             if (Number.isFinite(timeNum) && timeNum > 0) {
               const epoch = timeNum > 1e12 ? timeNum : timeNum * 1000;
               const tzDate = formatDateInTz(epoch, 'Asia/Kuala_Lumpur');
-              const utcDate = formatDateInTz(epoch, 'UTC');
               if (sid) {
                 registerSessionDate(sid, spId, tzDate, gmv);
-                if (utcDate !== tzDate) {
-                  registerSessionDate(sid, spId, utcDate, gmv);
-                }
               }
             }
           }
@@ -329,248 +325,259 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         });
       }
 
-      for (const advertiserId of advertiserIds) {
-        const sessionSpendAccumulator = new Map();
-        const recordSpend = (sId, spId, amount, rawMeta = {}) => {
-          if (!sId || !Number.isFinite(amount) || amount <= 0) return;
-          const key = `${spId}:${sId}`;
-          const current = sessionSpendAccumulator.get(key) || {
-            sessionId: String(sId),
-            shopId: spId,
-            cost: 0,
-            rawMeta: {},
-          };
-          current.cost += amount;
-          current.rawMeta = { ...current.rawMeta, ...rawMeta };
-          sessionSpendAccumulator.set(key, current);
+      const sessionSpendAccumulator = new Map();
+      const recordSpend = (sId, spId, amount, currency, rawMeta = {}, advId = null) => {
+        if (!sId || !Number.isFinite(amount) || amount <= 0) return;
+        const key = `${spId}:${sId}`;
+        const current = sessionSpendAccumulator.get(key) || {
+          sessionId: String(sId),
+          shopId: spId,
+          cost: 0,
+          currency: currency || 'USD',
+          advertiserId: advId,
+          rawMeta: {},
         };
+        current.cost += amount;
+        current.currency = currency || current.currency;
+        current.advertiserId = advId || current.advertiserId;
+        current.rawMeta = { ...current.rawMeta, ...rawMeta, cost: current.cost, currency: current.currency };
+        sessionSpendAccumulator.set(key, current);
+      };
 
-        // --- A. RUN SYNCHRONOUS REPORT (https://business-api.tiktok.com/portal/docs/run-a-synchronous-report/v2.0) ---
-        // Endpoint: /open_api/v2.0/report/integrated/get/ and /open_api/v1.3/report/integrated/get/
-        let syncReportList = null;
-        const reportConfigs = [
-          // 1. Campaign level v1.3 (known working on TikTok API)
-          { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 2. Advertiser daily level v1.3
-          { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 3. Campaign level v2.0 fallback
-          { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-        ];
-
-        for (const cfg of reportConfigs) {
+      for (const { accessToken, advertiserIds } of authList) {
+        for (const advertiserId of advertiserIds) {
+          // 1. Get stores associated with this advertiser
+          let rawStores = [];
           try {
-            const syncUrl = new URL(`${baseUrl}/open_api/${cfg.ver}/report/integrated/get/`);
-            syncUrl.searchParams.set('advertiser_id', advertiserId);
-            if (cfg.serviceType) syncUrl.searchParams.set('service_type', cfg.serviceType);
-            syncUrl.searchParams.set('report_type', 'BASIC');
-            syncUrl.searchParams.set('data_level', cfg.dataLevel);
-            syncUrl.searchParams.set('dimensions', JSON.stringify(cfg.dimensions));
-            syncUrl.searchParams.set('metrics', JSON.stringify(cfg.metrics));
-            syncUrl.searchParams.set('start_date', startDate);
-            syncUrl.searchParams.set('end_date', endDate);
-            syncUrl.searchParams.set('page_size', '1000');
-
-            const reportRes = await safeFetch(syncUrl.toString(), {
+            const storeUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/store/list/`);
+            storeUrl.searchParams.set('advertiser_id', advertiserId);
+            const storeRes = await safeFetch(storeUrl.toString(), {
               method: 'GET',
               headers: {
                 'Access-Token': accessToken,
                 'Content-Type': 'application/json',
               },
             });
-            const reportPayload = await reportRes.json();
-            if (reportPayload?.code === 0 && Array.isArray(reportPayload?.data?.list) && reportPayload.data.list.length > 0) {
-              syncReportList = reportPayload.data.list;
-              break;
-            } else if (reportPayload?.code !== 0) {
-              console.warn(`[TikTok Synchronous Report ${cfg.ver} ${cfg.dataLevel}] Code ${reportPayload?.code}: ${reportPayload?.message}`);
+            const storeData = await storeRes.json();
+            if (storeData?.code === 0) {
+              rawStores = Array.isArray(storeData?.data?.store_list)
+                ? storeData.data.store_list
+                : (Array.isArray(storeData?.data?.list) ? storeData.data.list : []);
             }
-          } catch (syncErr) {
-            console.warn(`[TikTok Synchronous Report ${cfg.ver} ${cfg.dataLevel}] Error:`, syncErr.message);
+          } catch (storeErr) {
+            console.warn(`[TikTok Ads Sync] gmv_max/store/list failed: ${storeErr.message}`);
           }
-        }
 
-        // Process Synchronous Report rows
-        if (Array.isArray(syncReportList)) {
-          for (const row of syncReportList) {
-            const rawDate = row.dimensions?.stat_time_day;
-            const dateKey = rawDate ? String(rawDate).slice(0, 10) : null;
-            const spend = Number(row.metrics?.spend ?? row.metrics?.stat_cost ?? row.metrics?.cost ?? 0);
-
-            if (dateKey && Number.isFinite(spend) && spend > 0) {
-              const matchedSessions = knownSessionsByDate[dateKey] || [];
-              if (matchedSessions.length > 0) {
-                const gmvSessions = matchedSessions.filter((s) => s.gmv > 0);
-                if (gmvSessions.length === 1) {
-                  recordSpend(gmvSessions[0].sessionId, gmvSessions[0].shopId, spend, row.metrics);
-                } else if (gmvSessions.length > 1) {
-                  const totalGmv = gmvSessions.reduce((acc, s) => acc + s.gmv, 0);
-                  for (const s of gmvSessions) {
-                    const allocated = Number(((s.gmv / totalGmv) * spend).toFixed(2));
-                    recordSpend(s.sessionId, s.shopId, allocated, row.metrics);
-                  }
-                } else if (matchedSessions.length === 1) {
-                  recordSpend(matchedSessions[0].sessionId, matchedSessions[0].shopId, spend, row.metrics);
-                } else {
-                  recordSpend(matchedSessions[0].sessionId, matchedSessions[0].shopId, spend, row.metrics);
-                }
-              }
-            }
-          }
-        }
-
-        // --- B. QUERY GMV MAX CAMPAIGN REPORT (https://business-api.tiktok.com/open_api/v1.3/gmv_max/report/get/) ---
-        let storeIds = [];
-        try {
-          const storeUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/store/list/`);
-          storeUrl.searchParams.set('advertiser_id', advertiserId);
-          const storeRes = await safeFetch(storeUrl.toString(), {
-            method: 'GET',
-            headers: {
-              'Access-Token': accessToken,
-              'Content-Type': 'application/json',
-            },
+          // Match stores with target shops
+          let matchedStores = rawStores.filter((st) => {
+            const sId = String(st.store_id || st.id || '');
+            return targetShopsByPlatformId.has(sId);
           });
-          const storeData = await storeRes.json();
-          if (storeData?.code === 0 && Array.isArray(storeData?.data?.list)) {
-            // TikTok doc: confirm is_gmv_max_available is true if provided
-            storeIds = storeData.data.list
-              .filter((s) => s.is_gmv_max_available !== false)
-              .map((s) => String(s.store_id || s.id || ''))
-              .filter(Boolean);
+
+          // Test/direct compatibility when store/list returns empty but single shop is queried
+          if (!matchedStores.length && !rawStores.length && shopId && targetShops.length === 1) {
+            matchedStores = [{ store_id: targetShops[0].platform_shop_id }];
           }
-        } catch (storeErr) {
-          console.warn(`[TikTok Ads Sync] gmv_max/store/list failed: ${storeErr.message}`);
-        }
 
-        if (!storeIds.length) {
-          storeIds = targetShops.map((s) => String(s.platform_shop_id)).filter(Boolean);
-        }
+          // If advertiser has stores but none match target shops, skip to prevent cross-shop attribution
+          if (!matchedStores.length) {
+            continue;
+          }
 
-        const uniqueStoreIds = [...new Set(storeIds)];
-        // TikTok GMV Max doc: store_ids Max size: 1 -> query each store separately
-        for (const singleStoreId of uniqueStoreIds) {
-          // Try LIVE GMV Max dimension: campaign_id + room_id, then with stat_time_day
-          const gmvConfigs = [
-            {
-              dimensions: ['campaign_id', 'room_id'],
-              metrics: ['cost', 'net_cost', 'orders', 'gross_revenue', 'roi'],
-              filtering: { gmv_max_promotion_types: ['LIVE'] },
-            },
-            {
-              dimensions: ['campaign_id', 'room_id'],
-              metrics: ['cost', 'gross_revenue', 'orders'],
-              filtering: null,
-            },
-            {
-              dimensions: ['campaign_id', 'stat_time_day'],
-              metrics: ['cost', 'gross_revenue', 'orders'],
-              filtering: null,
-            },
-          ];
+          let foundGmvMaxSpend = false;
 
-          for (const gmvCfg of gmvConfigs) {
+          for (const store of matchedStores) {
+            const storePlatformId = String(store.store_id || store.id || '');
+            const targetShop = targetShopsByPlatformId.get(storePlatformId) || targetShops[0];
+            const defaultCurrency = targetShop.region === 'VN' ? 'VND' : 'MYR';
+
+            // 2. Fetch LIVE_GMV_MAX campaigns for this specific store
+            let liveCampaignIds = [];
             try {
-              const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
-              url.searchParams.set('advertiser_id', advertiserId);
-              url.searchParams.set('store_ids', JSON.stringify([String(singleStoreId)]));
-              url.searchParams.set('dimensions', JSON.stringify(gmvCfg.dimensions));
-              url.searchParams.set('metrics', JSON.stringify(gmvCfg.metrics));
-              url.searchParams.set('start_date', startDate);
-              url.searchParams.set('end_date', endDate);
-              url.searchParams.set('page_size', '1000');
-              url.searchParams.set('page', '1');
+              const campUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/campaign/get/`);
+              campUrl.searchParams.set('advertiser_id', advertiserId);
+              campUrl.searchParams.set('store_id', storePlatformId);
+              campUrl.searchParams.set('filtering', JSON.stringify({ gmv_max_promotion_types: ['LIVE_GMV_MAX'] }));
+              campUrl.searchParams.set('page_size', '100');
 
-              if (gmvCfg.filtering) {
-                url.searchParams.set('filtering', JSON.stringify(gmvCfg.filtering));
-              }
-
-              const res = await safeFetch(url.toString(), {
+              const campRes = await safeFetch(campUrl.toString(), {
                 method: 'GET',
                 headers: {
                   'Access-Token': accessToken,
                   'Content-Type': 'application/json',
                 },
               });
-              const payload = await res.json();
-              if (payload?.code === 0 && Array.isArray(payload?.data?.list) && payload.data.list.length > 0) {
-                console.log(`[TikTok Ads Sync] GMV Max report returned ${payload.data.list.length} rows for store ${singleStoreId}`);
-                for (const item of payload.data.list) {
-                  const roomId = item.dimensions?.room_id;
-                  const dateKey = item.dimensions?.stat_time_day ? String(item.dimensions.stat_time_day).slice(0, 10) : null;
-                  const metrics = item.metrics || {};
-                  const cost = Number(metrics.cost ?? metrics.net_cost ?? 0);
-                  if (!Number.isFinite(cost) || cost <= 0) continue;
+              const campData = await campRes.json();
+              if (campData?.code === 0 && Array.isArray(campData?.data?.list)) {
+                liveCampaignIds = campData.data.list.map((c) => String(c.campaign_id || '')).filter(Boolean);
+              }
+            } catch (campErr) {
+              console.warn(`[TikTok Ads Sync] gmv_max/campaign/get failed for store ${storePlatformId}:`, campErr.message);
+            }
 
-                  if (roomId) {
-                    const shop = findShopForSession(singleStoreId);
-                    recordSpend(roomId, shop.id, cost, metrics);
-                  } else if (dateKey) {
-                    const matchedSessions = knownSessionsByDate[dateKey] || [];
-                    if (matchedSessions.length > 0) {
-                      const gmvSessions = matchedSessions.filter((s) => s.gmv > 0);
-                      if (gmvSessions.length === 1) {
-                        recordSpend(gmvSessions[0].sessionId, gmvSessions[0].shopId, cost, metrics);
-                      } else if (gmvSessions.length > 1) {
-                        const totalGmv = gmvSessions.reduce((acc, s) => acc + s.gmv, 0);
-                        for (const s of gmvSessions) {
-                          const allocated = Number(((s.gmv / totalGmv) * cost).toFixed(2));
-                          recordSpend(s.sessionId, s.shopId, allocated, metrics);
-                        }
-                      } else {
-                        recordSpend(matchedSessions[0].sessionId, matchedSessions[0].shopId, cost, metrics);
-                      }
+            // 3. Query GMV Max report at room_id level with campaign_ids
+            const campBatches = liveCampaignIds.length > 0
+              ? Array.from({ length: Math.ceil(liveCampaignIds.length / 50) }, (_, i) => liveCampaignIds.slice(i * 50, (i + 1) * 50))
+              : [null];
+
+            for (const batch of campBatches) {
+              try {
+                const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
+                url.searchParams.set('advertiser_id', advertiserId);
+                url.searchParams.set('store_ids', JSON.stringify([storePlatformId]));
+                url.searchParams.set('dimensions', JSON.stringify(['campaign_id', 'room_id']));
+                url.searchParams.set('metrics', JSON.stringify(['cost', 'gross_revenue', 'orders']));
+                if (batch && batch.length > 0) {
+                  url.searchParams.set('filtering', JSON.stringify({ campaign_ids: batch }));
+                }
+                url.searchParams.set('start_date', startDate);
+                url.searchParams.set('end_date', endDate);
+                url.searchParams.set('page_size', '100');
+
+                const res = await safeFetch(url.toString(), {
+                  method: 'GET',
+                  headers: {
+                    'Access-Token': accessToken,
+                    'Content-Type': 'application/json',
+                  },
+                });
+                const payload = await res.json();
+                if (payload?.code === 0 && Array.isArray(payload?.data?.list) && payload.data.list.length > 0) {
+                  for (const item of payload.data.list) {
+                    const roomId = String(item.dimensions?.room_id || '').trim();
+                    const cost = Number(item.metrics?.cost ?? item.metrics?.net_cost ?? 0);
+                    const currency = String(item.metrics?.currency || defaultCurrency).trim().toUpperCase();
+                    if (roomId && Number.isFinite(cost) && cost > 0) {
+                      recordSpend(roomId, targetShop.id, cost, currency, item.metrics, advertiserId);
+                      foundGmvMaxSpend = true;
                     }
                   }
                 }
-                break; // Stop falling back for this store if successful
-              } else if (payload?.code !== 0) {
-                console.warn(`[TikTok Ads Sync] GMV Max error code ${payload?.code}: ${payload?.message}`);
+              } catch (gmvErr) {
+                console.warn(`[TikTok Ads Sync] GMV Max room report failed:`, gmvErr.message);
               }
-            } catch (gmvErr) {
-              console.warn(`[TikTok Ads Sync] GMV Max request failed: ${gmvErr.message}`);
+            }
+          }
+
+          // 4. Fallback Synchronous report ONLY if no GMV Max spend was found
+          if (!foundGmvMaxSpend) {
+            const reportConfigs = [
+              { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
+              { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
+              { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
+            ];
+
+            let syncReportList = null;
+            for (const cfg of reportConfigs) {
+              try {
+                const syncUrl = new URL(`${baseUrl}/open_api/${cfg.ver}/report/integrated/get/`);
+                syncUrl.searchParams.set('advertiser_id', advertiserId);
+                if (cfg.serviceType) syncUrl.searchParams.set('service_type', cfg.serviceType);
+                syncUrl.searchParams.set('report_type', 'BASIC');
+                syncUrl.searchParams.set('data_level', cfg.dataLevel);
+                syncUrl.searchParams.set('dimensions', JSON.stringify(cfg.dimensions));
+                syncUrl.searchParams.set('metrics', JSON.stringify(cfg.metrics));
+                syncUrl.searchParams.set('start_date', startDate);
+                syncUrl.searchParams.set('end_date', endDate);
+                syncUrl.searchParams.set('page_size', '1000');
+
+                const reportRes = await safeFetch(syncUrl.toString(), {
+                  method: 'GET',
+                  headers: {
+                    'Access-Token': accessToken,
+                    'Content-Type': 'application/json',
+                  },
+                });
+                const reportPayload = await reportRes.json();
+                if (reportPayload?.code === 0 && Array.isArray(reportPayload?.data?.list) && reportPayload.data.list.length > 0) {
+                  syncReportList = reportPayload.data.list;
+                  break;
+                }
+              } catch (syncErr) {
+                console.warn(`[TikTok Synchronous Report ${cfg.ver}] Error:`, syncErr.message);
+              }
+            }
+
+            if (Array.isArray(syncReportList) && syncReportList.length > 0) {
+              const matchedShop = matchedStores.length > 0 && targetShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
+                ? targetShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
+                : targetShops[0];
+              const defaultCurrency = matchedShop.region === 'VN' ? 'VND' : 'MYR';
+
+              for (const row of syncReportList) {
+                const rawDate = row.dimensions?.stat_time_day;
+                const dateKey = rawDate ? String(rawDate).slice(0, 10) : null;
+                const spend = Number(row.metrics?.spend ?? row.metrics?.stat_cost ?? row.metrics?.cost ?? 0);
+                const currency = String(row.metrics?.currency || defaultCurrency).trim().toUpperCase();
+
+                if (dateKey && Number.isFinite(spend) && spend > 0) {
+                  const matchedSessions = (knownSessionsByDate[dateKey] || []).filter((s) => s.shopId === matchedShop.id);
+                  if (matchedSessions.length > 0) {
+                    const gmvSessions = matchedSessions.filter((s) => s.gmv > 0);
+                    if (gmvSessions.length === 1) {
+                      recordSpend(gmvSessions[0].sessionId, matchedShop.id, spend, currency, row.metrics, advertiserId);
+                    } else if (gmvSessions.length > 1) {
+                      const totalGmv = gmvSessions.reduce((acc, s) => acc + s.gmv, 0);
+                      for (const s of gmvSessions) {
+                        const allocated = Number(((s.gmv / totalGmv) * spend).toFixed(2));
+                        recordSpend(s.sessionId, matchedShop.id, allocated, currency, row.metrics, advertiserId);
+                      }
+                    } else {
+                      recordSpend(matchedSessions[0].sessionId, matchedShop.id, spend, currency, row.metrics, advertiserId);
+                    }
+                  }
+                }
+              }
             }
           }
         }
+      }
 
-        // --- C. PERSIST ACCUMULATED SPEND INTO DATABASE ---
-        for (const item of sessionSpendAccumulator.values()) {
-          const shop = findShopForSession(item.shopId);
-          await db.query(`
-            INSERT INTO live_session_ads (shop_id, session_id, ads_cost, currency, source, advertiser_id, raw_data, updated_at)
-            VALUES (
-              :shopId,
-              :sessionId,
-              :adsCost,
-              :currency,
-              'api',
-              :advertiserId,
-              :rawData::jsonb,
-              NOW()
-            )
-            ON CONFLICT (shop_id, session_id) DO UPDATE
-            SET ads_cost = EXCLUDED.ads_cost,
-                currency = EXCLUDED.currency,
-                source = 'api',
-                advertiser_id = EXCLUDED.advertiser_id,
-                raw_data = EXCLUDED.raw_data,
-                updated_at = NOW()
-            WHERE live_session_ads.source != 'manual' OR live_session_ads.ads_cost IS NULL
-          `, {
-            replacements: {
-              shopId: item.shopId || shop.id,
-              sessionId: String(item.sessionId),
-              adsCost: Number(item.cost),
-              currency: shop.region === 'VN' ? 'VND' : 'MYR',
-              advertiserId,
-              rawData: JSON.stringify(item.rawMeta || {}),
-            },
-          });
-          results.push({
-            shop_id: item.shopId || shop.id,
-            session_id: String(item.sessionId),
-            ads_cost: Number(item.cost),
-          });
-        }
+      // Clean up previous API-synced ads for target shop(s) to remove obsolete misallocated ghost rows
+      if (shopId) {
+        await db.query(`
+          DELETE FROM live_session_ads
+          WHERE shop_id = :shopId AND source = 'api'
+        `, { replacements: { shopId: Number(shopId) } });
+      }
+
+      for (const item of sessionSpendAccumulator.values()) {
+        await db.query(`
+          INSERT INTO live_session_ads (shop_id, session_id, ads_cost, currency, source, advertiser_id, raw_data, updated_at)
+          VALUES (
+            :shopId,
+            :sessionId,
+            :adsCost,
+            :currency,
+            'api',
+            :advertiserId,
+            :rawData::jsonb,
+            NOW()
+          )
+          ON CONFLICT (shop_id, session_id) DO UPDATE
+          SET ads_cost = EXCLUDED.ads_cost,
+              currency = EXCLUDED.currency,
+              source = 'api',
+              advertiser_id = EXCLUDED.advertiser_id,
+              raw_data = EXCLUDED.raw_data,
+              updated_at = NOW()
+          WHERE live_session_ads.source != 'manual' OR live_session_ads.ads_cost IS NULL
+        `, {
+          replacements: {
+            shopId: item.shopId,
+            sessionId: String(item.sessionId),
+            adsCost: Number(item.cost),
+            currency: item.currency || 'USD',
+            advertiserId: item.advertiserId,
+            rawData: JSON.stringify(item.rawMeta || {}),
+          },
+        });
+        results.push({
+          shop_id: item.shopId,
+          session_id: String(item.sessionId),
+          ads_cost: Number(item.cost),
+          currency: item.currency || 'USD',
+        });
       }
 
       return results;
