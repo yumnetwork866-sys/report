@@ -277,9 +277,9 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       // Also find sessions from database orders and hosts if available
       const dbLiveSessions = await select(`
         SELECT DISTINCT s.shop_id, s.content_id AS session_id,
-               TO_CHAR(TO_TIMESTAMP(o.paid_time / 1000) AT TIME ZONE 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') AS session_date
+               TO_CHAR(o.create_time AT TIME ZONE 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') AS session_date
         FROM tiktok_affiliate_order_skus s
-        JOIN tiktok_affiliate_orders o ON o.order_id = s.affiliate_order_id
+        JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
         WHERE s.content_type = 'LIVE' AND s.content_id IS NOT NULL
           AND (:shopId::int IS NULL OR s.shop_id = :shopId)
       `, { shopId: shopId ? Number(shopId) : null });
