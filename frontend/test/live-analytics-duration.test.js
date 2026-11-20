@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   calculateDurationSeconds,
+  calculateGmvPerHour,
   extractSessionComments,
   formatLiveDuration,
   formatTotalDuration,
@@ -124,3 +125,19 @@ test('resolveLiveSessionSource returns false for shop internal and true for exte
     totalCommission: 1000,
   }), true);
 });
+
+test('calculateGmvPerHour computes GMV per hour from GMV and duration seconds', () => {
+  // 399 GMV over 3 hr 31 min 23 sec (12683 sec)
+  const gmvPerHour = calculateGmvPerHour(399, 12683);
+  assert.equal(Math.round(gmvPerHour * 100) / 100, 113.25);
+
+  // Uses explicit GMV per hour if provided
+  assert.equal(calculateGmvPerHour(399, 12683, 113.16), 113.16);
+
+  // Returns 0 for 0 GMV or 0 duration
+  assert.equal(calculateGmvPerHour(0, 3600), 0);
+  assert.equal(calculateGmvPerHour(100, 0), 0);
+  assert.equal(calculateGmvPerHour(null, 3600), 0);
+  assert.equal(calculateGmvPerHour(100, null), 0);
+});
+

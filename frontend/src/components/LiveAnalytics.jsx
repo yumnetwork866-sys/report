@@ -73,6 +73,7 @@ const SHOP_PALETTE = [
 ];
 import {
   calculateDurationSeconds,
+  calculateGmvPerHour,
   extractLiveGmv,
   extractSessionComments,
   findLivePerformanceForSession,
@@ -950,6 +951,11 @@ const LiveAnalytics = () => {
       const roas = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
         ? (sess.totalGmv / convertedAdsCost)
         : null;
+      const gmvPerHour = calculateGmvPerHour(
+        sess.totalGmv,
+        durationSec,
+        performance?.gmv_per_hour ?? performance?.overall?.gmv_per_hour,
+      );
 
       return {
         ...sess,
@@ -961,6 +967,7 @@ const LiveAnalytics = () => {
         firstTime,
         lastTime,
         durationSec,
+        gmvPerHour,
         host,
         hostSource,
         liveTitle: performance?.title || '',
@@ -1779,6 +1786,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colGmvPerHour')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAdsCost')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRoas')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
@@ -1788,7 +1796,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !sessionList.length ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1799,7 +1807,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredSessions.length ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={12}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noSessions')}
                       </div>
@@ -1881,6 +1889,11 @@ const LiveAnalytics = () => {
                       {formatMoney(session.totalGmv, session.currency)}
                     </td>
                     <td className="cell-number" style={{ fontWeight: 600 }}>
+                      {session.durationSec && session.durationSec > 0
+                        ? formatMoney(session.gmvPerHour, session.currency)
+                        : '—'}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 600 }}>
                       {session.adsCost !== null && session.adsCost !== undefined
                         ? formatMoney(session.adsCost, session.adsCurrency || session.currency)
                         : '—'}
@@ -1942,6 +1955,7 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
                   <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
                   <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colGmvPerHour')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAvgGmvPerSession')}</th>
                   <th className="cell-number">{t('liveAnalytics.channelGmvShare')}</th>
@@ -1951,7 +1965,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -1962,7 +1976,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noChannels')}
                       </div>
@@ -2019,6 +2033,11 @@ const LiveAnalytics = () => {
                       <td className="cell-number">{formatNumber(ch.totalQuantity)}</td>
                       <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
                         {formatMoney(ch.totalGmv, ch.currency)}
+                      </td>
+                      <td className="cell-number" style={{ fontWeight: 600 }}>
+                        {ch.totalDurationSec > 0
+                          ? formatMoney(ch.totalGmv / (ch.totalDurationSec / 3600), ch.currency)
+                          : '—'}
                       </td>
                       <td className="cell-number">
                         {ch.totalComments ? formatNumber(ch.totalComments) : '—'}
@@ -2417,6 +2436,14 @@ const LiveSessionDrawer = ({
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
                 <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
                   {formatMoney(session.totalGmv, session.currency)}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colGmvPerHour')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.durationSec && session.durationSec > 0
+                    ? formatMoney(session.gmvPerHour, session.currency)
+                    : '—'}
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>

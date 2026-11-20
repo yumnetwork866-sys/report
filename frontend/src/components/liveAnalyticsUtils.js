@@ -174,3 +174,16 @@ export const formatTotalDuration = (totalSeconds, language = 'vi') => {
   }
   return language === 'vi' ? `${Math.max(1, mins)} phút` : `${Math.max(1, mins)} mins`;
 };
+
+export const calculateGmvPerHour = (totalGmv, durationSec, explicitGmvPerHour = null) => {
+  if (explicitGmvPerHour !== null && explicitGmvPerHour !== undefined) {
+    const num = Number(explicitGmvPerHour);
+    if (Number.isFinite(num) && num >= 0) return num;
+  }
+  const gmv = Number(totalGmv);
+  const sec = Number(durationSec);
+  if (!Number.isFinite(gmv) || gmv <= 0 || !Number.isFinite(sec) || sec <= 0) return 0;
+  const hours = sec / 3600;
+  return hours > 0 ? (gmv / hours) : 0;
+};
+
