@@ -349,18 +349,12 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         // Endpoint: /open_api/v2.0/report/integrated/get/ and /open_api/v1.3/report/integrated/get/
         let syncReportList = null;
         const reportConfigs = [
-          // 1. Campaign level v2.0
-          { ver: 'v2.0', serviceType: 'AUCTION', dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 2. Campaign level v1.3
+          // 1. Campaign level v1.3 (known working on TikTok API)
           { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 3. Campaign level v2.0 without service_type
-          { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 4. Advertiser daily level v2.0
-          { ver: 'v2.0', serviceType: 'AUCTION', dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 5. Advertiser daily level v1.3
+          // 2. Advertiser daily level v1.3
           { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-          // 6. Advertiser daily level without service_type
-          { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend'] },
+          // 3. Campaign level v2.0 fallback
+          { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
         ];
 
         for (const cfg of reportConfigs) {
@@ -455,20 +449,15 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         const uniqueStoreIds = [...new Set(storeIds)];
         // TikTok GMV Max doc: store_ids Max size: 1 -> query each store separately
         for (const singleStoreId of uniqueStoreIds) {
-          // Try LIVE GMV Max dimension: room_id first, then with stat_time_day
+          // Try LIVE GMV Max dimension: campaign_id + room_id, then with stat_time_day
           const gmvConfigs = [
             {
-              dimensions: ['room_id'],
+              dimensions: ['campaign_id', 'room_id'],
               metrics: ['cost', 'net_cost', 'orders', 'gross_revenue', 'roi'],
               filtering: { gmv_max_promotion_types: ['LIVE'] },
             },
             {
-              dimensions: ['room_id'],
-              metrics: ['cost', 'net_cost', 'orders', 'gross_revenue', 'roi'],
-              filtering: null,
-            },
-            {
-              dimensions: ['room_id', 'stat_time_day'],
+              dimensions: ['campaign_id', 'room_id'],
               metrics: ['cost', 'gross_revenue', 'orders'],
               filtering: null,
             },
