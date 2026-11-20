@@ -1,6 +1,7 @@
 const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
 const { decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
+const { monitoredFetch } = require('./scheduledRunMonitorService');
 
 const getBusinessConfig = async (db = sequelize) => {
   try {
@@ -34,6 +35,7 @@ const getBusinessConfig = async (db = sequelize) => {
 };
 
 const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
+  const safeFetch = (input, options) => monitoredFetch(input, options, fetchImpl);
   const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
 
   return {
@@ -51,7 +53,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       const { appId, secret, baseUrl } = await getBusinessConfig(db);
       if (!code) throw new Error('Authorization code is required.');
 
-      const response = await fetchImpl(`${baseUrl}/open_api/v1.3/oauth2/access_token/`, {
+      const response = await safeFetch(`${baseUrl}/open_api/v1.3/oauth2/access_token/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -76,7 +78,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           const advUrl = new URL(`${baseUrl}/open_api/v1.3/oauth2/advertiser/get/`);
           advUrl.searchParams.set('app_id', appId);
           advUrl.searchParams.set('secret', secret);
-          const advRes = await fetchImpl(advUrl.toString(), {
+          const advRes = await safeFetch(advUrl.toString(), {
             method: 'GET',
             headers: {
               'Access-Token': access_token,
@@ -131,7 +133,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           const advUrl = new URL(`${baseUrl}/open_api/v1.3/oauth2/advertiser/get/`);
           advUrl.searchParams.set('app_id', appId);
           advUrl.searchParams.set('secret', secret);
-          const advRes = await fetchImpl(advUrl.toString(), {
+          const advRes = await safeFetch(advUrl.toString(), {
             method: 'GET',
             headers: {
               'Access-Token': auth.access_token,
@@ -197,7 +199,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             const advUrl = new URL(`${baseUrl}/open_api/${ver}/oauth2/advertiser/get/`);
             advUrl.searchParams.set('app_id', appId);
             advUrl.searchParams.set('secret', secret);
-            const advRes = await fetchImpl(advUrl.toString(), {
+            const advRes = await safeFetch(advUrl.toString(), {
               method: 'GET',
               headers: {
                 'Access-Token': accessToken,
@@ -374,7 +376,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             syncUrl.searchParams.set('end_date', endDate);
             syncUrl.searchParams.set('page_size', '1000');
 
-            const reportRes = await fetchImpl(syncUrl.toString(), {
+            const reportRes = await safeFetch(syncUrl.toString(), {
               method: 'GET',
               headers: {
                 'Access-Token': accessToken,
@@ -427,7 +429,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         try {
           const storeUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/store/list/`);
           storeUrl.searchParams.set('advertiser_id', advertiserId);
-          const storeRes = await fetchImpl(storeUrl.toString(), {
+          const storeRes = await safeFetch(storeUrl.toString(), {
             method: 'GET',
             headers: {
               'Access-Token': accessToken,
@@ -493,7 +495,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
                 url.searchParams.set('filtering', JSON.stringify(gmvCfg.filtering));
               }
 
-              const res = await fetchImpl(url.toString(), {
+              const res = await safeFetch(url.toString(), {
                 method: 'GET',
                 headers: {
                   'Access-Token': accessToken,
@@ -651,7 +653,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       url.searchParams.set('start_date', startDate);
       url.searchParams.set('end_date', endDate);
 
-      const res = await fetchImpl(url.toString(), {
+      const res = await safeFetch(url.toString(), {
         headers: {
           'Access-Token': accessToken,
           'Content-Type': 'application/json',

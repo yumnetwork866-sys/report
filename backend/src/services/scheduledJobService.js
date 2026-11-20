@@ -756,10 +756,55 @@ const jobHandlers = {
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_affiliate_video_performance' }),
   tiktok_ads_live_performance: async ({ signal, shopId } = {}) => {
     throwIfAborted(signal);
+    const shops = await connectedShops(shopId);
+    if (shops.length > 0) {
+      return runForShops(
+        async (shop) => {
+          throwIfAborted(signal);
+          const tiktokAdsService = require('./tiktokAdsService');
+          const synced = await tiktokAdsService.syncLiveSessionAds({ shopId: shop.id });
+          throwIfAborted(signal);
+          return {
+            synced_sessions: synced.length,
+            windows: [
+              {
+                module_type: 'ADS',
+                window_type: 'LIVE',
+                status: 'SUCCEEDED',
+                row_count: synced.length,
+              },
+            ],
+          };
+        },
+        signal,
+        shopId,
+        { jobKey: 'tiktok_ads_live_performance' },
+      );
+    }
     const tiktokAdsService = require('./tiktokAdsService');
     const results = await tiktokAdsService.syncLiveSessionAds({ shopId });
     throwIfAborted(signal);
-    return { synced_sessions: results.length, details: results };
+    return {
+      total: 1,
+      succeeded: 1,
+      failed: 0,
+      synced_sessions: results.length,
+      details: results,
+      results: [
+        {
+          status: 'SUCCEEDED',
+          synced_sessions: results.length,
+          windows: [
+            {
+              module_type: 'ADS',
+              window_type: 'LIVE',
+              status: 'SUCCEEDED',
+              row_count: results.length,
+            },
+          ],
+        },
+      ],
+    };
   },
   tiktok_auth: async () => {
     const { checkTokenHealth } = require('./authLogService');
