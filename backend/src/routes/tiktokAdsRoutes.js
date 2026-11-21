@@ -18,23 +18,30 @@ router.get('/oauth/url', requireAdmin, requirePermission('admin.shops.manage'), 
 // 2. Public OAuth Callback from TikTok Business Developers
 router.get('/oauth/callback', async (req, res) => {
   const authCode = req.query.auth_code || req.query.code;
+  const state = String(req.query.state || '');
   const frontendUrl = process.env.FRONTEND_URL || 'https://report.yumnetwork.vn';
+  const targetPath = state.includes('connections') || state.includes('ads')
+    ? '/manage/connections?tab=ads'
+    : '/tiktok/live';
 
   if (!authCode) {
-    return res.redirect(`${frontendUrl}/tiktok/live?ads_error=${encodeURIComponent('No auth code provided')}`);
+    const sep = targetPath.includes('?') ? '&' : '?';
+    return res.redirect(`${frontendUrl}${targetPath}${sep}ads_error=${encodeURIComponent('No auth code provided')}`);
   }
 
   try {
     await tiktokAdsService.handleOAuthCallback(authCode);
-    res.redirect(`${frontendUrl}/tiktok/live?ads_connected=true`);
+    const sep = targetPath.includes('?') ? '&' : '?';
+    res.redirect(`${frontendUrl}${targetPath}${sep}ads_connected=true`);
   } catch (err) {
     console.error('[TikTok Ads OAuth Callback Error]', err);
-    res.redirect(`${frontendUrl}/tiktok/live?ads_error=${encodeURIComponent(err.message)}`);
+    const sep = targetPath.includes('?') ? '&' : '?';
+    res.redirect(`${frontendUrl}${targetPath}${sep}ads_error=${encodeURIComponent(err.message)}`);
   }
 });
 
 // 3. Get connection status & connected advertiser accounts
-router.get('/status', requireAdmin, requireAnyPermission(['admin.shops.manage', 'shop.analytics.view']), async (_req, res) => {
+router.get('/status', requireAdmin, requireAnyPermission(['admin.shops.manage', 'shop.analytics.view', 'app.manage']), async (_req, res) => {
   try {
     const status = await tiktokAdsService.getStatus();
     res.json(status);
@@ -43,10 +50,51 @@ router.get('/status', requireAdmin, requireAnyPermission(['admin.shops.manage', 
   }
 });
 
-// 4. Get Ads cost for live sessions (auto-synced from TikTok API by session_id)
+// 3.1. List all TikTok Ads authorizations with accounts
+router.get('/authorizations', requireAdmin, requireAnyPermission(['admin.shops.manage', 'shop.analytics.view', 'app.manage']), async (_req, res) => {
+  try {
+    const result = await tiktokAdsService.getAuthorizations();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 3.2. Delete / disconnect an entire authorization
+router.delete('/authorizations/:id', requireAdmin, requirePermission('admin.shops.manage'), async (req, res) => {
+  try {
+    const result = await tiktokAdsService.deleteAuthorization(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 3.3. Remove a single advertiser ID from an authorization
+router.delete('/authorizations/:id/advertisers/:advertiserId', requireAdmin, requirePermission('admin.shops.manage'), async (req, res) => {
+  try {
+    const result = await tiktokAdsService.removeAdvertiser(req.params.id, req.params.advertiserId);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 3.4. Refresh / sync advertiser list for an authorization
+router.post('/authorizations/:id/sync', requireAdmin, requirePermission('admin.shops.manage'), async (req, res) => {
+  try {
+    const result = await tiktokAdsService.syncAuthorization(req.params.id);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// 4. Get Ads cost for live sessions (instant DB lookup, optional sync)
 const handleLiveSessions = async (req, res) => {
   try {
     const shopId = req.body?.shop_id || req.query.shop_id || null;
+    const sync = req.query.sync === 'true' || req.body?.sync === true;
     let sessionIds = req.body?.session_ids || req.query.session_ids;
     if (sessionIds && !Array.isArray(sessionIds)) {
       sessionIds = [sessionIds];
@@ -55,7 +103,7 @@ const handleLiveSessions = async (req, res) => {
       ? req.body.sessions
       : (typeof req.query.sessions === 'string' ? JSON.parse(req.query.sessions) : []);
 
-    const rows = await tiktokAdsService.getLiveSessionAds(shopId, { sessionIds, sessions });
+    const rows = await tiktokAdsService.getLiveSessionAds(shopId, { sync, sessionIds, sessions });
     res.json(rows);
   } catch (err) {
     res.status(500).json({ message: err.message });

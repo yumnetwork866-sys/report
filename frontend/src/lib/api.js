@@ -92,6 +92,24 @@ export function fetchTikTokAdsStatus(signal) {
   return apiRequest('/ads/status', { signal });
 }
 
+export function fetchTikTokAdsAuthorizations(signal) {
+  return apiRequest('/ads/authorizations', { signal });
+}
+
+export function deleteTikTokAdsAuthorization(id) {
+  return apiRequest(`/ads/authorizations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function removeTikTokAdvertiser(authId, advertiserId) {
+  return apiRequest(`/ads/authorizations/${encodeURIComponent(authId)}/advertisers/${encodeURIComponent(advertiserId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function syncTikTokAdsAuthorization(authId) {
+  return apiRequest(`/ads/authorizations/${encodeURIComponent(authId)}/sync`, { method: 'POST' });
+}
+
 export function fetchTikTokAdsAuthUrl(state, signal) {
   const params = state ? `?state=${encodeURIComponent(state)}` : '';
   return apiRequest(`/ads/oauth/url${params}`, { signal });

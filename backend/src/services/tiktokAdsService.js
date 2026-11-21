@@ -16,7 +16,7 @@ const getBusinessConfig = async (db = sequelize) => {
       let secret = '';
       try {
         secret = decryptPartnerToken(rows[0].app_secret_encrypted);
-      } catch (_e) {}
+      } catch {}
       return {
         appId: rows[0].app_key,
         secret: secret || process.env.TIKTOK_BUSINESS_SECRET || '01ed165188d088f5fcf477d3b699cd90a1f45365',
@@ -24,7 +24,7 @@ const getBusinessConfig = async (db = sequelize) => {
         baseUrl: process.env.TIKTOK_BUSINESS_API_BASE_URL || 'https://business-api.tiktok.com',
       };
     }
-  } catch (_err) {}
+  } catch {}
 
   return {
     appId: process.env.TIKTOK_BUSINESS_APP_ID || '7709534514481283092',
@@ -37,6 +37,8 @@ const getBusinessConfig = async (db = sequelize) => {
 const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
   const safeFetch = (input, options) => monitoredFetch(input, options, fetchImpl);
   const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
+  let syncPromise = null;
+  let lastSyncAt = 0;
 
   return {
     async getAuthUrl(state = '') {
@@ -73,7 +75,10 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         throw new Error('Access token was not returned by TikTok Ads API.');
       }
 
-      if (!Array.isArray(advertiser_ids) || !advertiser_ids.length) {
+      let advertiserDetails = [];
+      if (Array.isArray(advertiser_ids) && advertiser_ids.length) {
+        advertiserDetails = advertiser_ids.map((id) => ({ id: String(id), name: null }));
+      } else {
         try {
           const advUrl = new URL(`${baseUrl}/open_api/v1.3/oauth2/advertiser/get/`);
           advUrl.searchParams.set('app_id', appId);
@@ -88,6 +93,10 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           const advData = await advRes.json();
           if (advData?.code === 0 && Array.isArray(advData?.data?.list)) {
             advertiser_ids = advData.data.list.map((a) => String(a.advertiser_id || a.advertiserId || a)).filter(Boolean);
+            advertiserDetails = advData.data.list.map((a) => ({
+              id: String(a.advertiser_id || a.advertiserId || ''),
+              name: a.advertiser_name || a.name || null,
+            })).filter((a) => Boolean(a.id));
           }
         } catch (advErr) {
           console.warn('[TikTok Ads] Could not fetch advertiser list in callback:', advErr.message);
@@ -95,13 +104,14 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       }
 
       await db.query(`
-        INSERT INTO tiktok_ads_authorizations (app_id, access_token, advertiser_ids, scope, updated_at)
-        VALUES (:appId, :accessToken, :advertiserIds::jsonb, :scope, NOW())
+        INSERT INTO tiktok_ads_authorizations (app_id, access_token, advertiser_ids, advertiser_details, scope, updated_at)
+        VALUES (:appId, :accessToken, :advertiserIds::jsonb, :advertiserDetails::jsonb, :scope, NOW())
       `, {
         replacements: {
           appId,
           accessToken: access_token,
           advertiserIds: JSON.stringify(advertiser_ids),
+          advertiserDetails: JSON.stringify(advertiserDetails),
           scope: String(scope || ''),
         },
       });
@@ -151,7 +161,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
               `, { replacements: { advertiserIds: JSON.stringify(advertiserIds), id: auth.id } });
             }
           }
-        } catch (_advErr) {}
+        } catch {}
       }
 
       return {
@@ -162,7 +172,165 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       };
     },
 
-    async getLiveSessionAds(shopId = null, { sync = true, sessionIds = [], sessions = [] } = {}) {
+    async getAuthorizations({ fetchDetails = true } = {}) {
+      const rows = await select(`
+        SELECT id, app_id, access_token, advertiser_ids, advertiser_details, scope, created_at, updated_at
+        FROM tiktok_ads_authorizations
+        ORDER BY updated_at DESC
+      `);
+      if (!rows.length) {
+        return { authorizations: [], totalAdvertisers: 0 };
+      }
+
+      const { appId, secret, baseUrl } = await getBusinessConfig(db);
+      const authorizations = [];
+      let totalAdvertisers = 0;
+
+      for (const row of rows) {
+        let rawIds = Array.isArray(row.advertiser_ids)
+          ? row.advertiser_ids
+          : (typeof row.advertiser_ids === 'string' ? JSON.parse(row.advertiser_ids || '[]') : []);
+
+        let rawDetails = Array.isArray(row.advertiser_details)
+          ? row.advertiser_details
+          : (typeof row.advertiser_details === 'string' ? JSON.parse(row.advertiser_details || '[]') : []);
+
+        const advMap = new Map();
+        rawDetails.forEach((d) => {
+          if (d && d.id) {
+            advMap.set(String(d.id), { id: String(d.id), name: d.name || null });
+          }
+        });
+        rawIds.forEach((id) => {
+          const key = String(id);
+          if (!advMap.has(key)) {
+            advMap.set(key, { id: key, name: null });
+          }
+        });
+
+        const hasMissingNames = Array.from(advMap.values()).some((a) => !a.name);
+        if (fetchDetails && hasMissingNames && row.access_token && appId && secret) {
+          try {
+            const advUrl = new URL(`${baseUrl}/open_api/v1.3/oauth2/advertiser/get/`);
+            advUrl.searchParams.set('app_id', appId);
+            advUrl.searchParams.set('secret', secret);
+            const advRes = await safeFetch(advUrl.toString(), {
+              method: 'GET',
+              headers: {
+                'Access-Token': row.access_token,
+                'Content-Type': 'application/json',
+              },
+            });
+            const advData = await advRes.json();
+            if (advData?.code === 0 && Array.isArray(advData?.data?.list)) {
+              for (const a of advData.data.list) {
+                const aId = String(a.advertiser_id || a.advertiserId || '');
+                if (aId) {
+                  advMap.set(aId, {
+                    id: aId,
+                    name: a.advertiser_name || a.name || null,
+                  });
+                }
+              }
+              const currentIds = Array.from(advMap.keys());
+              const currentDetails = Array.from(advMap.values());
+              await db.query(`
+                UPDATE tiktok_ads_authorizations
+                SET advertiser_ids = :currentIds::jsonb, advertiser_details = :currentDetails::jsonb, updated_at = NOW()
+                WHERE id = :id
+              `, {
+                replacements: {
+                  currentIds: JSON.stringify(currentIds),
+                  currentDetails: JSON.stringify(currentDetails),
+                  id: row.id,
+                },
+              });
+            }
+          } catch (err) {
+            console.warn(`[TikTok Ads] Failed to fetch advertiser details for auth ${row.id}:`, err?.message);
+          }
+        }
+
+        const advertisers = Array.from(advMap.values());
+        totalAdvertisers += advertisers.length;
+
+        authorizations.push({
+          id: row.id,
+          appId: row.app_id,
+          scope: row.scope,
+          advertiserCount: advertisers.length,
+          advertisers,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        });
+      }
+
+      return { authorizations, totalAdvertisers };
+    },
+
+    async deleteAuthorization(id) {
+      const numericId = Number(id);
+      if (!numericId) throw new Error('Authorization ID is required.');
+      await db.query(`DELETE FROM tiktok_ads_authorizations WHERE id = :id`, {
+        replacements: { id: numericId },
+      });
+      return { success: true };
+    },
+
+    async removeAdvertiser(authId, advertiserId) {
+      const numericId = Number(authId);
+      const advId = String(advertiserId || '').trim();
+      if (!numericId || !advId) throw new Error('Authorization ID and Advertiser ID are required.');
+      const rows = await select(`SELECT id, advertiser_ids, advertiser_details FROM tiktok_ads_authorizations WHERE id = :id`, { id: numericId });
+      if (!rows.length) throw new Error('Authorization not found.');
+      let ids = Array.isArray(rows[0].advertiser_ids) ? rows[0].advertiser_ids : JSON.parse(rows[0].advertiser_ids || '[]');
+      ids = ids.filter((i) => String(i) !== advId);
+      let details = Array.isArray(rows[0].advertiser_details) ? rows[0].advertiser_details : JSON.parse(rows[0].advertiser_details || '[]');
+      details = details.filter((d) => String(d?.id || d) !== advId);
+      await db.query(`
+        UPDATE tiktok_ads_authorizations
+        SET advertiser_ids = :ids::jsonb, advertiser_details = :details::jsonb, updated_at = NOW()
+        WHERE id = :id
+      `, { replacements: { ids: JSON.stringify(ids), details: JSON.stringify(details), id: numericId } });
+      return { success: true, remaining: ids.length };
+    },
+
+    async syncAuthorization(authId) {
+      const numericId = Number(authId);
+      if (!numericId) throw new Error('Authorization ID is required.');
+      const rows = await select(`SELECT id, app_id, access_token, advertiser_ids FROM tiktok_ads_authorizations WHERE id = :id`, { id: numericId });
+      if (!rows.length) throw new Error('Authorization not found.');
+      const { appId, secret, baseUrl } = await getBusinessConfig(db);
+      const advUrl = new URL(`${baseUrl}/open_api/v1.3/oauth2/advertiser/get/`);
+      advUrl.searchParams.set('app_id', appId);
+      advUrl.searchParams.set('secret', secret);
+      const advRes = await safeFetch(advUrl.toString(), {
+        method: 'GET',
+        headers: {
+          'Access-Token': rows[0].access_token,
+          'Content-Type': 'application/json',
+        },
+      });
+      const advData = await advRes.json();
+      if (advData?.code !== 0) throw new Error(advData?.message || 'TikTok API error');
+      const list = Array.isArray(advData?.data?.list) ? advData.data.list : [];
+      const ids = list.map((a) => String(a.advertiser_id || a.advertiserId || '')).filter(Boolean);
+      const details = list.map((a) => ({
+        id: String(a.advertiser_id || a.advertiserId || ''),
+        name: a.advertiser_name || a.name || null,
+      })).filter((a) => Boolean(a.id));
+      await db.query(`
+        UPDATE tiktok_ads_authorizations
+        SET advertiser_ids = :ids::jsonb, advertiser_details = :details::jsonb, updated_at = NOW()
+        WHERE id = :id
+      `, { replacements: { ids: JSON.stringify(ids), details: JSON.stringify(details), id: numericId } });
+      return {
+        id: numericId,
+        advertisers: details,
+      };
+    },
+
+    async getLiveSessionAds(shopId = null, { sync = false, sessionIds = [], sessions = [] } = {}) {
       if (sync) {
         try {
           await this.syncLiveSessionAds({ shopId, sessionIds, sessions });
@@ -178,11 +346,23 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       `, { shopId: shopId ? Number(shopId) : null });
     },
 
-    async syncLiveSessionAds({ shopId = null, sessionIds = [], sessions = [] } = {}) {
-      const authRows = await select(`
-        SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations ORDER BY updated_at DESC
-      `);
-      if (!authRows.length) return [];
+    async syncLiveSessionAds({ shopId = null, sessionIds = [], sessions = [], force = false } = {}) {
+      if (syncPromise) {
+        return syncPromise;
+      }
+      if (!force && Date.now() - lastSyncAt < 60 * 1000) {
+        return select(`
+          SELECT shop_id, session_id, ads_cost, currency, source, advertiser_id, updated_at
+          FROM live_session_ads
+          WHERE (:shopId::int IS NULL OR shop_id = :shopId)
+        `, { shopId: shopId ? Number(shopId) : null });
+      }
+
+      const runSync = async () => {
+        const authRows = await select(`
+          SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations ORDER BY updated_at DESC
+        `);
+        if (!authRows.length) return [];
 
       const { appId, secret, baseUrl } = await getBusinessConfig(db);
       const authList = [];
@@ -241,23 +421,24 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         return [];
       }
 
-      let targetShops = [];
-      if (shopId) {
-        targetShops = await select(`
-          SELECT id, name, platform_shop_id, region
-          FROM tiktok_shops
-          WHERE id = :shopId AND platform_shop_id IS NOT NULL
-        `, { shopId: Number(shopId) });
-      } else {
-        targetShops = await select(`
+      let allShops = [];
+      try {
+        allShops = await select(`
           SELECT id, name, platform_shop_id, region
           FROM tiktok_shops
           WHERE platform_shop_id IS NOT NULL
         `);
+      } catch (_shopErr) {
+        allShops = [];
       }
 
+      if (!allShops.length) return [];
+      const allShopsByPlatformId = new Map(allShops.map((s) => [String(s.platform_shop_id), s]));
+      const targetShops = shopId
+        ? allShops.filter((s) => Number(s.id) === Number(shopId))
+        : allShops;
+
       if (!targetShops.length) return [];
-      const targetShopsByPlatformId = new Map(targetShops.map((s) => [String(s.platform_shop_id), s]));
 
       const results = [];
       const now = new Date();
@@ -267,7 +448,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         try {
           const d = typeof dateOrEpoch === 'number' ? new Date(dateOrEpoch) : new Date(dateOrEpoch);
           return d.toLocaleDateString('en-CA', { timeZone });
-        } catch (_e) {
+        } catch {
           const d = new Date(dateOrEpoch);
           return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
         }
@@ -276,15 +457,29 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       const thirtyDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
       const startDate = formatDate(thirtyDaysAgo);
 
-      // Map sessions from database orders and hosts for fallback
+      // Map sessions from database orders, performances and hosts for accurate shop attribution
       const dbLiveSessions = await select(`
         SELECT DISTINCT s.shop_id, s.content_id AS session_id,
                TO_CHAR(o.create_time AT TIME ZONE 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') AS session_date
         FROM tiktok_affiliate_order_skus s
         JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
         WHERE s.content_type = 'LIVE' AND s.content_id IS NOT NULL
-          AND (:shopId::int IS NULL OR s.shop_id = :shopId)
-      `, { shopId: shopId ? Number(shopId) : null });
+      `);
+
+      let dbPerformances = [];
+      try {
+        dbPerformances = await select(`
+          SELECT DISTINCT shop_id, session_id
+          FROM live_session_performances
+          WHERE session_id IS NOT NULL
+        `);
+      } catch (_perfErr) {
+        dbPerformances = [];
+      }
+
+      const sessionToShopMap = new Map();
+      dbLiveSessions.forEach((r) => sessionToShopMap.set(String(r.session_id), Number(r.shop_id)));
+      dbPerformances.forEach((r) => sessionToShopMap.set(String(r.session_id), Number(r.shop_id)));
 
       const knownSessionsByDate = {};
       const registerSessionDate = (sid, spId, dateStr, gmv = 0) => {
@@ -305,6 +500,9 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         sessions.forEach((s) => {
           const sid = s.session_id || s.sessionId || s.live_id || s.id;
           const spId = s.shop_id || s.shopId || (targetShops[0]?.id || 1);
+          if (sid && spId) {
+            sessionToShopMap.set(String(sid), Number(spId));
+          }
           const gmv = Number(s.gmv?.amount || s.gmv || s.revenue?.amount || s.revenue || 0);
           if (s.start_time || s.startTime) {
             const timeNum = Number(s.start_time || s.startTime);
@@ -328,10 +526,14 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       const sessionSpendAccumulator = new Map();
       const recordSpend = (sId, spId, amount, currency, rawMeta = {}, advId = null) => {
         if (!sId || !Number.isFinite(amount) || amount <= 0) return;
-        const key = `${spId}:${sId}`;
+        const resolvedShopId = sessionToShopMap.get(String(sId)) || spId;
+        if (shopId && Number(resolvedShopId) !== Number(shopId)) {
+          return;
+        }
+        const key = `${resolvedShopId}:${sId}`;
         const current = sessionSpendAccumulator.get(key) || {
           sessionId: String(sId),
-          shopId: spId,
+          shopId: resolvedShopId,
           cost: 0,
           currency: currency || 'USD',
           advertiserId: advId,
@@ -368,15 +570,19 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             console.warn(`[TikTok Ads Sync] gmv_max/store/list failed: ${storeErr.message}`);
           }
 
-          // Match stores with target shops
+          // Match stores with all system shops
           let matchedStores = rawStores.filter((st) => {
             const sId = String(st.store_id || st.id || '');
-            return targetShopsByPlatformId.has(sId);
+            return allShopsByPlatformId.has(sId);
           });
 
           // Test/direct compatibility when store/list returns empty but single shop is queried
           if (!matchedStores.length && !rawStores.length && shopId && targetShops.length === 1) {
             matchedStores = [{ store_id: targetShops[0].platform_shop_id }];
+          }
+
+          if (!matchedStores.length && !rawStores.length) {
+            matchedStores = targetShops.map((s) => ({ store_id: s.platform_shop_id }));
           }
 
           // If advertiser has stores but none match target shops, skip to prevent cross-shop attribution
@@ -388,7 +594,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
 
           for (const store of matchedStores) {
             const storePlatformId = String(store.store_id || store.id || '');
-            const targetShop = targetShopsByPlatformId.get(storePlatformId) || targetShops[0];
+            const targetShop = allShopsByPlatformId.get(storePlatformId) || targetShops[0];
             const defaultCurrency = targetShop.region === 'VN' ? 'VND' : 'MYR';
 
             // 2. Fetch LIVE_GMV_MAX campaigns for this specific store
@@ -448,7 +654,8 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
                     const cost = Number(item.metrics?.cost ?? item.metrics?.net_cost ?? 0);
                     const currency = String(item.metrics?.currency || defaultCurrency).trim().toUpperCase();
                     if (roomId && Number.isFinite(cost) && cost > 0) {
-                      recordSpend(roomId, targetShop.id, cost, currency, item.metrics, advertiserId);
+                      const actualShopId = sessionToShopMap.get(roomId) || targetShop.id;
+                      recordSpend(roomId, actualShopId, cost, currency, item.metrics, advertiserId);
                       foundGmvMaxSpend = true;
                     }
                   }
@@ -499,8 +706,8 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             }
 
             if (Array.isArray(syncReportList) && syncReportList.length > 0) {
-              const matchedShop = matchedStores.length > 0 && targetShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
-                ? targetShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
+              const matchedShop = matchedStores.length > 0 && allShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
+                ? allShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
                 : targetShops[0];
               const defaultCurrency = matchedShop.region === 'VN' ? 'VND' : 'MYR';
 
@@ -533,12 +740,18 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         }
       }
 
-      // Clean up previous API-synced ads for target shop(s) to remove obsolete misallocated ghost rows
+      // Clean up previous API-synced ads for target shop(s) ONLY if we have freshly synced rows
       if (shopId) {
-        await db.query(`
-          DELETE FROM live_session_ads
-          WHERE shop_id = :shopId AND source = 'api'
-        `, { replacements: { shopId: Number(shopId) } });
+        const currentSessionIds = Array.from(sessionSpendAccumulator.values())
+          .filter((item) => Number(item.shopId) === Number(shopId))
+          .map((item) => String(item.sessionId));
+
+        if (currentSessionIds.length > 0) {
+          await db.query(`
+            DELETE FROM live_session_ads
+            WHERE shop_id = :shopId AND source = 'api' AND session_id NOT IN (:sessionIds)
+          `, { replacements: { shopId: Number(shopId), sessionIds: currentSessionIds } });
+        }
       }
 
       for (const item of sessionSpendAccumulator.values()) {
@@ -581,7 +794,14 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       }
 
       return results;
-    },
+    };
+
+    syncPromise = runSync().finally(() => {
+      lastSyncAt = Date.now();
+      syncPromise = null;
+    });
+    return syncPromise;
+  },
 
     async saveLiveSessionAds({ shopId, sessionId, adsCost, currency = 'MYR', source = 'manual', advertiserId = null }) {
       const numericShopId = Number(shopId);

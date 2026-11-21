@@ -676,3 +676,58 @@
 body > .koc-drawer-backdrop {
   z-index: 11000;
 }
+
+/* Live Analytics Sticky Table & Freeze Header (like Google Sheets) */
+.live-analytics__section--flush,
+.live-analytics__section:has(.live-analytics__table-wrap) {
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.live-analytics__section--flush .live-analytics__table-wrap,
+.live-analytics__section:has(.live-analytics__table-wrap) .live-analytics__table-wrap {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.live-analytics__section--flush .pagination,
+.live-analytics__section:has(.live-analytics__table-wrap) .pagination {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--color-border);
+  margin: 0;
+}
+
+.live-analytics__table-wrap {
+  position: relative;
+  max-height: min(720px, calc(100vh - 180px));
+  overflow: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-xs);
+  overscroll-behavior: auto;
+}
+
+.live-analytics__table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 12px 16px;
+  vertical-align: middle;
+  background: var(--color-surface-muted, #f8fafc);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.live-analytics__table-wrap .data-table th,
+.live-analytics__table-wrap .data-table td {
+  border-left: none;
+  border-right: none;
+}

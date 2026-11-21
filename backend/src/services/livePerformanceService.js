@@ -186,6 +186,122 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
     .filter((session) => session.live_id);
 };
 
+const saveLiveSessionPerformances = async (shopId, lives, { db = sequelize, rawSessions = [] } = {}) => {
+  if (!shopId || !Array.isArray(lives) || lives.length === 0 || !db?.query) return 0;
+  const rawMap = new Map();
+  if (Array.isArray(rawSessions)) {
+    rawSessions.forEach((s) => {
+      if (s?.id) rawMap.set(String(s.id).trim(), s);
+    });
+  }
+
+  let count = 0;
+  for (const live of lives) {
+    const sessionId = String(live.live_id || live.id || '').trim();
+    if (!sessionId) continue;
+    const raw = rawMap.get(sessionId) || live.raw_data || {};
+    const duration = live.duration_seconds ?? live.duration ?? null;
+
+    await db.query(`
+      INSERT INTO live_session_performances (
+        shop_id, session_id, title, creator_username, creator_nickname,
+        author_type, start_time, end_time, duration_seconds, total_comments,
+        hashtags, interaction_performance, raw_data, updated_at
+      ) VALUES (
+        :shopId, :sessionId, :title, :creatorUsername, :creatorNickname,
+        :authorType, :startTime, :endTime, :durationSeconds, :totalComments,
+        :hashtags::jsonb, :interactionPerformance::jsonb, :rawData::jsonb, NOW()
+      )
+      ON CONFLICT (shop_id, session_id) DO UPDATE SET
+        title = COALESCE(NULLIF(EXCLUDED.title, ''), live_session_performances.title),
+        creator_username = COALESCE(NULLIF(EXCLUDED.creator_username, ''), live_session_performances.creator_username),
+        creator_nickname = COALESCE(NULLIF(EXCLUDED.creator_nickname, ''), live_session_performances.creator_nickname),
+        author_type = COALESCE(NULLIF(EXCLUDED.author_type, ''), live_session_performances.author_type),
+        start_time = COALESCE(EXCLUDED.start_time, live_session_performances.start_time),
+        end_time = COALESCE(EXCLUDED.end_time, live_session_performances.end_time),
+        duration_seconds = COALESCE(EXCLUDED.duration_seconds, live_session_performances.duration_seconds),
+        total_comments = COALESCE(EXCLUDED.total_comments, live_session_performances.total_comments),
+        hashtags = CASE WHEN jsonb_array_length(EXCLUDED.hashtags) > 0 THEN EXCLUDED.hashtags ELSE live_session_performances.hashtags END,
+        interaction_performance = COALESCE(EXCLUDED.interaction_performance, live_session_performances.interaction_performance),
+        raw_data = CASE WHEN EXCLUDED.raw_data != '{}'::jsonb THEN EXCLUDED.raw_data ELSE live_session_performances.raw_data END,
+        updated_at = NOW()
+    `, {
+      replacements: {
+        shopId: Number(shopId),
+        sessionId,
+        title: live.title || null,
+        creatorUsername: live.creator_username || null,
+        creatorNickname: live.creator_nickname || null,
+        authorType: live.author_type || live.creator_author_type || null,
+        startTime: live.start_time ? Number(live.start_time) : null,
+        endTime: live.end_time ? Number(live.end_time) : null,
+        durationSeconds: duration !== null && Number.isFinite(Number(duration)) ? Number(duration) : null,
+        totalComments: live.total_comments !== null && Number.isFinite(Number(live.total_comments)) ? Number(live.total_comments) : null,
+        hashtags: JSON.stringify(Array.isArray(live.hashtags) ? live.hashtags : []),
+        interactionPerformance: live.interaction_performance ? JSON.stringify(live.interaction_performance) : null,
+        rawData: JSON.stringify(raw),
+      },
+      type: QueryTypes.INSERT,
+    });
+    count += 1;
+  }
+  return count;
+};
+
+const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequelize } = {}) => {
+  if (!shopId || !db?.query) return [];
+  const startEpoch = startDate ? Date.parse(`${startDate}T00:00:00.000Z`) - 24 * 3600 * 1000 : null;
+  const endEpoch = endDate ? Date.parse(`${endDate}T23:59:59.999Z`) + 24 * 3600 * 1000 : null;
+
+  try {
+    const rows = await db.query(`
+      SELECT shop_id, session_id, title, creator_username, creator_nickname,
+             author_type, start_time, end_time, duration_seconds, total_comments,
+             hashtags, interaction_performance, raw_data, updated_at
+      FROM live_session_performances
+      WHERE shop_id = :shopId
+        AND (:startEpoch::BIGINT IS NULL OR start_time IS NULL OR end_time IS NULL OR end_time >= :startEpoch)
+        AND (:endEpoch::BIGINT IS NULL OR start_time IS NULL OR start_time <= :endEpoch)
+      ORDER BY start_time DESC NULLS LAST
+    `, {
+      replacements: {
+        shopId: Number(shopId),
+        startEpoch,
+        endEpoch,
+      },
+      type: QueryTypes.SELECT,
+    });
+
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const hosts = await loadHashtagHosts(db).catch(() => []);
+    return rows.map((row) => {
+      const title = String(row.title || '').trim();
+      const duration = row.duration_seconds !== null ? Number(row.duration_seconds) : null;
+      return {
+        live_id: row.session_id,
+        id: row.session_id,
+        shop_id: row.shop_id,
+        title,
+        creator_username: row.creator_username || null,
+        creator_nickname: row.creator_nickname || null,
+        author_type: row.author_type || null,
+        creator_author_type: row.author_type || null,
+        start_time: row.start_time ? Number(row.start_time) : null,
+        end_time: row.end_time ? Number(row.end_time) : null,
+        duration,
+        duration_seconds: duration,
+        hashtags: Array.isArray(row.hashtags) ? row.hashtags : extractHashtags(title),
+        auto_host: resolveAutoHost(title, hosts),
+        total_comments: row.total_comments !== null ? Number(row.total_comments) : null,
+        interaction_performance: row.interaction_performance || null,
+      };
+    });
+  } catch (err) {
+    console.warn(`[livePerformanceService] Failed to load persisted sessions for shop ${shopId}:`, err?.message);
+    return [];
+  }
+};
+
 const loadShopLivePerformance = async ({
   shop,
   startDate,
@@ -195,24 +311,69 @@ const loadShopLivePerformance = async ({
   fetchImpl,
   performanceLoader,
 }) => {
-  const sessions = await fetchShopLiveSessions({
-    shop,
-    startDate,
-    endDate,
-    currency,
-    fetchImpl,
-    performanceLoader,
+  let apiLives = [];
+  let apiError = null;
+  try {
+    const rawSessions = await fetchShopLiveSessions({
+      shop,
+      startDate,
+      endDate,
+      currency,
+      fetchImpl,
+      performanceLoader,
+    });
+    apiLives = await buildLiveSessions(rawSessions, { db });
+    if (apiLives.length > 0 && shop?.id) {
+      await saveLiveSessionPerformances(shop.id, apiLives, { db, rawSessions }).catch((err) => {
+        console.error('[livePerformanceService] Error saving live sessions to DB:', err?.message);
+      });
+    }
+  } catch (err) {
+    apiError = err;
+    console.warn(`[livePerformanceService] TikTok Compass API fetch failed for shop ${shop?.id}:`, err?.message);
+  }
+
+  // Load persisted sessions from DB to merge or fallback
+  const dbLives = shop?.id ? await loadPersistedLiveSessions(shop.id, { startDate, endDate, db }) : [];
+
+  if (apiError && !dbLives.length) {
+    throw apiError;
+  }
+
+  // Merge: dbLives as base, overlaid by apiLives
+  const mergedMap = new Map();
+  dbLives.forEach((live) => mergedMap.set(String(live.live_id), live));
+
+  apiLives.forEach((apiLive) => {
+    const existing = mergedMap.get(String(apiLive.live_id));
+    if (existing) {
+      mergedMap.set(String(apiLive.live_id), {
+        ...existing,
+        ...apiLive,
+        duration: apiLive.duration ?? existing.duration,
+        duration_seconds: apiLive.duration_seconds ?? existing.duration_seconds,
+        start_time: apiLive.start_time ?? existing.start_time,
+        end_time: apiLive.end_time ?? existing.end_time,
+        title: apiLive.title || existing.title,
+        auto_host: apiLive.auto_host || existing.auto_host,
+      });
+    } else {
+      mergedMap.set(String(apiLive.live_id), apiLive);
+    }
   });
-  return { lives: await buildLiveSessions(sessions, { db }) };
+
+  return { lives: [...mergedMap.values()] };
 };
 
 module.exports = {
   buildLiveSessions,
   fetchShopLiveSessions,
   loadHashtagHosts,
+  loadPersistedLiveSessions,
   loadShopLivePerformance,
   mergeSessions,
   resolveAutoHost,
+  saveLiveSessionPerformances,
   toEpochMs,
   __test: {
     extractHashtags,

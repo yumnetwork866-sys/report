@@ -14,12 +14,15 @@ import {
 import {
   ChevronDown,
   Clock,
+  Megaphone,
   MessageSquare,
-  Pencil,
   Package,
+  Pencil,
+  Percent,
   Radio,
   Search,
   ShoppingBag,
+  Target,
   TrendingUp,
   UserRound,
   Users,
@@ -557,6 +560,7 @@ const LiveAnalytics = () => {
 
   useEffect(() => {
     if (!Array.isArray(livePerformances) || livePerformances.length === 0) return;
+    if (sessionAdsMap && Object.keys(sessionAdsMap).length > 0) return;
     const controller = new AbortController();
     const compactSessions = livePerformances.map((lp) => ({
       session_id: lp.live_id || lp.id,
@@ -580,7 +584,7 @@ const LiveAnalytics = () => {
       .catch(() => {});
 
     return () => controller.abort();
-  }, [livePerformances, selectedShopId]);
+  }, [livePerformances, selectedShopId, sessionAdsMap]);
 
   const { livePerformanceByShopSession, livePerformancesByShop } = useMemo(() => {
     const bySession = new Map();
@@ -952,6 +956,16 @@ const LiveAnalytics = () => {
       const roas = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
         ? (sess.totalGmv / convertedAdsCost)
         : null;
+      const costRevenueRatio = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
+        ? (convertedAdsCost / sess.totalGmv) * 100
+        : null;
+      const orderCount = sess.orderIds.size;
+      const closingRate = (totalComments && totalComments > 0 && orderCount > 0)
+        ? (orderCount / totalComments) * 100
+        : null;
+      const aov = orderCount > 0
+        ? (sess.totalGmv / orderCount)
+        : 0;
       const gmvPerHour = calculateGmvPerHour(
         sess.totalGmv,
         durationSec,
@@ -973,12 +987,15 @@ const LiveAnalytics = () => {
         hostSource,
         liveTitle: performance?.title || '',
         hashtags: performance?.hashtags || [],
-        orderCount: sess.orderIds.size,
+        orderCount,
         totalComments,
         adsCost: rawAdsCost,
         adsCurrency,
         convertedAdsCost,
         roas,
+        costRevenueRatio,
+        closingRate,
+        aov,
         adsSource: adsRecord?.source || null,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
       };
@@ -1041,6 +1058,59 @@ const LiveAnalytics = () => {
   const totalLiveComments = useMemo(() => (
     sessionList.reduce((sum, s) => sum + (s.totalComments || 0), 0)
   ), [sessionList]);
+
+  // Total live duration across all sessions (seconds)
+  const totalLiveDurationSec = useMemo(() => (
+    sessionList.reduce((sum, s) => sum + (s.durationSec || 0), 0)
+  ), [sessionList]);
+
+  // Overall GMV per hour
+  const overallGmvPerHour = useMemo(() => {
+    const hours = totalLiveDurationSec / 3600;
+    return hours > 0 ? (liveGmv / hours) : 0;
+  }, [liveGmv, totalLiveDurationSec]);
+
+  // Total live ads cost across sessions (converted to display currency)
+  const { totalLiveAdsCost, sessionsWithAdsCount } = useMemo(() => {
+    let total = 0;
+    let hasAds = false;
+    let count = 0;
+    for (const s of sessionList) {
+      if (s.convertedAdsCost !== null && s.convertedAdsCost !== undefined) {
+        total += s.convertedAdsCost;
+        hasAds = true;
+        if (s.convertedAdsCost > 0) count += 1;
+      }
+    }
+    return {
+      totalLiveAdsCost: hasAds ? total : null,
+      sessionsWithAdsCount: count,
+    };
+  }, [sessionList]);
+
+  // Overall ROAS
+  const overallLiveRoas = useMemo(() => {
+    if (totalLiveAdsCost && totalLiveAdsCost > 0 && liveGmv > 0) {
+      return liveGmv / totalLiveAdsCost;
+    }
+    return null;
+  }, [liveGmv, totalLiveAdsCost]);
+
+  // Overall Tỉ lệ CP/DS (Chi phí Ads / GMV Live)
+  const overallCostRevenueRatio = useMemo(() => {
+    if (totalLiveAdsCost && totalLiveAdsCost > 0 && liveGmv > 0) {
+      return (totalLiveAdsCost / liveGmv) * 100;
+    }
+    return null;
+  }, [liveGmv, totalLiveAdsCost]);
+
+  // Overall Tỉ lệ chốt (Số đơn Live / Tổng bình luận)
+  const overallClosingRate = useMemo(() => {
+    if (totalLiveComments && totalLiveComments > 0 && displayLiveOrders > 0) {
+      return (displayLiveOrders / totalLiveComments) * 100;
+    }
+    return null;
+  }, [displayLiveOrders, totalLiveComments]);
 
   // Channel aggregation (Kênh Live)
   const channelList = useMemo(() => {
@@ -1346,10 +1416,11 @@ const LiveAnalytics = () => {
 
       {/* KPI Cards matching Overview Page */}
       <section className="page__stats shop-analytics__stats" aria-label={t('liveAnalytics.title')}>
+        {/* HÀNG 1: GMV LIVE | TỈ TRỌNG LIVE | ĐƠN HÀNG LIVE */}
         {/* KPI 1: Live GMV */}
         <article className="stat-card shop-analytics__stat shop-analytics__stat--gmv">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveGmv')}</p>
+            <p className="stat-card__label">{t('liveAnalytics.liveGmv', 'GMV LIVE')}</p>
             <span className="shop-analytics__stat-icon" aria-hidden="true">
               <AnalyticsIcon name="gmv" />
             </span>
@@ -1363,7 +1434,7 @@ const LiveAnalytics = () => {
         {/* KPI 2: Live Share % */}
         <article className="stat-card shop-analytics__stat shop-analytics__stat--liveShare">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveShare')}</p>
+            <p className="stat-card__label">{t('liveAnalytics.liveShare', 'TỈ TRỌNG LIVE')}</p>
             <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#f1edff', color: '#7657e9' }}>
               <TrendingUp size={18} />
             </span>
@@ -1379,7 +1450,7 @@ const LiveAnalytics = () => {
         {/* KPI 3: Live Orders */}
         <article className="stat-card shop-analytics__stat shop-analytics__stat--orders">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveOrders')}</p>
+            <p className="stat-card__label">{t('liveAnalytics.liveOrders', 'ĐƠN HÀNG LIVE')}</p>
             <span className="shop-analytics__stat-icon" aria-hidden="true">
               <AnalyticsIcon name="orders" />
             </span>
@@ -1392,42 +1463,47 @@ const LiveAnalytics = () => {
           </span>
         </article>
 
-        {/* KPI 4: Units Sold */}
-        <article className="stat-card shop-analytics__stat shop-analytics__stat--unitsSold">
+        {/* HÀNG 2: CHI PHÍ ADS | TỈ LỆ CP/DS | PHIÊN LIVE TREAMS */}
+        {/* KPI 4: Ads Cost */}
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--adsCost">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveUnits')}</p>
-            <span className="shop-analytics__stat-icon" aria-hidden="true">
-              <AnalyticsIcon name="unitsSold" />
+            <p className="stat-card__label">{t('liveAnalytics.liveAdsCost', 'CHI PHÍ ADS')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#fef3c7', color: '#d97706' }}>
+              <Megaphone size={18} />
             </span>
           </div>
           <p className="stat-card__value">
-            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatNumber(displayUnitsSold)}
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : (totalLiveAdsCost !== null ? formatMoney(totalLiveAdsCost) : '—')}
           </p>
           <span className="shop-analytics__change is-muted">
-            {t('liveAnalytics.liveUnitsDesc')}
+            {sessionsWithAdsCount > 0
+              ? `${sessionsWithAdsCount} ${t('liveAnalytics.sessionsWithAds', 'phiên có chạy Ads')}`
+              : t('liveAnalytics.liveAdsCostDesc', 'Tổng chi phí quảng cáo Livestream')}
           </span>
         </article>
 
-        {/* KPI 5: AOV */}
-        <article className="stat-card shop-analytics__stat shop-analytics__stat--avgOrderValue">
+        {/* KPI 5: Tỉ lệ CP/DS */}
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--costRatio">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveAov')}</p>
-            <span className="shop-analytics__stat-icon" aria-hidden="true">
-              <AnalyticsIcon name="avgOrderValue" />
+            <p className="stat-card__label">{t('liveAnalytics.liveCostRevenueRatio', 'TỈ LỆ CP/DS')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#fee2e2', color: '#dc2626' }}>
+              <Percent size={18} />
             </span>
           </div>
           <p className="stat-card__value">
-            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveAov)}
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : (overallCostRevenueRatio !== null ? `${overallCostRevenueRatio.toFixed(2)}%` : '—')}
           </p>
           <span className="shop-analytics__change is-muted">
-            {t('liveAnalytics.liveAovDesc')}
+            {totalLiveAdsCost && totalLiveAdsCost > 0 && liveGmv > 0
+              ? `${formatMoney(totalLiveAdsCost)} / ${formatMoney(liveGmv)}`
+              : t('liveAnalytics.liveCostRevenueRatioDesc', 'Chi phí Ads / GMV Live')}
           </span>
         </article>
 
         {/* KPI 6: Live Sessions & Hosts */}
         <article className="stat-card shop-analytics__stat shop-analytics__stat--sessions">
           <div className="shop-analytics__stat-heading">
-            <p className="stat-card__label">{t('liveAnalytics.liveSessions')}</p>
+            <p className="stat-card__label">{t('liveAnalytics.liveSessions', 'PHIÊN LIVE TREAMS')}</p>
             <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#f1edff', color: '#7657e9' }}>
               <Radio size={18} />
             </span>
@@ -1444,6 +1520,62 @@ const LiveAnalytics = () => {
                 {formatNumber(totalLiveComments)} {t('comments', 'bình luận')}
               </span>
             ) : null}
+          </span>
+        </article>
+
+        {/* HÀNG 3: GMV/HOUR | TRUNG BÌNH ĐƠN | TỈ LỆ CHỐT (SỐ ĐƠN/CMT) */}
+        {/* KPI 7: GMV per hour */}
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--gmvPerHour">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveGmvPerHour', 'GMV/HOUR')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#e0f2fe', color: '#0284c7' }}>
+              <Clock size={18} />
+            </span>
+          </div>
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : (overallGmvPerHour > 0 ? formatMoney(overallGmvPerHour) : '—')}
+          </p>
+          <span className="shop-analytics__change is-muted">
+            {totalLiveDurationSec > 0 ? (
+              <>
+                <Clock size={12} style={{ display: 'inline', verticalAlign: -1, marginRight: 3 }} />
+                {formatTotalDuration(totalLiveDurationSec, language)}
+              </>
+            ) : t('liveAnalytics.liveGmvPerHourDesc', 'Doanh thu trung bình mỗi giờ')}
+          </span>
+        </article>
+
+        {/* KPI 8: AOV */}
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--avgOrderValue">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveAov', 'TRUNG BÌNH ĐƠN')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true">
+              <AnalyticsIcon name="avgOrderValue" />
+            </span>
+          </div>
+          <p className="stat-card__value">
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveAov)}
+          </p>
+          <span className="shop-analytics__change is-muted">
+            {t('liveAnalytics.liveAovDesc')}
+          </span>
+        </article>
+
+        {/* KPI 9: Tỉ lệ chốt (Số đơn/CMT) thay cho ROAS */}
+        <article className="stat-card shop-analytics__stat shop-analytics__stat--closingRate">
+          <div className="shop-analytics__stat-heading">
+            <p className="stat-card__label">{t('liveAnalytics.liveClosingRate', 'TỈ LỆ CHỐT (SỐ ĐƠN/CMT)')}</p>
+            <span className="shop-analytics__stat-icon" aria-hidden="true" style={{ background: '#dcfce7', color: '#16a34a' }}>
+              <Target size={18} />
+            </span>
+          </div>
+          <p className="stat-card__value" style={{ color: overallClosingRate && overallClosingRate > 0 ? '#16a34a' : 'inherit' }}>
+            {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : (overallClosingRate !== null ? `${overallClosingRate.toFixed(2)}%` : '—')}
+          </p>
+          <span className="shop-analytics__change is-muted">
+            {totalLiveComments > 0
+              ? `${formatNumber(displayLiveOrders)} ${t('liveAnalytics.orders', 'đơn')} / ${formatNumber(totalLiveComments)} CMT`
+              : t('liveAnalytics.liveClosingRateDesc', 'Số đơn / Bình luận')}
           </span>
         </article>
       </section>
@@ -1776,22 +1908,22 @@ const LiveAnalytics = () => {
 
       {/* Tab 1: Sessions & Hosts */}
       {activeTab === 'overview' ? (
-        <section className="live-analytics__section">
-          <div className="table-wrap">
+        <section className="live-analytics__section live-analytics__section--flush">
+          <div className="table-wrap live-analytics__table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
                   <th>{t('liveAnalytics.colTikTokAccount')}</th>
                   <th>{t('liveAnalytics.appHost')}</th>
-                  <th>{t('liveAnalytics.colSessionId')}</th>
                   <th>{t('liveAnalytics.colTime')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colUnits')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colGmvPerHour')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAdsCost')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colRoas')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colOrders')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colRevenue')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colCostRevenueRatio')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colGmvPerHour')}</th>
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colClosingRate')}</th>
+                  <th className="cell-number">{t('liveAnalytics.colAov')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
                 </tr>
               </thead>
@@ -1845,6 +1977,15 @@ const LiveAnalytics = () => {
                             {session.creatorNickname || session.creatorUsername}
                           </span>
                           <span className="live-host-username">@{session.creatorUsername}</span>
+                          {session.sessionId ? (
+                            <span
+                              className="code-pill font-mono"
+                              style={{ fontSize: '0.6875rem', padding: '1px 5px', marginTop: 2, display: 'inline-block', width: 'fit-content' }}
+                              title={session.sessionId}
+                            >
+                              {session.sessionId.length > 14 ? `${session.sessionId.slice(0, 14)}...` : session.sessionId}
+                            </span>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -1859,11 +2000,6 @@ const LiveAnalytics = () => {
                       ) : (
                         <span className="live-host-unassigned">{t('liveAnalytics.unassignedHost')}</span>
                       )}
-                    </td>
-                    <td>
-                      <span className="code-pill font-mono" title={session.sessionId}>
-                        {session.sessionId.length > 12 ? `${session.sessionId.slice(0, 12)}...` : session.sessionId}
-                      </span>
                     </td>
                     <td>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1881,20 +2017,6 @@ const LiveAnalytics = () => {
                         ) : null}
                       </div>
                     </td>
-                    <td className="cell-number">
-                      <strong>{formatNumber(session.orderCount)}</strong>
-                    </td>
-                    <td className="cell-number">
-                      {formatNumber(session.totalQuantity)}
-                    </td>
-                    <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
-                      {formatMoney(session.totalGmv, session.currency)}
-                    </td>
-                    <td className="cell-number" style={{ fontWeight: 600 }}>
-                      {session.durationSec && session.durationSec > 0
-                        ? formatMoney(session.gmvPerHour, session.currency)
-                        : '—'}
-                    </td>
                     <td className="cell-number" style={{ fontWeight: 600 }}>
                       {session.adsCost !== null && session.adsCost !== undefined
                         ? (
@@ -1904,12 +2026,35 @@ const LiveAnalytics = () => {
                         )
                         : '—'}
                     </td>
-                    <td className="cell-number" style={{ fontWeight: 750, color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'inherit') : 'inherit' }}>
-                      {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
+                    <td className="cell-number">
+                      <strong>{formatNumber(session.orderCount)}</strong>
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                      {formatMoney(session.totalGmv, session.currency)}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 650 }}>
+                      {session.costRevenueRatio !== null && session.costRevenueRatio !== undefined
+                        ? `${session.costRevenueRatio.toFixed(2)}%`
+                        : '—'}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 600 }}>
+                      {session.durationSec && session.durationSec > 0
+                        ? formatMoney(session.gmvPerHour, session.currency)
+                        : '—'}
                     </td>
                     <td className="cell-number">
                       {session.totalComments !== null && session.totalComments !== undefined
                         ? formatNumber(session.totalComments)
+                        : '—'}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 650, color: session.closingRate ? '#16a34a' : 'inherit' }}>
+                      {session.closingRate !== null && session.closingRate !== undefined
+                        ? `${session.closingRate.toFixed(2)}%`
+                        : '—'}
+                    </td>
+                    <td className="cell-number" style={{ fontWeight: 600 }}>
+                      {session.aov && session.aov > 0
+                        ? formatMoney(session.aov, session.currency)
                         : '—'}
                     </td>
                     <td>
@@ -1950,8 +2095,8 @@ const LiveAnalytics = () => {
 
       {/* Tab 2: Channels (Kênh Live) */}
       {activeTab === 'channels' ? (
-        <section className="live-analytics__section">
-          <div className="table-wrap">
+        <section className="live-analytics__section live-analytics__section--flush">
+          <div className="table-wrap live-analytics__table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
@@ -2116,8 +2261,8 @@ const LiveAnalytics = () => {
 
       {/* Tab 3: Live Orders List */}
       {activeTab === 'orders' ? (
-        <section className="live-analytics__section">
-          <div className="table-wrap">
+        <section className="live-analytics__section live-analytics__section--flush">
+          <div className="table-wrap live-analytics__table-wrap">
             <table className="data-table">
               <thead>
                 <tr>
@@ -2439,20 +2584,6 @@ const LiveSessionDrawer = ({
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
-                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
-                  {formatMoney(session.totalGmv, session.currency)}
-                </p>
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colGmvPerHour')}:</span>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
-                  {session.durationSec && session.durationSec > 0
-                    ? formatMoney(session.gmvPerHour, session.currency)
-                    : '—'}
-                </p>
-              </div>
-              <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
                   {session.adsCost !== null && session.adsCost !== undefined
@@ -2465,24 +2596,56 @@ const LiveSessionDrawer = ({
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRoas')}:</span>
-                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'var(--color-primary)') : 'var(--color-text)' }}>
-                  {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '1.0625rem', color: 'var(--color-text)' }}>{formatNumber(session.orderCount)}</p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRevenue')}:</span>
+                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
+                  {formatMoney(session.totalGmv, session.currency)}
                 </p>
               </div>
               <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colOrders')}:</span>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.orderCount)}</p>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colCostRevenueRatio')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.costRevenueRatio !== null && session.costRevenueRatio !== undefined ? `${session.costRevenueRatio.toFixed(2)}%` : '—'}
+                </p>
               </div>
               <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
-                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.totalQuantity)}</p>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colGmvPerHour')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.durationSec && session.durationSec > 0
+                    ? formatMoney(session.gmvPerHour, session.currency)
+                    : '—'}
+                </p>
               </div>
               <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colComments')}:</span>
                 <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>
                   {session.totalComments !== null && session.totalComments !== undefined ? formatNumber(session.totalComments) : '—'}
                 </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colClosingRate')}:</span>
+                <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: session.closingRate ? '#16a34a' : 'var(--color-text)' }}>
+                  {session.closingRate !== null && session.closingRate !== undefined ? `${session.closingRate.toFixed(2)}%` : '—'}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAov')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
+                  {session.aov && session.aov > 0 ? formatMoney(session.aov, session.currency) : '—'}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colRoas')}:</span>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: session.roas ? (session.roas >= 2 ? '#16a34a' : 'inherit') : 'inherit' }}>
+                  {session.roas !== null && session.roas !== undefined ? `${session.roas.toFixed(2)}x` : '—'}
+                </p>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colUnits')}:</span>
+                <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem', color: 'var(--color-text)' }}>{formatNumber(session.totalQuantity)}</p>
               </div>
             </div>
           </div>

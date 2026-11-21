@@ -4,7 +4,10 @@ const test = require('node:test');
 const {
   buildLiveSessions,
   fetchShopLiveSessions,
+  loadPersistedLiveSessions,
+  loadShopLivePerformance,
   resolveAutoHost,
+  saveLiveSessionPerformances,
   toEpochMs,
 } = require('../src/services/livePerformanceService');
 
@@ -201,4 +204,132 @@ test('buildLiveSessions extracts duration and synthesizes end_time when missing'
   assert.equal(lives[1].end_time, 1700000000000 + 7200000);
   assert.equal(lives[2].duration, 1800);
   assert.equal(lives[2].end_time, 1700001800000);
+});
+
+test('loadPersistedLiveSessions returns empty array when shopId or db query missing', async () => {
+  const result = await loadPersistedLiveSessions(null);
+  assert.deepEqual(result, []);
+});
+
+test('saveLiveSessionPerformances inserts or updates rows in the database', async () => {
+  const executed = [];
+  const mockDb = {
+    query: async (sql, options) => {
+      executed.push({ sql, replacements: options?.replacements });
+      return [];
+    },
+  };
+
+  const count = await saveLiveSessionPerformances(1, [
+    {
+      live_id: 'live-100',
+      title: 'Mega Live Sale',
+      creator_username: 'koc_user',
+      creator_nickname: 'KOC User',
+      author_type: 'AFFILIATE',
+      start_time: 1700000000000,
+      end_time: 1700007200000,
+      duration_seconds: 7200,
+      total_comments: 150,
+      hashtags: ['mega', 'sale'],
+      interaction_performance: { comments: 150 },
+    },
+  ], { db: mockDb });
+
+  assert.equal(count, 1);
+  assert.equal(executed.length, 1);
+  assert.equal(executed[0].replacements.shopId, 1);
+  assert.equal(executed[0].replacements.sessionId, 'live-100');
+  assert.equal(executed[0].replacements.title, 'Mega Live Sale');
+  assert.equal(executed[0].replacements.durationSeconds, 7200);
+});
+
+test('loadShopLivePerformance falls back to database when API call fails', async () => {
+  const mockDb = {
+    query: async (sql) => {
+      if (/FROM live_session_performances/i.test(sql)) {
+        return [
+          {
+            shop_id: 1,
+            session_id: 'live-saved-1',
+            title: 'Saved Live From DB',
+            creator_username: 'creator.saved',
+            creator_nickname: 'Saved Creator',
+            author_type: 'OFFICIAL',
+            start_time: 1700000000000,
+            end_time: 1700003600000,
+            duration_seconds: 3600,
+            total_comments: 50,
+            hashtags: ['saved'],
+            interaction_performance: null,
+            raw_data: {},
+          },
+        ];
+      }
+      return [];
+    },
+  };
+
+  const result = await loadShopLivePerformance({
+    shop: { id: 1, authorization: { id: 1 }, cipher: 'test' },
+    startDate: '2026-11-01',
+    endDate: '2026-11-05',
+    currency: 'LOCAL',
+    db: mockDb,
+    performanceLoader: async () => {
+      throw new Error('TikTok API Rate Limit Exceeded (429)');
+    },
+  });
+
+  assert.equal(result.lives.length, 1);
+  assert.equal(result.lives[0].live_id, 'live-saved-1');
+  assert.equal(result.lives[0].title, 'Saved Live From DB');
+  assert.equal(result.lives[0].duration, 3600);
+});
+
+test('loadShopLivePerformance merges API lives and DB lives without losing historical sessions', async () => {
+  const mockDb = {
+    query: async (sql) => {
+      if (/FROM live_session_performances/i.test(sql)) {
+        return [
+          {
+            shop_id: 1,
+            session_id: 'live-old',
+            title: 'Old Live In DB',
+            duration_seconds: 5400,
+            start_time: 1700000000000,
+          },
+        ];
+      }
+      return [];
+    },
+  };
+
+  const result = await loadShopLivePerformance({
+    shop: { id: 1, authorization: { id: 1 }, cipher: 'test' },
+    startDate: '2026-11-01',
+    endDate: '2026-11-05',
+    currency: 'LOCAL',
+    db: mockDb,
+    performanceLoader: async () => ({
+      data: {
+        live_stream_sessions: [
+          {
+            id: 'live-new',
+            title: 'New Live From API',
+            duration: 3600,
+            start_time: 1700050000,
+          },
+        ],
+      },
+    }),
+  });
+
+  assert.equal(result.lives.length, 2);
+  const oldLive = result.lives.find((l) => l.live_id === 'live-old');
+  const newLive = result.lives.find((l) => l.live_id === 'live-new');
+  assert.ok(oldLive);
+  assert.equal(oldLive.duration, 5400);
+  assert.ok(newLive);
+  assert.equal(newLive.duration, 3600);
 });

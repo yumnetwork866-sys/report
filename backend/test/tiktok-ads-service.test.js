@@ -220,4 +220,172 @@ test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to s
   assert.equal(insertQuery.replacements.adsCost, 304.95);
 });
 
+test('getLiveSessionAds defaults to sync=false and reads directly from database without fetching', async () => {
+  let fetchCalled = false;
+  const fakeFetch = async () => { fetchCalled = true; };
+  const fakeDb = {
+    query: async (sql) => {
+      if (sql.includes('SELECT shop_id, session_id, ads_cost')) {
+        return [
+          { shop_id: 1, session_id: 'live_1', ads_cost: 50.0, currency: 'USD' },
+        ];
+      }
+      return [];
+    },
+  };
+  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const rows = await service.getLiveSessionAds(1);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].session_id, 'live_1');
+  assert.equal(fetchCalled, false);
+});
+
+test('getAuthorizations returns authorization rows and advertiser accounts', async () => {
+  const fakeDb = {
+    query: async (sql) => {
+      if (sql.includes('SELECT id, app_id, access_token, advertiser_ids')) {
+        return [
+          {
+            id: 1,
+            app_id: 'app_123',
+            access_token: 'token_abc',
+            advertiser_ids: ['adv_1', 'adv_2'],
+            scope: 'user.info.basic',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        ];
+      }
+      return [];
+    },
+  };
+  const fakeFetch = async () => ({
+    json: async () => ({
+      code: 0,
+      data: {
+        list: [
+          { advertiser_id: 'adv_1', advertiser_name: 'Store Ads 1' },
+          { advertiser_id: 'adv_2', advertiser_name: 'Store Ads 2' },
+        ],
+      },
+    }),
+  });
+
+  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const result = await service.getAuthorizations();
+  assert.equal(result.totalAdvertisers, 2);
+  assert.equal(result.authorizations.length, 1);
+  assert.equal(result.authorizations[0].advertisers[0].name, 'Store Ads 1');
+});
+
+test('deleteAuthorization executes delete on database', async () => {
+  const executed = [];
+  const fakeDb = {
+    query: async (sql, options) => {
+      executed.push({ sql, replacements: options?.replacements });
+      return [];
+    },
+  };
+  const service = createTikTokAdsService({ db: fakeDb });
+  const res = await service.deleteAuthorization(5);
+  assert.equal(res.success, true);
+  assert.equal(executed.length, 1);
+  assert.match(executed[0].sql, /DELETE FROM tiktok_ads_authorizations/);
+  assert.equal(executed[0].replacements.id, 5);
+});
+
+test('removeAdvertiser removes single advertiser id from array in database', async () => {
+  const executed = [];
+  const fakeDb = {
+    query: async (sql, options) => {
+      if (sql.includes('SELECT id, advertiser_ids')) {
+        return [{ id: 3, advertiser_ids: ['adv_keep', 'adv_remove'] }];
+      }
+      executed.push({ sql, replacements: options?.replacements });
+      return [];
+    },
+  };
+  const service = createTikTokAdsService({ db: fakeDb });
+  const res = await service.removeAdvertiser(3, 'adv_remove');
+  assert.equal(res.success, true);
+  assert.equal(res.remaining, 1);
+  assert.match(executed[0].sql, /UPDATE tiktok_ads_authorizations/);
+  assert.equal(executed[0].replacements.ids, JSON.stringify(['adv_keep']));
+});
+
+test('syncLiveSessionAds correctly maps room_id to exact shop based on known live sessions', async () => {
+  const fakeFetch = async (url) => {
+    if (url.includes('/gmv_max/store/list/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: { list: [{ store_id: 'store_follicas', store_name: 'Follicas' }] },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/campaign/get/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: { list: [{ campaign_id: 'camp_live_123' }] },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/report/get/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: {
+            list: [
+              {
+                dimensions: { room_id: 'room_for_actiscar_vn', campaign_id: 'camp_live_123' },
+                metrics: { cost: '50.00', gross_revenue: '200.00' },
+              },
+            ],
+          },
+        }),
+      };
+    }
+    return { json: async () => ({ code: 0, data: {} }) };
+  };
+
+  const queries = [];
+  const fakeDb = {
+    query: async (sql, options) => {
+      queries.push({ sql, ...options });
+      if (sql.includes('SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations')) {
+        return [{ access_token: 'valid_token_xyz', advertiser_ids: ['adv_777'] }];
+      }
+      if (sql.includes('FROM tiktok_shops')) {
+        return [
+          { id: 7, name: 'Follicas', platform_shop_id: 'store_follicas', region: 'MY' },
+          { id: 15, name: 'Actiscar VN', platform_shop_id: 'store_actiscar', region: 'VN' },
+        ];
+      }
+      if (sql.includes('FROM tiktok_affiliate_order_skus')) {
+        return [{ shop_id: 15, session_id: 'room_for_actiscar_vn', session_date: '2026-11-20' }];
+      }
+      return [];
+    },
+  };
+
+  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const results = await service.syncLiveSessionAds();
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].session_id, 'room_for_actiscar_vn');
+  assert.equal(results[0].shop_id, 15);
+  assert.equal(results[0].ads_cost, 50.00);
+
+  const insertQuery = queries.find((q) => q.sql.includes('INSERT INTO live_session_ads'));
+  assert.ok(insertQuery);
+  assert.equal(insertQuery.replacements.shopId, 15);
+  assert.equal(insertQuery.replacements.sessionId, 'room_for_actiscar_vn');
+  assert.equal(insertQuery.replacements.adsCost, 50.00);
+});
+
+
 

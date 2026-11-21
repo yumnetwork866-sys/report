@@ -1,12 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Layers, Store, Tv } from 'lucide-react';
+import { Layers, Megaphone, Store, Tv } from 'lucide-react';
 import { useSession } from '../lib/useSession';
 import { hasPermission } from '../lib/session';
 import { useI18n } from '../lib/language';
 import ShopManagement from './ShopManagement';
 import ChannelManagement from './ChannelManagement';
 import AppManagement from './AppManagement';
+import TikTokAdsManagement from './TikTokAdsManagement';
 
 const NORMALIZE_TAB_MAP = {
   shop: 'shops',
@@ -15,6 +16,8 @@ const NORMALIZE_TAB_MAP = {
   channels: 'channels',
   app: 'apps',
   apps: 'apps',
+  ads: 'ads',
+  ad: 'ads',
 };
 
 const ConnectionManagement = () => {
@@ -25,10 +28,12 @@ const ConnectionManagement = () => {
   const [shopCount, setShopCount] = useState(null);
   const [channelCount, setChannelCount] = useState(null);
   const [appCount, setAppCount] = useState(null);
+  const [adsCount, setAdsCount] = useState(null);
 
   const canManageShops = hasPermission(session, 'admin.shops.manage');
   const canManageChannels = hasPermission(session, 'channels.manage');
   const canManageApps = hasPermission(session, 'app.manage');
+  const canManageAds = hasPermission(session, 'admin.shops.manage') || hasPermission(session, 'app.manage');
 
   const availableTabs = useMemo(() => {
     const list = [];
@@ -56,8 +61,16 @@ const ConnectionManagement = () => {
         count: appCount,
       });
     }
+    if (canManageAds) {
+      list.push({
+        key: 'ads',
+        label: t('connections.tabs.ads') || 'TikTok Ads',
+        icon: Megaphone,
+        count: adsCount,
+      });
+    }
     return list;
-  }, [canManageShops, canManageChannels, canManageApps, t, shopCount, channelCount, appCount]);
+  }, [canManageShops, canManageChannels, canManageApps, canManageAds, t, shopCount, channelCount, appCount, adsCount]);
 
   const rawTab = (searchParams.get('tab') || '').toLowerCase();
   const normalizedRequestedTab = NORMALIZE_TAB_MAP[rawTab] || rawTab;
@@ -113,6 +126,9 @@ const ConnectionManagement = () => {
         ) : null}
         {activeTab === 'apps' && canManageApps ? (
           <AppManagement embedded={true} onCountChange={setAppCount} />
+        ) : null}
+        {activeTab === 'ads' && canManageAds ? (
+          <TikTokAdsManagement embedded={true} onCountChange={setAdsCount} />
         ) : null}
       </main>
     </div>
