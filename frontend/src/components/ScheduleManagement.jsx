@@ -56,7 +56,6 @@ const JOB_APP_TAGS = {
   tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
   tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
   tiktok_ads_live_performance: { label: 'TikTok Ads', type: 'ads' },
-  currency_exchange_rates: { label: 'BNM', type: 'system' },
   tiktok_auth: { label: 'Auth', type: 'auth' },
 };
 

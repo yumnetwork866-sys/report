@@ -1718,6 +1718,11 @@
     "liveRoas": "ROAS",
     "liveRoasDesc": "GMV / Ads Cost",
     "sessionsWithAds": "sessions with Ads",
+    "deductedCancelled": "Deducted",
+    "cancelledGmvLabel": "cancelled",
+    "cancelledOrdersDesc": "cancelled orders",
+    "deductedCancelledOrders": "Cancelled orders deducted",
+    "cancelledOrdersCountLabel": "Cancelled orders",
     "trendTitle": "Daily LIVE Revenue Trend",
     "trendMeta": "Track livestream GMV fluctuations and compare with total shop sales",
     "sessionsTitle": "LIVE Sessions & Hosts",
@@ -2080,8 +2085,8 @@
         "description": ""
       },
       "currency_exchange_rates": {
-        "name": "BNM Exchange Rates",
-        "description": "Sync USD/MYR/VND exchange rates from Bank Negara Malaysia across market sessions (09:00, 12:00, 17:00)"
+        "name": "Exchange Rates",
+        "description": ""
       },
       "tiktok_auth": {
         "name": "Authentication & OAuth",

@@ -1717,6 +1717,11 @@
     "liveRoas": "ROAS",
     "liveRoasDesc": "GMV / Chi phí Ads",
     "sessionsWithAds": "phiên có chạy Ads",
+    "deductedCancelled": "Đã trừ",
+    "cancelledGmvLabel": "hủy",
+    "cancelledOrdersDesc": "đơn hủy",
+    "deductedCancelledOrders": "Đã trừ đơn hủy",
+    "cancelledOrdersCountLabel": "Số đơn hủy",
     "trendTitle": "Xu hướng doanh thu LIVE theo ngày",
     "trendMeta": "Theo dõi biến động GMV phát sóng trực tiếp và so sánh với tổng doanh thu",
     "sessionsTitle": "Danh sách phiên LIVE & Host",
@@ -2078,8 +2083,8 @@
         "description": ""
       },
       "currency_exchange_rates": {
-        "name": "Tỉ giá hối đoái (BNM)",
-        "description": "Đồng bộ tỉ giá USD/MYR/VND từ Ngân hàng Trung ương Malaysia (các phiên 09:00, 12:00, 17:00)"
+        "name": "Tỉ giá",
+        "description": ""
       },
       "tiktok_auth": {
         "name": "Xác thực & Kết nối",

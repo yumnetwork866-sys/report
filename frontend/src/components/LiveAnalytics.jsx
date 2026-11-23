@@ -871,6 +871,9 @@ const LiveAnalytics = () => {
             totalQuantity: 0,
             totalGmv: 0,
             totalCommission: 0,
+            cancelledOrderIds: new Set(),
+            cancelledQuantity: 0,
+            cancelledGmv: 0,
             isExternal,
             products: {},
             firstTime: orderCreateTime,
@@ -880,11 +883,20 @@ const LiveAnalytics = () => {
         }
 
         const s = sessions[sessionKey];
+        if (!s.cancelledOrderIds) {
+          s.cancelledOrderIds = new Set();
+          s.cancelledQuantity = 0;
+          s.cancelledGmv = 0;
+        }
         if (!isSkuCancelled) {
           s.orderIds.add(order.id || order.order_id);
           s.totalQuantity += qty;
           s.totalGmv += convertedGmv;
           s.totalCommission += convertedComm;
+        } else {
+          s.cancelledOrderIds.add(order.id || order.order_id);
+          s.cancelledQuantity += qty;
+          s.cancelledGmv += convertedGmv;
         }
         if (isExternal) s.isExternal = true;
         if (orderCreateTime && (!s.firstTime || orderCreateTime < s.firstTime)) s.firstTime = orderCreateTime;
@@ -902,11 +914,16 @@ const LiveAnalytics = () => {
               imageUrl: sku.product_image || sku.image_url || sku.raw_data?.product_image || sku.raw_data?.sku_image,
               quantity: 0,
               gmv: 0,
+              cancelledQuantity: 0,
+              cancelledGmv: 0,
             };
           }
           if (!isSkuCancelled) {
             s.products[pid].quantity += qty;
             s.products[pid].gmv += convertedGmv;
+          } else {
+            s.products[pid].cancelledQuantity = (s.products[pid].cancelledQuantity || 0) + qty;
+            s.products[pid].cancelledGmv = (s.products[pid].cancelledGmv || 0) + convertedGmv;
           }
         }
 
@@ -919,6 +936,8 @@ const LiveAnalytics = () => {
               imageUrl: sku.product_image || sku.image_url || sku.raw_data?.product_image || sku.raw_data?.sku_image,
               quantity: 0,
               gmv: 0,
+              cancelledQuantity: 0,
+              cancelledGmv: 0,
               orderIds: new Set(),
               currency: displayCurrency,
             };
@@ -927,6 +946,9 @@ const LiveAnalytics = () => {
             productMap[pid].quantity += qty;
             productMap[pid].gmv += convertedGmv;
             productMap[pid].orderIds.add(order.id || order.order_id);
+          } else {
+            productMap[pid].cancelledQuantity = (productMap[pid].cancelledQuantity || 0) + qty;
+            productMap[pid].cancelledGmv = (productMap[pid].cancelledGmv || 0) + convertedGmv;
           }
         }
       });
@@ -968,6 +990,9 @@ const LiveAnalytics = () => {
             totalQuantity: 0,
             totalGmv: 0,
             totalCommission: 0,
+            cancelledOrderIds: new Set(),
+            cancelledQuantity: 0,
+            cancelledGmv: 0,
             isExternal,
             products: {},
             firstTime: startMs,
@@ -1019,20 +1044,31 @@ const LiveAnalytics = () => {
         || sess.currency;
 
       const hasAttributedGmv = rawPerfGmv !== undefined && rawPerfGmv !== null && rawPerfGmv !== '' && !isNaN(Number(rawPerfGmv));
-      const totalGmv = (hasAttributedGmv && Number(rawPerfGmv) > 0)
+      const grossPerfGmv = (hasAttributedGmv && Number(rawPerfGmv) > 0)
         ? toDisplayCurrency(Number(rawPerfGmv), perfGmvCurrency, currentShop)
+        : sess.totalGmv;
+      const cancelledGmv = sess.cancelledGmv || 0;
+      // Net GMV after deducting cancelled orders
+      const totalGmv = (hasAttributedGmv && Number(rawPerfGmv) > 0)
+        ? Math.max(sess.totalGmv, Math.max(0, grossPerfGmv - cancelledGmv))
         : sess.totalGmv;
 
       const rawPerfOrders = performance?.attributed_orders
         ?? performance?.sales_performance?.sku_orders
         ?? performance?.sales_performance?.orders;
       const hasAttributedOrders = rawPerfOrders !== undefined && rawPerfOrders !== null && rawPerfOrders !== '' && !isNaN(Number(rawPerfOrders));
-      const orderCount = Math.max(hasAttributedOrders ? Number(rawPerfOrders) : 0, sess.orderIds.size);
+      const grossPerfOrders = hasAttributedOrders ? Number(rawPerfOrders) : sess.orderIds.size;
+      const cancelledOrdersCount = sess.cancelledOrderIds ? sess.cancelledOrderIds.size : 0;
+      const netPerfOrders = Math.max(0, grossPerfOrders - cancelledOrdersCount);
+      const orderCount = Math.max(sess.orderIds.size, netPerfOrders);
 
       const rawPerfUnits = performance?.attributed_items_sold
         ?? performance?.sales_performance?.items_sold;
       const hasAttributedUnits = rawPerfUnits !== undefined && rawPerfUnits !== null && rawPerfUnits !== '' && !isNaN(Number(rawPerfUnits));
-      const totalQuantity = Math.max(hasAttributedUnits ? Number(rawPerfUnits) : 0, sess.totalQuantity);
+      const grossPerfUnits = hasAttributedUnits ? Number(rawPerfUnits) : sess.totalQuantity;
+      const cancelledUnitsCount = sess.cancelledQuantity || 0;
+      const netPerfUnits = Math.max(0, grossPerfUnits - cancelledUnitsCount);
+      const totalQuantity = Math.max(sess.totalQuantity, netPerfUnits);
 
       const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`]
         || (sessionAdsMap[sess.sessionId]?.shop_id && Number(sessionAdsMap[sess.sessionId].shop_id) === Number(sess.shopId) ? sessionAdsMap[sess.sessionId] : null);
@@ -1074,6 +1110,10 @@ const LiveAnalytics = () => {
         totalGmv,
         totalQuantity,
         orderCount,
+        grossGmv: grossPerfGmv,
+        cancelledGmv,
+        cancelledOrderCount: cancelledOrdersCount,
+        cancelledQuantity: cancelledUnitsCount,
         directGmv: sess.totalGmv,
         directOrderCount: sess.orderIds.size,
         directQuantity: sess.totalQuantity,
@@ -1112,6 +1152,14 @@ const LiveAnalytics = () => {
     sessionList.reduce((sum, s) => sum + s.totalGmv, 0)
   ), [sessionList]);
 
+  const totalCancelledLiveGmv = useMemo(() => (
+    sessionList.reduce((sum, s) => sum + (s.cancelledGmv || 0), 0)
+  ), [sessionList]);
+
+  const totalCancelledOrdersCount = useMemo(() => (
+    sessionList.reduce((sum, s) => sum + (s.cancelledOrderCount || 0), 0)
+  ), [sessionList]);
+
   // Use orders live gmv if available, fallback to snapshot
   const liveGmv = ordersLiveGmv > 0 ? ordersLiveGmv : totalSnapshotLiveGmv;
   const rawTotalShopGmv = totals.gmv || 0;
@@ -1124,7 +1172,9 @@ const LiveAnalytics = () => {
   ), [totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison]);
 
   // Live orders count: prioritize actual distinct live orders from database to match the live orders table exactly
-  const actualLiveOrdersCount = liveOrderRows.length;
+  const sessionLiveOrdersCount = sessionList.reduce((sum, s) => sum + (s.orderCount || 0), 0);
+  const nonCancelledLiveOrdersCount = liveOrderRows.filter((o) => !o.isCancelled).length;
+  const actualLiveOrdersCount = sessionLiveOrdersCount || nonCancelledLiveOrdersCount || liveOrderRows.length;
   const estimatedLiveOrdersCount = totals.orders && liveGmvShare > 0
     ? Math.round((totals.orders * liveGmvShare) / 100)
     : 0;
@@ -1222,6 +1272,8 @@ const LiveAnalytics = () => {
           totalGmv: 0,
           totalCommission: 0,
           totalComments: 0,
+          cancelledGmv: 0,
+          cancelledOrderCount: 0,
           currency: sess.currency || displayCurrency,
           sessions: [],
         };
@@ -1233,6 +1285,8 @@ const LiveAnalytics = () => {
       c.totalQuantity += (sess.totalQuantity || 0);
       c.totalGmv += (sess.totalGmv || 0);
       c.totalCommission += (sess.totalCommission || 0);
+      c.cancelledGmv = (c.cancelledGmv || 0) + (sess.cancelledGmv || 0);
+      c.cancelledOrderCount = (c.cancelledOrderCount || 0) + (sess.cancelledOrderCount || 0);
       if (sess.totalComments !== null && sess.totalComments !== undefined) {
         c.totalComments += sess.totalComments;
       }
@@ -1293,6 +1347,8 @@ const LiveAnalytics = () => {
           totalGmv: 0,
           totalComments: 0,
           convertedAdsCost: 0,
+          cancelledGmv: 0,
+          cancelledOrderCount: 0,
           currency: sess.currency || displayCurrency,
           sessions: [],
         });
@@ -1304,6 +1360,8 @@ const LiveAnalytics = () => {
       h.orderCount += (sess.orderCount || 0);
       h.totalQuantity += (sess.totalQuantity || 0);
       h.totalGmv += (sess.totalGmv || 0);
+      h.cancelledGmv = (h.cancelledGmv || 0) + (sess.cancelledGmv || 0);
+      h.cancelledOrderCount = (h.cancelledOrderCount || 0) + (sess.cancelledOrderCount || 0);
       if (sess.totalComments !== null && sess.totalComments !== undefined) {
         h.totalComments += sess.totalComments;
       }
@@ -1644,6 +1702,11 @@ const LiveAnalytics = () => {
             {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveGmv)}
           </p>
           {renderDelta(liveGmvChange, `${formatPercent(liveGmvShare)} ${t('liveAnalytics.pctOfTotal')}`)}
+          {totalCancelledLiveGmv > 0 ? (
+            <span style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: 2, display: 'block' }}>
+              ({t('liveAnalytics.deductedCancelled', 'Đã trừ')} -{formatMoney(totalCancelledLiveGmv)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')})
+            </span>
+          ) : null}
         </article>
 
         {/* KPI 2: Live Share % */}
@@ -1676,6 +1739,11 @@ const LiveAnalytics = () => {
           <span className="shop-analytics__change is-muted">
             {t('liveAnalytics.liveOrdersDesc')}
           </span>
+          {totalCancelledOrdersCount > 0 ? (
+            <span style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: 2, display: 'block' }}>
+              ({t('liveAnalytics.deductedCancelled', 'Đã trừ')} -{totalCancelledOrdersCount} {t('liveAnalytics.cancelledOrdersDesc', 'đơn hủy')})
+            </span>
+          ) : null}
         </article>
 
         {/* HÀNG 2: CHI PHÍ ADS | TỈ LỆ CP/DS | PHIÊN LIVE TREAMS */}
@@ -2227,10 +2295,24 @@ const LiveAnalytics = () => {
                         : '—'}
                     </td>
                     <td className="cell-number">
-                      <strong>{formatNumber(session.orderCount)}</strong>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <strong>{formatNumber(session.orderCount)}</strong>
+                        {session.cancelledOrderCount > 0 ? (
+                          <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
+                            -{session.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
-                      {formatMoney(session.totalGmv, session.currency)}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                        <span>{formatMoney(session.totalGmv, session.currency)}</span>
+                        {session.cancelledGmv > 0 ? (
+                          <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
+                            -{formatMoney(session.cancelledGmv, session.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                          </span>
+                        ) : null}
+                      </div>
                     </td>
                     <td className="cell-number" style={{ fontWeight: 650 }}>
                       {session.costRevenueRatio !== null && session.costRevenueRatio !== undefined
@@ -2480,14 +2562,30 @@ const LiveAnalytics = () => {
                         </span>
                       </td>
                       <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
-                        {formatMoney(item.totalGmv, item.currency)}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span>{formatMoney(item.totalGmv, item.currency)}</span>
+                          {item.cancelledGmv > 0 ? (
+                            <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
+                              -{formatMoney(item.cancelledGmv, item.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="cell-number" style={{ fontWeight: 600 }}>
                         {item.totalDurationSec > 0
                           ? formatMoney(item.gmvPerHour, item.currency)
                           : '—'}
                       </td>
-                      <td className="cell-number">{formatNumber(item.orderCount)}</td>
+                      <td className="cell-number">
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span>{formatNumber(item.orderCount)}</span>
+                          {item.cancelledOrderCount > 0 ? (
+                            <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
+                              -{item.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="cell-number">
                         {item.closingRate > 0 ? formatPercent(item.closingRate) : '—'}
                       </td>
@@ -2601,10 +2699,26 @@ const LiveAnalytics = () => {
                           {formatTotalDuration(ch.totalDurationSec, language)}
                         </span>
                       </td>
-                      <td className="cell-number">{formatNumber(ch.orderCount)}</td>
+                      <td className="cell-number">
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span>{formatNumber(ch.orderCount)}</span>
+                          {ch.cancelledOrderCount > 0 ? (
+                            <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
+                              -{ch.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            </span>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="cell-number">{formatNumber(ch.totalQuantity)}</td>
                       <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
-                        {formatMoney(ch.totalGmv, ch.currency)}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                          <span>{formatMoney(ch.totalGmv, ch.currency)}</span>
+                          {ch.cancelledGmv > 0 ? (
+                            <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
+                              -{formatMoney(ch.cancelledGmv, ch.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="cell-number" style={{ fontWeight: 600 }}>
                         {ch.totalDurationSec > 0
