@@ -29,7 +29,8 @@ import ScheduleRunMonitor from './ScheduleRunMonitor';
 import Pagination from './Pagination';
 
 const DEFAULT_TIMES = ['02:00', '06:00', '10:00', '14:00', '18:00', '22:00'];
-const CHANNEL_JOB_KEYS = new Set(['tiktok_channel_metrics']);
+const GLOBAL_JOB_KEYS = new Set(['tiktok_channel_metrics', 'currency_exchange_rates']);
+const CHANNEL_JOB_KEYS = GLOBAL_JOB_KEYS;
 const isActiveRun = (run) => ['PROCESSING', 'RETRY_PENDING'].includes(run?.status);
 
 const getRunMenuPosition = (triggerElement, shopCount) => {
@@ -55,6 +56,7 @@ const JOB_APP_TAGS = {
   tiktok_channel_report_revenue: { label: 'Partner', type: 'partner' },
   tiktok_affiliate_video_performance: { label: 'Partner', type: 'partner' },
   tiktok_ads_live_performance: { label: 'TikTok Ads', type: 'ads' },
+  currency_exchange_rates: { label: 'BNM', type: 'system' },
   tiktok_auth: { label: 'Auth', type: 'auth' },
 };
 

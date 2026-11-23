@@ -132,6 +132,7 @@ const defaultMigrationNames = [
   '123_rename_tiktok_ads_scheduled_job_to_ads_cost',
   '124_create_live_session_performances',
   '125_add_advertiser_details_to_tiktok_ads_authorizations',
+  '126_add_currency_exchange_rates_scheduled_job',
 ];
 const migrationPaths = defaultMigrationNames
   .map((name) => require.resolve(`../src/migrations/${name}`));

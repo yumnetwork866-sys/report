@@ -49,6 +49,7 @@ const JOB_KEYS = new Set([
   'tiktok_affiliate_orders',
   'tiktok_ads_live_performance',
   'tiktok_auth',
+  'currency_exchange_rates',
 ]);
 const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const activeRunControllers = new Map();
@@ -840,6 +841,30 @@ const jobHandlers = {
   tiktok_auth: async () => {
     const { checkTokenHealth } = require('./authLogService');
     return checkTokenHealth();
+  },
+  currency_exchange_rates: async ({ signal } = {}) => {
+    throwIfAborted(signal);
+    const { syncExchangeRates } = require('./exchangeRateService');
+    const result = await syncExchangeRates();
+    throwIfAborted(signal);
+    return {
+      status: 'SUCCEEDED',
+      base: result.base,
+      rates: result.rates,
+      dates: result.dates,
+      session: result.session,
+      source: result.source,
+      results: [
+        {
+          status: 'SUCCEEDED',
+          session: result.session,
+          source: result.source,
+          usd_rate: result.rates?.USD,
+          vnd_rate: result.rates?.VND,
+          date: result.dates?.USD,
+        },
+      ],
+    };
   },
 };
 

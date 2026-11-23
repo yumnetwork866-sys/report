@@ -2077,6 +2077,10 @@
         "name": "Ads Cost",
         "description": ""
       },
+      "currency_exchange_rates": {
+        "name": "Tỉ giá hối đoái (BNM)",
+        "description": "Đồng bộ tỉ giá USD/MYR/VND từ Ngân hàng Trung ương Malaysia (các phiên 09:00, 12:00, 17:00)"
+      },
       "tiktok_auth": {
         "name": "Xác thực & Kết nối",
         "description": "Lịch sử ủy quyền OAuth Shop, Kênh, KOC và làm mới Token"

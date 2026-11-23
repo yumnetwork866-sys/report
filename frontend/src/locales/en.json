@@ -2079,6 +2079,10 @@
         "name": "Ads Cost",
         "description": ""
       },
+      "currency_exchange_rates": {
+        "name": "BNM Exchange Rates",
+        "description": "Sync USD/MYR/VND exchange rates from Bank Negara Malaysia across market sessions (09:00, 12:00, 17:00)"
+      },
       "tiktok_auth": {
         "name": "Authentication & OAuth",
         "description": "OAuth authorization history for Shops, Channels, KOCs and token refresh"

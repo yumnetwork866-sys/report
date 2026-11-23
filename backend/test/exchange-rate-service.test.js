@@ -100,3 +100,29 @@ test('converts marketplace USD GMV ranges to MYR instead of only replacing the s
   assert.equal(converted.formatted_range, 'RM4K-RM20K');
   assert.equal(converted.source_formatted_range, 'US$1K-US$5K');
 });
+
+test('getBnmSessionForDate resolves BNM market sessions based on Kuala Lumpur time', () => {
+  const { getBnmSessionForDate, syncExchangeRates } = require('../src/services/exchangeRateService');
+  // 09:30 UTC = 17:30 KL time (after 17:05) -> '1700'
+  assert.equal(getBnmSessionForDate(new Date('2026-11-23T09:30:00Z')), '1700');
+  // 05:00 UTC = 13:00 KL time (after 12:05) -> '1200'
+  assert.equal(getBnmSessionForDate(new Date('2026-11-23T05:00:00Z')), '1200');
+  // 02:00 UTC = 10:00 KL time (before 12:05) -> '0900'
+  assert.equal(getBnmSessionForDate(new Date('2026-11-23T02:00:00Z')), '0900');
+});
+
+test('syncExchangeRates refreshes rates and reports current session', async (t) => {
+  const { syncExchangeRates, clearExchangeRateCache } = require('../src/services/exchangeRateService');
+  clearExchangeRateCache();
+  t.after(clearExchangeRateCache);
+
+  let requestedUrl = '';
+  const fetchImpl = async (url) => {
+    requestedUrl = url;
+    return bnmResponse();
+  };
+  const result = await syncExchangeRates({ fetchImpl, session: '1200' });
+  assert.match(requestedUrl, /session=1200/);
+  assert.equal(result.session, '1200');
+  assert.equal(result.rates.USD, 4.0895);
+});

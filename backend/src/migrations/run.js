@@ -133,6 +133,7 @@ const migrations = [
   require('./123_rename_tiktok_ads_scheduled_job_to_ads_cost'),
   require('./124_create_live_session_performances'),
   require('./125_add_advertiser_details_to_tiktok_ads_authorizations'),
+  require('./126_add_currency_exchange_rates_scheduled_job'),
 ];
 
 const createMigrationRunner = ({
