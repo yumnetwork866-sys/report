@@ -38,7 +38,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
   const safeFetch = (input, options) => monitoredFetch(input, options, fetchImpl);
   const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
   let syncPromise = null;
-  let lastSyncAt = 0;
+  const lastSyncByShop = new Map();
 
   return {
     async getAuthUrl(state = '') {
@@ -350,6 +350,8 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       if (syncPromise) {
         return syncPromise;
       }
+      const cacheKey = shopId ? Number(shopId) : 'all';
+      const lastSyncAt = lastSyncByShop.get(cacheKey) || 0;
       if (!force && Date.now() - lastSyncAt < 60 * 1000) {
         return select(`
           SELECT shop_id, session_id, ads_cost, currency, source, advertiser_id, updated_at
@@ -428,7 +430,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           FROM tiktok_shops
           WHERE platform_shop_id IS NOT NULL
         `);
-      } catch (_shopErr) {
+      } catch {
         allShops = [];
       }
 
@@ -473,7 +475,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           FROM live_session_performances
           WHERE session_id IS NOT NULL
         `);
-      } catch (_perfErr) {
+      } catch {
         dbPerformances = [];
       }
 
@@ -588,13 +590,9 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             return false;
           });
 
-          // Test/direct compatibility when store/list returns empty but single shop is queried
-          if (!matchedStores.length && !rawStores.length && shopId && targetShops.length === 1) {
+          // If store/list returns empty, only allow single-shop fallback when sessions are explicitly provided for that shop
+          if (!matchedStores.length && !rawStores.length && shopId && targetShops.length === 1 && Array.isArray(sessions) && sessions.length > 0) {
             matchedStores = [{ store_id: targetShops[0].platform_shop_id }];
-          }
-
-          if (!matchedStores.length && !rawStores.length) {
-            matchedStores = targetShops.map((s) => ({ store_id: s.platform_shop_id }));
           }
 
           // If advertiser has stores but none match target shops, skip to prevent cross-shop attribution
@@ -762,17 +760,19 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
         }
       }
 
-      // Clean up previous API-synced ads for target shop(s) ONLY if we have freshly synced rows
-      if (shopId) {
+      // Clean up previous API-synced ads for target shop(s) that had freshly synced rows
+      const syncedShopIds = new Set(Array.from(sessionSpendAccumulator.values()).map((item) => Number(item.shopId)));
+      const shopsToClean = shopId ? [Number(shopId)] : Array.from(syncedShopIds);
+      for (const sId of shopsToClean) {
         const currentSessionIds = Array.from(sessionSpendAccumulator.values())
-          .filter((item) => Number(item.shopId) === Number(shopId))
+          .filter((item) => Number(item.shopId) === sId)
           .map((item) => String(item.sessionId));
 
         if (currentSessionIds.length > 0) {
           await db.query(`
             DELETE FROM live_session_ads
             WHERE shop_id = :shopId AND source = 'api' AND session_id NOT IN (:sessionIds)
-          `, { replacements: { shopId: Number(shopId), sessionIds: currentSessionIds } });
+          `, { replacements: { shopId: sId, sessionIds: currentSessionIds } });
         }
       }
 
@@ -819,7 +819,7 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
     };
 
     syncPromise = runSync().finally(() => {
-      lastSyncAt = Date.now();
+      lastSyncByShop.set(cacheKey, Date.now());
       syncPromise = null;
     });
     return syncPromise;

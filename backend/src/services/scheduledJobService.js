@@ -756,13 +756,45 @@ const jobHandlers = {
   }, signal, shopId, { shopDelayMs: configuredAffiliateVideoShopDelayMs(), jobKey: 'tiktok_affiliate_video_performance' }),
   tiktok_ads_live_performance: async ({ signal, shopId } = {}) => {
     throwIfAborted(signal);
+    const tiktokAdsService = require('./tiktokAdsService');
     const shops = await connectedShops(shopId);
+
+    if (!shopId && shops.length > 0) {
+      // Sync all shops in a single pass across advertisers to avoid rate limiting and duplicate queries
+      const synced = await tiktokAdsService.syncLiveSessionAds({ force: true });
+      throwIfAborted(signal);
+      const syncedByShop = new Map();
+      synced.forEach((item) => {
+        const sid = Number(item.shop_id || item.shopId);
+        syncedByShop.set(sid, (syncedByShop.get(sid) || 0) + 1);
+      });
+      return {
+        total: shops.length,
+        succeeded: shops.length,
+        failed: 0,
+        synced_sessions: synced.length,
+        results: shops.map((shop) => ({
+          shop_id: shop.id,
+          shop_name: shop.name,
+          status: 'SUCCEEDED',
+          synced_sessions: syncedByShop.get(shop.id) || 0,
+          windows: [
+            {
+              module_type: 'ADS',
+              window_type: 'LIVE',
+              status: 'SUCCEEDED',
+              row_count: syncedByShop.get(shop.id) || 0,
+            },
+          ],
+        })),
+      };
+    }
+
     if (shops.length > 0) {
       return runForShops(
         async (shop) => {
           throwIfAborted(signal);
-          const tiktokAdsService = require('./tiktokAdsService');
-          const synced = await tiktokAdsService.syncLiveSessionAds({ shopId: shop.id });
+          const synced = await tiktokAdsService.syncLiveSessionAds({ shopId: shop.id, force: true });
           throwIfAborted(signal);
           return {
             synced_sessions: synced.length,
@@ -781,8 +813,7 @@ const jobHandlers = {
         { jobKey: 'tiktok_ads_live_performance' },
       );
     }
-    const tiktokAdsService = require('./tiktokAdsService');
-    const results = await tiktokAdsService.syncLiveSessionAds({ shopId });
+    const results = await tiktokAdsService.syncLiveSessionAds({ shopId, force: true });
     throwIfAborted(signal);
     return {
       total: 1,
