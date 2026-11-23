@@ -1123,19 +1123,19 @@ const LiveAnalytics = () => {
     percentageChange(totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison && comparisonLiveGmv > 0)
   ), [totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison]);
 
-  // Live orders count (actual from DB or estimated proportional)
+  // Live orders count: prioritize actual distinct live orders from database to match the live orders table exactly
   const actualLiveOrdersCount = liveOrderRows.length;
   const estimatedLiveOrdersCount = totals.orders && liveGmvShare > 0
     ? Math.round((totals.orders * liveGmvShare) / 100)
-    : actualLiveOrdersCount;
-  const displayLiveOrders = estimatedLiveOrdersCount || actualLiveOrdersCount;
+    : 0;
+  const displayLiveOrders = actualLiveOrdersCount || estimatedLiveOrdersCount;
 
-  // Live units sold
+  // Live units sold: prioritize actual live units from database sessions
   const actualLiveUnits = sessionList.reduce((sum, s) => sum + s.totalQuantity, 0);
   const estimatedLiveUnits = totals.unitsSold && liveGmvShare > 0
     ? Math.round((totals.unitsSold * liveGmvShare) / 100)
-    : actualLiveUnits;
-  const displayUnitsSold = estimatedLiveUnits || actualLiveUnits;
+    : 0;
+  const displayUnitsSold = actualLiveUnits || estimatedLiveUnits;
 
   // Live AOV
   const liveAov = displayLiveOrders > 0 ? liveGmv / displayLiveOrders : 0;
