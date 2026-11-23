@@ -486,45 +486,47 @@ const LiveAnalytics = () => {
       try {
         const effectiveEndExclusive = periodPreset === 'custom' ? endDate : shiftDate(endDate, 1);
         let results = [];
+
+        const fetchShopLiveOrders = async (shopId, region) => {
+          const startTime = shopDateUnix(startDate, region);
+          const endTime = shopDateUnix(effectiveEndExclusive, region);
+          const collected = [];
+          let pageToken;
+          for (let page = 0; page < 5; page += 1) {
+            const res = await fetchTikTokSellerAffiliateOrders(shopId, {
+              source: 'db',
+              contentType: 'LIVE',
+              pageSize: 100,
+              ...(pageToken ? { pageToken } : {}),
+              ...(Number.isFinite(startTime) ? { startTime } : {}),
+              ...(Number.isFinite(endTime) ? { endTime } : {}),
+              signal: controller.signal,
+            });
+            const orders = Array.isArray(res?.orders) ? res.orders : [];
+            collected.push(...orders);
+            if (!res?.next_page_token || orders.length < 100) break;
+            pageToken = res.next_page_token;
+          }
+          return collected;
+        };
+
         if (selectedShopId === 'all') {
           const eligibleShops = shops.filter((s) => s.id);
           const settled = await Promise.allSettled(
-            eligibleShops.map((shop) => {
-              const startTime = shopDateUnix(startDate, shop?.region);
-              const endTime = shopDateUnix(effectiveEndExclusive, shop?.region);
-              return fetchTikTokSellerAffiliateOrders(shop.id, {
-                source: 'db',
-                contentType: 'LIVE',
-                pageSize: 200,
-                ...(Number.isFinite(startTime) ? { startTime } : {}),
-                ...(Number.isFinite(endTime) ? { endTime } : {}),
-                signal: controller.signal,
-              });
-            }),
+            eligibleShops.map((shop) => fetchShopLiveOrders(shop.id, shop?.region)),
           );
           settled.forEach((res, index) => {
-            if (res.status === 'fulfilled' && Array.isArray(res.value?.orders)) {
+            if (res.status === 'fulfilled' && Array.isArray(res.value)) {
               const shopName = eligibleShops[index]?.name || '';
               const shopId = eligibleShops[index]?.id;
-              const shopOrders = res.value.orders.map((o) => ({ ...o, shopName, shop_id: o.shop_id || shopId }));
+              const shopOrders = res.value.map((o) => ({ ...o, shopName, shop_id: o.shop_id || shopId }));
               results.push(...shopOrders);
             }
           });
         } else if (selectedShopId) {
-          const startTime = shopDateUnix(startDate, selectedShop?.region);
-          const endTime = shopDateUnix(effectiveEndExclusive, selectedShop?.region);
-          const res = await fetchTikTokSellerAffiliateOrders(selectedShopId, {
-            source: 'db',
-            contentType: 'LIVE',
-            pageSize: 200,
-            ...(Number.isFinite(startTime) ? { startTime } : {}),
-            ...(Number.isFinite(endTime) ? { endTime } : {}),
-            signal: controller.signal,
-          });
-          if (Array.isArray(res?.orders)) {
-            const shopName = selectedShop?.name || '';
-            results = res.orders.map((o) => ({ ...o, shopName, shop_id: o.shop_id || selectedShopId }));
-          }
+          const shopOrders = await fetchShopLiveOrders(selectedShopId, selectedShop?.region);
+          const shopName = selectedShop?.name || '';
+          results = shopOrders.map((o) => ({ ...o, shopName, shop_id: o.shop_id || selectedShopId }));
         }
 
         if (active) {
@@ -746,10 +748,10 @@ const LiveAnalytics = () => {
 
       if (!liveSkus.length) return;
 
-      const isDirectLive = liveSkus.some((s) => (
-        ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'].includes(String(s.content_type || '').toUpperCase())
-        || Boolean(s.room_id || s.raw_data?.room_id)
-      ));
+      const isDirectLive = liveSkus.some((s) => {
+        const roomId = s.room_id || s.raw_data?.room_id || s.content_id;
+        return Boolean(roomId && roomId !== 'unknown' && roomId !== 'null');
+      });
       const isAttributed = !isDirectLive;
 
       const orderCreateTime = order.create_time

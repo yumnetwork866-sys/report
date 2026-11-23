@@ -32,7 +32,7 @@ const tiktokVideoId = z.coerce.string().trim().regex(/^\d{5,30}$/, 'Invalid TikT
 
 const paginationFields = {
   page: z.coerce.number().int().positive().optional(),
-  page_size: z.coerce.number().int().min(1).max(100).optional(),
+  page_size: z.coerce.number().int().min(1).max(500).optional(),
 };
 const paginationQuerySchema = z.object(paginationFields).passthrough();
 
