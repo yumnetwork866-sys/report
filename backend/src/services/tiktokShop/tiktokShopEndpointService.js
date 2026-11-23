@@ -1237,6 +1237,10 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
 
     if (filterContentType === 'LIVE') {
       skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
+    } else if (filterContentType === 'LIVE_ATTRIBUTED' || filterContentType === 'NON_VIDEO') {
+      skuConditions.push({
+        content_type: { [Op.notIn]: ['VIDEO', 'SHORT_VIDEO', 'VIDEO_STREAM'] },
+      });
     } else if (filterContentType === 'SHOP') {
       skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
     } else if (filterContentType === 'DIRECT') {
@@ -1532,6 +1536,10 @@ const listAffiliateOrderOverview = affiliateResponse('order-overview', async (sh
 
   if (filterContentType === 'LIVE') {
     skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
+  } else if (filterContentType === 'LIVE_ATTRIBUTED' || filterContentType === 'NON_VIDEO') {
+    skuConditions.push({
+      content_type: { [Op.notIn]: ['VIDEO', 'SHORT_VIDEO', 'VIDEO_STREAM'] },
+    });
   } else if (filterContentType === 'SHOP') {
     skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
   } else if (filterContentType === 'DIRECT') {

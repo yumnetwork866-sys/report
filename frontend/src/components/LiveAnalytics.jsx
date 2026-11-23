@@ -494,8 +494,8 @@ const LiveAnalytics = () => {
               const endTime = shopDateUnix(effectiveEndExclusive, shop?.region);
               return fetchTikTokSellerAffiliateOrders(shop.id, {
                 source: 'db',
-                contentType: 'LIVE',
-                pageSize: 100,
+                contentType: 'LIVE_ATTRIBUTED',
+                pageSize: 200,
                 ...(Number.isFinite(startTime) ? { startTime } : {}),
                 ...(Number.isFinite(endTime) ? { endTime } : {}),
                 signal: controller.signal,
@@ -515,8 +515,8 @@ const LiveAnalytics = () => {
           const endTime = shopDateUnix(effectiveEndExclusive, selectedShop?.region);
           const res = await fetchTikTokSellerAffiliateOrders(selectedShopId, {
             source: 'db',
-            contentType: 'LIVE',
-            pageSize: 100,
+            contentType: 'LIVE_ATTRIBUTED',
+            pageSize: 200,
             ...(Number.isFinite(startTime) ? { startTime } : {}),
             ...(Number.isFinite(endTime) ? { endTime } : {}),
             signal: controller.signal,
@@ -739,11 +739,18 @@ const LiveAnalytics = () => {
 
     liveOrders.forEach((order) => {
       const skus = Array.isArray(order.skus) ? order.skus : [];
-      const liveSkus = skus.filter((s) => (
-        ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'].includes(String(s.content_type || '').toUpperCase())
-      ));
+      const liveSkus = skus.filter((s) => {
+        const ct = String(s.content_type || '').toUpperCase();
+        return !ct.includes('VIDEO') && !s.video_id && !s.raw_data?.video_id;
+      });
 
       if (!liveSkus.length) return;
+
+      const isDirectLive = liveSkus.some((s) => (
+        ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'].includes(String(s.content_type || '').toUpperCase())
+        || Boolean(s.room_id || s.raw_data?.room_id)
+      ));
+      const isAttributed = !isDirectLive;
 
       const orderCreateTime = order.create_time
         ? (typeof order.create_time === 'number' ? order.create_time * 1000 : Date.parse(order.create_time))
@@ -799,6 +806,8 @@ const LiveAnalytics = () => {
         isExternal: orderIsExternal,
         sessionId: rawSessionId,
         isCancelled: isOrderCancelled,
+        isAttributed,
+        orderType: isAttributed ? 'ATTRIBUTED' : 'DIRECT',
         totalGmv: liveSkus.reduce((sum, s) => {
           const sCurr = s.currency || s.price?.currency || orderCurrency;
           const raw = (moneyValue(s.price) || 0) * (Number(s.quantity) || 1);
@@ -2673,7 +2682,7 @@ const LiveAnalytics = () => {
                   <th>{t('liveAnalytics.colHost')}</th>
                   <th>{t('liveAnalytics.colProducts')}</th>
                   <th className="cell-number">{t('liveAnalytics.colTotalAmount')}</th>
-                  <th className="cell-number">{t('liveAnalytics.colCommission')}</th>
+                  <th>{t('liveAnalytics.colOrderType', 'Loại đơn')}</th>
                   <th>{t('liveAnalytics.colOrderStatus')}</th>
                 </tr>
               </thead>
@@ -2740,17 +2749,42 @@ const LiveAnalytics = () => {
                     <td className="cell-number" style={{ fontWeight: 750, color: 'var(--color-primary)' }}>
                       {formatMoney(order.totalGmv, order.currency)}
                     </td>
-                    <td className="cell-number">
-                      {order.totalCommission > 0 ? (
-                        <div>
-                          <strong>{formatMoney(order.totalCommission, order.currency)}</strong>
-                          {order.commissionRate > 0 ? (
-                            <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--color-muted)' }}>
-                              ({order.commissionRate}%)
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : '—'}
+                    <td>
+                      {order.isAttributed ? (
+                        <span
+                          className="badge"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.75rem',
+                            fontWeight: 650,
+                            background: '#f3e8ff',
+                            color: '#7e22ce',
+                            border: '1px solid #e9d5ff',
+                          }}
+                        >
+                          {t('liveAnalytics.orderTypeAttributed', 'Attributed')}
+                        </span>
+                      ) : (
+                        <span
+                          className="badge"
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            fontSize: '0.75rem',
+                            fontWeight: 650,
+                            background: '#dcfce7',
+                            color: '#15803d',
+                            border: '1px solid #bbf7d0',
+                          }}
+                        >
+                          {t('liveAnalytics.orderTypeDirect', 'Trực tiếp')}
+                        </span>
+                      )}
                     </td>
                     <td>
                       <span className={`seller-affiliate__order-state seller-affiliate__order-state--${String(order.status || '').toLowerCase()}`}>
