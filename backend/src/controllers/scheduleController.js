@@ -126,6 +126,23 @@ const listSchedules = async (_req, res) => {
         order: [['id', 'ASC']],
       }),
     ]);
+
+    if (!jobs.some((j) => j.job_key === 'currency_exchange_rates')) {
+      const [currencyJob] = await ScheduledJob.findOrCreate({
+        where: { job_key: 'currency_exchange_rates' },
+        defaults: {
+          job_key: 'currency_exchange_rates',
+          name: 'BNM Exchange Rates',
+          description: 'Sync USD/MYR/VND exchange rates from Bank Negara Malaysia across official market sessions (09:00, 12:00, 17:00).',
+          enabled: true,
+          timezone: 'Asia/Ho_Chi_Minh',
+          run_times: ['08:15', '11:15', '16:15'],
+        },
+      });
+      if (currencyJob && !jobs.some((j) => j.id === currencyJob.id)) {
+        jobs.push(currencyJob);
+      }
+    }
     const runs = await findRecentRunsForJobs(jobs.map((job) => job.id));
     const runsByJobId = new Map();
     for (const run of runs) {
