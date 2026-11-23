@@ -494,7 +494,7 @@ const LiveAnalytics = () => {
               const endTime = shopDateUnix(effectiveEndExclusive, shop?.region);
               return fetchTikTokSellerAffiliateOrders(shop.id, {
                 source: 'db',
-                contentType: 'LIVE_ATTRIBUTED',
+                contentType: 'LIVE',
                 pageSize: 200,
                 ...(Number.isFinite(startTime) ? { startTime } : {}),
                 ...(Number.isFinite(endTime) ? { endTime } : {}),
@@ -515,7 +515,7 @@ const LiveAnalytics = () => {
           const endTime = shopDateUnix(effectiveEndExclusive, selectedShop?.region);
           const res = await fetchTikTokSellerAffiliateOrders(selectedShopId, {
             source: 'db',
-            contentType: 'LIVE_ATTRIBUTED',
+            contentType: 'LIVE',
             pageSize: 200,
             ...(Number.isFinite(startTime) ? { startTime } : {}),
             ...(Number.isFinite(endTime) ? { endTime } : {}),
@@ -1017,7 +1017,7 @@ const LiveAnalytics = () => {
         || sess.currency;
 
       const hasAttributedGmv = rawPerfGmv !== undefined && rawPerfGmv !== null && rawPerfGmv !== '' && !isNaN(Number(rawPerfGmv));
-      const totalGmv = hasAttributedGmv
+      const totalGmv = (hasAttributedGmv && Number(rawPerfGmv) > 0)
         ? toDisplayCurrency(Number(rawPerfGmv), perfGmvCurrency, currentShop)
         : sess.totalGmv;
 
@@ -1025,16 +1025,12 @@ const LiveAnalytics = () => {
         ?? performance?.sales_performance?.sku_orders
         ?? performance?.sales_performance?.orders;
       const hasAttributedOrders = rawPerfOrders !== undefined && rawPerfOrders !== null && rawPerfOrders !== '' && !isNaN(Number(rawPerfOrders));
-      const orderCount = hasAttributedOrders
-        ? Number(rawPerfOrders)
-        : sess.orderIds.size;
+      const orderCount = Math.max(hasAttributedOrders ? Number(rawPerfOrders) : 0, sess.orderIds.size);
 
       const rawPerfUnits = performance?.attributed_items_sold
         ?? performance?.sales_performance?.items_sold;
       const hasAttributedUnits = rawPerfUnits !== undefined && rawPerfUnits !== null && rawPerfUnits !== '' && !isNaN(Number(rawPerfUnits));
-      const totalQuantity = hasAttributedUnits
-        ? Number(rawPerfUnits)
-        : sess.totalQuantity;
+      const totalQuantity = Math.max(hasAttributedUnits ? Number(rawPerfUnits) : 0, sess.totalQuantity);
 
       const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`]
         || (sessionAdsMap[sess.sessionId]?.shop_id && Number(sessionAdsMap[sess.sessionId].shop_id) === Number(sess.shopId) ? sessionAdsMap[sess.sessionId] : null);
