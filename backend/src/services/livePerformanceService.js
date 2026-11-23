@@ -86,6 +86,17 @@ const mergeSessions = (sessionGroups = []) => {
         comment_rate: existing.interaction_performance.comment_rate ?? session.interaction_performance.comment_rate,
       };
     }
+    if (!existing.sales_performance && session.sales_performance) {
+      merged.sales_performance = session.sales_performance;
+    } else if (existing.sales_performance && session.sales_performance) {
+      merged.sales_performance = {
+        ...session.sales_performance,
+        ...existing.sales_performance,
+        live_attributed_gmv: existing.sales_performance.live_attributed_gmv ?? session.sales_performance.live_attributed_gmv,
+        sku_orders: existing.sales_performance.sku_orders ?? session.sales_performance.sku_orders,
+        items_sold: existing.sales_performance.items_sold ?? session.sales_performance.items_sold,
+      };
+    }
     if (!existing.start_time && session.start_time) merged.start_time = session.start_time;
     if (!existing.end_time && session.end_time) merged.end_time = session.end_time;
     if (!existing.duration && session.duration) merged.duration = session.duration;
@@ -131,6 +142,54 @@ const fetchShopLiveSessions = async ({
   return mergeSessions(groups);
 };
 
+const extractSalesPerformance = (session) => {
+  if (!session || typeof session !== 'object') return null;
+  const sales = session.sales_performance || session.performance?.sales || null;
+
+  const rawGmvObj = sales?.live_attributed_gmv
+    ?? session.live_attributed_gmv
+    ?? sales?.gmv
+    ?? session.gmv;
+
+  let gmvAmount = null;
+  let gmvCurrency = null;
+  if (rawGmvObj !== undefined && rawGmvObj !== null && rawGmvObj !== '') {
+    if (typeof rawGmvObj === 'object') {
+      const val = rawGmvObj.amount !== undefined ? rawGmvObj.amount : rawGmvObj.value;
+      if (val !== undefined && val !== null && !isNaN(Number(val))) {
+        gmvAmount = Number(val);
+      }
+      gmvCurrency = rawGmvObj.currency || null;
+    } else if (!isNaN(Number(rawGmvObj))) {
+      gmvAmount = Number(rawGmvObj);
+    }
+  }
+
+  const rawOrders = sales?.sku_orders ?? sales?.orders ?? session.sku_orders ?? session.orders;
+  const orders = rawOrders !== undefined && rawOrders !== null && rawOrders !== '' && !isNaN(Number(rawOrders))
+    ? Number(rawOrders)
+    : null;
+
+  const rawItemsSold = sales?.items_sold ?? session.items_sold;
+  const itemsSold = rawItemsSold !== undefined && rawItemsSold !== null && rawItemsSold !== '' && !isNaN(Number(rawItemsSold))
+    ? Number(rawItemsSold)
+    : null;
+
+  if (gmvAmount === null && orders === null && itemsSold === null && !sales) {
+    return null;
+  }
+
+  return {
+    live_attributed_gmv: gmvAmount !== null ? { amount: String(gmvAmount), currency: gmvCurrency } : (sales?.live_attributed_gmv || null),
+    attributed_gmv: gmvAmount,
+    currency: gmvCurrency,
+    sku_orders: orders,
+    attributed_orders: orders,
+    items_sold: itemsSold,
+    attributed_items_sold: itemsSold,
+  };
+};
+
 const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
   const hosts = await loadHashtagHosts(db);
   return (Array.isArray(rawSessions) ? rawSessions : [])
@@ -166,6 +225,8 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
         endTimeMs = startTimeMs + durationSec * 1000;
       }
 
+      const salesPerformance = extractSalesPerformance(session);
+
       return {
         live_id: String(session?.id || '').trim(),
         title,
@@ -181,6 +242,11 @@ const buildLiveSessions = async (rawSessions, { db = sequelize } = {}) => {
         auto_host: resolveAutoHost(title, hosts),
         total_comments: totalComments,
         interaction_performance: interactionPerformance || null,
+        sales_performance: salesPerformance,
+        attributed_gmv: salesPerformance?.attributed_gmv ?? null,
+        sales_currency: salesPerformance?.currency ?? null,
+        attributed_orders: salesPerformance?.attributed_orders ?? null,
+        attributed_items_sold: salesPerformance?.attributed_items_sold ?? null,
       };
     })
     .filter((session) => session.live_id);
@@ -201,6 +267,11 @@ const saveLiveSessionPerformances = async (shopId, lives, { db = sequelize, rawS
     if (!sessionId) continue;
     const raw = rawMap.get(sessionId) || live.raw_data || {};
     const duration = live.duration_seconds ?? live.duration ?? null;
+    const salesPerformance = live.sales_performance || extractSalesPerformance(raw);
+    const rawToSave = {
+      ...raw,
+      ...(salesPerformance ? { sales_performance: salesPerformance } : {}),
+    };
 
     await db.query(`
       INSERT INTO live_session_performances (
@@ -239,7 +310,7 @@ const saveLiveSessionPerformances = async (shopId, lives, { db = sequelize, rawS
         totalComments: live.total_comments !== null && Number.isFinite(Number(live.total_comments)) ? Number(live.total_comments) : null,
         hashtags: JSON.stringify(Array.isArray(live.hashtags) ? live.hashtags : []),
         interactionPerformance: live.interaction_performance ? JSON.stringify(live.interaction_performance) : null,
-        rawData: JSON.stringify(raw),
+        rawData: JSON.stringify(rawToSave),
       },
       type: QueryTypes.INSERT,
     });
@@ -277,6 +348,7 @@ const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequ
     return rows.map((row) => {
       const title = String(row.title || '').trim();
       const duration = row.duration_seconds !== null ? Number(row.duration_seconds) : null;
+      const salesPerformance = extractSalesPerformance(row.raw_data);
       return {
         live_id: row.session_id,
         id: row.session_id,
@@ -294,6 +366,11 @@ const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequ
         auto_host: resolveAutoHost(title, hosts),
         total_comments: row.total_comments !== null ? Number(row.total_comments) : null,
         interaction_performance: row.interaction_performance || null,
+        sales_performance: salesPerformance,
+        attributed_gmv: salesPerformance?.attributed_gmv ?? null,
+        sales_currency: salesPerformance?.currency ?? null,
+        attributed_orders: salesPerformance?.attributed_orders ?? null,
+        attributed_items_sold: salesPerformance?.attributed_items_sold ?? null,
       };
     });
   } catch (err) {
@@ -356,6 +433,11 @@ const loadShopLivePerformance = async ({
         end_time: apiLive.end_time ?? existing.end_time,
         title: apiLive.title || existing.title,
         auto_host: apiLive.auto_host || existing.auto_host,
+        sales_performance: apiLive.sales_performance || existing.sales_performance,
+        attributed_gmv: apiLive.attributed_gmv ?? existing.attributed_gmv,
+        sales_currency: apiLive.sales_currency || existing.sales_currency,
+        attributed_orders: apiLive.attributed_orders ?? existing.attributed_orders,
+        attributed_items_sold: apiLive.attributed_items_sold ?? existing.attributed_items_sold,
       });
     } else {
       mergedMap.set(String(apiLive.live_id), apiLive);
@@ -367,6 +449,7 @@ const loadShopLivePerformance = async ({
 
 module.exports = {
   buildLiveSessions,
+  extractSalesPerformance,
   fetchShopLiveSessions,
   loadHashtagHosts,
   loadPersistedLiveSessions,

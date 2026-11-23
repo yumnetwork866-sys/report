@@ -996,26 +996,56 @@ const LiveAnalytics = () => {
         totalCommission: sess.totalCommission,
       });
 
+      // Official attributed sales from TikTok Live Analytics (e.g. Attributed GMV on Seller Center)
+      const rawPerfGmv = performance?.attributed_gmv
+        ?? performance?.sales_performance?.live_attributed_gmv?.amount
+        ?? performance?.sales_performance?.live_attributed_gmv
+        ?? performance?.sales_performance?.gmv?.amount
+        ?? performance?.sales_performance?.gmv;
+      const perfGmvCurrency = performance?.sales_currency
+        || performance?.sales_performance?.live_attributed_gmv?.currency
+        || performance?.sales_performance?.gmv?.currency
+        || sess.currency;
+
+      const hasAttributedGmv = rawPerfGmv !== undefined && rawPerfGmv !== null && rawPerfGmv !== '' && !isNaN(Number(rawPerfGmv));
+      const totalGmv = hasAttributedGmv
+        ? toDisplayCurrency(Number(rawPerfGmv), perfGmvCurrency, currentShop)
+        : sess.totalGmv;
+
+      const rawPerfOrders = performance?.attributed_orders
+        ?? performance?.sales_performance?.sku_orders
+        ?? performance?.sales_performance?.orders;
+      const hasAttributedOrders = rawPerfOrders !== undefined && rawPerfOrders !== null && rawPerfOrders !== '' && !isNaN(Number(rawPerfOrders));
+      const orderCount = hasAttributedOrders
+        ? Number(rawPerfOrders)
+        : sess.orderIds.size;
+
+      const rawPerfUnits = performance?.attributed_items_sold
+        ?? performance?.sales_performance?.items_sold;
+      const hasAttributedUnits = rawPerfUnits !== undefined && rawPerfUnits !== null && rawPerfUnits !== '' && !isNaN(Number(rawPerfUnits));
+      const totalQuantity = hasAttributedUnits
+        ? Number(rawPerfUnits)
+        : sess.totalQuantity;
+
       const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`]
         || (sessionAdsMap[sess.sessionId]?.shop_id && Number(sessionAdsMap[sess.sessionId].shop_id) === Number(sess.shopId) ? sessionAdsMap[sess.sessionId] : null);
       const rawAdsCost = adsRecord?.ads_cost !== undefined && adsRecord?.ads_cost !== null ? Number(adsRecord.ads_cost) : null;
       const adsCurrency = adsRecord?.currency || (rawAdsCost !== null ? 'USD' : (sess.currency || displayCurrency));
       const convertedAdsCost = rawAdsCost !== null ? toDisplayCurrency(rawAdsCost, adsCurrency) : null;
-      const roas = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
-        ? (sess.totalGmv / convertedAdsCost)
+      const roas = (convertedAdsCost && convertedAdsCost > 0 && totalGmv > 0)
+        ? (totalGmv / convertedAdsCost)
         : null;
-      const costRevenueRatio = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
-        ? (convertedAdsCost / sess.totalGmv) * 100
+      const costRevenueRatio = (convertedAdsCost && convertedAdsCost > 0 && totalGmv > 0)
+        ? (convertedAdsCost / totalGmv) * 100
         : null;
-      const orderCount = sess.orderIds.size;
       const closingRate = (totalComments && totalComments > 0 && orderCount > 0)
         ? (orderCount / totalComments) * 100
         : null;
       const aov = orderCount > 0
-        ? (sess.totalGmv / orderCount)
+        ? (totalGmv / orderCount)
         : 0;
       const gmvPerHour = calculateGmvPerHour(
-        sess.totalGmv,
+        totalGmv,
         durationSec,
       );
 
@@ -1034,7 +1064,13 @@ const LiveAnalytics = () => {
         hostSource,
         liveTitle: performance?.title || '',
         hashtags: performance?.hashtags || [],
+        totalGmv,
+        totalQuantity,
         orderCount,
+        directGmv: sess.totalGmv,
+        directOrderCount: sess.orderIds.size,
+        directQuantity: sess.totalQuantity,
+        isAttributedSales: hasAttributedGmv,
         totalComments,
         adsCost: rawAdsCost,
         adsCurrency,
@@ -2965,6 +3001,11 @@ const LiveSessionDrawer = ({
                 <p style={{ margin: 0, fontWeight: 750, fontSize: '1.0625rem', color: 'var(--color-primary)' }}>
                   {formatMoney(session.totalGmv, session.currency)}
                 </p>
+                {session.isAttributedSales && session.directGmv !== undefined && Math.abs(session.directGmv - session.totalGmv) > 0.01 ? (
+                  <span style={{ fontSize: '0.71875rem', color: 'var(--color-muted)' }}>
+                    ({t('liveAnalytics.directInLive', 'Trực tiếp')}: {formatMoney(session.directGmv, session.currency)})
+                  </span>
+                ) : null}
               </div>
               <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colCostRevenueRatio')}:</span>

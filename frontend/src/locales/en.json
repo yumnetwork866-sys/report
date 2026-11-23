@@ -1774,6 +1774,7 @@
     "colOrders": "ORDERS",
     "colUnits": "Units",
     "colRevenue": "GMV LIVE",
+    "directInLive": "Direct",
     "colGmvPerHour": "GMV/HOUR",
     "colComments": "COMMENT",
     "colProducts": "PRODUCTS",

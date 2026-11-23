@@ -333,3 +333,37 @@ test('loadShopLivePerformance merges API lives and DB lives without losing histo
   assert.ok(newLive);
   assert.equal(newLive.duration, 3600);
 });
+
+test('buildLiveSessions extracts sales_performance and attributed metrics correctly', async () => {
+  const db = fakeDb([]);
+  const lives = await buildLiveSessions([
+    {
+      id: 'live-attributed-1',
+      title: 'Session With Attributed Sales',
+      start_time: '1700000000',
+      sales_performance: {
+        live_attributed_gmv: { amount: '303.00', currency: 'MYR' },
+        sku_orders: 2,
+        items_sold: 2,
+      },
+    },
+    {
+      id: 'live-attributed-2',
+      title: 'Session With Direct GMV Number',
+      start_time: '1700000000',
+      live_attributed_gmv: 399,
+      orders: 2,
+      items_sold: 2,
+    },
+  ], { db });
+
+  assert.equal(lives.length, 2);
+  assert.equal(lives[0].attributed_gmv, 303);
+  assert.equal(lives[0].sales_currency, 'MYR');
+  assert.equal(lives[0].attributed_orders, 2);
+  assert.equal(lives[0].attributed_items_sold, 2);
+
+  assert.equal(lives[1].attributed_gmv, 399);
+  assert.equal(lives[1].attributed_orders, 2);
+  assert.equal(lives[1].attributed_items_sold, 2);
+});
