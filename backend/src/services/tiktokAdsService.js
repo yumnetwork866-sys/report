@@ -524,11 +524,17 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       }
 
       const sessionSpendAccumulator = new Map();
-      const recordSpend = (sId, spId, amount, currency, rawMeta = {}, advId = null) => {
+      const recordedCampaignRooms = new Set();
+      const recordSpend = (sId, spId, amount, currency, rawMeta = {}, advId = null, campId = null) => {
         if (!sId || !Number.isFinite(amount) || amount <= 0) return;
         const resolvedShopId = sessionToShopMap.get(String(sId)) || spId;
         if (shopId && Number(resolvedShopId) !== Number(shopId)) {
           return;
+        }
+        if (campId) {
+          const campKey = `${resolvedShopId}:${sId}:${campId}`;
+          if (recordedCampaignRooms.has(campKey)) return;
+          recordedCampaignRooms.add(campKey);
         }
         const key = `${resolvedShopId}:${sId}`;
         const current = sessionSpendAccumulator.get(key) || {
@@ -570,10 +576,16 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             console.warn(`[TikTok Ads Sync] gmv_max/store/list failed: ${storeErr.message}`);
           }
 
-          // Match stores with all system shops
+          // Match stores with all system shops (deduplicating by store_id so stores shared across multiple BCs run once)
+          const seenStoreIds = new Set();
           let matchedStores = rawStores.filter((st) => {
             const sId = String(st.store_id || st.id || '');
-            return allShopsByPlatformId.has(sId);
+            if (!sId || seenStoreIds.has(sId)) return false;
+            if (allShopsByPlatformId.has(sId)) {
+              seenStoreIds.add(sId);
+              return true;
+            }
+            return false;
           });
 
           // Test/direct compatibility when store/list returns empty but single shop is queried
@@ -597,25 +609,34 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             const targetShop = allShopsByPlatformId.get(storePlatformId) || targetShops[0];
             const defaultCurrency = targetShop.region === 'VN' ? 'VND' : 'MYR';
 
-            // 2. Fetch LIVE_GMV_MAX campaigns for this specific store
+            // 2. Fetch LIVE_GMV_MAX campaigns for this specific store (paginating up to 500 recent campaigns)
             let liveCampaignIds = [];
             try {
-              const campUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/campaign/get/`);
-              campUrl.searchParams.set('advertiser_id', advertiserId);
-              campUrl.searchParams.set('store_id', storePlatformId);
-              campUrl.searchParams.set('filtering', JSON.stringify({ gmv_max_promotion_types: ['LIVE_GMV_MAX'] }));
-              campUrl.searchParams.set('page_size', '100');
+              let page = 1;
+              while (page <= 5) {
+                const campUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/campaign/get/`);
+                campUrl.searchParams.set('advertiser_id', advertiserId);
+                campUrl.searchParams.set('store_id', storePlatformId);
+                campUrl.searchParams.set('filtering', JSON.stringify({ gmv_max_promotion_types: ['LIVE_GMV_MAX'] }));
+                campUrl.searchParams.set('page_size', '100');
+                campUrl.searchParams.set('page', String(page));
 
-              const campRes = await safeFetch(campUrl.toString(), {
-                method: 'GET',
-                headers: {
-                  'Access-Token': accessToken,
-                  'Content-Type': 'application/json',
-                },
-              });
-              const campData = await campRes.json();
-              if (campData?.code === 0 && Array.isArray(campData?.data?.list)) {
-                liveCampaignIds = campData.data.list.map((c) => String(c.campaign_id || '')).filter(Boolean);
+                const campRes = await safeFetch(campUrl.toString(), {
+                  method: 'GET',
+                  headers: {
+                    'Access-Token': accessToken,
+                    'Content-Type': 'application/json',
+                  },
+                });
+                const campData = await campRes.json();
+                const list = campData?.data?.list;
+                if (!Array.isArray(list) || list.length === 0) break;
+                for (const c of list) {
+                  if (c?.campaign_id) liveCampaignIds.push(String(c.campaign_id));
+                }
+                const totalPages = campData?.data?.page_info?.total_page || 1;
+                if (page >= totalPages || list.some((c) => c.create_time && c.create_time < startDate)) break;
+                page += 1;
               }
             } catch (campErr) {
               console.warn(`[TikTok Ads Sync] gmv_max/campaign/get failed for store ${storePlatformId}:`, campErr.message);
@@ -655,7 +676,8 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
                     const currency = String(item.metrics?.currency || defaultCurrency).trim().toUpperCase();
                     if (roomId && Number.isFinite(cost) && cost > 0) {
                       const actualShopId = sessionToShopMap.get(roomId) || targetShop.id;
-                      recordSpend(roomId, actualShopId, cost, currency, item.metrics, advertiserId);
+                      const campId = String(item.dimensions?.campaign_id || '');
+                      recordSpend(roomId, actualShopId, cost, currency, item.metrics, advertiserId, campId);
                       foundGmvMaxSpend = true;
                     }
                   }

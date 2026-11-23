@@ -12,8 +12,12 @@ import {
   YAxis,
 } from 'recharts';
 import {
+  ArrowUpDown,
+  Award,
   ChevronDown,
+  ChevronUp,
   Clock,
+  Crown,
   Megaphone,
   MessageSquare,
   Package,
@@ -22,14 +26,21 @@ import {
   Radio,
   Search,
   ShoppingBag,
+  Sparkles,
   Target,
   TrendingUp,
+  Trophy,
   UserRound,
   Users,
   X,
 } from 'lucide-react';
 import { useI18n } from '../lib/language';
-import { convertCurrencyAmount, useMoneyFormatter } from '../lib/currency';
+import {
+  convertCurrencyAmount,
+  formatCurrencyAmount,
+  useCurrency,
+  useMoneyFormatter,
+} from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
 import {
   fetchLiveHostUsers,
@@ -171,7 +182,9 @@ const LiveAnalytics = () => {
   const [endDate, setEndDate] = useState(initialRange.endDate);
   const [periodPreset, setPeriodPreset] = useState('7d');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'channels' | 'products' | 'orders'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'hosts' | 'channels' | 'products' | 'orders'
+  const [hostSortKey, setHostSortKey] = useState('totalGmv');
+  const [hostSortDir, setHostSortDir] = useState('desc');
   const [searchKeyword, setSearchKeyword] = useState('');
   const [selectedChannel, setSelectedChannel] = useState('all');
   const [sourceType, setSourceType] = useState('shop'); // 'all' | 'external' | 'shop'
@@ -395,22 +408,44 @@ const LiveAnalytics = () => {
   const visibleCount = (shopSeries || []).filter((s) => isVisible(s.shopId)).length;
 
   // Currency & formatting
-  const displayCurrency = intervals.find((row) => row?.gmv?.currency && row?.gmv?.currency !== 'LOCAL')?.gmv?.currency
-    || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
+  const preferredCurrency = useCurrency();
 
-  const toDisplayCurrency = useCallback((amount, sourceCurrency) => {
+  const resolveShopCurrency = useCallback((shop) => {
+    if (!shop) return null;
+    const region = String(shop.region || shop.authorization?.app?.region || '').trim().toUpperCase();
+    switch (region) {
+      case 'VN': return 'VND';
+      case 'MY': return 'MYR';
+      case 'TH': return 'THB';
+      case 'PH': return 'PHP';
+      case 'ID': return 'IDR';
+      case 'SG': return 'SGD';
+      case 'US': return 'USD';
+      default: return null;
+    }
+  }, []);
+
+  const displayCurrency = useMemo(() => {
+    return preferredCurrency || 'MYR';
+  }, [preferredCurrency]);
+
+  const toDisplayCurrency = useCallback((amount, sourceCurrency, shop = selectedShop) => {
     const numeric = Number(amount);
     if (!Number.isFinite(numeric)) return 0;
-    const normSource = String(sourceCurrency || '').trim().toUpperCase();
+    let normSource = String(sourceCurrency || '').trim().toUpperCase();
+    if (!normSource || normSource === 'LOCAL') {
+      normSource = resolveShopCurrency(shop) || (shop?.region === 'VN' ? 'VND' : 'MYR');
+    }
     const normTarget = String(displayCurrency || '').trim().toUpperCase();
-    if (!normSource || normSource === 'LOCAL' || normSource === normTarget) return numeric;
+    if (normSource === normTarget) return numeric;
     const converted = convertCurrencyAmount(numeric, normSource, normTarget, exchangeRates);
     return converted !== null ? converted : numeric;
-  }, [displayCurrency, exchangeRates]);
+  }, [displayCurrency, exchangeRates, resolveShopCurrency, selectedShop]);
 
-  const formatMoney = useCallback((value, currencyCode = displayCurrency) => (
-    formatPreferredMoney(value, currencyCode === 'LOCAL' ? displayCurrency : currencyCode)
-  ), [displayCurrency, formatPreferredMoney]);
+  const formatMoney = useCallback((value, currencyCode = displayCurrency) => {
+    const targetCurr = currencyCode === 'LOCAL' ? displayCurrency : (currencyCode || displayCurrency);
+    return formatCurrencyAmount(value, targetCurr, targetCurr, exchangeRates, locale);
+  }, [displayCurrency, exchangeRates, locale]);
 
   const formatNumber = useCallback((value) => (
     numericValue(value).toLocaleString(locale, { maximumFractionDigits: 0 })
@@ -633,13 +668,17 @@ const LiveAnalytics = () => {
   // Daily Trend Data from Snapshot Intervals
   const liveIntervals = useMemo(() => {
     return intervals.map((row) => {
-      const liveGmv = extractLiveGmv(row);
-      const overallGmv = moneyValue(row?.gmv);
-      const liveShare = overallGmv > 0 ? (liveGmv / overallGmv) * 100 : 0;
+      const rawLiveGmv = extractLiveGmv(row);
+      const rawOverallGmv = moneyValue(row?.gmv);
       const breakdowns = Array.isArray(row?.gmv_breakdowns) && row.gmv_breakdowns.length > 0
         ? row.gmv_breakdowns
         : (Array.isArray(row?.gmv?.breakdowns) ? row.gmv.breakdowns : []);
       const liveItem = breakdowns.find((b) => b?.type === 'LIVE' || b?.content_type === 'LIVE');
+      const rowCurrency = liveItem?.currency || row.gmv?.currency || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
+
+      const liveGmv = toDisplayCurrency(rawLiveGmv, rowCurrency);
+      const overallGmv = toDisplayCurrency(rawOverallGmv, rowCurrency);
+      const liveShare = overallGmv > 0 ? (liveGmv / overallGmv) * 100 : 0;
 
       const entry = {
         date: formatDateOnly(row.start_date, row.start_date),
@@ -649,7 +688,7 @@ const LiveAnalytics = () => {
         liveShare,
         orders: row.orders || 0,
         unitsSold: row.units_sold || 0,
-        currency: liveItem?.currency || row.gmv?.currency || displayCurrency,
+        currency: displayCurrency,
       };
 
       if (isMultiShop && Array.isArray(shopSeries)) {
@@ -657,22 +696,31 @@ const LiveAnalytics = () => {
           const match = Array.isArray(s.intervals)
             ? s.intervals.find((i) => i.start_date === row.start_date || String(i.start_date).slice(0, 10) === String(row.start_date).slice(0, 10))
             : null;
-          const sLiveGmv = match ? extractLiveGmv(match) : 0;
-          const sOverallGmv = match ? moneyValue(match.gmv) : 0;
-          entry[`shop_${s.shopId}_liveGmv`] = sLiveGmv;
-          entry[`shop_${s.shopId}_overallGmv`] = sOverallGmv;
+          const sRawLiveGmv = match ? extractLiveGmv(match) : 0;
+          const sRawOverallGmv = match ? moneyValue(match.gmv) : 0;
+          const sRowCurrency = match?.gmv?.currency || (shopsById.get(String(s.shopId))?.region === 'VN' ? 'VND' : 'MYR');
+          entry[`shop_${s.shopId}_liveGmv`] = toDisplayCurrency(sRawLiveGmv, sRowCurrency);
+          entry[`shop_${s.shopId}_overallGmv`] = toDisplayCurrency(sRawOverallGmv, sRowCurrency);
         });
       }
 
       return entry;
     });
-  }, [intervals, displayCurrency, isMultiShop, shopSeries]);
+  }, [intervals, displayCurrency, isMultiShop, shopSeries, selectedShop, shopsById, toDisplayCurrency]);
 
   // Comparison Live GMV from Previous Period
   const comparisonLiveGmv = useMemo(() => {
     const compIntervals = snapshot?.metrics?.comparison_intervals || [];
-    return compIntervals.reduce((sum, row) => sum + extractLiveGmv(row), 0);
-  }, [snapshot]);
+    return compIntervals.reduce((sum, row) => {
+      const val = extractLiveGmv(row);
+      const breakdowns = Array.isArray(row?.gmv_breakdowns) && row.gmv_breakdowns.length > 0
+        ? row.gmv_breakdowns
+        : (Array.isArray(row?.gmv?.breakdowns) ? row.gmv.breakdowns : []);
+      const liveItem = breakdowns.find((b) => b?.type === 'LIVE' || b?.content_type === 'LIVE');
+      const rowCurrency = liveItem?.currency || row.gmv?.currency || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
+      return sum + toDisplayCurrency(val, rowCurrency);
+    }, 0);
+  }, [snapshot, selectedShop, toDisplayCurrency]);
 
   // Aggregated Sessions and Top Products from Live Orders
   const { sessionList, topProductsList, liveOrderRows } = useMemo(() => {
@@ -754,9 +802,9 @@ const LiveAnalytics = () => {
         totalGmv: liveSkus.reduce((sum, s) => {
           const sCurr = s.currency || s.price?.currency || orderCurrency;
           const raw = (moneyValue(s.price) || 0) * (Number(s.quantity) || 1);
-          return sum + toDisplayCurrency(raw, sCurr);
+          return sum + toDisplayCurrency(raw, sCurr, currentShop);
         }, 0),
-        totalCommission: toDisplayCurrency(totalCommission, orderCurrency),
+        totalCommission: toDisplayCurrency(totalCommission, orderCurrency, currentShop),
         commissionRate,
         settlementStatus,
         currency: displayCurrency,
@@ -769,8 +817,8 @@ const LiveAnalytics = () => {
         const sessionKey = `${shopId}:${cid}`;
         const qty = Number(sku.quantity) || 1;
         const rawGmv = (moneyValue(sku.price) || 0) * qty;
-        const convertedGmv = toDisplayCurrency(rawGmv, skuCurr);
-        const convertedComm = toDisplayCurrency(totalCommission, skuCurr);
+        const convertedGmv = toDisplayCurrency(rawGmv, skuCurr, currentShop);
+        const convertedComm = toDisplayCurrency(totalCommission, skuCurr, currentShop);
         const matchedSkuLive = livePerformanceByShopSession.get(sessionKey)
           || findLivePerformanceForSession(livePerformancesByShop.get(String(shopId)), { sessionId: cid });
         const creatorUsername = matchedSkuLive?.creator_username
@@ -951,7 +999,7 @@ const LiveAnalytics = () => {
       const adsRecord = sessionAdsMap[`${sess.shopId}:${sess.sessionId}`]
         || (sessionAdsMap[sess.sessionId]?.shop_id && Number(sessionAdsMap[sess.sessionId].shop_id) === Number(sess.shopId) ? sessionAdsMap[sess.sessionId] : null);
       const rawAdsCost = adsRecord?.ads_cost !== undefined && adsRecord?.ads_cost !== null ? Number(adsRecord.ads_cost) : null;
-      const adsCurrency = adsRecord?.currency || sess.currency || displayCurrency;
+      const adsCurrency = adsRecord?.currency || (rawAdsCost !== null ? 'USD' : (sess.currency || displayCurrency));
       const convertedAdsCost = rawAdsCost !== null ? toDisplayCurrency(rawAdsCost, adsCurrency) : null;
       const roas = (convertedAdsCost && convertedAdsCost > 0 && sess.totalGmv > 0)
         ? (sess.totalGmv / convertedAdsCost)
@@ -969,7 +1017,6 @@ const LiveAnalytics = () => {
       const gmvPerHour = calculateGmvPerHour(
         sess.totalGmv,
         durationSec,
-        performance?.gmv_per_hour ?? performance?.overall?.gmv_per_hour,
       );
 
       return {
@@ -1022,9 +1069,11 @@ const LiveAnalytics = () => {
     sessionList.reduce((sum, s) => sum + s.totalGmv, 0)
   ), [sessionList]);
 
-  // Use snapshot live gmv if available, fallback to orders gmv
-  const liveGmv = totalSnapshotLiveGmv > 0 ? totalSnapshotLiveGmv : ordersLiveGmv;
-  const totalShopGmv = totals.gmv || 0;
+  // Use orders live gmv if available, fallback to snapshot
+  const liveGmv = ordersLiveGmv > 0 ? ordersLiveGmv : totalSnapshotLiveGmv;
+  const rawTotalShopGmv = totals.gmv || 0;
+  const totalsCurrency = snapshot?.currency || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
+  const totalShopGmv = toDisplayCurrency(rawTotalShopGmv, totalsCurrency);
   const liveGmvShare = totalShopGmv > 0 ? (liveGmv / totalShopGmv) * 100 : 0;
 
   const liveGmvChange = useMemo(() => (
@@ -1174,6 +1223,129 @@ const LiveAnalytics = () => {
   const totalTableLiveSales = useMemo(() => (
     filteredChannelList.reduce((sum, c) => sum + c.totalGmv, 0)
   ), [filteredChannelList]);
+
+  // Raw Host leaderboard aggregated from sessionList
+  const rawHostLeaderboard = useMemo(() => {
+    const hostMap = new Map();
+
+    sessionList.forEach((sess) => {
+      const isUnassigned = !sess.host || !sess.host.id;
+      const hostKey = isUnassigned ? '__unassigned__' : String(sess.host.id);
+
+      if (!hostMap.has(hostKey)) {
+        hostMap.set(hostKey, {
+          id: hostKey,
+          isUnassigned,
+          host: sess.host || {
+            id: null,
+            name: t('liveAnalytics.unassignedHostTitle', 'Phiên chưa gán Host'),
+            email: '',
+            avatar_url: null,
+          },
+          hostSource: sess.hostSource || null,
+          sessionsCount: 0,
+          totalDurationSec: 0,
+          orderCount: 0,
+          totalQuantity: 0,
+          totalGmv: 0,
+          totalComments: 0,
+          convertedAdsCost: 0,
+          currency: sess.currency || displayCurrency,
+          sessions: [],
+        });
+      }
+
+      const h = hostMap.get(hostKey);
+      h.sessionsCount += 1;
+      h.totalDurationSec += (sess.durationSec || 0);
+      h.orderCount += (sess.orderCount || 0);
+      h.totalQuantity += (sess.totalQuantity || 0);
+      h.totalGmv += (sess.totalGmv || 0);
+      if (sess.totalComments !== null && sess.totalComments !== undefined) {
+        h.totalComments += sess.totalComments;
+      }
+      if (sess.convertedAdsCost) {
+        h.convertedAdsCost += sess.convertedAdsCost;
+      }
+      h.sessions.push(sess);
+    });
+
+    const totalAllHostGmv = sessionList.reduce((sum, s) => sum + (s.totalGmv || 0), 0);
+
+    return Array.from(hostMap.values()).map((h) => {
+      const hours = h.totalDurationSec / 3600;
+      const gmvPerHour = hours > 0 ? (h.totalGmv / hours) : 0;
+      const avgGmvPerSession = h.sessionsCount > 0 ? (h.totalGmv / h.sessionsCount) : 0;
+      const aov = h.orderCount > 0 ? (h.totalGmv / h.orderCount) : 0;
+      const closingRate = (h.totalComments > 0 && h.orderCount > 0)
+        ? (h.orderCount / h.totalComments) * 100
+        : 0;
+      const gmvShare = totalAllHostGmv > 0 ? (h.totalGmv / totalAllHostGmv) * 100 : 0;
+      const roas = (h.convertedAdsCost > 0 && h.totalGmv > 0)
+        ? (h.totalGmv / h.convertedAdsCost)
+        : null;
+      const costRevenueRatio = (h.convertedAdsCost > 0 && h.totalGmv > 0)
+        ? (h.convertedAdsCost / h.totalGmv) * 100
+        : null;
+
+      return {
+        ...h,
+        hours,
+        gmvPerHour,
+        avgGmvPerSession,
+        aov,
+        closingRate,
+        gmvShare,
+        roas,
+        costRevenueRatio,
+      };
+    });
+  }, [sessionList, displayCurrency, t]);
+
+  // Filtered & Sorted Host Leaderboard
+  const filteredHostLeaderboard = useMemo(() => {
+    let list = rawHostLeaderboard;
+    if (searchKeyword.trim()) {
+      const term = searchKeyword.trim().toLowerCase();
+      list = list.filter((item) => (
+        (item.host?.name && item.host.name.toLowerCase().includes(term))
+        || (item.host?.email && item.host.email.toLowerCase().includes(term))
+        || (item.host?.team_name && item.host.team_name.toLowerCase().includes(term))
+      ));
+    }
+
+    return [...list].sort((a, b) => {
+      if (a.isUnassigned && !b.isUnassigned) return 1;
+      if (!a.isUnassigned && b.isUnassigned) return -1;
+
+      let valA = a[hostSortKey];
+      let valB = b[hostSortKey];
+      if (typeof valA === 'string') valA = valA.toLowerCase();
+      if (typeof valB === 'string') valB = valB.toLowerCase();
+
+      if (valA === valB) return 0;
+      if (hostSortDir === 'asc') return valA > valB ? 1 : -1;
+      return valA < valB ? 1 : -1;
+    });
+  }, [rawHostLeaderboard, searchKeyword, hostSortKey, hostSortDir]);
+
+  const handleHostSort = useCallback((key) => {
+    setHostSortKey((prevKey) => {
+      if (prevKey === key) {
+        setHostSortDir((prevDir) => (prevDir === 'asc' ? 'desc' : 'asc'));
+        return prevKey;
+      }
+      setHostSortDir('desc');
+      return key;
+    });
+  }, []);
+
+  const renderSortIcon = useCallback((key) => {
+    if (hostSortKey !== key) {
+      return <ArrowUpDown size={12} className="sort-icon-muted" />;
+    }
+    return hostSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+  }, [hostSortKey, hostSortDir]);
 
   // Host options for dropdown filter
   const hostFilterOptions = useMemo(() => {
@@ -1772,6 +1944,17 @@ const LiveAnalytics = () => {
           <button
             type="button"
             role="tab"
+            aria-selected={activeTab === 'hosts'}
+            className={`live-analytics__tab ${activeTab === 'hosts' ? 'is-active' : ''}`}
+            onClick={() => setActiveTab('hosts')}
+          >
+            <Award size={15} />
+            <span>{t('liveAnalytics.tabHosts', 'Xếp hạng Host')}</span>
+            <span className="live-analytics__tab-count">{filteredHostLeaderboard.filter((h) => !h.isUnassigned).length}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
             aria-selected={activeTab === 'channels'}
             className={`live-analytics__tab ${activeTab === 'channels' ? 'is-active' : ''}`}
             onClick={() => setActiveTab('channels')}
@@ -1805,28 +1988,6 @@ const LiveAnalytics = () => {
         </div>
 
         <div className="live-analytics__filter-group">
-          <div className="live-channel-select" style={{ minWidth: 175 }} title={t('liveAnalytics.filterSource')}>
-            <SelectDropdown
-              id="live-source-select"
-              options={sourceTypeOptions}
-              value={sourceType}
-              onChange={setSourceType}
-              placeholder={t('liveAnalytics.allSources')}
-              icon={<Radio size={14} />}
-            />
-          </div>
-
-          <div className="live-channel-select" style={{ minWidth: 175 }} title={t('liveAnalytics.filterHost', 'Lọc theo Host')}>
-            <SelectDropdown
-              id="live-host-select"
-              options={hostFilterOptions}
-              value={selectedHost}
-              onChange={setSelectedHost}
-              placeholder={t('liveAnalytics.allHosts', 'Tất cả Host')}
-              icon={<UserRound size={14} />}
-            />
-          </div>
-
           {selectedChannel !== 'all' ? (
             <button
               type="button"
@@ -2018,12 +2179,8 @@ const LiveAnalytics = () => {
                       </div>
                     </td>
                     <td className="cell-number" style={{ fontWeight: 600 }}>
-                      {session.adsCost !== null && session.adsCost !== undefined
-                        ? (
-                          <span title={session.adsCurrency && session.adsCurrency !== session.currency ? `${session.adsCost.toFixed(2)} ${session.adsCurrency}` : undefined}>
-                            {formatMoney(session.adsCost, session.adsCurrency || session.currency)}
-                          </span>
-                        )
+                      {session.convertedAdsCost !== null && session.convertedAdsCost !== undefined && session.convertedAdsCost > 0
+                        ? formatMoney(session.convertedAdsCost, session.currency)
                         : '—'}
                     </td>
                     <td className="cell-number">
@@ -2093,6 +2250,228 @@ const LiveAnalytics = () => {
         </section>
       ) : null}
 
+      {/* Tab: Hosts (Xếp hạng & Báo cáo Host) */}
+      {activeTab === 'hosts' ? (
+        <section className="live-analytics__section live-analytics__section--flush">
+          <div className="table-wrap live-analytics__table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 60, textAlign: 'center' }}>{t('liveAnalytics.colRank', 'HẠNG')}</th>
+                  <th>{t('liveAnalytics.colHost', 'Host Live')}</th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('sessionsCount')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colSessionsCount')}
+                      {renderSortIcon('sessionsCount')}
+                    </span>
+                  </th>
+                  <th
+                    className="sortable-th"
+                    onClick={() => handleHostSort('totalDurationSec')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colDuration')}
+                      {renderSortIcon('totalDurationSec')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('totalGmv')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colRevenue')}
+                      {renderSortIcon('totalGmv')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('gmvPerHour')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colGmvPerHour')}
+                      {renderSortIcon('gmvPerHour')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('orderCount')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colOrders')}
+                      {renderSortIcon('orderCount')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('closingRate')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colClosingRate', 'TỶ LỆ CHỐT')}
+                      {renderSortIcon('closingRate')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('aov')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colAov', 'AOV')}
+                      {renderSortIcon('aov')}
+                    </span>
+                  </th>
+                  <th
+                    className="cell-number sortable-th"
+                    onClick={() => handleHostSort('convertedAdsCost')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colAdsCost', 'CHI PHÍ ADS')}
+                      {renderSortIcon('convertedAdsCost')}
+                    </span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {liveOrdersLoading && !filteredHostLeaderboard.length ? (
+                  <tr>
+                    <td colSpan={10}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        <span className="loading-dot" />
+                        {t('liveAnalytics.loading')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {!liveOrdersLoading && !filteredHostLeaderboard.length ? (
+                  <tr>
+                    <td colSpan={10}>
+                      <div className="empty-state empty-state--compact table-empty-state">
+                        {t('liveAnalytics.noHosts', 'Chưa có dữ liệu Host trong khoảng thời gian này.')}
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+
+                {filteredHostLeaderboard.map((item, idx) => {
+                  const rankNum = idx + 1;
+                  const isAssigned = !item.isUnassigned;
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className={`live-host-row ${item.isUnassigned ? 'live-host-row--unassigned' : ''}`}
+                      tabIndex={0}
+                      onClick={() => {
+                        setSelectedHost(item.isUnassigned ? 'unassigned' : String(item.host.id));
+                        setActiveTab('overview');
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedHost(item.isUnassigned ? 'unassigned' : String(item.host.id));
+                          setActiveTab('overview');
+                        }
+                      }}
+                    >
+                      <td style={{ textAlign: 'center' }}>
+                        <div className="live-host-rank-cell">
+                          {isAssigned ? (
+                            rankNum === 1 ? (
+                              <span className="live-host-rank live-host-rank--gold" title="Quán quân">
+                                <Trophy size={13} /> 1
+                              </span>
+                            ) : rankNum === 2 ? (
+                              <span className="live-host-rank live-host-rank--silver" title="Á quân">
+                                <Award size={13} /> 2
+                              </span>
+                            ) : rankNum === 3 ? (
+                              <span className="live-host-rank live-host-rank--bronze" title="Hạng 3">
+                                <Award size={13} /> 3
+                              </span>
+                            ) : (
+                              <span className="live-host-rank live-host-rank--default">
+                                {rankNum}
+                              </span>
+                            )
+                          ) : (
+                            <span className="live-host-rank live-host-rank--unassigned">—</span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <div className="live-host-cell">
+                          {isAssigned ? (
+                            <AppAvatar
+                              src={item.host.avatar_url}
+                              name={item.host.name || 'Host'}
+                              className="live-host-avatar"
+                              fallbackClassName="live-host-avatar--fallback"
+                            />
+                          ) : (
+                            <div className="live-host-avatar live-host-avatar--unassigned">?</div>
+                          )}
+                          <div className="live-host-meta">
+                            <span className="live-host-name">
+                              {item.isUnassigned
+                                ? t('liveAnalytics.unassignedHostTitle', 'Phiên chưa gán Host')
+                                : (item.host.name || 'Host')}
+                            </span>
+                            {item.isUnassigned ? (
+                              <span className="live-host-username">
+                                {`${item.sessionsCount} phiên cần gán`}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="cell-number">
+                        <strong>{formatNumber(item.sessionsCount)}</strong>
+                      </td>
+                      <td>
+                        <span className="live-duration-pill">
+                          <Clock size={12} />
+                          {formatTotalDuration(item.totalDurationSec, language)}
+                        </span>
+                      </td>
+                      <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
+                        {formatMoney(item.totalGmv, item.currency)}
+                      </td>
+                      <td className="cell-number" style={{ fontWeight: 600 }}>
+                        {item.totalDurationSec > 0
+                          ? formatMoney(item.gmvPerHour, item.currency)
+                          : '—'}
+                      </td>
+                      <td className="cell-number">{formatNumber(item.orderCount)}</td>
+                      <td className="cell-number">
+                        {item.closingRate > 0 ? formatPercent(item.closingRate) : '—'}
+                      </td>
+                      <td className="cell-number">
+                        {item.aov > 0 ? formatMoney(item.aov, item.currency) : '—'}
+                      </td>
+                      <td className="cell-number" style={{ fontWeight: 600 }}>
+                        {item.convertedAdsCost > 0 ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                            <span>{formatMoney(item.convertedAdsCost, item.currency)}</span>
+                            {item.costRevenueRatio !== null && item.costRevenueRatio !== undefined ? (
+                              <span style={{ fontSize: '0.72rem', color: 'var(--color-muted)', fontWeight: 500 }}>
+                                CP/DT: {item.costRevenueRatio.toFixed(2)}%
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {/* Tab 2: Channels (Kênh Live) */}
       {activeTab === 'channels' ? (
         <section className="live-analytics__section live-analytics__section--flush">
@@ -2110,13 +2489,12 @@ const LiveAnalytics = () => {
                   <th className="cell-number">{t('liveAnalytics.colComments')}</th>
                   <th className="cell-number">{t('liveAnalytics.colAvgGmvPerSession')}</th>
                   <th className="cell-number">{t('liveAnalytics.channelGmvShare')}</th>
-                  <th className="cell-actions">{t('liveAnalytics.colActions', 'Thao tác')}</th>
                 </tr>
               </thead>
               <tbody>
                 {liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -2127,7 +2505,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredChannelList.length ? (
                   <tr>
-                    <td colSpan={11}>
+                    <td colSpan={10}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noChannels')}
                       </div>
@@ -2195,19 +2573,6 @@ const LiveAnalytics = () => {
                       </td>
                       <td className="cell-number">{formatMoney(avgGmv, ch.currency)}</td>
                       <td className="cell-number">{formatPercent(share)}</td>
-                      <td className="cell-actions">
-                        <button
-                          type="button"
-                          className="button button--secondary button--sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedChannel(ch.username);
-                            setActiveTab('overview');
-                          }}
-                        >
-                          {t('liveAnalytics.viewChannelSessions')}
-                        </button>
-                      </td>
                     </tr>
                   );
                 })}
@@ -2586,12 +2951,8 @@ const LiveSessionDrawer = ({
               <div style={{ minWidth: 0 }}>
                 <span style={{ fontSize: '0.75rem', color: 'var(--color-muted)' }}>{t('liveAnalytics.colAdsCost')}:</span>
                 <p style={{ margin: 0, fontWeight: 700, fontSize: '0.875rem', color: 'var(--color-text)' }}>
-                  {session.adsCost !== null && session.adsCost !== undefined
-                    ? (
-                      <span title={session.adsCurrency && session.adsCurrency !== session.currency ? `${session.adsCost.toFixed(2)} ${session.adsCurrency}` : undefined}>
-                        {formatMoney(session.adsCost, session.adsCurrency || session.currency)}
-                      </span>
-                    )
+                  {session.convertedAdsCost !== null && session.convertedAdsCost !== undefined && session.convertedAdsCost > 0
+                    ? formatMoney(session.convertedAdsCost, session.currency)
                     : '—'}
                 </p>
               </div>
