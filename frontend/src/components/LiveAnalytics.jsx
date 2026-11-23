@@ -1702,11 +1702,6 @@ const LiveAnalytics = () => {
             {analyticsLoading ? <span className="shop-analytics__value-skeleton" /> : formatMoney(liveGmv)}
           </p>
           {renderDelta(liveGmvChange, `${formatPercent(liveGmvShare)} ${t('liveAnalytics.pctOfTotal')}`)}
-          {totalCancelledLiveGmv > 0 ? (
-            <span style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: 2, display: 'block' }}>
-              ({t('liveAnalytics.deductedCancelled', 'Đã trừ')} -{formatMoney(totalCancelledLiveGmv)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')})
-            </span>
-          ) : null}
         </article>
 
         {/* KPI 2: Live Share % */}
@@ -1739,11 +1734,6 @@ const LiveAnalytics = () => {
           <span className="shop-analytics__change is-muted">
             {t('liveAnalytics.liveOrdersDesc')}
           </span>
-          {totalCancelledOrdersCount > 0 ? (
-            <span style={{ fontSize: '0.72rem', color: '#dc2626', marginTop: 2, display: 'block' }}>
-              ({t('liveAnalytics.deductedCancelled', 'Đã trừ')} -{totalCancelledOrdersCount} {t('liveAnalytics.cancelledOrdersDesc', 'đơn hủy')})
-            </span>
-          ) : null}
         </article>
 
         {/* HÀNG 2: CHI PHÍ ADS | TỈ LỆ CP/DS | PHIÊN LIVE TREAMS */}
@@ -2299,7 +2289,7 @@ const LiveAnalytics = () => {
                         <strong>{formatNumber(session.orderCount)}</strong>
                         {session.cancelledOrderCount > 0 ? (
                           <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
-                            -{session.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            -{session.cancelledOrderCount}
                           </span>
                         ) : null}
                       </div>
@@ -2309,7 +2299,7 @@ const LiveAnalytics = () => {
                         <span>{formatMoney(session.totalGmv, session.currency)}</span>
                         {session.cancelledGmv > 0 ? (
                           <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
-                            -{formatMoney(session.cancelledGmv, session.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                            -{formatMoney(session.cancelledGmv, session.currency)}
                           </span>
                         ) : null}
                       </div>
@@ -2566,7 +2556,7 @@ const LiveAnalytics = () => {
                           <span>{formatMoney(item.totalGmv, item.currency)}</span>
                           {item.cancelledGmv > 0 ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
-                              -{formatMoney(item.cancelledGmv, item.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                              -{formatMoney(item.cancelledGmv, item.currency)}
                             </span>
                           ) : null}
                         </div>
@@ -2581,7 +2571,7 @@ const LiveAnalytics = () => {
                           <span>{formatNumber(item.orderCount)}</span>
                           {item.cancelledOrderCount > 0 ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
-                              -{item.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                              -{item.cancelledOrderCount}
                             </span>
                           ) : null}
                         </div>
@@ -2704,7 +2694,7 @@ const LiveAnalytics = () => {
                           <span>{formatNumber(ch.orderCount)}</span>
                           {ch.cancelledOrderCount > 0 ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.cancelledOrdersCountLabel', 'Số đơn hủy')}>
-                              -{ch.cancelledOrderCount} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                              -{ch.cancelledOrderCount}
                             </span>
                           ) : null}
                         </div>
@@ -2715,7 +2705,7 @@ const LiveAnalytics = () => {
                           <span>{formatMoney(ch.totalGmv, ch.currency)}</span>
                           {ch.cancelledGmv > 0 ? (
                             <span style={{ fontSize: '0.72rem', color: '#dc2626', fontWeight: 500 }} title={t('liveAnalytics.deductedCancelledOrders', 'Đã trừ đơn hủy')}>
-                              -{formatMoney(ch.cancelledGmv, ch.currency)} {t('liveAnalytics.cancelledGmvLabel', 'hủy')}
+                              -{formatMoney(ch.cancelledGmv, ch.currency)}
                             </span>
                           ) : null}
                         </div>
