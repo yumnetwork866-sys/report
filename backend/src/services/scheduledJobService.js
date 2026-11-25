@@ -856,12 +856,21 @@ const jobHandlers = {
       source: result.source,
       results: [
         {
+          shop_name: result.source || 'Bank Negara Malaysia',
           status: 'SUCCEEDED',
           session: result.session,
           source: result.source,
           usd_rate: result.rates?.USD,
           vnd_rate: result.rates?.VND,
           date: result.dates?.USD,
+          windows: [
+            {
+              module_type: 'BNM',
+              window_type: `SESSION_${result.session || '0900'}`,
+              status: 'SUCCEEDED',
+              row_count: Object.keys(result.rates || {}).length,
+            },
+          ],
         },
       ],
     };

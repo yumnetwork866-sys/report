@@ -1,4 +1,5 @@
 const { getCache, setCache, delCache } = require('../lib/redis');
+const { monitoredFetch } = require('./scheduledRunMonitorService');
 
 const BNM_EXCHANGE_RATE_URL = 'https://api.bnm.gov.my/public/exchange-rate?session=0900&quote=rm';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -105,13 +106,13 @@ const getMyrExchangeRates = async (fetchImpl = fetch, { session = null, force = 
   for (const sess of candidateSessions) {
     try {
       const url = resolveBnmUrl(sess);
-      const response = await fetchImpl(url, {
+      const response = await monitoredFetch(url, {
         headers: {
           accept: 'application/vnd.BNM.API.v1+json',
           'user-agent': 'YumReport/1.0',
         },
         signal: AbortSignal.timeout(Math.max(1000, Number(process.env.EXCHANGE_RATE_TIMEOUT_MS || 5000))),
-      });
+      }, fetchImpl);
       if (!response.ok) {
         throw new Error(`BNM exchange-rate request for session ${sess} failed with status ${response.status}.`);
       }
