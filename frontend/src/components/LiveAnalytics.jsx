@@ -1379,7 +1379,10 @@ const LiveAnalytics = () => {
 
     return Array.from(hostMap.values()).map((h) => {
       const hours = h.totalDurationSec / 3600;
-      const uniqueDurationSec = calculateUniqueLiveDurationSeconds(h.sessions);
+      const rawUniqueDurationSec = calculateUniqueLiveDurationSeconds(h.sessions);
+      const uniqueDurationSec = h.totalDurationSec > 0
+        ? Math.min(h.totalDurationSec, rawUniqueDurationSec)
+        : rawUniqueDurationSec;
       const uniqueHours = uniqueDurationSec / 3600;
       const gmvPerHour = hours > 0 ? (h.totalGmv / hours) : 0;
       const avgGmvPerSession = h.sessionsCount > 0 ? (h.totalGmv / h.sessionsCount) : 0;
