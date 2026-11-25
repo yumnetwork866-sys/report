@@ -2299,7 +2299,7 @@ const LiveAnalytics = () => {
           {activeTab === 'hosts' ? (
             <button
               type="button"
-              className="btn btn--secondary"
+              className="button button--secondary"
               disabled={exportingHostsExcel || !filteredHostLeaderboard.length}
               onClick={handleExportHostLeaderboardExcel}
               title={t('liveAnalytics.exportHostsExcelTooltip', 'Xuất Excel xếp hạng Host (1 sheet tổng + mỗi Host 1 tab chi tiết khớp đơn)')}
@@ -2308,13 +2308,13 @@ const LiveAnalytics = () => {
                 alignItems: 'center',
                 gap: 6,
                 height: 36,
-                padding: '0 12px',
+                padding: '0 14px',
                 fontSize: '0.8125rem',
                 fontWeight: 600,
                 whiteSpace: 'nowrap',
               }}
             >
-              <Download size={15} />
+              <Download size={14} />
               <span>
                 {exportingHostsExcel
                   ? t('liveAnalytics.exportingExcel', 'Đang xuất…')
