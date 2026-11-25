@@ -187,3 +187,57 @@ export const calculateGmvPerHour = (totalGmv, durationSec, explicitGmvPerHour = 
   return hours > 0 ? (gmv / hours) : 0;
 };
 
+/**
+ * Merges overlapping live session intervals for a host so simultaneous
+ * multi-channel streams are counted once in wall-clock "standard live hours".
+ */
+export const calculateUniqueLiveDurationSeconds = (sessions = []) => {
+  if (!Array.isArray(sessions) || !sessions.length) return 0;
+  const intervals = [];
+  let untimedDurationSec = 0;
+
+  for (const sess of sessions) {
+    if (!sess) continue;
+    const startMs = typeof sess.firstTime === 'number'
+      ? sess.firstTime
+      : (sess.firstTime ? Date.parse(sess.firstTime) : NaN);
+    const rawLastMs = typeof sess.lastTime === 'number'
+      ? sess.lastTime
+      : (sess.lastTime ? Date.parse(sess.lastTime) : NaN);
+    const durSec = Number(sess.durationSec);
+
+    if (Number.isFinite(startMs) && startMs > 0) {
+      let endMs = Number.isFinite(rawLastMs) && rawLastMs > startMs ? rawLastMs : NaN;
+      if (!Number.isFinite(endMs) && Number.isFinite(durSec) && durSec > 0) {
+        endMs = startMs + durSec * 1000;
+      }
+      if (Number.isFinite(endMs) && endMs > startMs) {
+        intervals.push({ start: startMs, end: endMs });
+        continue;
+      }
+    }
+
+    if (Number.isFinite(durSec) && durSec > 0) {
+      untimedDurationSec += Math.floor(durSec);
+    }
+  }
+
+  if (!intervals.length) return untimedDurationSec;
+
+  intervals.sort((a, b) => (a.start - b.start) || (a.end - b.end));
+  const merged = [];
+  for (const iv of intervals) {
+    const last = merged[merged.length - 1];
+    if (!last || iv.start > last.end) {
+      merged.push({ start: iv.start, end: iv.end });
+    } else if (iv.end > last.end) {
+      last.end = iv.end;
+    }
+  }
+
+  const mergedSec = Math.floor(
+    merged.reduce((sum, iv) => sum + (iv.end - iv.start), 0) / 1000,
+  );
+  return mergedSec + untimedDurationSec;
+};
+

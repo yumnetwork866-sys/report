@@ -18,6 +18,8 @@ test('buildHostLeaderboardWorkbook creates Tong_hop_Host summary sheet and one t
         sessionsCount: 2,
         totalDurationSec: 7200,
         hours: 2,
+        uniqueDurationSec: 3600,
+        uniqueHours: 1,
         totalGmv: 429.3,
         cancelledGmv: 202.5,
         gmvPerHour: 214.65,
@@ -114,16 +116,20 @@ test('buildHostLeaderboardWorkbook creates Tong_hop_Host summary sheet and one t
   const summaryRows = XLSX.utils.sheet_to_json(workbook.Sheets.Tong_hop_Host, { header: 1 });
   const ellySummary = summaryRows.find((r) => r[1] === 'Elly');
   assert.equal(ellySummary[0], 1);
-  assert.equal(ellySummary[6], 429.3);
-  assert.equal(ellySummary[7], 202.5);
-  assert.equal(ellySummary[9], 2);
-  assert.equal(ellySummary[10], 1);
+  assert.equal(ellySummary[5], 2);
+  assert.equal(ellySummary[7], 1);
+  assert.equal(ellySummary[8], 429.3);
+  assert.equal(ellySummary[9], 202.5);
+  assert.equal(ellySummary[11], 2);
+  assert.equal(ellySummary[12], 1);
 
   const totalRow = summaryRows.find((r) => r[1] === 'TỔNG CỘNG');
   assert.equal(totalRow[3], 3);
-  assert.equal(totalRow[6], 715.5);
-  assert.equal(totalRow[9], 3);
-  assert.equal(totalRow[10], 1);
+  assert.equal(totalRow[5], 3);
+  assert.equal(totalRow[7], 2);
+  assert.equal(totalRow[8], 715.5);
+  assert.equal(totalRow[11], 3);
+  assert.equal(totalRow[12], 1);
 
   const ellyRows = XLSX.utils.sheet_to_json(workbook.Sheets.Elly, { header: 1 });
   const orderRow1 = ellyRows.find((r) => r[0] === '576891234567890123');

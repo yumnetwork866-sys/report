@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calculateDurationSeconds,
   calculateGmvPerHour,
+  calculateUniqueLiveDurationSeconds,
   extractSessionComments,
   formatLiveDuration,
   formatTotalDuration,
@@ -139,5 +140,29 @@ test('calculateGmvPerHour computes GMV per hour from GMV and duration seconds', 
   assert.equal(calculateGmvPerHour(100, 0), 0);
   assert.equal(calculateGmvPerHour(null, 3600), 0);
   assert.equal(calculateGmvPerHour(100, null), 0);
+});
+
+test('calculateUniqueLiveDurationSeconds merges overlapping multi-channel streams', () => {
+  const base = Date.UTC(2026, 10, 25, 7, 0, 0);
+  const h = 3600 * 1000;
+
+  // Two simultaneous 3h streams (14:00-17:00) on 2 channels => 3h standard, not 6h
+  assert.equal(calculateUniqueLiveDurationSeconds([
+    { firstTime: base, lastTime: base + 3 * h, durationSec: 10800 },
+    { firstTime: base, lastTime: base + 3 * h, durationSec: 10800 },
+  ]), 10800);
+
+  // Partially overlapping (14:00-17:00 and 15:00-18:00) + separate 1h stream (19:00-20:00) => 4h + 1h = 5h
+  assert.equal(calculateUniqueLiveDurationSeconds([
+    { firstTime: base, lastTime: base + 3 * h, durationSec: 10800 },
+    { firstTime: base + 1 * h, lastTime: base + 4 * h, durationSec: 10800 },
+    { firstTime: base + 5 * h, lastTime: base + 6 * h, durationSec: 3600 },
+  ]), 5 * 3600);
+
+  // Uses durationSec when lastTime is missing
+  assert.equal(calculateUniqueLiveDurationSeconds([
+    { firstTime: base, durationSec: 7200 },
+    { firstTime: base + 1 * h, durationSec: 7200 },
+  ]), 3 * 3600);
 });
 

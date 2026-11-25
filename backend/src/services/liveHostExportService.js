@@ -124,6 +124,8 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
     'Số phiên Live',
     'Thời lượng',
     'Thời lượng (giờ)',
+    'Giờ live chuẩn',
+    'Giờ live chuẩn (giờ)',
     'Doanh thu thực (Net GMV)',
     'Doanh thu hủy',
     'GMV / Giờ',
@@ -141,6 +143,7 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
   let assignedRank = 0;
   let totalSessions = 0;
   let totalDurationSec = 0;
+  let totalUniqueDurationSec = 0;
   let totalNetGmv = 0;
   let totalCancelledGmv = 0;
   let totalNetOrders = 0;
@@ -155,6 +158,10 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
     const sessionsCount = toFiniteNumber(item.sessionsCount, 0);
     const durationSec = toFiniteNumber(item.totalDurationSec, 0);
     const hours = durationSec > 0 ? durationSec / 3600 : toFiniteNumber(item.hours, 0);
+    const uniqueDurationSec = item.uniqueDurationSec !== undefined && item.uniqueDurationSec !== null
+      ? toFiniteNumber(item.uniqueDurationSec, 0)
+      : durationSec;
+    const uniqueHours = uniqueDurationSec > 0 ? uniqueDurationSec / 3600 : toFiniteNumber(item.uniqueHours, hours);
     const netGmv = toFiniteNumber(item.totalGmv, 0);
     const cancelledGmv = toFiniteNumber(item.cancelledGmv, 0);
     const gmvPerHour = toFiniteNumber(item.gmvPerHour, 0);
@@ -171,6 +178,7 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
 
     totalSessions += sessionsCount;
     totalDurationSec += durationSec;
+    totalUniqueDurationSec += uniqueDurationSec;
     totalNetGmv += netGmv;
     totalCancelledGmv += cancelledGmv;
     totalNetOrders += orderCount;
@@ -185,6 +193,8 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
       sessionsCount,
       formatDurationText(durationSec),
       roundMetric(hours, 2),
+      formatDurationText(uniqueDurationSec),
+      roundMetric(uniqueHours, 2),
       roundMetric(netGmv, 2),
       roundMetric(cancelledGmv, 2),
       roundMetric(gmvPerHour, 2),
@@ -201,6 +211,7 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
   });
 
   const totalHours = totalDurationSec / 3600;
+  const totalUniqueHours = totalUniqueDurationSec / 3600;
   const totalGmvPerHour = totalHours > 0 ? totalNetGmv / totalHours : 0;
   const totalAov = totalNetOrders > 0 ? totalNetGmv / totalNetOrders : 0;
   const totalCpDt = totalNetGmv > 0 && totalAdsCost > 0 ? (totalAdsCost / totalNetGmv) * 100 : 0;
@@ -212,6 +223,8 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
     totalSessions,
     formatDurationText(totalDurationSec),
     roundMetric(totalHours, 2),
+    formatDurationText(totalUniqueDurationSec),
+    roundMetric(totalUniqueHours, 2),
     roundMetric(totalNetGmv, 2),
     roundMetric(totalCancelledGmv, 2),
     roundMetric(totalGmvPerHour, 2),
@@ -229,10 +242,10 @@ const buildSummarySheet = ({ shopName, startDate, endDate, currency, hosts }) =>
   const allRows = [...titleRows, headers, ...dataRows, totalRow];
   const sheet = XLSX.utils.aoa_to_sheet(allRows);
   applyColumnFormats(sheet, allRows, {
-    textCols: new Set([1, 2, 4, 17]),
-    intCols: new Set([3, 9, 10, 11]),
-    decimalCols: new Set([5, 6, 7, 8, 12, 13, 14, 15, 16]),
-    minWidths: [8, 24, 24, 14, 18, 16, 22, 16, 16, 14, 14, 18, 14, 16, 16, 12, 16, 10],
+    textCols: new Set([1, 2, 4, 6, 19]),
+    intCols: new Set([3, 11, 12, 13]),
+    decimalCols: new Set([5, 7, 8, 9, 10, 14, 15, 16, 17, 18]),
+    minWidths: [8, 24, 24, 14, 18, 16, 18, 20, 22, 16, 16, 14, 14, 18, 14, 16, 16, 12, 16, 10],
     startRow: titleRows.length,
   });
 
@@ -244,6 +257,9 @@ const buildHostDetailSheet = ({ hostItem, shopName, startDate, endDate, currency
   const hostCurrency = hostItem.currency || currency || 'VND';
   const sessions = Array.isArray(hostItem.sessions) ? hostItem.sessions : [];
   const orders = Array.isArray(hostItem.orders) ? hostItem.orders : [];
+  const uniqueDurSec = hostItem.uniqueDurationSec !== undefined && hostItem.uniqueDurationSec !== null
+    ? toFiniteNumber(hostItem.uniqueDurationSec, 0)
+    : toFiniteNumber(hostItem.totalDurationSec, 0);
 
   const summaryBlock = [
     [`CHI TIẾT DOANH THU & ĐƠN HÀNG HOST: ${hostName}`],
@@ -251,6 +267,7 @@ const buildHostDetailSheet = ({ hostItem, shopName, startDate, endDate, currency
     [
       `Số phiên: ${toFiniteNumber(hostItem.sessionsCount, sessions.length)}`,
       `Thời lượng: ${formatDurationText(hostItem.totalDurationSec)} (${roundMetric(toFiniteNumber(hostItem.totalDurationSec, 0) / 3600, 2)} giờ)`,
+      `Giờ live chuẩn: ${formatDurationText(uniqueDurSec)} (${roundMetric(uniqueDurSec / 3600, 2)} giờ)`,
       `Doanh thu thực: ${roundMetric(hostItem.totalGmv, 2)} ${hostCurrency}`,
       `Đã trừ hủy: ${roundMetric(hostItem.cancelledGmv, 2)} ${hostCurrency} (${toFiniteNumber(hostItem.cancelledOrderCount, 0)} đơn)`,
       `Số đơn thực: ${toFiniteNumber(hostItem.orderCount, 0)}`,

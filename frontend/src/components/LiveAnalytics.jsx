@@ -90,6 +90,7 @@ const SHOP_PALETTE = [
 import {
   calculateDurationSeconds,
   calculateGmvPerHour,
+  calculateUniqueLiveDurationSeconds,
   extractLiveGmv,
   extractSessionComments,
   findLivePerformanceForSession,
@@ -1378,6 +1379,8 @@ const LiveAnalytics = () => {
 
     return Array.from(hostMap.values()).map((h) => {
       const hours = h.totalDurationSec / 3600;
+      const uniqueDurationSec = calculateUniqueLiveDurationSeconds(h.sessions);
+      const uniqueHours = uniqueDurationSec / 3600;
       const gmvPerHour = hours > 0 ? (h.totalGmv / hours) : 0;
       const avgGmvPerSession = h.sessionsCount > 0 ? (h.totalGmv / h.sessionsCount) : 0;
       const aov = h.orderCount > 0 ? (h.totalGmv / h.orderCount) : 0;
@@ -1395,6 +1398,8 @@ const LiveAnalytics = () => {
       return {
         ...h,
         hours,
+        uniqueDurationSec,
+        uniqueHours,
         gmvPerHour,
         avgGmvPerSession,
         aov,
@@ -1568,6 +1573,8 @@ const LiveAnalytics = () => {
           sessionsCount: item.sessionsCount,
           totalDurationSec: item.totalDurationSec,
           hours: item.hours,
+          uniqueDurationSec: item.uniqueDurationSec,
+          uniqueHours: item.uniqueHours,
           totalGmv: item.totalGmv,
           cancelledGmv: item.cancelledGmv || 0,
           gmvPerHour: item.gmvPerHour,
@@ -2578,6 +2585,16 @@ const LiveAnalytics = () => {
                     </span>
                   </th>
                   <th
+                    className="sortable-th"
+                    onClick={() => handleHostSort('uniqueDurationSec')}
+                    title={t('liveAnalytics.colStandardDurationTooltip', 'Giờ live thực tế sau khi gộp các phiên live trùng giờ trên nhiều kênh')}
+                  >
+                    <span className="sortable-th-content">
+                      {t('liveAnalytics.colStandardDuration', 'GIỜ LIVE CHUẨN')}
+                      {renderSortIcon('uniqueDurationSec')}
+                    </span>
+                  </th>
+                  <th
                     className="cell-number sortable-th"
                     onClick={() => handleHostSort('totalGmv')}
                   >
@@ -2636,7 +2653,7 @@ const LiveAnalytics = () => {
               <tbody>
                 {liveOrdersLoading && !filteredHostLeaderboard.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         <span className="loading-dot" />
                         {t('liveAnalytics.loading')}
@@ -2647,7 +2664,7 @@ const LiveAnalytics = () => {
 
                 {!liveOrdersLoading && !filteredHostLeaderboard.length ? (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={11}>
                       <div className="empty-state empty-state--compact table-empty-state">
                         {t('liveAnalytics.noHosts', 'Chưa có dữ liệu Host trong khoảng thời gian này.')}
                       </div>
@@ -2734,6 +2751,17 @@ const LiveAnalytics = () => {
                         <span className="live-duration-pill">
                           <Clock size={12} />
                           {formatTotalDuration(item.totalDurationSec, language)}
+                        </span>
+                      </td>
+                      <td>
+                        <span
+                          className="live-duration-pill"
+                          title={item.totalDurationSec > item.uniqueDurationSec
+                            ? t('liveAnalytics.dedupedOverlapTooltip', 'Đã gộp thời gian live trùng nhiều kênh cùng lúc')
+                            : undefined}
+                        >
+                          <Clock size={12} />
+                          {formatTotalDuration(item.uniqueDurationSec, language)}
                         </span>
                       </td>
                       <td className="cell-number" style={{ fontWeight: 700, color: 'var(--color-text)' }}>
