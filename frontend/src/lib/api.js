@@ -88,6 +88,51 @@ export function saveLiveHost(shopId, sessionId, userId) {
   });
 }
 
+export async function exportLiveHostLeaderboardExcel({
+  shopName,
+  startDate,
+  endDate,
+  currency,
+  hosts,
+  signal,
+} = {}) {
+  const sessionToken = getStoredSession()?.token || null;
+  const response = await fetch(`${API_BASE_URL}/tiktok-shop/live-hosts/export`, {
+    method: 'POST',
+    headers: {
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ shopName, startDate, endDate, currency, hosts }),
+    signal,
+  });
+
+  if (!response.ok) {
+    let msg = `Tải file thất bại (${response.status})`;
+    try {
+      const err = await response.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const periodLabel = [startDate, endDate].filter(Boolean).join('_') || 'all';
+  const filename = match ? match[1] : `xep_hang_host_${periodLabel}.xlsx`;
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(downloadUrl);
+  return true;
+}
+
 export function fetchTikTokAdsStatus(signal) {
   return apiRequest('/ads/status', { signal });
 }

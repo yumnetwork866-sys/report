@@ -6,6 +6,7 @@ const { z } = require('zod');
 const { positiveId } = require('../schemas/commonSchemas');
 const { endpoint } = require('../controllers/controllerAdapter');
 const liveHostService = require('../services/liveHostService');
+const liveHostExportService = require('../services/liveHostExportService');
 const {
   applicationParamsSchema,
   authorizationParamsSchema,
@@ -21,6 +22,14 @@ const {
 
 const adminRouter = express.Router();
 adminRouter.get('/live-hosts', requirePermission('shop.analytics.view'), validateQuery(z.object({ shop_id: positiveId('shop ID').optional() })), endpoint(liveHostService, 'list'));
+adminRouter.post('/live-hosts/export', requirePermission('shop.analytics.view'),
+  validateBody(z.object({
+    shopName: z.string().max(255).optional(),
+    startDate: z.string().max(64).optional(),
+    endDate: z.string().max(64).optional(),
+    currency: z.string().max(16).optional(),
+    hosts: z.array(z.record(z.unknown())).max(500),
+  })), liveHostExportService.exportHostLeaderboard);
 adminRouter.get('/live-host-users', requirePermission('admin.shops.manage'), endpoint(liveHostService, 'users'));
 adminRouter.put('/shops/:shopId/live-sessions/:sessionId/host', requirePermission('admin.shops.manage'),
   validateParams(z.object({ shopId: positiveId('shop ID'), sessionId: z.string().trim().min(1).max(128).refine((id) => id !== 'unknown') })),

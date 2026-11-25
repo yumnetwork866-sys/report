@@ -18,6 +18,7 @@ import {
   ChevronUp,
   Clock,
   Crown,
+  Download,
   Megaphone,
   MessageSquare,
   Package,
@@ -43,6 +44,7 @@ import {
 } from '../lib/currency';
 import { formatDateOnly } from '../lib/date';
 import {
+  exportLiveHostLeaderboardExcel,
   fetchLiveHostUsers,
   fetchLiveHosts,
   fetchLiveSessionAds,
@@ -202,6 +204,7 @@ const LiveAnalytics = () => {
   const ordersPerPage = 15;
   const [sessionPage, setSessionPage] = useState(1);
   const sessionsPerPage = 20;
+  const [exportingHostsExcel, setExportingHostsExcel] = useState(false);
 
   const invalidRange = !startDate || !endDate || startDate >= endDate;
 
@@ -1448,6 +1451,161 @@ const LiveAnalytics = () => {
     return hostSortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
   }, [hostSortKey, hostSortDir]);
 
+  const handleExportHostLeaderboardExcel = useCallback(async () => {
+    if (exportingHostsExcel || !filteredHostLeaderboard.length) return;
+    setExportingHostsExcel(true);
+    try {
+      const checkSkuCancelled = (order, sku) => {
+        const status = String(order?.order_status || order?.status || '').toUpperCase();
+        if (['CANCELLED', 'CANCELED'].includes(status)) return true;
+        if (order?.cancel_reason || order?.cancel_time || order?.cancel_user) return true;
+        if (sku?.fully_return) return true;
+        if (sku?.refunded_quantity && sku?.quantity && Number(sku.refunded_quantity) >= Number(sku.quantity)) return true;
+        return false;
+      };
+
+      const hostPayloads = filteredHostLeaderboard.map((item) => {
+        const hostName = item.isUnassigned
+          ? t('liveAnalytics.unassignedHostTitle', 'Phiên chưa gán Host')
+          : (item.host?.name || 'Host');
+        const sessions = Array.isArray(item.sessions) ? item.sessions : [];
+
+        const exportSessions = sessions.map((sess) => ({
+          sessionId: sess.sessionId,
+          creatorUsername: sess.creatorUsername,
+          firstTime: sess.firstTime,
+          durationSec: sess.durationSec,
+          orderCount: sess.orderCount,
+          cancelledOrderCount: sess.cancelledOrderCount || 0,
+          totalGmv: sess.totalGmv,
+          cancelledGmv: sess.cancelledGmv || 0,
+          convertedAdsCost: sess.convertedAdsCost || 0,
+          costRevenueRatio: sess.costRevenueRatio,
+          gmvPerHour: sess.gmvPerHour,
+          totalComments: sess.totalComments || 0,
+          closingRate: sess.closingRate || 0,
+          aov: sess.aov || 0,
+          currency: sess.currency || displayCurrency,
+        }));
+
+        const orderMap = new Map();
+        sessions.forEach((sess) => {
+          const currentShop = shopsById.get(String(sess.shopId)) || selectedShop;
+          const orderShopRegion = String(currentShop?.region || '').trim().toUpperCase();
+          const fallbackCurrency = orderShopRegion === 'VN' ? 'VND' : 'MYR';
+          const sessOrders = Array.isArray(sess.orders) ? sess.orders : [];
+
+          sessOrders.forEach((order) => {
+            const orderId = String(order.id || order.order_id || '');
+            if (!orderId) return;
+            const dedupeKey = `${sess.sessionId}:${orderId}`;
+            if (orderMap.has(dedupeKey)) return;
+
+            const skus = Array.isArray(order.skus) ? order.skus : [];
+            const matchingSkus = skus.filter((s) => {
+              const ct = String(s.content_type || '').toUpperCase();
+              if (ct.includes('VIDEO') || s.video_id || s.raw_data?.video_id) return false;
+              const cid = String(s.content_id || s.room_id || 'unknown');
+              return cid === String(sess.sessionId) || cid === 'unknown';
+            });
+            const effectiveSkus = matchingSkus.length ? matchingSkus : skus;
+
+            let netQuantity = 0;
+            let cancelledQuantity = 0;
+            let netGmv = 0;
+            let cancelledGmv = 0;
+            const productParts = [];
+
+            effectiveSkus.forEach((sku) => {
+              const skuCurr = sku.currency || sku.price?.currency || order.currency || fallbackCurrency;
+              const qty = Number(sku.quantity) || 1;
+              const rawGmv = (moneyValue(sku.price) || 0) * qty;
+              const converted = toDisplayCurrency(rawGmv, skuCurr, currentShop);
+              const isCancelled = checkSkuCancelled(order, sku);
+              if (isCancelled) {
+                cancelledQuantity += qty;
+                cancelledGmv += converted;
+              } else {
+                netQuantity += qty;
+                netGmv += converted;
+              }
+              if (sku.product_name) {
+                productParts.push(`${sku.product_name} (x${qty})`);
+              }
+            });
+
+            const createTime = order.create_time
+              ? (typeof order.create_time === 'number' ? order.create_time * 1000 : Date.parse(order.create_time))
+              : null;
+            const status = order.order_status || order.status || 'COMPLETED';
+            const isCancelled = netQuantity === 0 && cancelledQuantity > 0;
+
+            orderMap.set(dedupeKey, {
+              orderId,
+              sessionId: sess.sessionId,
+              createTime,
+              creatorUsername: sess.creatorUsername,
+              productSummary: productParts.join(', ') || '—',
+              netQuantity,
+              cancelledQuantity,
+              netGmv,
+              cancelledGmv,
+              status,
+              statusLabel: orderStatusLabel(status, t),
+              isCancelled,
+              currency: sess.currency || displayCurrency,
+            });
+          });
+        });
+
+        const exportOrders = Array.from(orderMap.values()).sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+
+        return {
+          id: item.id,
+          isUnassigned: item.isUnassigned,
+          hostName,
+          hostEmail: item.host?.email || '',
+          sessionsCount: item.sessionsCount,
+          totalDurationSec: item.totalDurationSec,
+          hours: item.hours,
+          totalGmv: item.totalGmv,
+          cancelledGmv: item.cancelledGmv || 0,
+          gmvPerHour: item.gmvPerHour,
+          orderCount: item.orderCount,
+          cancelledOrderCount: item.cancelledOrderCount || 0,
+          totalQuantity: item.totalQuantity,
+          closingRate: item.closingRate,
+          aov: item.aov,
+          convertedAdsCost: item.convertedAdsCost || 0,
+          costRevenueRatio: item.costRevenueRatio,
+          gmvShare: item.gmvShare,
+          currency: item.currency || displayCurrency,
+          sessions: exportSessions,
+          orders: exportOrders,
+        };
+      });
+
+      const shopLabel = selectedShopId === 'all'
+        ? t('common.allShops', 'Tất cả Shop')
+        : (selectedShop?.name || `Shop ${selectedShopId}`);
+
+      await exportLiveHostLeaderboardExcel({
+        shopName: shopLabel,
+        startDate,
+        endDate,
+        currency: displayCurrency,
+        hosts: hostPayloads,
+      });
+    } catch (err) {
+      setAdsNotification({
+        type: 'error',
+        message: err?.message || t('liveAnalytics.exportHostsError', 'Không thể xuất file Excel xếp hạng Host.'),
+      });
+    } finally {
+      setExportingHostsExcel(false);
+    }
+  }, [exportingHostsExcel, filteredHostLeaderboard, t, displayCurrency, shopsById, selectedShop, selectedShopId, startDate, endDate, toDisplayCurrency]);
+
   // Host options for dropdown filter
   const hostFilterOptions = useMemo(() => {
     const options = [
@@ -2137,6 +2295,33 @@ const LiveAnalytics = () => {
               </button>
             ) : null}
           </div>
+
+          {activeTab === 'hosts' ? (
+            <button
+              type="button"
+              className="btn btn--secondary"
+              disabled={exportingHostsExcel || !filteredHostLeaderboard.length}
+              onClick={handleExportHostLeaderboardExcel}
+              title={t('liveAnalytics.exportHostsExcelTooltip', 'Xuất Excel xếp hạng Host (1 sheet tổng + mỗi Host 1 tab chi tiết khớp đơn)')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                height: 36,
+                padding: '0 12px',
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <Download size={15} />
+              <span>
+                {exportingHostsExcel
+                  ? t('liveAnalytics.exportingExcel', 'Đang xuất…')
+                  : t('liveAnalytics.exportExcel', 'Xuất Excel')}
+              </span>
+            </button>
+          ) : null}
         </div>
       </div>
 
