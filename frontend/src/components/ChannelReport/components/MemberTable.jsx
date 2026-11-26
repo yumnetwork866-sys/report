@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CheckCircle2, EyeOff } from 'lucide-react';
 
-import { compactProductName, compactVideoTitle } from '../utils/reportUtils';
+import { compactProductName, compactTeamBadge, compactVideoTitle, getMemberDetailKey } from '../utils/reportUtils';
 import { ProductRowThumb, VideoProductThumb } from './ReportControls';
 
 export const MemberTable = ({
@@ -24,7 +24,6 @@ export const MemberTable = ({
   toggleMember,
 }) => {
   const [videoFilters, setVideoFilters] = useState({});
-  const getMemberDetailKey = (member) => (member?.teamKey ? `${member.teamKey}:${member.key}` : String(member.key));
   const renderMemberDetail = (member) => {
     const memberId = getMemberDetailKey(member);
     const detail = memberDetails[memberId] || {};
@@ -390,6 +389,11 @@ export const MemberTable = ({
             {sorted.map((member) => {
               const rowId = getMemberDetailKey(member);
               const expanded = expandedMemberIds.has(rowId);
+              const teamBadges = showTeamBadge
+                ? (member.teamNames?.length ? member.teamNames : (member.teamName ? [member.teamName] : []))
+                : [];
+              const currencyEntries = member.revenueByCurrency ? Object.entries(member.revenueByCurrency) : [];
+              const hasMixedCurrencies = currencyEntries.length > 1;
               return (
                 <React.Fragment key={rowId}>
                   <tr
@@ -403,9 +407,11 @@ export const MemberTable = ({
                       <button className="member-row__trigger" type="button" aria-expanded={expanded} onClick={() => toggleMember(member)}>
                         <span className={`sidebar__chevron${expanded ? ' sidebar__chevron--open' : ''}`} aria-hidden="true" />
                         <strong>{member.name}</strong>
-                        {showTeamBadge && member.teamName ? (
-                          <span className="member-row__team-badge">{member.teamName}</span>
-                        ) : null}
+                        {teamBadges.map((teamLabel) => (
+                          <span key={teamLabel} className="member-row__team-badge" title={teamLabel}>
+                            {compactTeamBadge(teamLabel)}
+                          </span>
+                        ))}
                       </button>
                     </td>
                     <td className="cell-number">
@@ -423,8 +429,18 @@ export const MemberTable = ({
                     <td className="cell-number">{formatNumber(member.views)}</td>
                     <td className="cell-number">{formatNumber(Math.round(member.views / Math.max(member.videos, 1)))}</td>
                     <td className="cell-number">{formatNumber(member.orders || 0)}</td>
-                    <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue, member.currency) : '—'}</td>
-                    <td className="cell-number">{member.revenueAvailable ? formatRevenue(member.revenue / Math.max(member.videos, 1), member.currency) : '—'}</td>
+                    <td className="cell-number">
+                      {!member.revenueAvailable
+                        ? '—'
+                        : hasMixedCurrencies
+                          ? currencyEntries.map(([curr, amount]) => formatRevenue(amount, curr)).join(' + ')
+                          : formatRevenue(member.revenue, member.currency)}
+                    </td>
+                    <td className="cell-number">
+                      {member.revenueAvailable && !hasMixedCurrencies
+                        ? formatRevenue(member.revenue / Math.max(member.videos, 1), member.currency)
+                        : '—'}
+                    </td>
                   </tr>
                   {expanded ? (
                     <tr className="member-detail-row">

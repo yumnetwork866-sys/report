@@ -5,6 +5,7 @@ const {
   loadVideoDailyRevenue,
 } = require('../channelReportRevenueService');
 const { getOrSetCache, delByPattern } = require('../../lib/redis');
+const { buildChannelReportWorkbookBuffer } = require('./channelReportExportService');
 
 const REPORT_CACHE_TTL_SECONDS = 300; // 5 minutes
 const clearReportCache = () => delByPattern('report:*');
@@ -1513,12 +1514,180 @@ const getKocDetail = async (req, res) => {
   }
 };
 
+const exportChannelReport = async (req, res) => {
+  try {
+    const options = channelReportOptions(req.query);
+    const {
+      mode,
+      month,
+      startDate,
+      endDate,
+      endDateExclusive,
+      teamId,
+      teamIds,
+      userId,
+      channelIds,
+      metric,
+    } = options;
+
+    const monthlyRevenue = await loadMonthlyShopVideoRevenue({
+      startDate,
+      endDate: endDateExclusive,
+    });
+    const replacements = {
+      startDate,
+      endDateExclusive,
+      filterTeams: teamIds !== null,
+      teamIds: JSON.stringify(teamIds || []),
+      teamId,
+      userId,
+      filterChannels: channelIds !== null,
+      channelIds: JSON.stringify(channelIds || []),
+      metric,
+      revenueRows: JSON.stringify(monthlyRevenue.rows.map((row) => ({
+        platform_video_id: row.platform_video_id,
+        gross_gmv: row.revenue,
+        currency: row.currency,
+        orders: Number(row.orders) || 0,
+      }))),
+    };
+
+    const [memberRows, videoRows] = await Promise.all([
+      reportRepository.query(`${channelReportBaseSql}
+        , scoped_users AS (
+          SELECT
+            app_user.id AS user_id,
+            app_user.name AS member_name,
+            COALESCE(STRING_AGG(DISTINCT team.name, ', ' ORDER BY team.name), '') AS team_names
+          FROM users app_user
+          JOIN user_content_attributions attribution ON attribution.user_id = app_user.id
+          JOIN content_teams team ON team.id = attribution.team_id
+          WHERE (
+            CAST(:filterTeams AS boolean) = false
+            OR team.id IN (
+              SELECT value::integer
+              FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+            )
+          )
+            AND (CAST(:userId AS integer) IS NULL OR app_user.id = CAST(:userId AS integer))
+          GROUP BY app_user.id, app_user.name
+        )
+        SELECT
+          scoped_user.user_id,
+          scoped_user.member_name,
+          scoped_user.team_names,
+          COUNT(video.id)::bigint AS videos,
+          COUNT(video.id) FILTER (WHERE video.status = 'unavailable')::bigint AS unavailable_videos,
+          COALESCE(SUM(video.views), 0)::bigint AS views,
+          COALESCE(SUM(video.revenue), 0) AS revenue,
+          COUNT(video.revenue) > 0 AS revenue_available,
+          MIN(video.currency) AS currency,
+          COALESCE(SUM(video.orders), 0)::bigint AS orders
+        FROM scoped_users scoped_user
+        LEFT JOIN filtered_videos video ON EXISTS (
+          SELECT 1
+          FROM jsonb_array_elements(video.attributions) attribution_match(value)
+          WHERE (attribution_match.value ->> 'user_id')::integer = scoped_user.user_id
+            AND (
+              CAST(:filterTeams AS boolean) = false
+              OR (attribution_match.value ->> 'team_id')::integer IN (
+                SELECT value::integer
+                FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+              )
+            )
+        )
+        GROUP BY scoped_user.user_id, scoped_user.member_name, scoped_user.team_names
+        ORDER BY views DESC, scoped_user.member_name ASC
+      `, { replacements, type: QueryTypes.SELECT }),
+      reportRepository.query(`${channelReportBaseSql}
+        SELECT
+          attr.user_id,
+          STRING_AGG(DISTINCT team.name, ', ' ORDER BY team.name) AS team_names,
+          video.id,
+          video.platform_video_id,
+          video.title,
+          video.video_url,
+          video.channel_username,
+          video.channel_name,
+          video.published_at,
+          video.status,
+          video.views,
+          video.likes,
+          video.comments,
+          video.shares,
+          video.orders,
+          video.revenue,
+          video.currency
+        FROM filtered_videos video
+        CROSS JOIN LATERAL (
+          SELECT DISTINCT
+            (attribution_match.value ->> 'user_id')::integer AS user_id,
+            (attribution_match.value ->> 'team_id')::integer AS team_id
+          FROM jsonb_array_elements(video.attributions) attribution_match(value)
+          WHERE (
+            CAST(:filterTeams AS boolean) = false
+            OR (attribution_match.value ->> 'team_id')::integer IN (
+              SELECT value::integer
+              FROM jsonb_array_elements_text(CAST(:teamIds AS jsonb)) selected(value)
+            )
+          )
+            AND (
+              CAST(:userId AS integer) IS NULL
+              OR (attribution_match.value ->> 'user_id')::integer = CAST(:userId AS integer)
+            )
+        ) attr
+        JOIN content_teams team ON team.id = attr.team_id
+        GROUP BY
+          attr.user_id,
+          video.id,
+          video.platform_video_id,
+          video.title,
+          video.video_url,
+          video.channel_username,
+          video.channel_name,
+          video.published_at,
+          video.status,
+          video.views,
+          video.likes,
+          video.comments,
+          video.shares,
+          video.orders,
+          video.revenue,
+          video.currency
+        ORDER BY attr.user_id ASC, video.orders DESC, video.revenue DESC NULLS LAST, video.published_at DESC, video.id DESC
+      `, { replacements, type: QueryTypes.SELECT }),
+    ]);
+
+    const videosByUserId = new Map();
+    for (const row of videoRows) {
+      const key = String(row.user_id);
+      if (!videosByUserId.has(key)) videosByUserId.set(key, []);
+      videosByUserId.get(key).push(row);
+    }
+
+    const buffer = buildChannelReportWorkbookBuffer({
+      members: memberRows,
+      videosByUserId,
+    });
+    const periodLabel = (mode === 'month' && month ? month : `${startDate}_${endDate}`)
+      .replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `bao_cao_video_thanh_vien_${periodLabel}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    res.status(error.status || 500).json({ message: error.message });
+  }
+};
+
 const service = {
   getKpis,
   getKocDetail,
   getChannelReport,
   getChannelReportMemberDetail,
   getChannelReportVideoDailyRevenue,
+  exportChannelReport,
   clearReportCache,
   __test: {
     channelReportOptions,

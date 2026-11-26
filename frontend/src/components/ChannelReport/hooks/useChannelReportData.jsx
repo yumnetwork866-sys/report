@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  exportChannelReport,
   fetchChannelReport,
   fetchChannelReportMemberDetail,
   fetchChannelReportVideoDailyRevenue,
@@ -12,6 +13,7 @@ import { useSession } from '../../../lib/useSession';
 import {
   currentMonthValue,
   formatMonth,
+  getMemberDetailKey,
   monthIndex,
   monthRange,
   previousCustomRange,
@@ -45,6 +47,7 @@ export const useChannelReportData = () => {
   const videoRevenueRequestRef = useRef(null);
   const [videoRevenueDetail, setVideoRevenueDetail] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   
   const locale = language === 'vi' ? 'vi-VN' : 'en-US';
@@ -273,23 +276,60 @@ export const useChannelReportData = () => {
   };
   
   const mergedMembers = useMemo(() => {
-    const list = [];
+    const byUser = new Map();
     for (const group of visibleGroups) {
+      const teamKey = String(group.key);
+      const teamLabel = group.label;
       for (const member of (group.members || [])) {
-        list.push({
-          ...member,
-          teamKey: group.key,
-          teamName: group.label,
-          videos: Number(member.videos || 0),
-          views: Number(member.views || 0),
-          revenue: Number(member.revenue || 0),
-          revenueAvailable: Boolean(member.revenueAvailable),
-          currency: member.currency,
-          orders: Number(member.orders || 0),
-        });
+        const userKey = String(member.key);
+        const videos = Number(member.videos || 0);
+        const unavailableVideos = Number(member.unavailableVideos || 0);
+        const views = Number(member.views || 0);
+        const orders = Number(member.orders || 0);
+        const revenue = Number(member.revenue || 0);
+        const revenueAvailable = Boolean(member.revenueAvailable);
+        const currency = member.currency || null;
+        const existing = byUser.get(userKey);
+        if (!existing) {
+          const revenueByCurrency = {};
+          if (revenueAvailable && currency) revenueByCurrency[currency] = revenue;
+          byUser.set(userKey, {
+            ...member,
+            key: userKey,
+            isMerged: true,
+            teamKey: null,
+            teamKeys: [teamKey],
+            teamNames: teamLabel ? [teamLabel] : [],
+            teamName: teamLabel || '',
+            videos,
+            unavailableVideos,
+            views,
+            orders,
+            revenue,
+            revenueAvailable,
+            currency,
+            revenueByCurrency,
+          });
+        } else {
+          existing.videos += videos;
+          existing.unavailableVideos += unavailableVideos;
+          existing.views += views;
+          existing.orders += orders;
+          existing.revenue += revenue;
+          if (revenueAvailable) existing.revenueAvailable = true;
+          if (!existing.currency && currency) existing.currency = currency;
+          if (revenueAvailable && currency) {
+            existing.revenueByCurrency[currency] = (existing.revenueByCurrency[currency] || 0) + revenue;
+          }
+          if (!existing.teamKeys.includes(teamKey)) existing.teamKeys.push(teamKey);
+          if (teamLabel && !existing.teamNames.includes(teamLabel)) {
+            existing.teamNames.push(teamLabel);
+            existing.teamName = existing.teamNames.join(', ');
+          }
+        }
       }
     }
-    return list;
+    return [...byUser.values()];
   }, [visibleGroups]);
   
   const mergedMetrics = useMemo(() => {
@@ -373,13 +413,13 @@ export const useChannelReportData = () => {
     setPeriodMode(nextMode);
   };
   
-  const getMemberDetailKey = (member) => (member?.teamKey ? `${member.teamKey}:${member.key}` : String(member?.key ?? member));
-
   const loadMemberDetail = async (memberOrKey, page = 1, append = false) => {
     const isObject = memberOrKey && typeof memberOrKey === 'object';
     const userId = isObject ? String(memberOrKey.key) : String(memberOrKey);
-    const detailKey = isObject ? getMemberDetailKey(memberOrKey) : String(memberOrKey);
-    const scopedTeamIds = isObject && memberOrKey.teamKey ? [memberOrKey.teamKey] : selectedTeamIds;
+    const detailKey = getMemberDetailKey(memberOrKey);
+    const scopedTeamIds = isObject
+      ? (memberOrKey.isMerged ? selectedTeamIds : (memberOrKey.teamKey ? [memberOrKey.teamKey] : selectedTeamIds))
+      : selectedTeamIds;
 
     memberRequestRef.current.get(detailKey)?.abort();
     const controller = new AbortController();
@@ -479,6 +519,30 @@ export const useChannelReportData = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    if (exporting) return;
+    if (periodMode === 'custom' && (!startDate || !endDate || startDate > endDate)) {
+      setError('Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.');
+      return;
+    }
+    try {
+      setExporting(true);
+      setError('');
+      await exportChannelReport({
+        ...(periodMode === 'month' ? { month: selectedMonth } : { startDate, endDate }),
+        teamIds: Array.isArray(selectedTeamIds)
+          ? (selectedTeamIds.length ? selectedTeamIds : 'none')
+          : (selectedTeamIds || 'all'),
+        channelId: selectedChannelId,
+        metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
+      });
+    } catch (exportError) {
+      setError(exportError.message || 'Không thể xuất file Excel.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return {
     activeReportTab,
     allTeamOrders,
@@ -489,12 +553,14 @@ export const useChannelReportData = () => {
     endDate,
     error,
     expandedMemberIds,
+    exporting,
     formatDailyDate,
     formatNumber,
     formatPublishedDate,
     formatPublishedTime,
     formatRevenue,
     groups,
+    handleExportExcel,
     isAllTeams,
     loadMemberDetail,
     loading,

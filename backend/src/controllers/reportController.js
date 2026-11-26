@@ -4,6 +4,7 @@ const { endpoint } = require('./controllerAdapter');
 const actions = [
   'getKpis', 'getKocDetail', 'getChannelReport',
   'getChannelReportMemberDetail', 'getChannelReportVideoDailyRevenue',
+  'exportChannelReport',
 ];
 
 module.exports = Object.fromEntries(actions.map((action) => [action, endpoint(reportService, action)]));

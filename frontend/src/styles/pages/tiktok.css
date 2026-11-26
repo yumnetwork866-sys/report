@@ -1615,8 +1615,9 @@
 
 .member-row__trigger {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 9px;
+  gap: 4px 8px;
   padding: 4px 0;
   border: 0;
   background: transparent;

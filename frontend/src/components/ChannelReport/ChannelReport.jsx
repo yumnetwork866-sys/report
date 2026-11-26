@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { Download } from 'lucide-react';
 import DatePickerInput from '../DatePickerInput';
 import { hasPermission } from '../../lib/session';
 import { useSession } from '../../lib/useSession';
@@ -25,12 +26,14 @@ const ChannelReport = () => {
     endDate,
     error,
     expandedMemberIds,
+    exporting,
     formatDailyDate,
     formatNumber,
     formatPublishedDate,
     formatPublishedTime,
     formatRevenue,
     groups,
+    handleExportExcel,
     isAllTeams,
     loadMemberDetail,
     loading,
@@ -196,6 +199,22 @@ const ChannelReport = () => {
                 </div>
               </>
             )}
+
+            {activeReportTab !== 'comparison' && teams.length > 0 ? (
+              <div className="field">
+                <label aria-hidden="true">&nbsp;</label>
+                <button
+                  type="button"
+                  className="button button--small button--secondary"
+                  disabled={loading || exporting}
+                  onClick={handleExportExcel}
+                  title="Xuất Excel toàn bộ thành viên (tab All + 1 tab riêng từng thành viên)"
+                >
+                  <Download size={15} aria-hidden="true" />
+                  <span>{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
+                </button>
+              </div>
+            ) : null}
 
           </div>
         </div>
@@ -403,7 +422,7 @@ const ChannelReport = () => {
                       )}
                     </span>
                   </div>
-                  {renderMembersTable(mergedMembers, true)}
+                  {renderMembersTable(mergedMembers)}
                 </article>
               ) : visibleGroups.length === 1 ? (
                 (() => {

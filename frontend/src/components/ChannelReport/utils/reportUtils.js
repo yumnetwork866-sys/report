@@ -75,3 +75,38 @@ export const orderStatusLabel = (value) => {
   })[status] || status.replaceAll('_', ' ') || '—';
 };
 
+export const getMemberDetailKey = (member) => {
+  if (member && typeof member === 'object') {
+    if (member.isMerged) return `merged:${member.key}`;
+    return member.teamKey ? `${member.teamKey}:${member.key}` : String(member.key);
+  }
+  return String(member);
+};
+
+const TEAM_SHORT_CODES = [
+  [/^(us|usa|my|hoa ky)$/, 'US'],
+  [/^(malaysia|malay|my\b)/, 'MY'],
+  [/^(viet\s*nam|vn)$/, 'VN'],
+  [/^(thai\s*lan|thailand|th)$/, 'TH'],
+  [/^(indonesia|indo|id)$/, 'ID'],
+  [/^(philippines|phil|ph)$/, 'PH'],
+  [/^(singapore|sing|sg)$/, 'SG'],
+  [/^(uk|anh)$/, 'UK'],
+];
+
+export const compactTeamBadge = (label) => {
+  const raw = String(label || '').trim();
+  if (!raw) return '';
+  const withoutPrefix = raw.replace(/^team\s+/i, '').trim() || raw;
+  const normalized = withoutPrefix
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/gi, 'd')
+    .toLowerCase()
+    .trim();
+  for (const [pattern, code] of TEAM_SHORT_CODES) {
+    if (pattern.test(normalized)) return code;
+  }
+  return withoutPrefix.length > 8 ? `${withoutPrefix.slice(0, 6).trim()}…` : withoutPrefix;
+};
+

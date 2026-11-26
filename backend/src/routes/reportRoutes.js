@@ -13,7 +13,8 @@ const {
   getKocDetail,
   getChannelReport,
   getChannelReportMemberDetail,
-  getChannelReportVideoDailyRevenue
+  getChannelReportVideoDailyRevenue,
+  exportChannelReport,
 } = require('../controllers/reportController');
 const { getDashboard, getDashboardVideos } = require('../controllers/dashboardController');
 
@@ -21,6 +22,11 @@ const { getDashboard, getDashboardVideos } = require('../controllers/dashboardCo
 router.get('/dashboard/videos', requirePermission('channels.dashboard.view'), getDashboardVideos);
 router.get('/dashboard', requirePermission('channels.dashboard.view'), getDashboard);
 router.get('/kpis', requirePermission('shop.affiliate.performance.view'), getKpis);
+router.get('/channel/export', (req, res, next) => requireAnyPermission(
+  req.query.metric === 'revenue'
+    ? ['channels.reports.revenue.view']
+    : ['channels.reports.video.view', 'channels.reports.statistics.view'],
+)(req, res, next), validateQuery(reportDateQuerySchema), exportChannelReport);
 router.get('/channel', (req, res, next) => requireAnyPermission(
   req.query.metric === 'revenue'
     ? ['channels.reports.revenue.view']

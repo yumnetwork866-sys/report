@@ -767,13 +767,12 @@ export async function fetchVideos(signalOrFilters) {
   return Array.isArray(payload) ? payload : payload.items || [];
 }
 
-export function fetchChannelReport({
-  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, view, page = 1, pageSize = 20, signal,
+function buildChannelReportParams({
+  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, view, page, pageSize,
 } = {}) {
-  const params = new URLSearchParams({
-    page: String(page),
-    page_size: String(pageSize),
-  });
+  const params = new URLSearchParams();
+  if (page !== undefined) params.set('page', String(page));
+  if (pageSize !== undefined) params.set('page_size', String(pageSize));
   if (startDate || endDate) {
     if (startDate) params.set('start_date', startDate);
     if (endDate) params.set('end_date', endDate);
@@ -789,7 +788,57 @@ export function fetchChannelReport({
   if (channelId && channelId !== 'all') params.set('channel_ids', channelId);
   if (metric) params.set('metric', metric);
   if (view) params.set('view', view);
+  return params;
+}
+
+export function fetchChannelReport({
+  month, startDate, endDate, teamId, teamIds, userId, channelId, metric, view, page = 1, pageSize = 20, signal,
+} = {}) {
+  const params = buildChannelReportParams({
+    month, startDate, endDate, teamId, teamIds, userId, channelId, metric, view, page, pageSize,
+  });
   return apiRequest(`/reports/channel?${params.toString()}`, { signal });
+}
+
+export async function exportChannelReport({
+  month, startDate, endDate, teamId, teamIds, userId, channelId, metric = 'content', signal,
+} = {}) {
+  const params = buildChannelReportParams({
+    month, startDate, endDate, teamId, teamIds, userId, channelId, metric,
+  });
+  const sessionToken = getStoredSession()?.token || null;
+  const response = await fetch(`${API_BASE_URL}/reports/channel/export?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    let msg = `Xuất Excel thất bại (${response.status})`;
+    try {
+      const err = await response.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const periodLabel = month || [startDate, endDate].filter(Boolean).join('_') || 'all';
+  const filename = match ? match[1] : `bao_cao_video_thanh_vien_${periodLabel}.xlsx`;
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(downloadUrl);
+  return true;
 }
 
 export function fetchChannelReportMemberDetail(userId, {
