@@ -643,8 +643,8 @@
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 0;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
 .dashboard-header-bar .dashboard-tabs {
