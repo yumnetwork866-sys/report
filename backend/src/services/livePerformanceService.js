@@ -321,8 +321,12 @@ const saveLiveSessionPerformances = async (shopId, lives, { db = sequelize, rawS
 
 const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequelize } = {}) => {
   if (!shopId || !db?.query) return [];
-  const startEpoch = startDate ? Date.parse(`${startDate}T00:00:00.000Z`) - 24 * 3600 * 1000 : null;
-  const endEpoch = endDate ? Date.parse(`${endDate}T23:59:59.999Z`) + 24 * 3600 * 1000 : null;
+  const startEpoch = startDate ? Date.parse(`${startDate}T00:00:00.000Z`) - 9 * 3600 * 1000 : null;
+  const endEpoch = endDate
+    ? (startDate && endDate === startDate
+      ? Date.parse(`${endDate}T23:59:59.999Z`)
+      : Date.parse(`${endDate}T00:00:00.000Z`))
+    : null;
 
   try {
     const rows = await db.query(`
@@ -331,8 +335,8 @@ const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequ
              hashtags, interaction_performance, raw_data, updated_at
       FROM live_session_performances
       WHERE shop_id = :shopId
-        AND (:startEpoch::BIGINT IS NULL OR start_time IS NULL OR end_time IS NULL OR end_time >= :startEpoch)
-        AND (:endEpoch::BIGINT IS NULL OR start_time IS NULL OR start_time <= :endEpoch)
+        AND (:startEpoch::BIGINT IS NULL OR start_time IS NULL OR start_time >= :startEpoch)
+        AND (:endEpoch::BIGINT IS NULL OR start_time IS NULL OR start_time < :endEpoch)
       ORDER BY start_time DESC NULLS LAST
     `, {
       replacements: {

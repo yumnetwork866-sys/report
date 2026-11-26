@@ -1133,6 +1133,15 @@ const LiveAnalytics = () => {
         adsSource: adsRecord?.source || null,
         productsList: Object.values(sess.products).sort((a, b) => b.gmv - a.gmv),
       };
+    }).filter((sess) => {
+      const effectiveEndExclusive = periodPreset === 'custom' ? endDate : shiftDate(endDate, 1);
+      if (!startDate || !effectiveEndExclusive) return true;
+      const currentShop = shopsById.get(String(sess.shopId)) || selectedShop;
+      const rangeStartMs = shopDateUnix(startDate, currentShop?.region) * 1000;
+      const rangeEndMs = shopDateUnix(effectiveEndExclusive, currentShop?.region) * 1000;
+      if (!Number.isFinite(rangeStartMs) || !Number.isFinite(rangeEndMs)) return true;
+      if (!sess.firstTime) return Array.isArray(sess.orders) && sess.orders.length > 0;
+      return sess.firstTime >= rangeStartMs && sess.firstTime < rangeEndMs;
     }).sort((a, b) => (b.firstTime || 0) - (a.firstTime || 0));
 
     const productsArr = Object.values(productMap).map((p) => ({
@@ -1145,7 +1154,7 @@ const LiveAnalytics = () => {
       topProductsList: productsArr,
       liveOrderRows: flatRows.sort((a, b) => (b.createTime || 0) - (a.createTime || 0)),
     };
-  }, [liveOrders, livePerformances, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency]);
+  }, [liveOrders, livePerformances, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency, startDate, endDate, periodPreset]);
 
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
