@@ -2,6 +2,7 @@ const { QueryTypes } = require('sequelize');
 const { sequelize } = require('../models');
 const { decryptPartnerToken } = require('../lib/tiktokPartnerTokenEncryption');
 const { monitoredFetch } = require('./scheduledRunMonitorService');
+const { getMyrExchangeRates } = require('./exchangeRateService');
 
 const getBusinessConfig = async (db = sequelize) => {
   try {
@@ -34,8 +35,9 @@ const getBusinessConfig = async (db = sequelize) => {
   };
 };
 
-const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
+const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch, getExchangeRates = null } = {}) => {
   const safeFetch = (input, options) => monitoredFetch(input, options, fetchImpl);
+  const fetchExchangeRates = getExchangeRates || (() => getMyrExchangeRates(fetchImpl));
   const select = (sql, replacements = {}) => db.query(sql, { type: QueryTypes.SELECT, replacements });
   let syncPromise = null;
   const lastSyncByShop = new Map();
@@ -446,25 +448,14 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       const now = new Date();
       const pad = (n) => String(n).padStart(2, '0');
       const formatDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      const formatDateInTz = (dateOrEpoch, timeZone = 'Asia/Kuala_Lumpur') => {
-        try {
-          const d = typeof dateOrEpoch === 'number' ? new Date(dateOrEpoch) : new Date(dateOrEpoch);
-          return d.toLocaleDateString('en-CA', { timeZone });
-        } catch {
-          const d = new Date(dateOrEpoch);
-          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-        }
-      };
       const endDate = formatDate(now);
       const thirtyDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
       const startDate = formatDate(thirtyDaysAgo);
 
-      // Map sessions from database orders, performances and hosts for accurate shop attribution
+      // Map sessions from database orders and performances for accurate shop attribution
       const dbLiveSessions = await select(`
-        SELECT DISTINCT s.shop_id, s.content_id AS session_id,
-               TO_CHAR(o.create_time AT TIME ZONE 'Asia/Kuala_Lumpur', 'YYYY-MM-DD') AS session_date
+        SELECT DISTINCT s.shop_id, s.content_id AS session_id
         FROM tiktok_affiliate_order_skus s
-        JOIN tiktok_affiliate_orders o ON o.id = s.affiliate_order_id
         WHERE s.content_type = 'LIVE' AND s.content_id IS NOT NULL
       `);
 
@@ -483,21 +474,6 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
       dbLiveSessions.forEach((r) => sessionToShopMap.set(String(r.session_id), Number(r.shop_id)));
       dbPerformances.forEach((r) => sessionToShopMap.set(String(r.session_id), Number(r.shop_id)));
 
-      const knownSessionsByDate = {};
-      const registerSessionDate = (sid, spId, dateStr, gmv = 0) => {
-        if (!sid || !dateStr) return;
-        const d = String(dateStr).slice(0, 10);
-        if (!knownSessionsByDate[d]) knownSessionsByDate[d] = [];
-        const existing = knownSessionsByDate[d].find((x) => x.sessionId === String(sid));
-        if (!existing) {
-          knownSessionsByDate[d].push({ sessionId: String(sid), shopId: spId, gmv: Number(gmv) || 0 });
-        } else if (gmv > 0) {
-          existing.gmv = Math.max(existing.gmv, Number(gmv));
-        }
-      };
-
-      dbLiveSessions.forEach((row) => registerSessionDate(row.session_id, row.shop_id, row.session_date));
-
       if (Array.isArray(sessions)) {
         sessions.forEach((s) => {
           const sid = s.session_id || s.sessionId || s.live_id || s.id;
@@ -505,29 +481,31 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           if (sid && spId) {
             sessionToShopMap.set(String(sid), Number(spId));
           }
-          const gmv = Number(s.gmv?.amount || s.gmv || s.revenue?.amount || s.revenue || 0);
-          if (s.start_time || s.startTime) {
-            const timeNum = Number(s.start_time || s.startTime);
-            if (Number.isFinite(timeNum) && timeNum > 0) {
-              const epoch = timeNum > 1e12 ? timeNum : timeNum * 1000;
-              const tzDate = formatDateInTz(epoch, 'Asia/Kuala_Lumpur');
-              if (sid) {
-                registerSessionDate(sid, spId, tzDate, gmv);
-              }
-            }
-          }
         });
       }
 
-      if (Array.isArray(sessionIds)) {
-        sessionIds.forEach((sid) => {
-          if (sid) registerSessionDate(sid, targetShops[0]?.id || 1, endDate);
-        });
-      }
+      let cachedExchangeRates = null;
+      const convertCurrencyAmount = async (amount, fromCurrency, toCurrency) => {
+        if (!fromCurrency || !toCurrency || fromCurrency === toCurrency) return amount;
+        if (!cachedExchangeRates) {
+          try {
+            const payload = await fetchExchangeRates();
+            cachedExchangeRates = payload?.rates || null;
+          } catch {
+            cachedExchangeRates = null;
+          }
+        }
+        const fromRate = Number(cachedExchangeRates?.[fromCurrency]);
+        const toRate = Number(cachedExchangeRates?.[toCurrency]);
+        if (Number.isFinite(fromRate) && fromRate > 0 && Number.isFinite(toRate) && toRate > 0) {
+          return (amount * fromRate) / toRate;
+        }
+        return amount;
+      };
 
       const sessionSpendAccumulator = new Map();
       const recordedCampaignRooms = new Set();
-      const recordSpend = (sId, spId, amount, currency, rawMeta = {}, advId = null, campId = null) => {
+      const recordSpend = async (sId, spId, amount, currency, rawMeta = {}, advId = null, campId = null) => {
         if (!sId || !Number.isFinite(amount) || amount <= 0) return;
         const resolvedShopId = sessionToShopMap.get(String(sId)) || spId;
         if (shopId && Number(resolvedShopId) !== Number(shopId)) {
@@ -538,20 +516,25 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
           if (recordedCampaignRooms.has(campKey)) return;
           recordedCampaignRooms.add(campKey);
         }
+        const normalizedCurrency = String(currency || 'USD').trim().toUpperCase();
         const key = `${resolvedShopId}:${sId}`;
-        const current = sessionSpendAccumulator.get(key) || {
-          sessionId: String(sId),
-          shopId: resolvedShopId,
-          cost: 0,
-          currency: currency || 'USD',
-          advertiserId: advId,
-          rawMeta: {},
-        };
-        current.cost += amount;
-        current.currency = currency || current.currency;
-        current.advertiserId = advId || current.advertiserId;
-        current.rawMeta = { ...current.rawMeta, ...rawMeta, cost: current.cost, currency: current.currency };
-        sessionSpendAccumulator.set(key, current);
+        const existing = sessionSpendAccumulator.get(key);
+        if (!existing) {
+          sessionSpendAccumulator.set(key, {
+            sessionId: String(sId),
+            shopId: resolvedShopId,
+            cost: amount,
+            currency: normalizedCurrency,
+            advertiserId: advId,
+            rawMeta: { ...rawMeta, cost: amount, currency: normalizedCurrency },
+          });
+          return;
+        }
+        const convertedAmount = await convertCurrencyAmount(amount, normalizedCurrency, existing.currency);
+        existing.cost += convertedAmount;
+        existing.advertiserId = existing.advertiserId || advId;
+        existing.rawMeta = { ...existing.rawMeta, ...rawMeta, cost: existing.cost, currency: existing.currency };
+        sessionSpendAccumulator.set(key, existing);
       };
 
       for (const { accessToken, advertiserIds } of authList) {
@@ -600,18 +583,16 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
             continue;
           }
 
-          let foundGmvMaxSpend = false;
-
           for (const store of matchedStores) {
             const storePlatformId = String(store.store_id || store.id || '');
             const targetShop = allShopsByPlatformId.get(storePlatformId) || targetShops[0];
             const defaultCurrency = targetShop.region === 'VN' ? 'VND' : 'MYR';
 
-            // 2. Fetch LIVE_GMV_MAX campaigns for this specific store (paginating up to 500 recent campaigns)
+            // 2. Fetch all LIVE_GMV_MAX campaigns for this specific store with full pagination
             let liveCampaignIds = [];
             try {
               let page = 1;
-              while (page <= 5) {
+              while (page <= 50) {
                 const campUrl = new URL(`${baseUrl}/open_api/v1.3/gmv_max/campaign/get/`);
                 campUrl.searchParams.set('advertiser_id', advertiserId);
                 campUrl.searchParams.set('store_id', storePlatformId);
@@ -633,127 +614,62 @@ const createTikTokAdsService = ({ db = sequelize, fetchImpl = fetch } = {}) => {
                   if (c?.campaign_id) liveCampaignIds.push(String(c.campaign_id));
                 }
                 const totalPages = campData?.data?.page_info?.total_page || 1;
-                if (page >= totalPages || list.some((c) => c.create_time && c.create_time < startDate)) break;
+                if (page >= totalPages) break;
                 page += 1;
               }
             } catch (campErr) {
               console.warn(`[TikTok Ads Sync] gmv_max/campaign/get failed for store ${storePlatformId}:`, campErr.message);
             }
 
-            // 3. Query GMV Max report at room_id level with campaign_ids
+            // 3. Query GMV Max report at room_id level with campaign_ids and full pagination
             const campBatches = liveCampaignIds.length > 0
               ? Array.from({ length: Math.ceil(liveCampaignIds.length / 50) }, (_, i) => liveCampaignIds.slice(i * 50, (i + 1) * 50))
               : [null];
 
             for (const batch of campBatches) {
               try {
-                const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
-                url.searchParams.set('advertiser_id', advertiserId);
-                url.searchParams.set('store_ids', JSON.stringify([storePlatformId]));
-                url.searchParams.set('dimensions', JSON.stringify(['campaign_id', 'room_id']));
-                url.searchParams.set('metrics', JSON.stringify(['cost', 'gross_revenue', 'orders']));
-                if (batch && batch.length > 0) {
-                  url.searchParams.set('filtering', JSON.stringify({ campaign_ids: batch }));
-                }
-                url.searchParams.set('start_date', startDate);
-                url.searchParams.set('end_date', endDate);
-                url.searchParams.set('page_size', '100');
+                let reportPage = 1;
+                while (reportPage <= 50) {
+                  const url = new URL(`${baseUrl}/open_api/v1.3/gmv_max/report/get/`);
+                  url.searchParams.set('advertiser_id', advertiserId);
+                  url.searchParams.set('store_ids', JSON.stringify([storePlatformId]));
+                  url.searchParams.set('dimensions', JSON.stringify(['campaign_id', 'room_id']));
+                  url.searchParams.set('metrics', JSON.stringify(['cost', 'gross_revenue', 'orders']));
+                  if (batch && batch.length > 0) {
+                    url.searchParams.set('filtering', JSON.stringify({ campaign_ids: batch }));
+                  }
+                  url.searchParams.set('start_date', startDate);
+                  url.searchParams.set('end_date', endDate);
+                  url.searchParams.set('page_size', '100');
+                  url.searchParams.set('page', String(reportPage));
 
-                const res = await safeFetch(url.toString(), {
-                  method: 'GET',
-                  headers: {
-                    'Access-Token': accessToken,
-                    'Content-Type': 'application/json',
-                  },
-                });
-                const payload = await res.json();
-                if (payload?.code === 0 && Array.isArray(payload?.data?.list) && payload.data.list.length > 0) {
-                  for (const item of payload.data.list) {
-                    const roomId = String(item.dimensions?.room_id || '').trim();
-                    const cost = Number(item.metrics?.cost ?? item.metrics?.net_cost ?? 0);
-                    const currency = String(item.metrics?.currency || defaultCurrency).trim().toUpperCase();
-                    if (roomId && Number.isFinite(cost) && cost > 0) {
-                      const actualShopId = sessionToShopMap.get(roomId) || targetShop.id;
-                      const campId = String(item.dimensions?.campaign_id || '');
-                      recordSpend(roomId, actualShopId, cost, currency, item.metrics, advertiserId, campId);
-                      foundGmvMaxSpend = true;
+                  const res = await safeFetch(url.toString(), {
+                    method: 'GET',
+                    headers: {
+                      'Access-Token': accessToken,
+                      'Content-Type': 'application/json',
+                    },
+                  });
+                  const payload = await res.json();
+                  const list = payload?.data?.list;
+                  if (payload?.code === 0 && Array.isArray(list) && list.length > 0) {
+                    for (const item of list) {
+                      const roomId = String(item.dimensions?.room_id || '').trim();
+                      const cost = Number(item.metrics?.cost ?? item.metrics?.net_cost ?? 0);
+                      const currency = String(item.metrics?.currency || defaultCurrency).trim().toUpperCase();
+                      if (roomId && Number.isFinite(cost) && cost > 0) {
+                        const actualShopId = sessionToShopMap.get(roomId) || targetShop.id;
+                        const campId = String(item.dimensions?.campaign_id || '');
+                        await recordSpend(roomId, actualShopId, cost, currency, item.metrics, advertiserId, campId);
+                      }
                     }
                   }
+                  const totalReportPages = payload?.data?.page_info?.total_page || 1;
+                  if (reportPage >= totalReportPages || !Array.isArray(list) || list.length === 0) break;
+                  reportPage += 1;
                 }
               } catch (gmvErr) {
                 console.warn(`[TikTok Ads Sync] GMV Max room report failed:`, gmvErr.message);
-              }
-            }
-          }
-
-          // 4. Fallback Synchronous report ONLY if no GMV Max spend was found
-          if (!foundGmvMaxSpend) {
-            const reportConfigs = [
-              { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-              { ver: 'v1.3', serviceType: 'AUCTION', dataLevel: 'AUCTION_ADVERTISER', dimensions: ['stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-              { ver: 'v2.0', serviceType: null, dataLevel: 'AUCTION_CAMPAIGN', dimensions: ['campaign_id', 'stat_time_day'], metrics: ['spend', 'impressions', 'clicks'] },
-            ];
-
-            let syncReportList = null;
-            for (const cfg of reportConfigs) {
-              try {
-                const syncUrl = new URL(`${baseUrl}/open_api/${cfg.ver}/report/integrated/get/`);
-                syncUrl.searchParams.set('advertiser_id', advertiserId);
-                if (cfg.serviceType) syncUrl.searchParams.set('service_type', cfg.serviceType);
-                syncUrl.searchParams.set('report_type', 'BASIC');
-                syncUrl.searchParams.set('data_level', cfg.dataLevel);
-                syncUrl.searchParams.set('dimensions', JSON.stringify(cfg.dimensions));
-                syncUrl.searchParams.set('metrics', JSON.stringify(cfg.metrics));
-                syncUrl.searchParams.set('start_date', startDate);
-                syncUrl.searchParams.set('end_date', endDate);
-                syncUrl.searchParams.set('page_size', '1000');
-
-                const reportRes = await safeFetch(syncUrl.toString(), {
-                  method: 'GET',
-                  headers: {
-                    'Access-Token': accessToken,
-                    'Content-Type': 'application/json',
-                  },
-                });
-                const reportPayload = await reportRes.json();
-                if (reportPayload?.code === 0 && Array.isArray(reportPayload?.data?.list) && reportPayload.data.list.length > 0) {
-                  syncReportList = reportPayload.data.list;
-                  break;
-                }
-              } catch (syncErr) {
-                console.warn(`[TikTok Synchronous Report ${cfg.ver}] Error:`, syncErr.message);
-              }
-            }
-
-            if (Array.isArray(syncReportList) && syncReportList.length > 0) {
-              const matchedShop = matchedStores.length > 0 && allShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
-                ? allShopsByPlatformId.get(String(matchedStores[0].store_id || matchedStores[0].id))
-                : targetShops[0];
-              const defaultCurrency = matchedShop.region === 'VN' ? 'VND' : 'MYR';
-
-              for (const row of syncReportList) {
-                const rawDate = row.dimensions?.stat_time_day;
-                const dateKey = rawDate ? String(rawDate).slice(0, 10) : null;
-                const spend = Number(row.metrics?.spend ?? row.metrics?.stat_cost ?? row.metrics?.cost ?? 0);
-                const currency = String(row.metrics?.currency || defaultCurrency).trim().toUpperCase();
-
-                if (dateKey && Number.isFinite(spend) && spend > 0) {
-                  const matchedSessions = (knownSessionsByDate[dateKey] || []).filter((s) => s.shopId === matchedShop.id);
-                  if (matchedSessions.length > 0) {
-                    const gmvSessions = matchedSessions.filter((s) => s.gmv > 0);
-                    if (gmvSessions.length === 1) {
-                      recordSpend(gmvSessions[0].sessionId, matchedShop.id, spend, currency, row.metrics, advertiserId);
-                    } else if (gmvSessions.length > 1) {
-                      const totalGmv = gmvSessions.reduce((acc, s) => acc + s.gmv, 0);
-                      for (const s of gmvSessions) {
-                        const allocated = Number(((s.gmv / totalGmv) * spend).toFixed(2));
-                        recordSpend(s.sessionId, matchedShop.id, allocated, currency, row.metrics, advertiserId);
-                      }
-                    } else {
-                      recordSpend(matchedSessions[0].sessionId, matchedShop.id, spend, currency, row.metrics, advertiserId);
-                    }
-                  }
-                }
               }
             }
           }

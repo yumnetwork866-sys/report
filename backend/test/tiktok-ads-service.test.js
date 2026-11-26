@@ -36,7 +36,11 @@ test('handleOAuthCallback exchanges auth_code and persists authorization', async
     },
   };
 
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const result = await service.handleOAuthCallback('test_auth_code_xyz');
 
   assert.equal(result.accessToken, 'fake_access_token_123');
@@ -136,7 +140,11 @@ test('syncLiveSessionAds pulls GMV Max report and persists into live_session_ads
     },
   };
 
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const results = await service.syncLiveSessionAds({ shopId: 5 });
 
   assert.equal(results.length, 1);
@@ -152,10 +160,19 @@ test('syncLiveSessionAds pulls GMV Max report and persists into live_session_ads
   assert.ok(insertQuery.replacements.rawData.includes('304.95'));
 });
 
-test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to sessions', async () => {
+test('syncLiveSessionAds ignores non-GMV-Max Auction reports so daily campaign spend is never mixed into live sessions', async () => {
   const fetchCalls = [];
   const fakeFetch = async (url) => {
     fetchCalls.push(url);
+    if (url.includes('/gmv_max/store/list/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          message: 'OK',
+          data: { list: [{ store_id: 'store_123', store_name: 'Test Store' }] },
+        }),
+      };
+    }
     if (url.includes('/report/integrated/get/')) {
       return {
         json: async () => ({
@@ -169,7 +186,7 @@ test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to s
                   stat_time_day: '2026-11-18 00:00:00',
                 },
                 metrics: {
-                  spend: '304.95',
+                  spend: '20.05',
                   impressions: '12000',
                   clicks: '500',
                 },
@@ -196,8 +213,11 @@ test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to s
     },
   };
 
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
-  // Pass sessions loaded in frontend with date 2026-11-18
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const testSessions = [
     {
       session_id: '770947923089',
@@ -210,14 +230,10 @@ test('syncLiveSessionAds pulls Synchronous Report v2.0 and maps daily spend to s
 
   const results = await service.syncLiveSessionAds({ shopId: 5, sessions: testSessions });
 
-  assert.equal(results.length, 1);
-  assert.equal(results[0].session_id, '770947923089');
-  assert.equal(results[0].ads_cost, 304.95);
-
+  assert.equal(results.length, 0);
+  assert.equal(fetchCalls.some((u) => u.includes('/report/integrated/get/')), false);
   const insertQuery = queries.find((q) => q.sql.includes('INSERT INTO live_session_ads'));
-  assert.ok(insertQuery);
-  assert.equal(insertQuery.replacements.sessionId, '770947923089');
-  assert.equal(insertQuery.replacements.adsCost, 304.95);
+  assert.equal(insertQuery, undefined);
 });
 
 test('getLiveSessionAds defaults to sync=false and reads directly from database without fetching', async () => {
@@ -233,7 +249,11 @@ test('getLiveSessionAds defaults to sync=false and reads directly from database 
       return [];
     },
   };
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const rows = await service.getLiveSessionAds(1);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].session_id, 'live_1');
@@ -271,7 +291,11 @@ test('getAuthorizations returns authorization rows and advertiser accounts', asy
     }),
   });
 
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const result = await service.getAuthorizations();
   assert.equal(result.totalAdvertisers, 2);
   assert.equal(result.authorizations.length, 1);
@@ -372,7 +396,11 @@ test('syncLiveSessionAds correctly maps room_id to exact shop based on known liv
     },
   };
 
-  const service = createTikTokAdsService({ db: fakeDb, fetchImpl: fakeFetch });
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
   const results = await service.syncLiveSessionAds();
 
   assert.equal(results.length, 1);
@@ -385,6 +413,188 @@ test('syncLiveSessionAds correctly maps room_id to exact shop based on known liv
   assert.equal(insertQuery.replacements.shopId, 15);
   assert.equal(insertQuery.replacements.sessionId, 'room_for_actiscar_vn');
   assert.equal(insertQuery.replacements.adsCost, 50.00);
+});
+
+test('syncLiveSessionAds paginates beyond 5 campaign pages and paginates gmv_max report pages', async () => {
+  const fakeFetch = async (url) => {
+    const parsed = new URL(url);
+    if (url.includes('/gmv_max/store/list/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          data: { list: [{ store_id: 'store_1' }] },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/campaign/get/')) {
+      const page = Number(parsed.searchParams.get('page') || 1);
+      return {
+        json: async () => ({
+          code: 0,
+          data: {
+            list: [{ campaign_id: `camp_p${page}` }],
+            page_info: { page, total_page: 6 },
+          },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/report/get/')) {
+      const page = Number(parsed.searchParams.get('page') || 1);
+      if (page === 1) {
+        return {
+          json: async () => ({
+            code: 0,
+            data: {
+              list: [
+                {
+                  dimensions: { room_id: 'room_page_1', campaign_id: 'camp_p1' },
+                  metrics: { cost: '10.50', currency: 'USD' },
+                },
+              ],
+              page_info: { page: 1, total_page: 2 },
+            },
+          }),
+        };
+      }
+      return {
+        json: async () => ({
+          code: 0,
+          data: {
+            list: [
+              {
+                dimensions: { room_id: 'room_page_2', campaign_id: 'camp_p6' },
+                metrics: { cost: '20.25', currency: 'USD' },
+              },
+            ],
+            page_info: { page: 2, total_page: 2 },
+          },
+        }),
+      };
+    }
+    return { json: async () => ({ code: 0, data: {} }) };
+  };
+
+  const fakeDb = {
+    query: async (sql) => {
+      if (sql.includes('SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations')) {
+        return [{ access_token: 'token_paginated', advertiser_ids: ['adv_1'] }];
+      }
+      if (sql.includes('FROM tiktok_shops')) {
+        return [{ id: 1, name: 'Shop 1', platform_shop_id: 'store_1', region: 'MY' }];
+      }
+      return [];
+    },
+  };
+
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
+  const results = await service.syncLiveSessionAds({ shopId: 1 });
+
+  assert.equal(results.length, 2);
+  assert.deepEqual(
+    results.map((r) => ({ session_id: r.session_id, ads_cost: r.ads_cost, currency: r.currency })),
+    [
+      { session_id: 'room_page_1', ads_cost: 10.5, currency: 'USD' },
+      { session_id: 'room_page_2', ads_cost: 20.25, currency: 'USD' },
+    ],
+  );
+});
+
+test('syncLiveSessionAds converts currency before summing multiple advertisers for the same room_id', async () => {
+  const fakeFetch = async (url) => {
+    if (url.includes('api.bnm.gov.my')) {
+      return {
+        ok: true,
+        json: async () => ({
+          data: [
+            { currency_code: 'USD', rate: { middle_rate: 4.0 } },
+            { currency_code: 'VND', unit: 100, rate: { middle_rate: 0.016 } },
+          ],
+          meta: { last_updated: '2026-11-26' },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/store/list/')) {
+      return {
+        json: async () => ({
+          code: 0,
+          data: { list: [{ store_id: 'store_1' }] },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/campaign/get/')) {
+      const parsed = new URL(url);
+      const advId = parsed.searchParams.get('advertiser_id');
+      return {
+        json: async () => ({
+          code: 0,
+          data: { list: [{ campaign_id: `camp_${advId}` }], page_info: { page: 1, total_page: 1 } },
+        }),
+      };
+    }
+    if (url.includes('/gmv_max/report/get/')) {
+      const parsed = new URL(url);
+      const advId = parsed.searchParams.get('advertiser_id');
+      if (advId === 'adv_usd') {
+        return {
+          json: async () => ({
+            code: 0,
+            data: {
+              list: [
+                {
+                  dimensions: { room_id: 'room_shared', campaign_id: 'camp_adv_usd' },
+                  metrics: { cost: '10.00', currency: 'USD' },
+                },
+              ],
+              page_info: { page: 1, total_page: 1 },
+            },
+          }),
+        };
+      }
+      return {
+        json: async () => ({
+          code: 0,
+          data: {
+            list: [
+              {
+                dimensions: { room_id: 'room_shared', campaign_id: 'camp_adv_myr' },
+                metrics: { cost: '8.00', currency: 'MYR' },
+              },
+            ],
+            page_info: { page: 1, total_page: 1 },
+          },
+        }),
+      };
+    }
+    return { json: async () => ({ code: 0, data: {} }) };
+  };
+
+  const fakeDb = {
+    query: async (sql) => {
+      if (sql.includes('SELECT access_token, advertiser_ids FROM tiktok_ads_authorizations')) {
+        return [{ access_token: 'token_multi', advertiser_ids: ['adv_usd', 'adv_myr'] }];
+      }
+      if (sql.includes('FROM tiktok_shops')) {
+        return [{ id: 1, name: 'Shop 1', platform_shop_id: 'store_1', region: 'MY' }];
+      }
+      return [];
+    },
+  };
+
+  const service = createTikTokAdsService({
+    db: fakeDb,
+    fetchImpl: fakeFetch,
+    getExchangeRates: async () => ({ rates: { MYR: 1, USD: 4.0, VND: 0.00016 } }),
+  });
+  const results = await service.syncLiveSessionAds({ shopId: 1 });
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].session_id, 'room_shared');
+  assert.equal(results[0].currency, 'USD');
+  assert.equal(results[0].ads_cost, 12);
 });
 
 
