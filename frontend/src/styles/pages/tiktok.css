@@ -638,13 +638,17 @@
 
 .dashboard-header-bar {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
   margin-bottom: 0;
   padding-bottom: 14px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-header-bar .dashboard-tabs {
+  flex: 0 0 auto;
 }
 
 .dashboard-header-bar .dashboard-chart-filters {
@@ -654,17 +658,35 @@
   justify-content: flex-end;
   gap: 12px;
   width: auto;
-  flex: 1 1 520px;
+  flex: 1 1 auto;
+}
+
+.dashboard-header-bar .dashboard-chart-filters > .field {
+  width: auto;
+  margin: 0;
 }
 
 .dashboard-header-bar .dashboard-channel-filter {
-  min-width: 210px;
+  flex: 0 1 240px;
+  min-width: 190px;
 }
 
 .dashboard-header-bar .dashboard-user-filter,
-.dashboard-header-bar .dashboard-period-filter,
+.dashboard-header-bar .dashboard-period-filter {
+  flex: 0 1 190px;
+  min-width: 160px;
+}
+
 .dashboard-header-bar .dashboard-date-filter {
-  min-width: 170px;
+  flex: 0 1 160px;
+  min-width: 145px;
+}
+
+.dashboard-header-bar .dashboard-chart-filters .channel-picker__trigger,
+.dashboard-header-bar .dashboard-chart-filters .field > select,
+.dashboard-header-bar .dashboard-chart-filters .field > input {
+  min-height: 44px;
+  height: 44px;
 }
 
 .dashboard-tabs {
