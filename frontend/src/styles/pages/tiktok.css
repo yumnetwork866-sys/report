@@ -642,7 +642,7 @@
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 0;
+  margin-bottom: 16px;
   padding-bottom: 0;
   border-bottom: none;
 }
