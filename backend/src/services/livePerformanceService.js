@@ -383,6 +383,81 @@ const loadPersistedLiveSessions = async (shopId, { startDate, endDate, db = sequ
   }
 };
 
+const loadOrderReferencedLiveSessions = async (
+  shopId,
+  { startDate, endDate, existingSessionIds = new Set(), db = sequelize } = {},
+) => {
+  if (!shopId || !startDate || !endDate || !db?.query) return [];
+  const startIso = new Date(Date.parse(`${startDate}T00:00:00.000Z`) - 9 * 3600 * 1000).toISOString();
+  const endIso = new Date(
+    endDate === startDate
+      ? Date.parse(`${endDate}T23:59:59.999Z`)
+      : Date.parse(`${endDate}T00:00:00.000Z`),
+  ).toISOString();
+
+  try {
+    const rows = await db.query(`
+      SELECT DISTINCT p.shop_id, p.session_id, p.title, p.creator_username, p.creator_nickname,
+             p.author_type, p.start_time, p.end_time, p.duration_seconds, p.total_comments,
+             p.hashtags, p.interaction_performance, p.raw_data, p.updated_at
+      FROM tiktok_affiliate_orders o
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(o.raw_data->'skus', '[]'::jsonb)) s
+      JOIN live_session_performances p
+        ON p.shop_id = o.shop_id
+       AND p.session_id = COALESCE(NULLIF(s->>'content_id', ''), NULLIF(s->>'room_id', ''))
+      WHERE o.shop_id = :shopId
+        AND o.create_time >= :startIso::timestamptz
+        AND o.create_time < :endIso::timestamptz
+        AND UPPER(COALESCE(s->>'content_type', '')) LIKE '%LIVE%'
+        AND UPPER(COALESCE(s->>'content_type', '')) NOT LIKE '%VIDEO%'
+        AND p.start_time IS NOT NULL
+    `, {
+      replacements: {
+        shopId: Number(shopId),
+        startIso,
+        endIso,
+      },
+      type: QueryTypes.SELECT,
+    });
+
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const filtered = rows.filter((row) => row?.session_id && !existingSessionIds.has(String(row.session_id)));
+    if (!filtered.length) return [];
+    const hosts = await loadHashtagHosts(db).catch(() => []);
+    return filtered.map((row) => {
+      const title = String(row.title || '').trim();
+      const duration = row.duration_seconds !== null ? Number(row.duration_seconds) : null;
+      const salesPerformance = extractSalesPerformance(row.raw_data);
+      return {
+        live_id: row.session_id,
+        id: row.session_id,
+        shop_id: row.shop_id,
+        title,
+        creator_username: row.creator_username || null,
+        creator_nickname: row.creator_nickname || null,
+        author_type: row.author_type || null,
+        creator_author_type: row.author_type || null,
+        start_time: row.start_time ? Number(row.start_time) : null,
+        end_time: row.end_time ? Number(row.end_time) : null,
+        duration,
+        duration_seconds: duration,
+        hashtags: Array.isArray(row.hashtags) ? row.hashtags : extractHashtags(title),
+        auto_host: resolveAutoHost(title, hosts),
+        total_comments: row.total_comments !== null ? Number(row.total_comments) : null,
+        interaction_performance: row.interaction_performance || null,
+        sales_performance: salesPerformance,
+        attributed_gmv: salesPerformance?.attributed_gmv ?? null,
+        sales_currency: salesPerformance?.currency ?? null,
+        attributed_orders: salesPerformance?.attributed_orders ?? null,
+        attributed_items_sold: salesPerformance?.attributed_items_sold ?? null,
+      };
+    });
+  } catch (err) {
+    console.warn(`[livePerformanceService] Failed to load order-referenced sessions for shop ${shopId}:`, err?.message);
+    return [];
+  }
+};
+
 const loadShopLivePerformance = async ({
   shop,
   startDate,
@@ -448,7 +523,15 @@ const loadShopLivePerformance = async ({
     }
   });
 
-  return { lives: [...mergedMap.values()] };
+  const existingSessionIds = new Set(mergedMap.keys());
+  const orderReferencedLives = shop?.id
+    ? await loadOrderReferencedLiveSessions(shop.id, { startDate, endDate, existingSessionIds, db })
+    : [];
+
+  return {
+    lives: [...mergedMap.values()],
+    order_referenced_lives: orderReferencedLives,
+  };
 };
 
 module.exports = {

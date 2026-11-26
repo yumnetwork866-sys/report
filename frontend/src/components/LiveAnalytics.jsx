@@ -474,6 +474,7 @@ const LiveAnalytics = () => {
   const [liveOrders, setLiveOrders] = useState([]);
   const [liveOrdersLoading, setLiveOrdersLoading] = useState(false);
   const [livePerformances, setLivePerformances] = useState([]);
+  const [orderReferencedPerformances, setOrderReferencedPerformances] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -496,7 +497,7 @@ const LiveAnalytics = () => {
           const endTime = shopDateUnix(effectiveEndExclusive, region);
           const collected = [];
           let pageToken;
-          for (let page = 0; page < 5; page += 1) {
+          for (let page = 0; page < 25; page += 1) {
             const res = await fetchTikTokSellerAffiliateOrders(shopId, {
               source: 'db',
               contentType: 'LIVE',
@@ -559,6 +560,7 @@ const LiveAnalytics = () => {
 
     if (invalidRange) {
       setLivePerformances([]);
+      setOrderReferencedPerformances([]);
       return () => controller.abort();
     }
 
@@ -575,14 +577,23 @@ const LiveAnalytics = () => {
             currency,
             signal: controller.signal,
           });
-          return (Array.isArray(payload?.lives) ? payload.lives : []).map((live) => ({
-            ...live,
-            shopId: shop.id,
-          }));
+          return {
+            lives: (Array.isArray(payload?.lives) ? payload.lives : []).map((live) => ({
+              ...live,
+              shopId: shop.id,
+            })),
+            orderReferencedLives: (Array.isArray(payload?.order_referenced_lives) ? payload.order_referenced_lives : []).map((live) => ({
+              ...live,
+              shopId: shop.id,
+            })),
+          };
         }));
         if (!active) return;
         setLivePerformances(settled.flatMap((result) => (
-          result.status === 'fulfilled' ? result.value : []
+          result.status === 'fulfilled' ? result.value.lives : []
+        )));
+        setOrderReferencedPerformances(settled.flatMap((result) => (
+          result.status === 'fulfilled' ? result.value.orderReferencedLives : []
         )));
       } catch (err) {
         if (err.name !== 'AbortError') {
@@ -630,7 +641,7 @@ const LiveAnalytics = () => {
   const { livePerformanceByShopSession, livePerformancesByShop } = useMemo(() => {
     const bySession = new Map();
     const byShop = new Map();
-    livePerformances.forEach((live) => {
+    [...orderReferencedPerformances, ...livePerformances].forEach((live) => {
       if (!live?.live_id) return;
       bySession.set(`${live.shopId}:${live.live_id}`, live);
       if (!live.shopId) return;
@@ -640,7 +651,7 @@ const LiveAnalytics = () => {
       byShop.set(shopKey, shopLives);
     });
     return { livePerformanceByShopSession: bySession, livePerformancesByShop: byShop };
-  }, [livePerformances]);
+  }, [livePerformances, orderReferencedPerformances]);
 
   // Period / Date filter handlers
   const changeCustomDate = (setter, currentValue) => (nextValue) => {
@@ -1156,25 +1167,63 @@ const LiveAnalytics = () => {
     };
   }, [liveOrders, livePerformances, displayCurrency, hostAssignments, sessionAdsMap, livePerformanceByShopSession, livePerformancesByShop, internalChannelUsernames, shopsById, selectedShop, toDisplayCurrency, startDate, endDate, periodPreset]);
 
+  // Filtered sessions by sourceType, channel & host
+  const sourceFilteredSessions = useMemo(() => {
+    return sessionList.filter((s) => {
+      if (sourceType === 'external' && !s.isExternal) return false;
+      if (sourceType === 'shop' && s.isExternal) return false;
+      if (selectedChannel && selectedChannel !== 'all') {
+        if ((s.creatorUsername || '').toLowerCase() !== selectedChannel.toLowerCase()) return false;
+      }
+      if (selectedHost && selectedHost !== 'all') {
+        if (selectedHost === 'unassigned') {
+          if (s.host?.id) return false;
+        } else {
+          if (!s.host || String(s.host.id) !== String(selectedHost)) return false;
+        }
+      }
+      return true;
+    });
+  }, [sessionList, sourceType, selectedChannel, selectedHost]);
+
+  // Filtered sessions by search keyword
+  const filteredSessions = useMemo(() => {
+    if (!searchKeyword.trim()) return sourceFilteredSessions;
+    const term = searchKeyword.trim().toLowerCase();
+    return sourceFilteredSessions.filter((s) => (
+      s.sessionId.toLowerCase().includes(term)
+      || s.creatorUsername.toLowerCase().includes(term)
+      || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
+      || s.host?.name?.toLowerCase().includes(term)
+      || s.host?.email?.toLowerCase().includes(term)
+      || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
+    ));
+  }, [sourceFilteredSessions, searchKeyword]);
+
   // Overall KPI totals
   const totalSnapshotLiveGmv = useMemo(() => (
     liveIntervals.reduce((sum, item) => sum + item.liveGmv, 0)
   ), [liveIntervals]);
 
   const ordersLiveGmv = useMemo(() => (
-    sessionList.reduce((sum, s) => sum + s.totalGmv, 0)
-  ), [sessionList]);
+    filteredSessions.reduce((sum, s) => sum + s.totalGmv, 0)
+  ), [filteredSessions]);
 
   const totalCancelledLiveGmv = useMemo(() => (
-    sessionList.reduce((sum, s) => sum + (s.cancelledGmv || 0), 0)
-  ), [sessionList]);
+    filteredSessions.reduce((sum, s) => sum + (s.cancelledGmv || 0), 0)
+  ), [filteredSessions]);
 
   const totalCancelledOrdersCount = useMemo(() => (
-    sessionList.reduce((sum, s) => sum + (s.cancelledOrderCount || 0), 0)
-  ), [sessionList]);
+    filteredSessions.reduce((sum, s) => sum + (s.cancelledOrderCount || 0), 0)
+  ), [filteredSessions]);
 
-  // Use orders live gmv if available, fallback to snapshot
-  const liveGmv = ordersLiveGmv > 0 ? ordersLiveGmv : totalSnapshotLiveGmv;
+  const hasSessionFilter = sourceType !== 'all'
+    || (selectedChannel && selectedChannel !== 'all')
+    || (selectedHost && selectedHost !== 'all')
+    || Boolean(searchKeyword.trim());
+
+  // Use orders live gmv if available, fallback to snapshot when unfiltered
+  const liveGmv = (ordersLiveGmv > 0 || hasSessionFilter) ? ordersLiveGmv : totalSnapshotLiveGmv;
   const rawTotalShopGmv = totals.gmv || 0;
   const totalsCurrency = snapshot?.currency || (selectedShop?.region === 'VN' ? 'VND' : 'MYR');
   const totalShopGmv = toDisplayCurrency(rawTotalShopGmv, totalsCurrency);
@@ -1185,17 +1234,19 @@ const LiveAnalytics = () => {
   ), [totalSnapshotLiveGmv, comparisonLiveGmv, hasComparison]);
 
   // Live orders count: prioritize actual distinct live orders from database to match the live orders table exactly
-  const sessionLiveOrdersCount = sessionList.reduce((sum, s) => sum + (s.orderCount || 0), 0);
+  const sessionLiveOrdersCount = filteredSessions.reduce((sum, s) => sum + (s.orderCount || 0), 0);
   const nonCancelledLiveOrdersCount = liveOrderRows.filter((o) => !o.isCancelled).length;
-  const actualLiveOrdersCount = sessionLiveOrdersCount || nonCancelledLiveOrdersCount || liveOrderRows.length;
-  const estimatedLiveOrdersCount = totals.orders && liveGmvShare > 0
+  const actualLiveOrdersCount = hasSessionFilter
+    ? sessionLiveOrdersCount
+    : (sessionLiveOrdersCount || nonCancelledLiveOrdersCount || liveOrderRows.length);
+  const estimatedLiveOrdersCount = (!hasSessionFilter && totals.orders && liveGmvShare > 0)
     ? Math.round((totals.orders * liveGmvShare) / 100)
     : 0;
   const displayLiveOrders = actualLiveOrdersCount || estimatedLiveOrdersCount;
 
   // Live units sold: prioritize actual live units from database sessions
-  const actualLiveUnits = sessionList.reduce((sum, s) => sum + s.totalQuantity, 0);
-  const estimatedLiveUnits = totals.unitsSold && liveGmvShare > 0
+  const actualLiveUnits = filteredSessions.reduce((sum, s) => sum + s.totalQuantity, 0);
+  const estimatedLiveUnits = (!hasSessionFilter && totals.unitsSold && liveGmvShare > 0)
     ? Math.round((totals.unitsSold * liveGmvShare) / 100)
     : 0;
   const displayUnitsSold = actualLiveUnits || estimatedLiveUnits;
@@ -1205,19 +1256,19 @@ const LiveAnalytics = () => {
 
   // Distinct hosts / creators
   const distinctHosts = useMemo(() => {
-    const hosts = new Set(sessionList.map((s) => s.host ? `user:${s.host.id}` : s.creatorUsername).filter(Boolean));
+    const hosts = new Set(filteredSessions.map((s) => s.host ? `user:${s.host.id}` : s.creatorUsername).filter(Boolean));
     return hosts.size;
-  }, [sessionList]);
+  }, [filteredSessions]);
 
   // Total comments across all sessions
   const totalLiveComments = useMemo(() => (
-    sessionList.reduce((sum, s) => sum + (s.totalComments || 0), 0)
-  ), [sessionList]);
+    filteredSessions.reduce((sum, s) => sum + (s.totalComments || 0), 0)
+  ), [filteredSessions]);
 
   // Total live duration across all sessions (seconds)
   const totalLiveDurationSec = useMemo(() => (
-    sessionList.reduce((sum, s) => sum + (s.durationSec || 0), 0)
-  ), [sessionList]);
+    filteredSessions.reduce((sum, s) => sum + (s.durationSec || 0), 0)
+  ), [filteredSessions]);
 
   // Overall GMV per hour
   const overallGmvPerHour = useMemo(() => {
@@ -1230,7 +1281,7 @@ const LiveAnalytics = () => {
     let total = 0;
     let hasAds = false;
     let count = 0;
-    for (const s of sessionList) {
+    for (const s of filteredSessions) {
       if (s.convertedAdsCost !== null && s.convertedAdsCost !== undefined) {
         total += s.convertedAdsCost;
         hasAds = true;
@@ -1241,7 +1292,7 @@ const LiveAnalytics = () => {
       totalLiveAdsCost: hasAds ? total : null,
       sessionsWithAdsCount: count,
     };
-  }, [sessionList]);
+  }, [filteredSessions]);
 
   // Overall ROAS
   const overallLiveRoas = useMemo(() => {
@@ -1334,11 +1385,11 @@ const LiveAnalytics = () => {
     filteredChannelList.reduce((sum, c) => sum + c.totalGmv, 0)
   ), [filteredChannelList]);
 
-  // Raw Host leaderboard aggregated from sessionList
+  // Raw Host leaderboard aggregated from sourceFilteredSessions
   const rawHostLeaderboard = useMemo(() => {
     const hostMap = new Map();
 
-    sessionList.forEach((sess) => {
+    sourceFilteredSessions.forEach((sess) => {
       const isUnassigned = !sess.host || !sess.host.id;
       const hostKey = isUnassigned ? '__unassigned__' : String(sess.host.id);
 
@@ -1384,7 +1435,7 @@ const LiveAnalytics = () => {
       h.sessions.push(sess);
     });
 
-    const totalAllHostGmv = sessionList.reduce((sum, s) => sum + (s.totalGmv || 0), 0);
+    const totalAllHostGmv = sourceFilteredSessions.reduce((sum, s) => sum + (s.totalGmv || 0), 0);
 
     return Array.from(hostMap.values()).map((h) => {
       const hours = h.totalDurationSec / 3600;
@@ -1421,7 +1472,7 @@ const LiveAnalytics = () => {
         costRevenueRatio,
       };
     });
-  }, [sessionList, displayCurrency, t]);
+  }, [sourceFilteredSessions, displayCurrency, t]);
 
   // Filtered & Sorted Host Leaderboard
   const filteredHostLeaderboard = useMemo(() => {
@@ -1692,39 +1743,6 @@ const LiveAnalytics = () => {
     return options;
   }, [availableUsers, hostAssignments, sessionList, t]);
 
-  // Filtered sessions by sourceType, channel & host
-  const sourceFilteredSessions = useMemo(() => {
-    return sessionList.filter((s) => {
-      if (sourceType === 'external' && !s.isExternal) return false;
-      if (sourceType === 'shop' && s.isExternal) return false;
-      if (selectedChannel && selectedChannel !== 'all') {
-        if ((s.creatorUsername || '').toLowerCase() !== selectedChannel.toLowerCase()) return false;
-      }
-      if (selectedHost && selectedHost !== 'all') {
-        if (selectedHost === 'unassigned') {
-          if (s.host?.id) return false;
-        } else {
-          if (!s.host || String(s.host.id) !== String(selectedHost)) return false;
-        }
-      }
-      return true;
-    });
-  }, [sessionList, sourceType, selectedChannel, selectedHost]);
-
-  // Filtered sessions by search keyword
-  const filteredSessions = useMemo(() => {
-    if (!searchKeyword.trim()) return sourceFilteredSessions;
-    const term = searchKeyword.trim().toLowerCase();
-    return sourceFilteredSessions.filter((s) => (
-      s.sessionId.toLowerCase().includes(term)
-      || s.creatorUsername.toLowerCase().includes(term)
-      || (s.creatorNickname && s.creatorNickname.toLowerCase().includes(term))
-      || s.host?.name?.toLowerCase().includes(term)
-      || s.host?.email?.toLowerCase().includes(term)
-      || s.productsList.some((p) => p.name && p.name.toLowerCase().includes(term))
-    ));
-  }, [sourceFilteredSessions, searchKeyword]);
-
   // Paginated live sessions
   const totalSessionPages = Math.ceil(filteredSessions.length / sessionsPerPage) || 1;
   const paginatedSessions = useMemo(() => {
@@ -1959,7 +1977,7 @@ const LiveAnalytics = () => {
             </span>
           </div>
           <p className="stat-card__value">
-            {liveOrdersLoading && !sessionList.length ? <span className="shop-analytics__value-skeleton" /> : formatNumber(sessionList.length)}
+            {liveOrdersLoading && !sessionList.length ? <span className="shop-analytics__value-skeleton" /> : formatNumber(filteredSessions.length)}
           </p>
           <span className="shop-analytics__change is-muted">
             <Users size={13} style={{ display: 'inline', marginRight: 4, verticalAlign: -1 }} />
@@ -2266,6 +2284,15 @@ const LiveAnalytics = () => {
         </div>
 
         <div className="live-analytics__filter-group">
+          <div style={{ minWidth: 195 }}>
+            <SelectDropdown
+              id="live-source-type-filter"
+              value={sourceType}
+              options={sourceTypeOptions}
+              onChange={setSourceType}
+            />
+          </div>
+
           {selectedChannel !== 'all' ? (
             <button
               type="button"
