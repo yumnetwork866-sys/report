@@ -122,9 +122,20 @@ const getHashtagRows = async (query = {}, session = {}, database = sequelize) =>
   const staffFilter = `u.is_active = true AND u.role IN (:bookingRoles)
     AND (:staffId IS NULL OR u.id = :staffId)
     AND (CAST(:staffIds AS jsonb) IS NULL OR u.id IN (SELECT value::int FROM jsonb_array_elements_text(CAST(:staffIds AS jsonb))))`;
-  const staff = await database.query(`SELECT u.id AS staff_id, u.name AS staff_name, u.email AS staff_email, a.hashtags
+  const rawStaff = await database.query(`SELECT u.id AS staff_id, u.name AS staff_name, u.email AS staff_email, a.hashtags
     FROM users u JOIN user_content_attributions a ON a.user_id = u.id WHERE ${staffFilter}
   `, { replacements, type: QueryTypes.SELECT });
+  const staffMap = new Map();
+  for (const row of rawStaff) {
+    const existing = staffMap.get(row.staff_id);
+    const tags = Array.isArray(row.hashtags) ? row.hashtags : [];
+    if (!existing) {
+      staffMap.set(row.staff_id, { ...row, hashtags: [...tags] });
+    } else {
+      existing.hashtags = [...new Set([...existing.hashtags, ...tags])];
+    }
+  }
+  const staff = [...staffMap.values()];
   if (!staff.length) return [];
   const timezone = `CASE WHEN shop.region IN ('MY','SG','PH') THEN 'Asia/Kuala_Lumpur' ELSE 'Asia/Ho_Chi_Minh' END`;
   const videos = await database.query(`

@@ -373,18 +373,25 @@ export const useChannelReportData = () => {
     setPeriodMode(nextMode);
   };
   
-  const loadMemberDetail = async (memberId, page = 1, append = false) => {
-    memberRequestRef.current.get(memberId)?.abort();
+  const getMemberDetailKey = (member) => (member?.teamKey ? `${member.teamKey}:${member.key}` : String(member?.key ?? member));
+
+  const loadMemberDetail = async (memberOrKey, page = 1, append = false) => {
+    const isObject = memberOrKey && typeof memberOrKey === 'object';
+    const userId = isObject ? String(memberOrKey.key) : String(memberOrKey);
+    const detailKey = isObject ? getMemberDetailKey(memberOrKey) : String(memberOrKey);
+    const scopedTeamIds = isObject && memberOrKey.teamKey ? [memberOrKey.teamKey] : selectedTeamIds;
+
+    memberRequestRef.current.get(detailKey)?.abort();
     const controller = new AbortController();
-    memberRequestRef.current.set(memberId, controller);
+    memberRequestRef.current.set(detailKey, controller);
     setMemberDetails((current) => ({
       ...current,
-      [memberId]: { ...current[memberId], loading: true, error: '' },
+      [detailKey]: { ...current[detailKey], loading: true, error: '' },
     }));
     try {
-      const payload = await fetchChannelReportMemberDetail(memberId, {
+      const payload = await fetchChannelReportMemberDetail(userId, {
         ...(periodMode === 'month' ? { month: selectedMonth } : { startDate, endDate }),
-        teamIds: selectedTeamIds,
+        teamIds: scopedTeamIds,
         channelId: selectedChannelId,
         metric: activeReportTab === 'revenue' ? 'revenue' : 'content',
         page,
@@ -392,10 +399,10 @@ export const useChannelReportData = () => {
         signal: controller.signal,
       });
       setMemberDetails((current) => {
-        const previousItems = append ? current[memberId]?.data?.videos?.items || [] : [];
+        const previousItems = append ? current[detailKey]?.data?.videos?.items || [] : [];
         return {
           ...current,
-          [memberId]: {
+          [detailKey]: {
             loading: false,
             error: '',
             data: {
@@ -412,8 +419,8 @@ export const useChannelReportData = () => {
       if (loadError.name === 'AbortError') return;
       setMemberDetails((current) => ({
         ...current,
-        [memberId]: {
-          ...current[memberId],
+        [detailKey]: {
+          ...current[detailKey],
           loading: false,
           error: loadError.message || 'Không tải được chi tiết thành viên.',
         },
@@ -422,20 +429,20 @@ export const useChannelReportData = () => {
   };
   
   const toggleMember = (member) => {
-    const memberId = String(member.key);
-    const isExpanded = expandedMemberIds.has(memberId);
+    const detailKey = getMemberDetailKey(member);
+    const isExpanded = expandedMemberIds.has(detailKey);
     if (isExpanded) {
-      memberRequestRef.current.get(memberId)?.abort();
+      memberRequestRef.current.get(detailKey)?.abort();
       setExpandedMemberIds((current) => {
         const next = new Set(current);
-        next.delete(memberId);
+        next.delete(detailKey);
         return next;
       });
       return;
     }
-    setExpandedMemberIds((current) => new Set(current).add(memberId));
-    setMemberTabs((current) => ({ ...current, [memberId]: current[memberId] || 'videos' }));
-    if (!memberDetails[memberId]?.data) loadMemberDetail(memberId);
+    setExpandedMemberIds((current) => new Set(current).add(detailKey));
+    setMemberTabs((current) => ({ ...current, [detailKey]: current[detailKey] || 'videos' }));
+    if (!memberDetails[detailKey]?.data) loadMemberDetail(member);
   };
   
   const closeVideoRevenueDetail = () => {

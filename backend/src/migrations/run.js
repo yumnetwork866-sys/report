@@ -134,6 +134,7 @@ const migrations = [
   require('./124_create_live_session_performances'),
   require('./125_add_advertiser_details_to_tiktok_ads_authorizations'),
   require('./126_add_currency_exchange_rates_scheduled_job'),
+  require('./127_allow_multi_team_content_attributions'),
 ];
 
 const createMigrationRunner = ({

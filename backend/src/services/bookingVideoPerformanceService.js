@@ -1101,12 +1101,17 @@ const autoLinkBookingVideos = async (booking, now = new Date(), { peerBookings: 
   const username = String(booking.creator_username || '').trim().replace(/^@+/, '').toLowerCase();
   if (!username || !booking.target_shop_id) return { status: 'missing_identity' };
 
-  const userAttribution = booking.staff_id && UserContentAttribution
-    ? await UserContentAttribution.findOne({ where: { user_id: booking.staff_id } })
-    : null;
-  const staffHashtags = (Array.isArray(userAttribution?.hashtags) ? userAttribution.hashtags : [])
-    .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
-    .filter(Boolean);
+  const userAttributions = booking.staff_id && UserContentAttribution
+    ? (typeof UserContentAttribution.findAll === 'function'
+      ? await UserContentAttribution.findAll({ where: { user_id: booking.staff_id } })
+      : [await UserContentAttribution.findOne({ where: { user_id: booking.staff_id } })].filter(Boolean))
+    : [];
+  const staffHashtags = [...new Set(
+    userAttributions
+      .flatMap((attr) => (Array.isArray(attr?.hashtags) ? attr.hashtags : []))
+      .map((tag) => String(tag || '').trim().toLowerCase().replace(/^#+/, ''))
+      .filter(Boolean),
+  )];
 
   const peerBookings = suppliedPeerBookings || await Booking.findAll({
     where: {

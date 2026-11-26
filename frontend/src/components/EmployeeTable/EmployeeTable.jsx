@@ -145,6 +145,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
   const {
     activeFilters,
     activeTab,
+    addAttributionRow,
     allPageSelected,
     attributionStatus,
     bulkAssignTeam,
@@ -167,6 +168,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     form,
     getRoleLabel,
     handleAttributionChange,
+    handleAttributionRowChange,
     handleBackdropClick,
     handleChange,
     handleDelete,
@@ -186,6 +188,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
     pageRows,
     pageSize,
     queryInput,
+    removeAttributionRow,
     resetRoleForm,
     roleError,
     roleFilter,
@@ -537,29 +540,50 @@ const EmployeeTable = ({ heroSubtitle }) => {
                       </label>
                     </td>
                     <td className="employee-table__attribution-cell">
-                      <div className="employee-table__inline-field">
-                        <select
-                          className="employee-table__inline-select"
-                          value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
-                          disabled={!canManageUsers || attributionStatus[`${user.id}:content_team_id`] === 'saving'}
-                          aria-label={`${t('users.team')}: ${user.name}`}
-                          onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
-                        >
-                          <option value="">{t('users.unassignedTeam')}</option>
-                          {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
-                        </select>
-                        <InlineSaveStatus status={attributionStatus[`${user.id}:content_team_id`]} />
-                      </div>
+                      {Array.isArray(user.content_attributions) && user.content_attributions.length > 1 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {user.content_attributions.map((attr, idx) => (
+                            <span key={attr.id || idx} className="employee-table__status-pill" style={{ width: 'fit-content' }}>
+                              {attr.team?.name || teams.find((tItem) => String(tItem.id) === String(attr.team_id || ''))?.name || t('users.unassignedTeam')}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="employee-table__inline-field">
+                          <select
+                            className="employee-table__inline-select"
+                            value={user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : ''}
+                            disabled={!canManageUsers || attributionStatus[`${user.id}:content_team_id`] === 'saving'}
+                            aria-label={`${t('users.team')}: ${user.name}`}
+                            onChange={(event) => handleAttributionChange(user, 'content_team_id', event.target.value)}
+                          >
+                            <option value="">{t('users.unassignedTeam')}</option>
+                            {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+                          </select>
+                          <InlineSaveStatus status={attributionStatus[`${user.id}:content_team_id`]} />
+                        </div>
+                      )}
                     </td>
                     <td>
-                      <HashtagEditor
-                        suggestions={hashtagSuggestions}
-                        user={user}
-                        onSave={handleAttributionChange}
-                        status={attributionStatus[`${user.id}:content_hashtags`]}
-                        disabled={!canManageUsers}
-                        t={t}
-                      />
+                      {Array.isArray(user.content_attributions) && user.content_attributions.length > 1 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {user.content_attributions.map((attr, idx) => (
+                            <div key={attr.id || idx} style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                              <strong>{attr.team?.name || t('users.unassignedTeam')}:</strong>{' '}
+                              {(attr.hashtags || []).join(', ') || '—'}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <HashtagEditor
+                          suggestions={hashtagSuggestions}
+                          user={user}
+                          onSave={handleAttributionChange}
+                          status={attributionStatus[`${user.id}:content_hashtags`]}
+                          disabled={!canManageUsers}
+                          t={t}
+                        />
+                      )}
                     </td>
                     {canManageUsers ? (
                       <td className="cell-actions employee-table__sticky-actions">
@@ -896,6 +920,7 @@ const EmployeeTable = ({ heroSubtitle }) => {
       ) : null}
 
       <EmployeeOverlays
+        addAttributionRow={addAttributionRow}
         closeEditor={closeEditor}
         confirm={confirm}
         confirmPending={confirmPending}
@@ -903,10 +928,12 @@ const EmployeeTable = ({ heroSubtitle }) => {
         error={error}
         form={form}
         getRoleLabel={getRoleLabel}
+        handleAttributionRowChange={handleAttributionRowChange}
         handleBackdropClick={handleBackdropClick}
         handleChange={handleChange}
         handleSubmit={handleSubmit}
         isEditorOpen={isEditorOpen}
+        removeAttributionRow={removeAttributionRow}
         roleOptions={roleOptions}
         runConfirm={runConfirm}
         saving={saving}

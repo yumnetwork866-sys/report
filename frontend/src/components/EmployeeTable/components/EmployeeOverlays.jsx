@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 
 export const EmployeeOverlays = ({
+  addAttributionRow,
   closeEditor,
   confirm,
   confirmPending,
@@ -9,10 +10,12 @@ export const EmployeeOverlays = ({
   error,
   form,
   getRoleLabel,
+  handleAttributionRowChange,
   handleBackdropClick,
   handleChange,
   handleSubmit,
   isEditorOpen,
+  removeAttributionRow,
   roleOptions,
   runConfirm,
   saving,
@@ -95,16 +98,50 @@ export const EmployeeOverlays = ({
                 ))}
               </select>
             </div>
-            <div className="field">
-              <label htmlFor="content-team">{t('users.team')}</label>
-              <select id="content-team" name="content_team_id" value={form.content_team_id} onChange={handleChange}>
-                <option value="">{t('users.unassignedTeam')}</option>
-                {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
-              </select>
-            </div>
-            <div className="field">
-              <label htmlFor="content-hashtags">{t('users.hashtags')}</label>
-              <input id="content-hashtags" name="content_hashtags" value={form.content_hashtags} onChange={handleChange} placeholder={t('users.hashtagsPlaceholder')} />
+            <div className="field" style={{ gridColumn: '1 / -1' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label style={{ margin: 0 }}>{t('users.team')} & {t('users.hashtags')}</label>
+                <button
+                  type="button"
+                  className="button button--small button--ghost"
+                  onClick={addAttributionRow}
+                >
+                  + Thêm team / thị trường
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(form.content_attributions || [{ team_id: '', hashtags: '' }]).map((row, index) => (
+                  <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <select
+                      aria-label={`${t('users.team')} #${index + 1}`}
+                      value={row.team_id}
+                      onChange={(e) => handleAttributionRowChange(index, 'team_id', e.target.value)}
+                      style={{ flex: '0 0 180px' }}
+                    >
+                      <option value="">{t('users.unassignedTeam')}</option>
+                      {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
+                    </select>
+                    <input
+                      aria-label={`${t('users.hashtags')} #${index + 1}`}
+                      value={row.hashtags}
+                      onChange={(e) => handleAttributionRowChange(index, 'hashtags', e.target.value)}
+                      placeholder={t('users.hashtagsPlaceholder')}
+                      style={{ flex: 1 }}
+                    />
+                    {(form.content_attributions || []).length > 1 ? (
+                      <button
+                        type="button"
+                        className="button button--small button--ghost"
+                        onClick={() => removeAttributionRow(index)}
+                        title="Xóa dòng"
+                        aria-label={`Xóa dòng #${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="actions employee-table__modal-actions">
               <button className="button button--ghost" type="button" onClick={closeEditor} disabled={saving}>

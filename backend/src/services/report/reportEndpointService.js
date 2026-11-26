@@ -473,6 +473,7 @@ const getChannelReport = async (req, res) => {
             SELECT 1
             FROM jsonb_array_elements(video.attributions) attribution_match(value)
             WHERE (attribution_match.value ->> 'user_id')::integer = app_user.id
+              AND (attribution_match.value ->> 'team_id')::integer = team.id
               AND (
                 CAST(:filterTeams AS boolean) = false
                 OR (attribution_match.value ->> 'team_id')::integer IN (

@@ -24,8 +24,9 @@ export const MemberTable = ({
   toggleMember,
 }) => {
   const [videoFilters, setVideoFilters] = useState({});
+  const getMemberDetailKey = (member) => (member?.teamKey ? `${member.teamKey}:${member.key}` : String(member.key));
   const renderMemberDetail = (member) => {
-    const memberId = String(member.key);
+    const memberId = getMemberDetailKey(member);
     const detail = memberDetails[memberId] || {};
     const data = detail.data;
     const activeTab = memberTabs[memberId] || 'videos';
@@ -39,7 +40,7 @@ export const MemberTable = ({
       return (
         <div className="member-detail__state member-detail__state--error">
           <span>{detail.error}</span>
-          <button className="button button--small button--ghost" type="button" onClick={() => loadMemberDetail(memberId)}>Thử lại</button>
+          <button className="button button--small button--ghost" type="button" onClick={() => loadMemberDetail(member)}>Thử lại</button>
         </div>
       );
     }
@@ -233,7 +234,7 @@ export const MemberTable = ({
                 </div>
               ) : null}
               {pagination && pagination.page < pagination.total_pages ? (
-                <button className="button button--small button--ghost member-detail__more" type="button" disabled={detail.loading} onClick={() => loadMemberDetail(memberId, pagination.page + 1, true)}>
+                <button className="button button--small button--ghost member-detail__more" type="button" disabled={detail.loading} onClick={() => loadMemberDetail(member, pagination.page + 1, true)}>
                   {detail.loading ? 'Đang tải...' : 'Xem thêm video'}
                 </button>
               ) : null}
@@ -387,8 +388,8 @@ export const MemberTable = ({
           </thead>
           <tbody>
             {sorted.map((member) => {
-              const rowId = `${member.teamKey || ''}-${member.key}`;
-              const expanded = expandedMemberIds.has(String(member.key));
+              const rowId = getMemberDetailKey(member);
+              const expanded = expandedMemberIds.has(rowId);
               return (
                 <React.Fragment key={rowId}>
                   <tr

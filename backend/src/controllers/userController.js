@@ -21,17 +21,30 @@ const serializeUser = (user) => {
   return safeUser;
 };
 
-const userInclude = [{
-  model: UserContentAttribution,
-  as: 'content_attribution',
-  required: false,
-  include: [{
-    model: ContentTeam,
-    as: 'team',
+const userInclude = [
+  {
+    model: UserContentAttribution,
+    as: 'content_attribution',
     required: false,
-    attributes: ['id', 'name'],
-  }],
-}];
+    include: [{
+      model: ContentTeam,
+      as: 'team',
+      required: false,
+      attributes: ['id', 'name'],
+    }],
+  },
+  {
+    model: UserContentAttribution,
+    as: 'content_attributions',
+    required: false,
+    include: [{
+      model: ContentTeam,
+      as: 'team',
+      required: false,
+      attributes: ['id', 'name'],
+    }],
+  },
+];
 
 const normalizeHashtags = (value) => [...new Set(
   (Array.isArray(value) ? value : String(value || '').split(/[\s,]+/))
@@ -54,8 +67,63 @@ const validateTeamId = async (value) => {
 };
 
 const saveContentAttribution = async (userId, body, transaction) => {
+  if (Array.isArray(body.content_attributions)) {
+    const mergedByTeam = new Map();
+    for (const entry of body.content_attributions) {
+      if (!entry || typeof entry !== 'object') continue;
+      const teamId = await validateTeamId(entry.team_id ?? entry.content_team_id);
+      const hashtags = normalizeHashtags(entry.hashtags ?? entry.content_hashtags);
+      if (!teamId && !hashtags.length) continue;
+      const key = teamId === null ? 'null' : String(teamId);
+      const prev = mergedByTeam.get(key);
+      if (!prev) {
+        mergedByTeam.set(key, { teamId, hashtags });
+      } else {
+        prev.hashtags = [...new Set([...prev.hashtags, ...hashtags])].slice(0, 20);
+      }
+    }
+
+    await UserContentAttribution.destroy({ where: { user_id: userId }, transaction });
+    const now = new Date();
+    const rows = [...mergedByTeam.values()].map((item) => ({
+      user_id: userId,
+      team_id: item.teamId,
+      hashtags: item.hashtags,
+      created_at: now,
+      updated_at: now,
+    }));
+    if (rows.length) {
+      await UserContentAttribution.bulkCreate(rows, { transaction });
+    }
+    return;
+  }
+
   const teamId = await validateTeamId(body.content_team_id);
   const hashtags = normalizeHashtags(body.content_hashtags);
+  if (typeof UserContentAttribution.findOne === 'function') {
+    const existing = await UserContentAttribution.findOne({
+      where: { user_id: userId },
+      order: [['id', 'ASC']],
+      transaction,
+    });
+    if (existing) {
+      await existing.update({
+        team_id: teamId,
+        hashtags,
+        updated_at: new Date(),
+      }, { transaction });
+    } else {
+      await UserContentAttribution.create({
+        user_id: userId,
+        team_id: teamId,
+        hashtags,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }, { transaction });
+    }
+    return;
+  }
+
   await UserContentAttribution.upsert({
     user_id: userId,
     team_id: teamId,
@@ -131,7 +199,8 @@ const createUser = async (req, res) => {
         password_hash: await hashPassword(password),
       }, { transaction });
       if (
-        Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
+        Object.prototype.hasOwnProperty.call(req.body, 'content_attributions')
+        || Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
         || Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags')
       ) {
         await saveContentAttribution(createdUser.id, req.body, transaction);
@@ -158,7 +227,8 @@ const updateUser = async (req, res) => {
       return res.status(403).json({ message: 'Không có quyền truy cập' });
     }
 
-    const hasAttributionUpdate = Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
+    const hasAttributionUpdate = Object.prototype.hasOwnProperty.call(req.body, 'content_attributions')
+      || Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
       || Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags');
 
     if (!canManageUsers) {
@@ -232,15 +302,25 @@ const updateUser = async (req, res) => {
         await user.update(payload, { validate: true, transaction });
       }
       if (hasAttributionUpdate) {
-        const currentAttribution = await UserContentAttribution.findByPk(user.id, { transaction });
-        await saveContentAttribution(user.id, {
-          content_team_id: Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
-            ? req.body.content_team_id
-            : currentAttribution?.team_id,
-          content_hashtags: Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags')
-            ? req.body.content_hashtags
-            : currentAttribution?.hashtags || [],
-        }, transaction);
+        if (Array.isArray(req.body.content_attributions)) {
+          await saveContentAttribution(user.id, req.body, transaction);
+        } else {
+          const currentAttribution = typeof UserContentAttribution.findOne === 'function'
+            ? await UserContentAttribution.findOne({
+                where: { user_id: user.id },
+                order: [['id', 'ASC']],
+                transaction,
+              })
+            : await UserContentAttribution.findByPk(user.id, { transaction });
+          await saveContentAttribution(user.id, {
+            content_team_id: Object.prototype.hasOwnProperty.call(req.body, 'content_team_id')
+              ? req.body.content_team_id
+              : currentAttribution?.team_id,
+            content_hashtags: Object.prototype.hasOwnProperty.call(req.body, 'content_hashtags')
+              ? req.body.content_hashtags
+              : currentAttribution?.hashtags || [],
+          }, transaction);
+        }
       }
     });
     const updatedUser = await User.findByPk(req.params.id, { include: userInclude });

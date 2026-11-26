@@ -7,8 +7,7 @@ export const initialForm = {
   email: '',
   password: '',
   role: 'member',
-  content_team_id: '',
-  content_hashtags: '',
+  content_attributions: [{ team_id: '', hashtags: '' }],
 };
 
 export const fallbackRoles = [

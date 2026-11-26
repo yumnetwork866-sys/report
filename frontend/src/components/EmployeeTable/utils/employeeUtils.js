@@ -1,6 +1,9 @@
 import { initialForm } from '../constants';
 
-export const createInitialForm = () => ({ ...initialForm });
+export const createInitialForm = () => ({
+  ...initialForm,
+  content_attributions: (initialForm.content_attributions || [{ team_id: '', hashtags: '' }]).map((row) => ({ ...row })),
+});
 
 export const createRoleKey = (label) => String(label || '')
   .normalize('NFD')

@@ -232,7 +232,7 @@ const getDashboard = async (req, res) => {
         ORDER BY channel.id ASC
       `, { type: QueryTypes.SELECT }),
       sequelize.query(`
-        SELECT
+        SELECT DISTINCT
           app_user.id,
           app_user.name,
           app_user.email,

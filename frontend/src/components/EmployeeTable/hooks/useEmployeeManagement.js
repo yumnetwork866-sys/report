@@ -169,29 +169,37 @@ export const useEmployeeManagement = () => {
     return users;
   }, [statusFilter, activeUsers, disabledUsers, users]);
   
+  const getUserAttributions = (user) => {
+    if (Array.isArray(user?.content_attributions) && user.content_attributions.length) {
+      return user.content_attributions;
+    }
+    return user?.content_attribution ? [user.content_attribution] : [];
+  };
+
   const filteredRows = useMemo(() => {
     const rawQuery = queryInput.trim().toLowerCase();
     const foldedQuery = rawQuery.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  
+
     return rows.filter((user) => {
       const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-      const userTeamId = String(
-        user.content_attribution?.team_id || user.content_attribution?.team?.id || ''
-      );
+      const attributions = getUserAttributions(user);
+      const userTeamIds = attributions
+        .map((attr) => String(attr?.team_id || attr?.team?.id || ''))
+        .filter(Boolean);
       const matchesTeam = teamFilter === 'all'
-        || (teamFilter === 'unassigned' ? !userTeamId : userTeamId === teamFilter);
+        || (teamFilter === 'unassigned' ? userTeamIds.length === 0 : userTeamIds.includes(teamFilter));
 
-      const teamName =
-        user.content_attribution?.team?.name
-        || teams.find((item) => String(item.id) === userTeamId)?.name
-        || '';
+      const teamNames = attributions
+        .map((attr) => attr?.team?.name || teams.find((item) => String(item.id) === String(attr?.team_id || ''))?.name || '')
+        .filter(Boolean);
+      const allHashtags = attributions.flatMap((attr) => (Array.isArray(attr?.hashtags) ? attr.hashtags : []));
 
       const matchesQuery = !rawQuery
         || [
           user.name,
           user.email,
-          teamName,
-          ...(user.content_attribution?.hashtags || []),
+          ...teamNames,
+          ...allHashtags,
         ]
           .filter(Boolean)
           .some((value) => {
@@ -199,7 +207,7 @@ export const useEmployeeManagement = () => {
             const foldedStr = str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
             return str.includes(rawQuery) || foldedStr.includes(foldedQuery);
           });
-  
+
       return matchesRole && matchesTeam && matchesQuery;
     });
   }, [queryInput, roleFilter, rows, teamFilter, teams]);
@@ -214,9 +222,10 @@ export const useEmployeeManagement = () => {
       if (sortConfig.key === 'role') return roles.find((role) => role.key === user.role)?.label || user.role;
       if (sortConfig.key === 'status') return user.is_active === false ? 0 : 1;
       if (sortConfig.key === 'team') {
-        return user.content_attribution?.team?.name
-          || teams.find((team) => String(team.id) === String(user.content_attribution?.team_id || ''))?.name
-          || '';
+        return getUserAttributions(user)
+          .map((attr) => attr?.team?.name || teams.find((team) => String(team.id) === String(attr?.team_id || ''))?.name || '')
+          .filter(Boolean)
+          .join(', ');
       }
       return user.name || user.email || '';
     };
@@ -513,15 +522,46 @@ export const useEmployeeManagement = () => {
   const openEditModal = (user) => {
     setError('');
     setEditingUser(user);
+    const attrs = getUserAttributions(user);
     setForm({
       name: user.name || '',
       email: user.email || '',
       password: '',
       role: user.role || 'member',
-      content_team_id: user.content_attribution?.team?.id ? String(user.content_attribution.team.id) : '',
-      content_hashtags: (user.content_attribution?.hashtags || []).join(', '),
+      content_attributions: attrs.length
+        ? attrs.map((attr) => ({
+            team_id: attr?.team?.id ? String(attr.team.id) : (attr?.team_id ? String(attr.team_id) : ''),
+            hashtags: Array.isArray(attr?.hashtags) ? attr.hashtags.join(', ') : '',
+          }))
+        : [{ team_id: '', hashtags: '' }],
     });
     setIsEditorOpen(true);
+  };
+
+  const handleAttributionRowChange = (index, field, value) => {
+    setForm((current) => ({
+      ...current,
+      content_attributions: (current.content_attributions || []).map((row, idx) => (
+        idx === index ? { ...row, [field]: value } : row
+      )),
+    }));
+  };
+
+  const addAttributionRow = () => {
+    setForm((current) => ({
+      ...current,
+      content_attributions: [...(current.content_attributions || []), { team_id: '', hashtags: '' }],
+    }));
+  };
+
+  const removeAttributionRow = (index) => {
+    setForm((current) => {
+      const next = (current.content_attributions || []).filter((_, idx) => idx !== index);
+      return {
+        ...current,
+        content_attributions: next.length ? next : [{ team_id: '', hashtags: '' }],
+      };
+    });
   };
   
   const closeEditor = () => {
@@ -583,8 +623,10 @@ export const useEmployeeManagement = () => {
         name: form.name.trim(),
         email: form.email.trim(),
         role: form.role,
-        content_team_id: form.content_team_id || null,
-        content_hashtags: form.content_hashtags.trim(),
+        content_attributions: (form.content_attributions || []).map((row) => ({
+          team_id: row.team_id || null,
+          hashtags: String(row.hashtags || '').trim(),
+        })),
       };
   
       if (form.password.trim()) {
@@ -767,7 +809,9 @@ export const useEmployeeManagement = () => {
     filteredRows,
     form,
     getRoleLabel,
+    addAttributionRow,
     handleAttributionChange,
+    handleAttributionRowChange,
     handleBackdropClick,
     handleChange,
     handleDelete,
@@ -791,6 +835,7 @@ export const useEmployeeManagement = () => {
     pageRows,
     pageSize,
     queryInput,
+    removeAttributionRow,
     resetRoleForm,
     roleError,
     roleFilter,

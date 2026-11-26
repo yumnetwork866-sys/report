@@ -93,9 +93,14 @@ const ContentTeam = sequelize.define('ContentTeam', {
 });
 
 const UserContentAttribution = sequelize.define('UserContentAttribution', {
-  user_id: {
+  id: {
     type: DataTypes.INTEGER,
     primaryKey: true,
+    autoIncrement: true,
+  },
+  user_id: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
   },
   team_id: {
     type: DataTypes.INTEGER,
@@ -1175,6 +1180,7 @@ User.hasOne(TikTokChannel, { foreignKey: 'creator_id', as: 'tiktok_channel' });
 TikTokChannel.belongsTo(User, { foreignKey: 'creator_id', as: 'creator' });
 
 User.hasOne(UserContentAttribution, { foreignKey: 'user_id', as: 'content_attribution' });
+User.hasMany(UserContentAttribution, { foreignKey: 'user_id', as: 'content_attributions' });
 UserContentAttribution.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 ContentTeam.hasMany(UserContentAttribution, { foreignKey: 'team_id', as: 'user_attributions' });
 UserContentAttribution.belongsTo(ContentTeam, { foreignKey: 'team_id', as: 'team' });
