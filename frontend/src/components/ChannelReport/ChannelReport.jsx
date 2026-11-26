@@ -82,6 +82,19 @@ const ChannelReport = () => {
     if (visibleReportTabs.length && !visibleReportTabs.includes(activeReportTab)) setActiveReportTab(visibleReportTabs[0]);
   }, [activeReportTab, setActiveReportTab, visibleReportTabs]);
 
+  const renderExportButton = () => (
+    <button
+      type="button"
+      className="button button--small button--secondary"
+      disabled={loading || exporting}
+      onClick={handleExportExcel}
+      title="Xuất Excel toàn bộ thành viên (tab All + 1 tab riêng từng thành viên)"
+    >
+      <Download size={15} aria-hidden="true" />
+      <span>{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
+    </button>
+  );
+
   const renderMembersTable = (members, showTeamBadge = false) => (
     <MemberTable
       activeReportTab={activeReportTab}
@@ -199,22 +212,6 @@ const ChannelReport = () => {
                 </div>
               </>
             )}
-
-            {activeReportTab !== 'comparison' && teams.length > 0 ? (
-              <div className="field">
-                <label aria-hidden="true">&nbsp;</label>
-                <button
-                  type="button"
-                  className="button button--small button--secondary"
-                  disabled={loading || exporting}
-                  onClick={handleExportExcel}
-                  title="Xuất Excel toàn bộ thành viên (tab All + 1 tab riêng từng thành viên)"
-                >
-                  <Download size={15} aria-hidden="true" />
-                  <span>{exporting ? 'Đang xuất...' : 'Xuất Excel'}</span>
-                </button>
-              </div>
-            ) : null}
 
           </div>
         </div>
@@ -390,7 +387,7 @@ const ChannelReport = () => {
                           ? visibleGroups.map((g) => g.label).join(', ')
                           : `${visibleGroups.length} team đã chọn`)}
                     </h3>
-                    <span>{formatNumber(mergedMembers.length)} thành viên</span>
+                    {renderExportButton()}
                   </div>
                   <div className="content-performance__metrics">
                     <span>
@@ -512,7 +509,7 @@ const ChannelReport = () => {
                     <article className="content-performance__group" key={group.key}>
                       <div className="content-performance__group-header">
                         <h3>{group.label}</h3>
-                        <span>{formatNumber(group.members.length)} thành viên</span>
+                        {renderExportButton()}
                       </div>
                       <div className="content-performance__metrics">
                         <span>

@@ -92,99 +92,100 @@ const Dashboard = () => {
   );
   return (
     <div className="page dashboard-page">
-      <section className="section-card dashboard-global-filters" aria-label={t('dashboard.pageFilters')}>
-        <div className={`dashboard-chart-filters${chartMetric === 'date' ? ` dashboard-chart-filters--date${periodPreset === 'custom' ? ' dashboard-chart-filters--custom' : ''}` : ''}`}>
-          <div className="field dashboard-channel-filter">
-            <label htmlFor="dashboard-channel">{t('dashboard.channel')}</label>
-            <ChannelPicker
-              id="dashboard-channel"
-              channels={channels}
-              value={selectedChannelId}
-              onChange={handleChannelChange}
-              includeAll
-              allLabel={t('dashboard.allChannels')}
-              disabled={loading}
-            />
+      <section className="section-card dashboard-main-card" aria-label={t('dashboard.pageFilters')}>
+        <div className="section-card__header dashboard-header-bar">
+          <div className="koc-tabs dashboard-tabs" role="tablist" aria-label={t('dashboard.viewTabs')}>
+            {tabs.map((tab, index) => (
+              <button
+                key={tab.id}
+                id={`dashboard-tab-${tab.id}`}
+                type="button"
+                role="tab"
+                className={activeTab === tab.id ? 'is-active' : ''}
+                aria-selected={activeTab === tab.id}
+                aria-controls={`dashboard-panel-${tab.id}`}
+                tabIndex={activeTab === tab.id ? 0 : -1}
+                onClick={() => switchTab(tab.id)}
+                onKeyDown={(event) => {
+                  const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
+                    : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
+                      : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
+                  if (nextIndex !== null) {
+                    event.preventDefault();
+                    switchTab(tabs[nextIndex].id, true);
+                  }
+                }}
+              >{tab.label}</button>
+            ))}
           </div>
-          <div className="field dashboard-user-filter">
-            <label htmlFor="dashboard-user">{t('dashboard.user')}</label>
-            <UserPicker
-              id="dashboard-user"
-              users={users}
-              value={selectedUserId}
-              onChange={setSelectedUserId}
-              allLabel={t('dashboard.allUsers')}
-              disabled={loading && !users.length}
-            />
-          </div>
-          {chartMetric === 'date' ? (
-            <div className="field dashboard-period-filter">
-              <label htmlFor="dashboard-period">{t('dashboard.period')}</label>
-              <select id="dashboard-period" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}>
-                <option value="7d">{t('dashboard.period_7d')}</option>
-                <option value="30d">{t('dashboard.period_30d')}</option>
-                <option value="90d">{t('dashboard.period_90d')}</option>
-                <option value="today">{t('dashboard.period_today')}</option>
-                <option value="yesterday">{t('dashboard.period_yesterday')}</option>
-                <option value="this_week">{t('dashboard.period_this_week')}</option>
-                <option value="this_month">{t('dashboard.period_this_month')}</option>
-                <option value="last_month">{t('dashboard.period_last_month')}</option>
-                <option value="custom">{t('dashboard.period_custom')}</option>
-              </select>
-            </div>
-          ) : null}
-          {chartMetric === 'date' && periodPreset === 'custom' ? (
-            <>
-              <div className="field dashboard-date-filter">
-                <label htmlFor="dashboard-start-date">{t('dashboard.startDate')}</label>
-                <DatePickerInput
-                  id="dashboard-start-date"
-                  label={t('dashboard.startDate')}
-                  value={startDate}
-                  max={endDate || dateInputValue(new Date())}
-                  onChange={setStartDate}
-                />
-              </div>
-              <div className="field dashboard-date-filter">
-                <label htmlFor="dashboard-end-date">{t('dashboard.endDate')}</label>
-                <DatePickerInput
-                  id="dashboard-end-date"
-                  label={t('dashboard.endDate')}
-                  value={endDate}
-                  min={startDate || undefined}
-                  max={dateInputValue(new Date())}
-                  onChange={setEndDate}
-                />
-              </div>
-            </>
-          ) : null}
-        </div>
-      </section>
 
-      <div className="koc-tabs dashboard-tabs" role="tablist" aria-label={t('dashboard.viewTabs')}>
-        {tabs.map((tab, index) => (
-          <button
-            key={tab.id}
-            id={`dashboard-tab-${tab.id}`}
-            type="button"
-            role="tab"
-            className={activeTab === tab.id ? 'is-active' : ''}
-            aria-selected={activeTab === tab.id}
-            aria-controls={`dashboard-panel-${tab.id}`}
-            tabIndex={activeTab === tab.id ? 0 : -1}
-            onClick={() => switchTab(tab.id)}
-            onKeyDown={(event) => {
-              const nextIndex = event.key === 'ArrowRight' ? (index + 1) % tabs.length
-                : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length
-                  : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : null;
-              if (nextIndex !== null) {
-                event.preventDefault();
-                switchTab(tabs[nextIndex].id, true);
-              }
-            }}
-          >{tab.label}</button>
-        ))}
-      </div>
+          <div className={`dashboard-chart-filters${chartMetric === 'date' ? ` dashboard-chart-filters--date${periodPreset === 'custom' ? ' dashboard-chart-filters--custom' : ''}` : ''}`}>
+            <div className="field dashboard-channel-filter">
+              <label htmlFor="dashboard-channel">{t('dashboard.channel')}</label>
+              <ChannelPicker
+                id="dashboard-channel"
+                channels={channels}
+                value={selectedChannelId}
+                onChange={handleChannelChange}
+                includeAll
+                allLabel={t('dashboard.allChannels')}
+                disabled={loading}
+              />
+            </div>
+            <div className="field dashboard-user-filter">
+              <label htmlFor="dashboard-user">{t('dashboard.user')}</label>
+              <UserPicker
+                id="dashboard-user"
+                users={users}
+                value={selectedUserId}
+                onChange={setSelectedUserId}
+                allLabel={t('dashboard.allUsers')}
+                disabled={loading && !users.length}
+              />
+            </div>
+            {chartMetric === 'date' ? (
+              <div className="field dashboard-period-filter">
+                <label htmlFor="dashboard-period">{t('dashboard.period')}</label>
+                <select id="dashboard-period" value={periodPreset} onChange={(event) => setPeriodPreset(event.target.value)}>
+                  <option value="7d">{t('dashboard.period_7d')}</option>
+                  <option value="30d">{t('dashboard.period_30d')}</option>
+                  <option value="90d">{t('dashboard.period_90d')}</option>
+                  <option value="today">{t('dashboard.period_today')}</option>
+                  <option value="yesterday">{t('dashboard.period_yesterday')}</option>
+                  <option value="this_week">{t('dashboard.period_this_week')}</option>
+                  <option value="this_month">{t('dashboard.period_this_month')}</option>
+                  <option value="last_month">{t('dashboard.period_last_month')}</option>
+                  <option value="custom">{t('dashboard.period_custom')}</option>
+                </select>
+              </div>
+            ) : null}
+            {chartMetric === 'date' && periodPreset === 'custom' ? (
+              <>
+                <div className="field dashboard-date-filter">
+                  <label htmlFor="dashboard-start-date">{t('dashboard.startDate')}</label>
+                  <DatePickerInput
+                    id="dashboard-start-date"
+                    label={t('dashboard.startDate')}
+                    value={startDate}
+                    max={endDate || dateInputValue(new Date())}
+                    onChange={setStartDate}
+                  />
+                </div>
+                <div className="field dashboard-date-filter">
+                  <label htmlFor="dashboard-end-date">{t('dashboard.endDate')}</label>
+                  <DatePickerInput
+                    id="dashboard-end-date"
+                    label={t('dashboard.endDate')}
+                    value={endDate}
+                    min={startDate || undefined}
+                    max={dateInputValue(new Date())}
+                    onChange={setEndDate}
+                  />
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
 
       <div className="dashboard-tab-panel" id="dashboard-panel-overview" role="tabpanel" aria-labelledby="dashboard-tab-overview" hidden={activeTab !== 'overview'}>
       <section className="dashboard-hero__summary" aria-live="polite">
@@ -485,6 +486,7 @@ const Dashboard = () => {
         }}
       />
       </div>
+      </section>
     </div>
   );
 };

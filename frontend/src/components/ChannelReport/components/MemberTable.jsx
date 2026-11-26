@@ -345,7 +345,7 @@ export const MemberTable = ({
     }
     return (
       <div className="table-wrap">
-        <table className="data-table data-table--compact">
+        <table className="data-table data-table--compact member-summary-table">
           <thead>
             <tr>
               <th>

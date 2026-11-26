@@ -636,6 +636,37 @@
   padding-top: 18px;
 }
 
+.dashboard-header-bar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dashboard-header-bar .dashboard-chart-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+  width: auto;
+  flex: 1 1 520px;
+}
+
+.dashboard-header-bar .dashboard-channel-filter {
+  min-width: 210px;
+}
+
+.dashboard-header-bar .dashboard-user-filter,
+.dashboard-header-bar .dashboard-period-filter,
+.dashboard-header-bar .dashboard-date-filter {
+  min-width: 170px;
+}
+
 .dashboard-tabs {
   justify-self: start;
 }
@@ -1611,6 +1642,11 @@
 
 .member-row {
   cursor: pointer;
+}
+
+.member-summary-table thead th {
+  padding-top: 13px;
+  padding-bottom: 13px;
 }
 
 .member-row__trigger {

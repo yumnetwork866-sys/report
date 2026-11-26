@@ -232,14 +232,15 @@ const getDashboard = async (req, res) => {
         ORDER BY channel.id ASC
       `, { type: QueryTypes.SELECT }),
       sequelize.query(`
-        SELECT DISTINCT
+        SELECT
           app_user.id,
           app_user.name,
           app_user.email,
           app_user.avatar_url
         FROM users app_user
         LEFT JOIN user_content_attributions attribution ON attribution.user_id = app_user.id
-        WHERE (
+        WHERE LOWER(COALESCE(app_user.role, '')) = 'content'
+          AND (
           (jsonb_typeof(attribution.hashtags) = 'array' AND jsonb_array_length(attribution.hashtags) > 0)
           OR EXISTS (
             SELECT 1
@@ -269,6 +270,7 @@ const getDashboard = async (req, res) => {
               AND creator_channel.id = :channelId
           )
         )
+        GROUP BY app_user.id, app_user.name, app_user.email, app_user.avatar_url
         ORDER BY LOWER(COALESCE(app_user.name, app_user.email, '')), app_user.id
       `, {
         type: QueryTypes.SELECT,
