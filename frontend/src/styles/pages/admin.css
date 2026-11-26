@@ -649,13 +649,13 @@
 
 
 .employee-table__modal {
-  width: min(760px, 100%);
+  width: min(580px, 100%);
   max-height: calc(100dvh - 40px);
   padding: 0;
   overflow-x: hidden;
   overflow-y: auto;
   border-color: rgba(148, 163, 184, 0.28);
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.2);
 }
 
@@ -1039,9 +1039,34 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: 18px;
-  padding: 24px 26px 26px;
+  gap: 14px 16px;
+  padding: 20px 24px 22px;
   background: var(--color-surface);
+}
+
+.employee-table__attribution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.employee-table__attribution-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.employee-table__attribution-row {
+  display: grid;
+  grid-template-columns: 165px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.employee-table__attribution-row--single {
+  grid-template-columns: 165px minmax(0, 1fr);
 }
 
 .employee-table__form-section-title {
@@ -1086,8 +1111,8 @@
 .employee-table__modal-actions {
   grid-column: 1 / -1;
   justify-content: flex-end;
-  margin: 4px -26px -26px;
-  padding: 17px 26px;
+  margin: 4px -24px -22px;
+  padding: 14px 24px;
   border-top: 1px solid var(--color-border);
   background: var(--color-surface-subtle);
 }

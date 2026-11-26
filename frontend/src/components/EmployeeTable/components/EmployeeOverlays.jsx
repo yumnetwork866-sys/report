@@ -99,7 +99,7 @@ export const EmployeeOverlays = ({
               </select>
             </div>
             <div className="field" style={{ gridColumn: '1 / -1' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div className="employee-table__attribution-header">
                 <label style={{ margin: 0 }}>{t('users.team')} & {t('users.hashtags')}</label>
                 <button
                   type="button"
@@ -109,14 +109,16 @@ export const EmployeeOverlays = ({
                   + Thêm team / thị trường
                 </button>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(form.content_attributions || [{ team_id: '', hashtags: '' }]).map((row, index) => (
-                  <div key={index} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <div className="employee-table__attribution-rows">
+                {(form.content_attributions || [{ team_id: '', hashtags: '' }]).map((row, index, rows) => (
+                  <div
+                    key={index}
+                    className={`employee-table__attribution-row ${rows.length <= 1 ? 'employee-table__attribution-row--single' : ''}`}
+                  >
                     <select
                       aria-label={`${t('users.team')} #${index + 1}`}
                       value={row.team_id}
                       onChange={(e) => handleAttributionRowChange(index, 'team_id', e.target.value)}
-                      style={{ flex: '0 0 180px' }}
                     >
                       <option value="">{t('users.unassignedTeam')}</option>
                       {teams.map((team) => <option key={team.id} value={String(team.id)}>{team.name}</option>)}
@@ -126,9 +128,8 @@ export const EmployeeOverlays = ({
                       value={row.hashtags}
                       onChange={(e) => handleAttributionRowChange(index, 'hashtags', e.target.value)}
                       placeholder={t('users.hashtagsPlaceholder')}
-                      style={{ flex: 1 }}
                     />
-                    {(form.content_attributions || []).length > 1 ? (
+                    {rows.length > 1 ? (
                       <button
                         type="button"
                         className="button button--small button--ghost"
