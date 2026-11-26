@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  exportTikTokSellerAffiliateOrders,
   fetchTikTokSellerAffiliateOrders,
   fetchTikTokSellerAffiliateOrderOverview,
   fetchTikTokShops,
@@ -22,7 +23,6 @@ import {
   shopDateUnix,
   shopTimezone,
 } from '../../SellerAffiliatePanel/utils/sellerAffiliateUtils';
-import { exportOrdersToCsv } from '../utils/orderExport';
 
 export const DEFAULT_ORDER_FILTERS = {
   dateField: 'create_time',
@@ -67,6 +67,7 @@ export const useShopOrders = () => {
   const [data, setData] = useState({});
   const [pageTokens, setPageTokens] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -429,10 +430,27 @@ export const useShopOrders = () => {
     return Number.isFinite(numeric) ? numeric.toLocaleString(locale) : '0';
   }, [locale]);
 
-  const exportOrders = useCallback(() => {
-    const filename = `orders_${selectedShop?.name || shopId}_${orderRange.start}_${orderRange.end}.csv`;
-    return exportOrdersToCsv(rows, filename, t, locale);
-  }, [locale, orderRange.end, orderRange.start, rows, selectedShop?.name, shopId, t]);
+  const exportOrders = useCallback(async () => {
+    if (!shopId || !hasScope || exporting) return false;
+    try {
+      setExporting(true);
+      setError('');
+      const trimmedKeyword = String(orderRequestFilters.keyword || '').trim();
+      const isIdSearch = /^\d{12,}$/.test(trimmedKeyword);
+      const activeFilters = {
+        ...orderRequestFilters,
+        source: 'db',
+        ...(isIdSearch ? { startTime: undefined, endTime: undefined } : {}),
+      };
+      const filename = `don_hang_${selectedShop?.name || shopId}_${orderRange.start}_${orderRange.end}.xlsx`;
+      return await exportTikTokSellerAffiliateOrders(shopId, activeFilters, filename);
+    } catch (err) {
+      setError(err.message || t('sellerAffiliate.loadError'));
+      return false;
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, hasScope, orderRange.end, orderRange.start, orderRequestFilters, selectedShop?.name, shopId, t]);
 
   const advancedFilterKeys = [
     'warehouse', 'buyerCancellation', 'settlementStatus',
@@ -461,6 +479,7 @@ export const useShopOrders = () => {
     currentPage,
     data,
     error,
+    exporting,
     exportOrders,
     formatMoneyValues,
     formatNumber,

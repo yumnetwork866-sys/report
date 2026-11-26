@@ -53,6 +53,7 @@ adminRouter.get('/shops/:shopId/video-export', requirePermission('shop.videos.li
 adminRouter.get('/shops/:shopId/video-thumbnails/:videoId', requireAnyPermission(['shop.videos.library.view', 'shop.videos.performance.view']), validateParams(shopVideoParamsSchema), controller.getShopVideoThumbnail);
 adminRouter.get('/shops/:shopId/affiliate/open-collaborations', requireAnyPermission(['shop.affiliate.open.view', 'shop.bookings.manage']), validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listOpenCollaborations);
 adminRouter.get('/shops/:shopId/affiliate/creator-invitations', requirePermission('shop.affiliate.invite'), validateParams(shopParamsSchema), controller.listCreatorInvitations);
+adminRouter.get('/shops/:shopId/affiliate/orders/export', requirePermission('shop.orders.view'), validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.exportAffiliateOrders);
 adminRouter.get('/shops/:shopId/affiliate/orders', requirePermission('shop.orders.view'), validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrders);
 adminRouter.get('/shops/:shopId/affiliate/order-overview', requirePermission('shop.orders.view'), validateParams(shopParamsSchema), validateQuery(shopListQuerySchema), controller.listAffiliateOrderOverview);
 adminRouter.get('/shops/:shopId/orders/:orderId/tracking', requirePermission('shop.orders.view'), validateParams(shopOrderParamsSchema), controller.getOrderTracking);

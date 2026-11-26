@@ -31,6 +31,7 @@ export const OrderManagement = () => {
     currentPage,
     data,
     error,
+    exporting,
     exportOrders,
     formatMoneyValues,
     formatNumber,
@@ -189,11 +190,11 @@ export const OrderManagement = () => {
               className="button button--ghost order-management__export-btn"
               type="button"
               onClick={handleExport}
-              disabled={!rows.length || loading}
+              disabled={!rows.length || loading || exporting}
               title={t('sellerAffiliate.exportOrders')}
             >
               <Download size={15} />
-              <span>{t('sellerAffiliate.exportOrders')}</span>
+              <span>{exporting ? 'Đang xuất...' : t('sellerAffiliate.exportOrders')}</span>
             </button>
           </div>
         </div>

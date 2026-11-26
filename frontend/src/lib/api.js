@@ -629,7 +629,7 @@ export function stopScheduleNow(jobKey) {
   return apiRequest(`/schedules/${encodeURIComponent(jobKey)}/stop`, { method: 'POST' });
 }
 
-function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
+function buildTikTokSellerAffiliateParams(filters = {}) {
   const params = new URLSearchParams();
   if (filters.pageToken) params.set('page_token', filters.pageToken);
   if (filters.pageSize) params.set('page_size', filters.pageSize);
@@ -658,8 +658,53 @@ function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
   if (filters.contentType) params.set('content_type', filters.contentType);
   if (filters.settlementStatus) params.set('settlement_status', filters.settlementStatus);
   if (filters.source) params.set('source', filters.source);
+  return params;
+}
+
+function fetchTikTokSellerAffiliate(shopId, resource, filters = {}) {
+  const params = buildTikTokSellerAffiliateParams(filters);
   const query = params.toString();
   return apiRequest(`/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/${resource}${query ? `?${query}` : ''}`, { signal: filters.signal });
+}
+
+export async function exportTikTokSellerAffiliateOrders(shopId, filters = {}, fallbackFilename = 'orders.xlsx') {
+  const params = buildTikTokSellerAffiliateParams(filters);
+  const query = params.toString();
+  const sessionToken = getStoredSession()?.token || null;
+  const response = await fetch(
+    `${API_BASE_URL}/tiktok-shop/shops/${encodeURIComponent(shopId)}/affiliate/orders/export${query ? `?${query}` : ''}`,
+    {
+      method: 'GET',
+      headers: {
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      signal: filters.signal,
+    },
+  );
+
+  if (!response.ok) {
+    let msg = `Xuất đơn hàng thất bại (${response.status})`;
+    try {
+      const err = await response.json();
+      if (err?.message) msg = err.message;
+    } catch {}
+    throw new Error(msg);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/);
+  const filename = match ? match[1] : fallbackFilename;
+
+  const downloadUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(downloadUrl);
+  return true;
 }
 
 export const fetchTikTokSellerOpenCollaborations = (shopId, filters) => fetchTikTokSellerAffiliate(shopId, 'open-collaborations', filters);

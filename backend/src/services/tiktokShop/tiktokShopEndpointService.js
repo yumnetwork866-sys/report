@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const { Op, QueryTypes, Sequelize } = require('sequelize');
 const tiktokShopRepository = require('../../repositories/tiktokShopRepository');
+const { buildShopOrdersWorkbookBuffer } = require('./orderExportService');
 const {
   buildShopAuthorizationUrl,
   parseShopAuthorizationState,
@@ -1203,6 +1204,277 @@ const loadTargetCollaborationSummaries = async (shop, targetIds) => {
   return rows;
 };
 
+const queryAffiliateOrdersFromDb = async (shop, query, { limit = 100, offset = 0 } = {}) => {
+  const orderId = String(query.order_id || '').trim();
+  const searchKeyword = String(query.keyword || '').trim();
+  const effectiveOrderId = orderId || (/^\d{12,}$/.test(searchKeyword) ? searchKeyword : '');
+  const isExactOrderId = Boolean(effectiveOrderId);
+
+  const where = { shop_id: shop.id };
+  if (orderId) where.order_id = orderId;
+
+  const filterQuery = isExactOrderId
+    ? { ...query, create_time_ge: undefined, create_time_lt: undefined }
+    : query;
+
+  const skuConditions = [];
+  const { dateField } = addOrderDataFilters(where, skuConditions, filterQuery);
+  const filterProductId = String(query.product_id || '').trim();
+  const filterCreator = String(query.creator_username || '').trim().replace(/^@+/, '');
+  const filterVideoId = String(query.video_id || query.content_id || '').trim();
+  const filterContentType = String(query.content_type || '').trim().toUpperCase();
+  const filterSettlement = String(query.settlement_status || '').trim().toUpperCase();
+  if (filterProductId) skuConditions.push({ product_id: filterProductId });
+  if (filterVideoId) skuConditions.push({ content_id: filterVideoId });
+  if (filterCreator) skuConditions.push({ creator_username: { [Op.iLike]: filterCreator } });
+
+  if (filterContentType === 'LIVE') {
+    skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
+  } else if (filterContentType === 'LIVE_ATTRIBUTED' || filterContentType === 'NON_VIDEO') {
+    skuConditions.push({
+      content_type: { [Op.notIn]: ['VIDEO', 'SHORT_VIDEO', 'VIDEO_STREAM'] },
+    });
+  } else if (filterContentType === 'SHOP') {
+    skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
+  } else if (filterContentType === 'DIRECT') {
+    skuConditions.push({
+      content_type: { [Op.in]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+    });
+  } else if (filterContentType === 'AFFILIATE') {
+    skuConditions.push({
+      content_type: { [Op.notIn]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
+    });
+  } else if (filterContentType) {
+    skuConditions.push({ content_type: filterContentType });
+  }
+
+  if (filterSettlement === 'REFUNDED') {
+    skuConditions.push({
+      [Op.or]: [
+        { fully_return: true },
+        { refunded_quantity: { [Op.gt]: 0 } },
+        { settlement_status: { [Op.iLike]: '%REFUND%' } },
+        { settlement_status: { [Op.iLike]: '%RETURN%' } },
+      ],
+    });
+  } else if (filterSettlement === 'UNSETTLED') {
+    skuConditions.push({
+      [Op.or]: [
+        { settlement_status: { [Op.iLike]: '%UNSETTLED%' } },
+        { settlement_status: { [Op.iLike]: '%PENDING%' } },
+        { settlement_status: { [Op.iLike]: '%PROCESSING%' } },
+      ],
+    });
+  } else if (filterSettlement === 'SETTLED') {
+    skuConditions.push({
+      fully_return: false,
+      refunded_quantity: 0,
+      [Op.or]: [
+        { settlement_status: { [Op.iLike]: 'SETTLED' } },
+        { settlement_status: { [Op.iLike]: 'COMPLETED' } },
+      ],
+    });
+  }
+
+  if (searchKeyword && !orderId) {
+    const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
+    const profiles = await tiktokShopRepository.findCreatorProfiles({
+      where: {
+        shop_id: shop.id,
+        [Op.or]: [
+          { username: { [Op.iLike]: pattern } },
+          { nickname: { [Op.iLike]: pattern } },
+        ],
+      },
+      attributes: ['username'],
+    });
+    const profileUsernames = profiles.map((profile) => profile.username).filter(Boolean);
+    const [matchingOrders, matchingSkus] = await Promise.all([
+      tiktokShopRepository.findAffiliateOrders({
+        where: { shop_id: shop.id, order_id: { [Op.iLike]: pattern } },
+        attributes: ['order_id'],
+      }),
+      tiktokShopRepository.findAffiliateOrderSkus({
+        where: {
+          shop_id: shop.id,
+          [Op.or]: [
+            { content_id: { [Op.iLike]: pattern } },
+            { product_id: { [Op.iLike]: pattern } },
+            { product_name: { [Op.iLike]: pattern } },
+            { creator_username: { [Op.iLike]: pattern } },
+            ...(profileUsernames.length ? [{ creator_username: { [Op.in]: profileUsernames } }] : []),
+          ],
+        },
+        attributes: ['order_id'],
+      }),
+    ]);
+    const matchingOrderIds = [...new Set([
+      ...matchingOrders.map((order) => String(order.order_id)),
+      ...matchingSkus.map((sku) => String(sku.order_id)),
+    ])];
+    where.order_id = { [Op.in]: matchingOrderIds };
+  }
+
+  const skuWhere = skuConditions.length ? { [Op.and]: skuConditions } : undefined;
+  const hasSkuFilter = skuConditions.length > 0;
+
+  const queryOptions = {
+    where,
+    distinct: true,
+    order: dateField === 'update_time'
+      ? [[Sequelize.literal(`COALESCE(${orderEpoch('update_time')}, EXTRACT(EPOCH FROM ${ORDER_ALIAS}."create_time")::BIGINT)`), 'DESC']]
+      : [['create_time', 'DESC']],
+  };
+  if (limit !== null && limit !== undefined) {
+    queryOptions.limit = limit;
+    queryOptions.offset = offset;
+  }
+
+  const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders(
+    queryOptions,
+    skuWhere,
+    hasSkuFilter,
+  );
+
+  const nextOffset = offset + rows.length;
+  const nextPageToken = limit !== null && nextOffset < count ? String(nextOffset) : '';
+
+  if (!rows.length) {
+    let foundInShop = null;
+    if (isExactOrderId) {
+      const anyOrders = await tiktokShopRepository.findAffiliateOrders({
+        where: { order_id: effectiveOrderId },
+        attributes: ['shop_id', 'order_id'],
+        limit: 1,
+      });
+      if (anyOrders.length && anyOrders[0].shop_id !== shop.id) {
+        const matchedShop = typeof tiktokShopRepository.findShopById === 'function'
+          ? await tiktokShopRepository.findShopById(anyOrders[0].shop_id)
+          : null;
+        if (matchedShop) {
+          foundInShop = {
+            id: matchedShop.id,
+            name: matchedShop.name || `Shop #${matchedShop.id}`,
+          };
+        }
+      }
+    }
+
+    return {
+      orders: [],
+      next_page_token: '',
+      total_count: count,
+      ...(foundInShop ? { found_in_shop: foundInShop } : {}),
+    };
+  }
+
+  const allSkus = rows.flatMap((r) => (Array.isArray(r.skus) ? r.skus : []));
+  const productIds = [...new Set(allSkus.map((sku) => sku.product_id).filter(Boolean).map(String))];
+  const targetIds = new Set(allSkus.map((sku) => sku.target_collaboration_id).filter(Boolean).map(String));
+
+  const [products, targetSnapshots] = await Promise.all([
+    productIds.length
+      ? tiktokShopRepository.findShopProducts({
+          where: { shop_id: shop.id, product_id: { [Op.in]: productIds } },
+        })
+      : [],
+    targetIds.size
+      ? tiktokShopRepository.findTargetCollaborations({
+          where: { shop_id: shop.id, collaboration_id: { [Op.in]: [...targetIds] } },
+        })
+      : [],
+  ]);
+
+  const productsById = new Map(products
+    .map(productView)
+    .filter(Boolean)
+    .map((product) => [String(product.id), product]));
+  const targetProgramsById = new Map(targetSnapshots.map((t) => [
+    String(t.collaboration_id),
+    { id: String(t.collaboration_id), name: t.name, type: 'TARGET', ...(t.raw_data || {}) },
+  ]));
+
+  const orders = rows.map((r) => {
+    const base = r.raw_data || {};
+    const lineItems = Array.isArray(base.line_items) ? base.line_items : (Array.isArray(base.item_list) ? base.item_list : []);
+    const lineItemsBySkuId = new Map(lineItems.map((li) => [String(li.sku_id || ''), li]));
+    const skus = Array.isArray(r.skus) && r.skus.length ? r.skus.map((s) => {
+      const rawSku = s.raw_data || {};
+      const skuId = String(s.sku_id || rawSku.sku_id || '');
+      const matchingLineItem = (skuId ? lineItemsBySkuId.get(skuId) : null)
+        || lineItems.find((li) => String(li.product_id || '') === String(s.product_id || rawSku.product_id || ''))
+        || {};
+      const prod = productsById.get(String(s.product_id || rawSku.product_id));
+      const catalogSku = skuView(prod, s.sku_id || rawSku.sku_id);
+      return {
+        ...matchingLineItem,
+        ...rawSku,
+        sku_id: s.sku_id || rawSku.sku_id,
+        product_id: s.product_id || rawSku.product_id,
+        product_name: prod?.title || matchingLineItem.product_name || s.product_name || rawSku.product_name || '',
+        product_image: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.product_image || '',
+        image_url: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.image_url || '',
+        sku_name: catalogSku?.sku_name || matchingLineItem.sku_name || rawSku.sku_name || rawSku.variation_name || '',
+        seller_sku: catalogSku?.seller_sku || matchingLineItem.seller_sku || rawSku.seller_sku || '',
+        product_status: prod?.status || null,
+        product_url: prod?.product_url || null,
+        quantity: s.quantity ?? matchingLineItem.quantity ?? rawSku.quantity,
+        refunded_quantity: s.refunded_quantity ?? matchingLineItem.refunded_quantity ?? rawSku.refunded_quantity,
+        original_price: matchingLineItem.original_price ?? rawSku.original_price,
+        sale_price: matchingLineItem.sale_price ?? rawSku.sale_price,
+        seller_discount: matchingLineItem.seller_discount ?? rawSku.seller_discount,
+        platform_discount: matchingLineItem.platform_discount ?? rawSku.platform_discount,
+        price: s.price !== null && s.price !== undefined
+          ? { amount: String(s.price), currency: s.currency || rawSku.price?.currency || rawSku.currency || (shop?.region === 'VN' ? 'VND' : 'MYR') }
+          : (rawSku.price || {}),
+        currency: s.currency || rawSku.currency || rawSku.price?.currency || (shop?.region === 'VN' ? 'VND' : 'MYR'),
+        content_id: s.content_id || rawSku.content_id,
+        content_type: s.content_type || rawSku.content_type,
+        creator_username: s.creator_username || rawSku.creator_username,
+      };
+    }) : (Array.isArray(base.skus) ? base.skus : []);
+
+    const pIds = [...new Set(skus.map((sku) => sku?.product_id).filter(Boolean).map(String))];
+    const progIds = [...new Set(skus
+      .flatMap((sku) => [sku?.target_collaboration_id, sku?.open_collaboration_id])
+      .filter(Boolean)
+      .map(String))];
+
+    return {
+      ...base,
+      id: r.order_id,
+      order_id: r.order_id,
+      create_time: r.create_time ? Math.floor(new Date(r.create_time).getTime() / 1000) : base.create_time,
+      skus,
+      products: pIds.map((id) => productsById.get(id) || { id }),
+      programs: progIds.map((id) => targetProgramsById.get(id) || { id }),
+    };
+  });
+
+  const profiledOrders = await attachAffiliateOrderCreatorProfiles(shop.id, orders);
+  return {
+    orders: await attachOrderFinance(shop, profiledOrders),
+    next_page_token: nextPageToken,
+    total_count: count,
+  };
+};
+
+const exportAffiliateOrders = async (req, res) => {
+  try {
+    const shop = await loadAffiliateShop(req, res);
+    if (!shop) return;
+    const result = await queryAffiliateOrdersFromDb(shop, req.query, { limit: null, offset: 0 });
+    const buffer = buildShopOrdersWorkbookBuffer(result.orders || []);
+    const safeShopName = String(shop.name || `shop_${shop.id}`).replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `don_hang_${safeShopName}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ message: error.message || 'Không thể xuất danh sách đơn hàng' });
+  }
+};
+
 const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   const orderId = String(req.query.order_id || '').trim();
   const orderSource = String(req.query.source || '').trim().toLowerCase();
@@ -1210,259 +1482,12 @@ const listAffiliateOrders = affiliateResponse('orders', async (shop, req) => {
   const endTime = unixTimeValue(req.query.create_time_lt);
 
   if (orderSource === 'db' || orderSource === 'database') {
-    const searchKeyword = String(req.query.keyword || '').trim();
-    const effectiveOrderId = orderId || (/^\d{12,}$/.test(searchKeyword) ? searchKeyword : '');
-    const isExactOrderId = Boolean(effectiveOrderId);
-
-    const where = { shop_id: shop.id };
-    if (orderId) where.order_id = orderId;
-
     const pageSize = Math.min(500, Math.max(1, Number(req.query.page_size) || 100));
     const offset = Math.max(0, Number(req.query.page_token) || 0);
-
-    const filterQuery = isExactOrderId
-      ? { ...req.query, create_time_ge: undefined, create_time_lt: undefined }
-      : req.query;
-
-    const skuConditions = [];
-    const { dateField } = addOrderDataFilters(where, skuConditions, filterQuery);
-    const filterProductId = String(req.query.product_id || '').trim();
-    const filterCreator = String(req.query.creator_username || '').trim().replace(/^@+/, '');
-    const filterVideoId = String(req.query.video_id || req.query.content_id || '').trim();
-    const filterContentType = String(req.query.content_type || '').trim().toUpperCase();
-    const filterSettlement = String(req.query.settlement_status || '').trim().toUpperCase();
-    if (filterProductId) skuConditions.push({ product_id: filterProductId });
-    if (filterVideoId) skuConditions.push({ content_id: filterVideoId });
-    if (filterCreator) skuConditions.push({ creator_username: { [Op.iLike]: filterCreator } });
-
-    if (filterContentType === 'LIVE') {
-      skuConditions.push({ content_type: { [Op.in]: ['LIVE', 'PRE_LIVE', 'LIVESTREAM', 'LIVE_STREAM'] } });
-    } else if (filterContentType === 'LIVE_ATTRIBUTED' || filterContentType === 'NON_VIDEO') {
-      skuConditions.push({
-        content_type: { [Op.notIn]: ['VIDEO', 'SHORT_VIDEO', 'VIDEO_STREAM'] },
-      });
-    } else if (filterContentType === 'SHOP') {
-      skuConditions.push({ content_type: { [Op.in]: ['SHOP', 'SHOWCASE', 'PRODUCT_CARD'] } });
-    } else if (filterContentType === 'DIRECT') {
-      skuConditions.push({
-        content_type: { [Op.in]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
-      });
-    } else if (filterContentType === 'AFFILIATE') {
-      skuConditions.push({
-        content_type: { [Op.notIn]: ['DIRECT', 'ORGANIC', 'SHOP_ORGANIC', 'OTHER'] },
-      });
-    } else if (filterContentType) {
-      skuConditions.push({ content_type: filterContentType });
-    }
-
-    if (filterSettlement === 'REFUNDED') {
-      skuConditions.push({
-        [Op.or]: [
-          { fully_return: true },
-          { refunded_quantity: { [Op.gt]: 0 } },
-          { settlement_status: { [Op.iLike]: '%REFUND%' } },
-          { settlement_status: { [Op.iLike]: '%RETURN%' } },
-        ],
-      });
-    } else if (filterSettlement === 'UNSETTLED') {
-      skuConditions.push({
-        [Op.or]: [
-          { settlement_status: { [Op.iLike]: '%UNSETTLED%' } },
-          { settlement_status: { [Op.iLike]: '%PENDING%' } },
-          { settlement_status: { [Op.iLike]: '%PROCESSING%' } },
-        ],
-      });
-    } else if (filterSettlement === 'SETTLED') {
-      skuConditions.push({
-        fully_return: false,
-        refunded_quantity: 0,
-        [Op.or]: [
-          { settlement_status: { [Op.iLike]: 'SETTLED' } },
-          { settlement_status: { [Op.iLike]: 'COMPLETED' } },
-        ],
-      });
-    }
-
-    if (searchKeyword && !orderId) {
-      const pattern = `%${searchKeyword.replace(/^@+/, '')}%`;
-      const profiles = await tiktokShopRepository.findCreatorProfiles({
-        where: {
-          shop_id: shop.id,
-          [Op.or]: [
-            { username: { [Op.iLike]: pattern } },
-            { nickname: { [Op.iLike]: pattern } },
-          ],
-        },
-        attributes: ['username'],
-      });
-      const profileUsernames = profiles.map((profile) => profile.username).filter(Boolean);
-      const [matchingOrders, matchingSkus] = await Promise.all([
-        tiktokShopRepository.findAffiliateOrders({
-          where: { shop_id: shop.id, order_id: { [Op.iLike]: pattern } },
-          attributes: ['order_id'],
-        }),
-        tiktokShopRepository.findAffiliateOrderSkus({
-          where: {
-            shop_id: shop.id,
-            [Op.or]: [
-              { content_id: { [Op.iLike]: pattern } },
-              { product_id: { [Op.iLike]: pattern } },
-              { product_name: { [Op.iLike]: pattern } },
-              { creator_username: { [Op.iLike]: pattern } },
-              ...(profileUsernames.length ? [{ creator_username: { [Op.in]: profileUsernames } }] : []),
-            ],
-          },
-          attributes: ['order_id'],
-        }),
-      ]);
-      const matchingOrderIds = [...new Set([
-        ...matchingOrders.map((order) => String(order.order_id)),
-        ...matchingSkus.map((sku) => String(sku.order_id)),
-      ])];
-      where.order_id = { [Op.in]: matchingOrderIds };
-    }
-
-    const skuWhere = skuConditions.length ? { [Op.and]: skuConditions } : undefined;
-    const hasSkuFilter = skuConditions.length > 0;
-
-    const { count, rows } = await tiktokShopRepository.findAndCountAffiliateOrders({
-      where,
-      distinct: true,
-      order: dateField === 'update_time'
-        ? [[Sequelize.literal(`COALESCE(${orderEpoch('update_time')}, EXTRACT(EPOCH FROM ${ORDER_ALIAS}."create_time")::BIGINT)`), 'DESC']]
-        : [['create_time', 'DESC']],
-      limit: pageSize,
-      offset,
-    }, skuWhere, hasSkuFilter);
-
-    const nextOffset = offset + rows.length;
-    const nextPageToken = nextOffset < count ? String(nextOffset) : '';
-
-    if (!rows.length) {
-      let foundInShop = null;
-      if (isExactOrderId) {
-        const anyOrders = await tiktokShopRepository.findAffiliateOrders({
-          where: { order_id: effectiveOrderId },
-          attributes: ['shop_id', 'order_id'],
-          limit: 1,
-        });
-        if (anyOrders.length && anyOrders[0].shop_id !== shop.id) {
-          const matchedShop = typeof tiktokShopRepository.findShopById === 'function'
-            ? await tiktokShopRepository.findShopById(anyOrders[0].shop_id)
-            : null;
-          if (matchedShop) {
-            foundInShop = {
-              id: matchedShop.id,
-              name: matchedShop.name || `Shop #${matchedShop.id}`,
-            };
-          }
-        }
-      }
-
-      return {
-        code: 0,
-        message: 'Success',
-        data: {
-          orders: [],
-          next_page_token: '',
-          total_count: count,
-          ...(foundInShop ? { found_in_shop: foundInShop } : {}),
-        },
-      };
-    }
-
-    const allSkus = rows.flatMap((r) => (Array.isArray(r.skus) ? r.skus : []));
-    const productIds = [...new Set(allSkus.map((sku) => sku.product_id).filter(Boolean).map(String))];
-    const targetIds = new Set(allSkus.map((sku) => sku.target_collaboration_id).filter(Boolean).map(String));
-
-    const [products, targetSnapshots] = await Promise.all([
-      productIds.length
-        ? tiktokShopRepository.findShopProducts({
-            where: { shop_id: shop.id, product_id: { [Op.in]: productIds } },
-          })
-        : [],
-      targetIds.size
-        ? tiktokShopRepository.findTargetCollaborations({
-            where: { shop_id: shop.id, collaboration_id: { [Op.in]: [...targetIds] } },
-          })
-        : [],
-    ]);
-
-    const productsById = new Map(products
-      .map(productView)
-      .filter(Boolean)
-      .map((product) => [String(product.id), product]));
-    const targetProgramsById = new Map(targetSnapshots.map((t) => [
-      String(t.collaboration_id),
-      { id: String(t.collaboration_id), name: t.name, type: 'TARGET', ...(t.raw_data || {}) },
-    ]));
-
-    const orders = rows.map((r) => {
-      const base = r.raw_data || {};
-      const lineItems = Array.isArray(base.line_items) ? base.line_items : (Array.isArray(base.item_list) ? base.item_list : []);
-      const lineItemsBySkuId = new Map(lineItems.map((li) => [String(li.sku_id || ''), li]));
-      const skus = Array.isArray(r.skus) && r.skus.length ? r.skus.map((s) => {
-        const rawSku = s.raw_data || {};
-        const skuId = String(s.sku_id || rawSku.sku_id || '');
-        const matchingLineItem = (skuId ? lineItemsBySkuId.get(skuId) : null)
-          || lineItems.find((li) => String(li.product_id || '') === String(s.product_id || rawSku.product_id || ''))
-          || {};
-        const prod = productsById.get(String(s.product_id || rawSku.product_id));
-        const catalogSku = skuView(prod, s.sku_id || rawSku.sku_id);
-        return {
-          ...matchingLineItem,
-          ...rawSku,
-          sku_id: s.sku_id || rawSku.sku_id,
-          product_id: s.product_id || rawSku.product_id,
-          product_name: prod?.title || matchingLineItem.product_name || s.product_name || rawSku.product_name || '',
-          product_image: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.product_image || '',
-          image_url: catalogSku?.image_url || matchingLineItem.sku_image || prod?.image_url || rawSku.image_url || '',
-          sku_name: catalogSku?.sku_name || matchingLineItem.sku_name || rawSku.sku_name || rawSku.variation_name || '',
-          seller_sku: catalogSku?.seller_sku || matchingLineItem.seller_sku || rawSku.seller_sku || '',
-          product_status: prod?.status || null,
-          product_url: prod?.product_url || null,
-          quantity: s.quantity ?? matchingLineItem.quantity ?? rawSku.quantity,
-          refunded_quantity: s.refunded_quantity ?? matchingLineItem.refunded_quantity ?? rawSku.refunded_quantity,
-          original_price: matchingLineItem.original_price ?? rawSku.original_price,
-          sale_price: matchingLineItem.sale_price ?? rawSku.sale_price,
-          seller_discount: matchingLineItem.seller_discount ?? rawSku.seller_discount,
-          platform_discount: matchingLineItem.platform_discount ?? rawSku.platform_discount,
-          price: s.price !== null && s.price !== undefined
-            ? { amount: String(s.price), currency: s.currency || rawSku.price?.currency || rawSku.currency || (shop?.region === 'VN' ? 'VND' : 'MYR') }
-            : (rawSku.price || {}),
-          currency: s.currency || rawSku.currency || rawSku.price?.currency || (shop?.region === 'VN' ? 'VND' : 'MYR'),
-          content_id: s.content_id || rawSku.content_id,
-          content_type: s.content_type || rawSku.content_type,
-          creator_username: s.creator_username || rawSku.creator_username,
-        };
-      }) : (Array.isArray(base.skus) ? base.skus : []);
-
-      const pIds = [...new Set(skus.map((sku) => sku?.product_id).filter(Boolean).map(String))];
-      const progIds = [...new Set(skus
-        .flatMap((sku) => [sku?.target_collaboration_id, sku?.open_collaboration_id])
-        .filter(Boolean)
-        .map(String))];
-
-      return {
-        ...base,
-        id: r.order_id,
-        order_id: r.order_id,
-        create_time: r.create_time ? Math.floor(new Date(r.create_time).getTime() / 1000) : base.create_time,
-        skus,
-        products: pIds.map((id) => productsById.get(id) || { id }),
-        programs: progIds.map((id) => targetProgramsById.get(id) || { id }),
-      };
-    });
-
-    const profiledOrders = await attachAffiliateOrderCreatorProfiles(shop.id, orders);
     return {
       code: 0,
       message: 'Success',
-      data: {
-        orders: await attachOrderFinance(shop, profiledOrders),
-        next_page_token: nextPageToken,
-        total_count: count,
-      },
+      data: await queryAffiliateOrdersFromDb(shop, req.query, { limit: pageSize, offset }),
     };
   }
 
@@ -2703,7 +2728,7 @@ const service = {
   startShopOauth, handleShopOauthCallback, listShopConnections, listShops, updateShopAvatarChannel,
   getShopAnalytics, syncShopAnalytics, disconnectShopAuthorization, disconnectShop,
   listShopVideoPerformance, listShopLivePerformance, getShopVideoThumbnail,
-  listOpenCollaborations, listCreatorInvitations, listAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
+  listOpenCollaborations, listCreatorInvitations, listAffiliateOrders, exportAffiliateOrders, listAffiliateOrderOverview, showOpenCollaborationSettings,
   listAffiliateCreators, showAffiliateCreatorFulfillments, getOrderTracking, listMarketplaceCreators, showMarketplaceCreator,
   createMarketplaceCreatorInvitation, addMarketplaceCreatorToInvitation,
   getMarketplaceCreatorConversation, sendMarketplaceCreatorMessage,
